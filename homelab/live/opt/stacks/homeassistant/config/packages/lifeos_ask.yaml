@@ -1,0 +1,29 @@
+input_text:
+  lifeos_ask_question:
+    name: LifeOS Ask Question
+    max: 255
+
+shell_command:
+  lifeos_run_ask_query: "python3 /config/scripts/lifeos_ask_submit.py '{{ question }}'"
+
+script:
+  lifeos_run_ask:
+    alias: LifeOS Run Ask
+    sequence:
+      - service: shell_command.lifeos_run_ask_query
+        data:
+          question: "{{ states('input_text.lifeos_ask_question') }}"
+
+command_line:
+  - sensor:
+      name: LifeOS Ask
+      unique_id: lifeos_ask
+      command: "cat /config/lifeos_ask_answer.json 2>/dev/null || echo '{\"status\":\"idle\",\"route\":\"none\",\"answer\":\"No answer yet.\"}'"
+      scan_interval: 2
+      value_template: "{{ value_json.status | default('unknown') }}"
+      json_attributes:
+        - question
+        - route
+        - answer
+        - generated_at
+        - safety

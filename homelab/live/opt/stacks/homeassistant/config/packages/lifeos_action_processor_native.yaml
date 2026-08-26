@@ -1,0 +1,18 @@
+command_line:
+  - sensor:
+      name: LifeOS Action Processor Status
+      unique_id: lifeos_action_processor_status
+      command: "python3 /config/scripts/lifeos_action_processor_ha_sensor.py status"
+      scan_interval: 30
+
+  - sensor:
+      name: LifeOS Action Processor Pending Requests
+      unique_id: lifeos_action_processor_pending_requests
+      command: "python3 /config/scripts/lifeos_action_processor_ha_sensor.py pending_requests"
+      scan_interval: 30
+
+  - sensor:
+      name: LifeOS Action Processor Last Result
+      unique_id: lifeos_action_processor_last_result
+      command: "python3 /config/scripts/lifeos_action_processor_ha_sensor.py last_result"
+      scan_interval: 30

@@ -1,0 +1,247 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Privacy Guardian</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    th, td { border: 1px solid #ccc; padding: 6px; vertical-align: top; }
+    th { background: #eee; }
+    .btn { padding: 4px 8px; cursor: pointer; }
+    .banner { padding: 10px; margin: 10px 0; border: 2px solid #333; background: #fff7d6; }
+    .panel { padding: 10px; margin: 12px 0; border: 1px solid #bbb; background: #f7f7f7; }
+    .ok { color: green; font-weight: bold; }
+    .bad { color: red; font-weight: bold; }
+    .unknown { color: #999; }
+    code { background: #eee; padding: 1px 4px; border-radius: 4px; }
+    ul { margin: 6px 0 0 18px; }
+  </style>
+</head>
+
+<body>
+
+<h1>Privacy Guardian</h1>
+
+<div class="banner">
+  <strong>ACTIVE PROFILE:</strong> {{ active_profile }}
+  &nbsp; | &nbsp;
+  <strong>MODE:</strong> {{ profile_meta.mode or "unknown" }}
+  &nbsp; | &nbsp;
+  <strong>LAST RUN:</strong> {{ last_run or "N/A" }}
+</div>
+
+<form method="post" action="/run-now?profile={{ active_profile }}">
+  <button style="padding:8px 14px;font-weight:bold;">
+    ▶ Run checks now
+  </button>
+</form>
+
+<form method="get" action="/">
+  <label for="profile"><strong>Switch profile:</strong></label>
+  <select id="profile" name="profile" onchange="this.form.submit()">
+    {% for p in profiles %}
+      <option value="{{ p }}" {% if p == active_profile %}selected{% endif %}>
+        {{ p }}
+      </option>
+    {% endfor %}
+  </select>
+</form>
+
+<p><strong>User:</strong> {{ user.full_name or "N/A" }}</p>
+
+<div class="panel">
+  <h2 style="margin-top:0;">Recent confirmed changes</h2>
+  {% if change_log and change_log|length > 0 %}
+    <table>
+      <tr><th>When</th><th>Signal</th><th>Before</th><th>After</th></tr>
+      {% for c in change_log[:25] %}
+      <tr>
+        <td>{{ c.ts }}</td>
+        <td><code>{{ c.signal }}</code></td>
+        <td>{% if c.before is sameas true %}<span class="bad">YES</span>{% else %}<span class="ok">NO</span>{% endif %}</td>
+        <td>{% if c.after is sameas true %}<span class="bad">YES</span>{% else %}<span class="ok">NO</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  {% else %}
+    <p style="margin:0;">No confirmed changes recorded yet (good).</p>
+  {% endif %}
+</div>
+
+<h2>Email exposure check</h2>
+{% if exposure and exposure|length > 0 %}
+<table>
+  <tr><th>Email</th><th>Indexed</th><th>Confirmed</th><th>Last Checked</th><th>Notes</th></tr>
+  {% for e in exposure %}
+  <tr>
+    <td>{{ e.email }}</td>
+    <td>
+      {% if e.publicly_indexed is sameas true %}<span class="bad">YES</span>
+      {% elif e.publicly_indexed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">UNKNOWN</span>{% endif %}
+    </td>
+    <td>
+      {% if e.confirmed is sameas true %}<span class="bad">CONFIRMED</span>
+      {% elif e.confirmed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">PENDING</span>{% endif %}
+    </td>
+    <td>{{ e.last_checked or "" }}</td>
+    <td>{{ e.error or e.engine or "" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No email exposure checks recorded yet.</p>
+{% endif %}
+
+<h2>Username exposure check</h2>
+{% if username_exposure and username_exposure|length > 0 %}
+<table>
+  <tr><th>Username</th><th>Indexed</th><th>Confirmed</th><th>Last Checked</th><th>Notes</th></tr>
+  {% for u in username_exposure %}
+  <tr>
+    <td>{{ u.username }}</td>
+    <td>
+      {% if u.publicly_indexed is sameas true %}<span class="bad">YES</span>
+      {% elif u.publicly_indexed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">UNKNOWN</span>{% endif %}
+    </td>
+    <td>
+      {% if u.confirmed is sameas true %}<span class="bad">CONFIRMED</span>
+      {% elif u.confirmed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">PENDING</span>{% endif %}
+    </td>
+    <td>{{ u.last_checked or "" }}</td>
+    <td>{{ u.error or u.engine or "" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No username exposure checks recorded yet.</p>
+{% endif %}
+
+<h2>Phone exposure check</h2>
+{% if phone_exposure and phone_exposure|length > 0 %}
+<table>
+  <tr><th>Phone</th><th>Indexed</th><th>Confirmed</th><th>Last Checked</th><th>Notes</th></tr>
+  {% for p in phone_exposure %}
+  <tr>
+    <td><code>{{ p.phone }}</code></td>
+    <td>
+      {% if p.publicly_indexed is sameas true %}<span class="bad">YES</span>
+      {% elif p.publicly_indexed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">UNKNOWN</span>{% endif %}
+    </td>
+    <td>
+      {% if p.confirmed is sameas true %}<span class="bad">CONFIRMED</span>
+      {% elif p.confirmed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">PENDING</span>{% endif %}
+    </td>
+    <td>{{ p.last_checked or "" }}</td>
+    <td>{{ p.error or p.engine or "" }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No phone exposure checks recorded yet.</p>
+{% endif %}
+
+<h2>Address exposure check</h2>
+{% if address_exposure %}
+<table>
+  <tr><th>Indexed</th><th>Confirmed</th><th>Last Checked</th><th>Notes</th></tr>
+  <tr>
+    <td>
+      {% if address_exposure.publicly_indexed is sameas true %}<span class="bad">YES</span>
+      {% elif address_exposure.publicly_indexed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">UNKNOWN</span>{% endif %}
+    </td>
+    <td>
+      {% if address_exposure.confirmed is sameas true %}<span class="bad">CONFIRMED</span>
+      {% elif address_exposure.confirmed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">PENDING</span>{% endif %}
+    </td>
+    <td>{{ address_exposure.last_checked or "" }}</td>
+    <td>{{ address_exposure.error or address_exposure.engine or "" }}</td>
+  </tr>
+</table>
+{% if address_exposure.queries %}
+<p><strong>Queries used:</strong></p>
+<ul>
+  {% for q in address_exposure.queries %}
+    <li>{{ q }}</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% else %}
+<p>No address exposure checks recorded yet.</p>
+{% endif %}
+
+<h2>Site-scoped exposure check</h2>
+{% if site_scoped and site_scoped|length > 0 %}
+<table>
+  <tr><th>Type</th><th>Value</th><th>Indexed</th><th>Confirmed</th><th>Last Checked</th><th>Sites</th></tr>
+  {% for s in site_scoped %}
+  <tr>
+    <td>{{ s.kind }}</td>
+    <td><code>{{ s.value }}</code></td>
+    <td>
+      {% if s.publicly_indexed is sameas true %}<span class="bad">YES</span>
+      {% elif s.publicly_indexed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">UNKNOWN</span>{% endif %}
+    </td>
+    <td>
+      {% if s.confirmed is sameas true %}<span class="bad">CONFIRMED</span>
+      {% elif s.confirmed is sameas false %}<span class="ok">NO</span>
+      {% else %}<span class="unknown">PENDING</span>{% endif %}
+    </td>
+    <td>{{ s.last_checked or "" }}</td>
+    <td>
+      {% if s.sites %}
+        <ul>
+        {% for h in s.sites %}
+          <li>{{ h.site }}:
+            {% if h.found is sameas true %}<span class="bad">YES</span>
+            {% elif h.found is sameas false %}<span class="ok">NO</span>
+            {% else %}<span class="unknown">ERR</span>{% endif %}
+          </li>
+        {% endfor %}
+        </ul>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No site-scoped exposure checks recorded yet.</p>
+{% endif %}
+
+<h2>Brokers (dry-run)</h2>
+<form method="post" action="/send_all?profile={{ active_profile }}">
+  <button class="btn" type="submit">Send all (dry-run)</button>
+</form>
+
+{% if brokers and brokers|length > 0 %}
+<table>
+  <tr><th>ID</th><th>Name</th><th>Status</th><th>Last Request</th><th>Action</th></tr>
+  {% for b in brokers %}
+  <tr>
+    <td>{{ b.id }}</td>
+    <td>{{ b.name }}</td>
+    <td>{{ b.status }}</td>
+    <td>{{ b.last_request or "" }}</td>
+    <td>
+      <form method="post" action="/send/{{ b.id }}?profile={{ active_profile }}">
+        <button class="btn" type="submit">Send</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No brokers loaded.</p>
+{% endif %}
+
+</body>
+</html>

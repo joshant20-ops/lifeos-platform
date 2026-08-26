@@ -1,0 +1,24 @@
+command_line:
+  - sensor:
+      name: LifeOS Legacy Patch Remaining
+      unique_id: lifeos_legacy_patch_remaining
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_legacy_patch_governance.json\"))[\"summary\"].get(\"remaining_live_candidates\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Legacy Patch Retired
+      unique_id: lifeos_legacy_patch_retired
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_legacy_patch_governance.json\"))[\"summary\"].get(\"retired_files_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Legacy Patch Unknown Blocked
+      unique_id: lifeos_legacy_patch_unknown_blocked
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_legacy_patch_governance.json\"))[\"summary\"].get(\"unknown_or_blocked_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Legacy Patch Delete Ready
+      unique_id: lifeos_legacy_patch_delete_ready
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_legacy_patch_governance.json\"))[\"summary\"].get(\"delete_ready_count\",0))'"
+      scan_interval: 300

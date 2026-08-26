@@ -1,0 +1,72 @@
+command_line:
+  - sensor:
+      name: Execution Safety Rollup Status
+      unique_id: execution_safety_rollup_status
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py rollup_status"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Alert Level
+      unique_id: execution_safety_alert_level
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py alert_level"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Reboot Survival
+      unique_id: execution_safety_reboot_survival
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py reboot_survival_status"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Active Queue Items
+      unique_id: execution_safety_active_queue_items
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py active_queue_items"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Unsafe Queue Items
+      unique_id: execution_safety_unsafe_queue_items
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py unsafe_active_queue_items"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Blocked Policy Violations
+      unique_id: execution_safety_blocked_policy_violations
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py blocked_policy_violations"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Docker Host State
+      unique_id: execution_safety_docker_host_state
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py host:docker_host:state"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Z97 VM Host State
+      unique_id: execution_safety_z97_vm_host_state
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py host:z97_vm_host:state"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Z97 VM Host Identity
+      unique_id: execution_safety_z97_vm_host_identity
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py host:z97_vm_host:reconciliation_state"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Pi3 OOB Controller State
+      unique_id: execution_safety_pi3_oob_controller_state
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py host:pi3_oob_controller:state"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Pi3 OOB Controller Identity
+      unique_id: execution_safety_pi3_oob_controller_identity
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py host:pi3_oob_controller:reconciliation_state"
+      scan_interval: 30
+
+  - sensor:
+      name: Execution Safety Pi3 OOB Controller Observed IP
+      unique_id: execution_safety_pi3_oob_controller_observed_ip
+      command: "python3 /config/scripts/execution_safety_ha_sensor.py host:pi3_oob_controller:observed_ip"
+      scan_interval: 30

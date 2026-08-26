@@ -1,0 +1,23 @@
+services:
+  zwave-js-ui:
+    container_name: zwave-js-ui
+    image: zwavejs/zwave-js-ui:latest
+    restart: unless-stopped
+    tty: true
+    stop_signal: SIGINT
+
+    ports:
+      - "8091:8091"   # Web UI
+      - "3100:3000"   # Host port 3001 -> container 3000 (WebSocket)
+
+    devices:
+      # Your Z-Wave stick is this one:
+      - "/dev/serial/by-id/usb-0658_0200-if00:/dev/zwave"
+
+    volumes:
+      - ./store:/usr/src/app/store
+
+    environment:
+      - TZ=Europe/London
+      - SESSION_SECRET=changeme
+      - ZWAVEJS_EXTERNAL_CONFIG=/usr/src/app/store/.config-db

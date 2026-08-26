@@ -1,0 +1,190 @@
+- id: '1750456058580'
+  alias: Dusk to dawn w helper
+  description: ''
+  triggers:
+  - trigger: sun
+    event: sunset
+    offset: 0
+  conditions: []
+  actions:
+  - action: script.dusk_to_dawn_w_helper
+    metadata: {}
+    data: {}
+  mode: single
+- id: '1753049229595'
+  alias: Flag to front ext light on
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id:
+    - input_boolean.front_light_flag
+    from: 'off'
+    to: 'on'
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 0
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: 0858c0743e106a2b1b870ce3f4e3bc32
+    entity_id: switch.front_door_active
+    domain: switch
+  mode: single
+- id: '1753049260534'
+  alias: Flag to front ext light off
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id:
+    - input_boolean.front_light_flag
+    from: 'on'
+    to: 'off'
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 0
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: 0858c0743e106a2b1b870ce3f4e3bc32
+    entity_id: switch.front_door_active
+    domain: switch
+  mode: single
+- id: '1753780621254'
+  alias: Lower landing lights on
+  description: ''
+  triggers:
+  - type: turned_on
+    device_id: 0858c0743e106a2b1b870ce3f4e3bc32
+    entity_id: switch.front_door_active_2
+    domain: switch
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: 9af4136cecdb2387631e87d01f738350
+    entity_id: switch.lower_landing_lights
+    domain: switch
+  mode: single
+- id: '1753780691030'
+  alias: Lower landing lights off
+  description: ''
+  triggers:
+  - type: turned_off
+    device_id: 0858c0743e106a2b1b870ce3f4e3bc32
+    entity_id: switch.front_door_active_2
+    domain: switch
+    trigger: device
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: 9af4136cecdb2387631e87d01f738350
+    entity_id: switch.lower_landing_lights
+    domain: switch
+  mode: single
+- id: '1753816480935'
+  alias: Rear flag to rear external switch on
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id:
+    - input_boolean.rear_lights
+    from: 'off'
+    to: 'on'
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 0
+  conditions: []
+  actions:
+  - type: turn_on
+    device_id: dda094cac3f9d46d5ba8d7eb815464c6
+    entity_id: switch.rear_exterior_lights
+    domain: switch
+  mode: single
+- id: '1753816558548'
+  alias: Rear flag to rear external switch off
+  description: ''
+  triggers:
+  - trigger: state
+    entity_id:
+    - input_boolean.rear_lights
+    from: 'on'
+    to: 'off'
+    for:
+      hours: 0
+      minutes: 0
+      seconds: 0
+  conditions: []
+  actions:
+  - type: turn_off
+    device_id: dda094cac3f9d46d5ba8d7eb815464c6
+    entity_id: switch.rear_exterior_lights
+    domain: switch
+  mode: single
+- id: media_sync_synology_stats
+  alias: Media Sync - Update Synology stats
+  description: ''
+  triggers:
+  - webhook_id: media_sync_synology_stats
+    trigger: webhook
+  conditions: []
+  actions:
+  - data:
+      entity_id: input_number.synology_photo_files
+      value: '{{ trigger.json.file_count | int(0) }}'
+    action: input_number.set_value
+  mode: restart
+- id: '1765758135618'
+  alias: Failsafe external lights off
+  description: ''
+  triggers:
+  - trigger: time
+    at: '22:15:00'
+  conditions: []
+  actions:
+  - action: switch.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id:
+      - switch.rear_lights
+      - switch.wave_2pm
+  mode: single
+- id: '1770290666420'
+  alias: 'Close Joshans blinds script automation '
+  description: ''
+  triggers:
+  - trigger: sun
+    event: sunset
+    offset: 0
+  conditions: []
+  actions:
+  - action: script.close_joshan_room_blinds
+    metadata: {}
+    data: {}
+  mode: single
+- id: '1770290768346'
+  alias: 'Open Joshans blinds script automation '
+  description: ''
+  triggers:
+  - trigger: time
+    at: 09:30:00
+    weekday:
+    - mon
+    - tue
+    - wed
+    - thu
+    - fri
+  - trigger: time
+    at: '10:30:00'
+    weekday:
+    - sat
+    - sun
+  conditions: []
+  actions:
+  - action: script.1770049187494
+    metadata: {}
+    data: {}
+  mode: single

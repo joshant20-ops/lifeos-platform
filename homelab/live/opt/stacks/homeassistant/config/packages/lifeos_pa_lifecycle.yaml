@@ -1,0 +1,42 @@
+
+command_line:
+  - sensor:
+      name: LifeOS PA Dashboard Status
+      command: "python3 /config/scripts/lifeos_pa_lifecycle_export.py summary"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA Active Loops
+      command: "python3 /config/scripts/lifeos_pa_lifecycle_export.py active"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA Needs Attention
+      command: "python3 /config/scripts/lifeos_pa_lifecycle_export.py attention"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA Awaiting Confirmation
+      command: "python3 /config/scripts/lifeos_pa_lifecycle_export.py awaiting"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA Overdue Loops
+      command: "python3 /config/scripts/lifeos_pa_lifecycle_export.py overdue"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA Recently Closed
+      command: "python3 /config/scripts/lifeos_pa_lifecycle_export.py closed"
+      scan_interval: 300
+
+
+  - sensor:
+      name: LifeOS PA Escalation Count
+      command: "python3 - <<'PY'\nimport json\nfrom pathlib import Path\np=Path('/config/pa_escalation_summary.json')\ntry:\n d=json.loads(p.read_text()); print(d.get('count',0))\nexcept Exception:\n print(0)\nPY"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA High Escalations
+      command: "python3 - <<'PY'\nimport json\nfrom pathlib import Path\np=Path('/config/pa_escalation_summary.json')\ntry:\n d=json.loads(p.read_text()); print(d.get('high',0))\nexcept Exception:\n print(0)\nPY"
+      scan_interval: 300

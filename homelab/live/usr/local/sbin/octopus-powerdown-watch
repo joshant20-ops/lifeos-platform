@@ -1,0 +1,268 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import sys
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
+from pathlib import Path
+
+HTTP_TIMEOUT = 30
+
+HA_ROOT = "http://127.0.0.1:8123/api"
+
+EVENT_ENTITY = (
+    "event.octopus_energy_a_8b23e5b8_octoplus_power_down_events"
+)
+
+BASELINE_ENTITY = (
+    "sensor.octopus_energy_electricity_24e8170948_"
+    "1100019745755_octoplus_power_down_baseline"
+)
+
+STATE_DIR = Path("/opt/lifeos-watch/octopus-powerdown")
+STATUS_FILE = STATE_DIR / "status.json"
+EVENT_LOG = STATE_DIR / "events.jsonl"
+SNAPSHOT_DIR = STATE_DIR / "snapshots"
+
+token = os.environ.get("HA_TOKEN", "").strip()
+
+if not token:
+    print("ERROR: HA_TOKEN unavailable", file=sys.stderr)
+    sys.exit(2)
+
+SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+
+headers = {
+    "Authorization": f"Bearer {token}",
+    "Content-Type": "application/json",
+}
+
+def get_state(entity_id):
+    req = urllib.request.Request(
+        f"{HA_ROOT}/states/{entity_id}",
+        headers=headers,
+    )
+
+    try:
+        with urllib.request.urlopen(
+            req,
+            timeout=HTTP_TIMEOUT,
+        ) as response:
+            return json.load(response)
+
+    except urllib.error.HTTPError as exc:
+        raise RuntimeError(
+            f"{entity_id}: HTTP {exc.code}"
+        ) from exc
+
+def parse_time(value):
+    if not value:
+        return None
+
+    try:
+        dt=datetime.fromisoformat(
+            str(value).replace("Z","+00:00")
+        )
+
+        if dt.tzinfo is None:
+            dt=dt.replace(tzinfo=timezone.utc)
+
+        return dt
+
+    except Exception:
+        return None
+
+def numeric(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+now=datetime.now(timezone.utc)
+
+event=get_state(EVENT_ENTITY)
+baseline=get_state(BASELINE_ENTITY)
+
+event_attrs=event.get("attributes",{}) or {}
+baseline_attrs=baseline.get("attributes",{}) or {}
+
+joined=event_attrs.get("joined_events") or []
+available=event_attrs.get("available_events") or []
+
+candidate_events=[]
+
+for item in joined:
+    if not isinstance(item,dict):
+        continue
+
+    start=parse_time(item.get("start"))
+    end=parse_time(item.get("end"))
+
+    if end is None:
+        continue
+
+    if end >= now:
+        candidate_events.append({
+            **item,
+            "_start_dt":start,
+            "_end_dt":end,
+        })
+
+candidate_events.sort(
+    key=lambda x: (
+        x.get("_start_dt")
+        or datetime.max.replace(tzinfo=timezone.utc)
+    )
+)
+
+target_event=(
+    candidate_events[0]
+    if candidate_events
+    else None
+)
+
+baseline_value=numeric(baseline.get("state"))
+
+result={
+    "checked_at":now.isoformat(),
+    "event_entity":EVENT_ENTITY,
+    "baseline_entity":BASELINE_ENTITY,
+    "available_event_count":len(available),
+    "joined_event_count":len(joined),
+    "future_or_current_joined_count":len(candidate_events),
+    "baseline_state":baseline.get("state"),
+    "baseline_numeric":baseline_value is not None,
+    "baseline_start":baseline_attrs.get("start"),
+    "baseline_end":baseline_attrs.get("end"),
+    "total_baseline":baseline_attrs.get("total_baseline"),
+    "is_incomplete_calculation":
+        baseline_attrs.get("is_incomplete_calculation"),
+}
+
+if target_event:
+    result["target_event"]={
+        k:v
+        for k,v in target_event.items()
+        if not k.startswith("_")
+    }
+else:
+    result["target_event"]=None
+
+STATE_DIR.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+STATUS_FILE.write_text(
+    json.dumps(
+        result,
+        indent=2,
+        default=str,
+    )
+    + "\n"
+)
+
+# Only append interesting state to event log.
+if target_event is not None or baseline_value is not None:
+    with EVENT_LOG.open("a") as f:
+        f.write(
+            json.dumps(
+                result,
+                default=str,
+            )
+            + "\n"
+        )
+
+print(
+    "checked_at=" + now.isoformat()
+)
+
+print(
+    "future_or_current_joined="
+    + str(len(candidate_events))
+)
+
+print(
+    "baseline_state="
+    + str(baseline.get("state"))
+)
+
+if target_event:
+    print(
+        "target_event_id="
+        + str(target_event.get("id"))
+    )
+
+    print(
+        "target_event_start="
+        + str(target_event.get("start"))
+    )
+
+    print(
+        "target_event_end="
+        + str(target_event.get("end"))
+    )
+
+if baseline_value is None:
+    print("baseline_numeric=no")
+    sys.exit(0)
+
+print("baseline_numeric=yes")
+print(
+    "baseline_kwh="
+    + str(baseline_value)
+)
+print(
+    "total_baseline="
+    + str(
+        baseline_attrs.get("total_baseline")
+    )
+)
+print(
+    "is_incomplete_calculation="
+    + str(
+        baseline_attrs.get(
+            "is_incomplete_calculation"
+        )
+    )
+)
+
+snapshot={
+    "captured_at":now.isoformat(),
+    "event":target_event,
+    "baseline":{
+        "state":baseline.get("state"),
+        "attributes":baseline_attrs,
+        "last_changed":baseline.get("last_changed"),
+        "last_updated":baseline.get("last_updated"),
+    },
+}
+
+event_id="unknown"
+
+if target_event:
+    event_id=str(
+        target_event.get("id")
+        or "unknown"
+    )
+
+snapshot_path=(
+    SNAPSHOT_DIR
+    / f"powerdown-{event_id}.json"
+)
+
+snapshot_path.write_text(
+    json.dumps(
+        snapshot,
+        indent=2,
+        default=str,
+    )
+    + "\n"
+)
+
+print(
+    "snapshot_saved="
+    + str(snapshot_path)
+)

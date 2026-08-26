@@ -1,0 +1,21 @@
+# LifeOS Open Loops dashboard sensors
+# Read-only sensors from generated LifeOS JSON.
+
+command_line:
+  - sensor:
+      name: LifeOS Open Loops Count
+      unique_id: lifeos_open_loops_count
+      command: "python3 -c \"import json;print(json.load(open('/config/www/lifeos/lifeos_open_loops_dashboard_v1.json')).get('counts',{}).get('open_loops',0))\""
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Watchman Ready Lifecycle Count
+      unique_id: lifeos_watchman_ready_lifecycle_count
+      command: "python3 -c \"import json;print(json.load(open('/config/www/lifeos/lifeos_open_loops_dashboard_v1.json')).get('counts',{}).get('watchman_ready',0))\""
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Dashboard Safe Lifecycle Count
+      unique_id: lifeos_dashboard_safe_lifecycle_count
+      command: "python3 -c \"import json;print(json.load(open('/config/www/lifeos/lifeos_open_loops_dashboard_v1.json')).get('counts',{}).get('dashboard_safe',0))\""
+      scan_interval: 300

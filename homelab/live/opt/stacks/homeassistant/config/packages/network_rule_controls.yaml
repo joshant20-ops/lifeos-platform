@@ -1,0 +1,31 @@
+input_boolean:
+  network_rule_known_host_identity_drift_pi3:
+    name: Enable Pi3 Drift Suppression
+    icon: mdi:lan-disconnect
+
+automation:
+  - alias: Sync Pi3 Drift Rule Toggle
+    trigger:
+      - platform: state
+        entity_id: input_boolean.network_rule_known_host_identity_drift_pi3
+    action:
+      - choose:
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.network_rule_known_host_identity_drift_pi3
+                state: "on"
+            sequence:
+              - service: shell_command.enable_pi3_rule
+          - conditions:
+              - condition: state
+                entity_id: input_boolean.network_rule_known_host_identity_drift_pi3
+                state: "off"
+            sequence:
+              - service: shell_command.disable_pi3_rule
+
+shell_command:
+  enable_pi3_rule: >
+    python3 /config/scripts/network_rule_toggle.py network_rule_known_host_identity_drift_pi3_oob_controller on
+
+  disable_pi3_rule: >
+    python3 /config/scripts/network_rule_toggle.py network_rule_known_host_identity_drift_pi3_oob_controller off

@@ -1,0 +1,106 @@
+command_line:
+  - sensor:
+      name: "Runtime Pi5 Container Total"
+      unique_id: runtime_pi5_container_total_v1
+      command: "python3 /config/read_runtime_pi5_container_total.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Pi5 Running Containers"
+      unique_id: runtime_pi5_running_containers_v1
+      command: "python3 /config/read_runtime_pi5_running_containers.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Pi5 Exited Containers"
+      unique_id: runtime_pi5_exited_containers_v1
+      command: "python3 /config/read_runtime_pi5_exited_containers.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Pi5 Restarting Containers"
+      unique_id: runtime_pi5_restarting_containers_v1
+      command: "python3 /config/read_runtime_pi5_restarting_containers.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Pi5 Unhealthy Containers"
+      unique_id: runtime_pi5_unhealthy_containers_v1
+      command: "python3 /config/read_runtime_pi5_unhealthy_containers.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Proxmox VM Total"
+      unique_id: runtime_proxmox_vm_total_v1
+      command: "python3 /config/read_runtime_proxmox_vm_total.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Proxmox Running VMs"
+      unique_id: runtime_proxmox_running_vms_v1
+      command: "python3 /config/read_runtime_proxmox_running_vms.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Proxmox Stopped VMs"
+      unique_id: runtime_proxmox_stopped_vms_v1
+      command: "python3 /config/read_runtime_proxmox_stopped_vms.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Proxmox Reachable VMs"
+      unique_id: runtime_proxmox_reachable_vms_v1
+      command: "python3 /config/read_runtime_proxmox_reachable_vms.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Proxmox Unreachable VMs"
+      unique_id: runtime_proxmox_unreachable_vms_v1
+      command: "python3 /config/read_runtime_proxmox_unreachable_vms.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Proxmox Truth IP Count"
+      unique_id: runtime_proxmox_truth_ip_count_v1
+      command: "python3 /config/read_runtime_proxmox_truth_ip_count.py"
+      scan_interval: 60
+
+  - binary_sensor:
+      name: "Runtime Proxmox Reachable"
+      unique_id: runtime_proxmox_reachable_v1
+      command: "python3 /config/read_runtime_proxmox_reachable.py"
+      payload_on: "on"
+      payload_off: "off"
+      scan_interval: 60
+
+  - binary_sensor:
+      name: "Runtime Engineer VM Reachable"
+      unique_id: runtime_engineer_vm_reachable_v1
+      command: "python3 /config/read_runtime_engineer_vm_reachable.py"
+      payload_on: "on"
+      payload_off: "off"
+      scan_interval: 60
+
+  - sensor:
+      name: "Runtime Engineer VM Hostname"
+      unique_id: runtime_engineer_vm_hostname_v1
+      command: "python3 /config/read_runtime_engineer_vm_hostname.py"
+      scan_interval: 60
+
+template:
+  - binary_sensor:
+      - name: "Runtime Pi5 Containers Exited Present"
+        unique_id: runtime_pi5_containers_exited_present_v1
+        state: "{{ states('sensor.runtime_pi5_exited_containers') | int(0) > 0 }}"
+
+      - name: "Runtime Pi5 Containers Restarting Present"
+        unique_id: runtime_pi5_containers_restarting_present_v1
+        state: "{{ states('sensor.runtime_pi5_restarting_containers') | int(0) > 0 }}"
+
+      - name: "Runtime Pi5 Containers Unhealthy Present"
+        unique_id: runtime_pi5_containers_unhealthy_present_v1
+        state: "{{ states('sensor.runtime_pi5_unhealthy_containers') | int(0) > 0 }}"
+
+      - name: "Runtime Proxmox Unreachable VMs Present"
+        unique_id: runtime_proxmox_unreachable_vms_present_v1
+        state: "{{ states('sensor.runtime_proxmox_unreachable_vms') | int(0) > 0 }}"

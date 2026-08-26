@@ -1,0 +1,66 @@
+command_line:
+  - sensor:
+      name: Power Docker Host State
+      unique_id: power_docker_host_state
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.power_docker_host_state\",{}).get(\"state\",\"unknown\"))'"
+      scan_interval: 300
+
+  - sensor:
+      name: Power Pi3 Oob Controller State
+      unique_id: power_pi3_oob_controller_state
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.power_pi3_oob_controller_state\",{}).get(\"state\",\"unknown\"))'"
+      scan_interval: 300
+
+  - sensor:
+      name: Power Z97 Vm Host State
+      unique_id: power_z97_vm_host_state
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.power_z97_vm_host_state\",{}).get(\"state\",\"unknown\"))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Important Info Pending Proposals
+      unique_id: lifeos_important_info_pending_proposals
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_important_info_pending_proposals\",{}).get(\"state\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Important Info Proposal Status
+      unique_id: lifeos_important_info_proposal_status
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_important_info_proposal_status\",{}).get(\"state\",\"unknown\"))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Verification Status
+      unique_id: lifeos_verification_status
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_verification_status\",{}).get(\"state\",\"needs_review\"))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Verification Needs Review
+      unique_id: lifeos_verification_needs_review
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_verification_needs_review\",{}).get(\"state\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Verification Conflicting
+      unique_id: lifeos_verification_conflicting
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_verification_conflicting\",{}).get(\"state\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Verification Stale
+      unique_id: lifeos_verification_stale
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_verification_stale\",{}).get(\"state\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Verification Unknown
+      unique_id: lifeos_verification_unknown
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_verification_unknown\",{}).get(\"state\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Verification Unverified
+      unique_id: lifeos_verification_unverified
+      command: "python3 -c 'import json;d=json.load(open(\"/config/www/lifeos/lifeos_missing_entity_fallbacks.json\"));print(d[\"fallbacks\"].get(\"sensor.lifeos_verification_unverified\",{}).get(\"state\",0))'"
+      scan_interval: 300

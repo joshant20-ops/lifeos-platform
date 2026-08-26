@@ -1,0 +1,27 @@
+command_line:
+  - sensor:
+      name: LifeOS Human Trust
+      unique_id: lifeos_human_trust
+      command: "python3 /config/scripts/lifeos_human_trust_ha_sensor.py"
+      scan_interval: 60
+      value_template: "{{ value_json.state }}"
+      json_attributes:
+        - human_action_required
+        - plain_english
+        - what_needs_me
+        - what_just_happened
+        - paperless_review_count
+        - watchman_queue_count
+        - network_unknown_observe_only
+        - network_why_ok
+        - paperless_why_ok
+        - watchman_why_ok
+        - priority_level
+        - priority_label
+        - priority_reason
+        - action_processor_status
+        - action_pending_requests
+        - action_processed_requests
+        - frontpage_status
+        - frontpage_errors
+        - generated_at

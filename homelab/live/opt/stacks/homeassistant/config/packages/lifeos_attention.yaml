@@ -1,0 +1,29 @@
+template:
+
+  - sensor:
+      - name: "LifeOS Attention Summary"
+        unique_id: lifeos_attention_summary
+        state: >
+          {% set issues = [] %}
+
+          {% if states('sensor.execution_safety_alert_level') != 'normal' %}
+            {% set issues = issues + ['⚠️ Safety alert active'] %}
+          {% endif %}
+
+          {% if states('sensor.execution_safety_unsafe_queue_items') | int > 0 %}
+            {% set issues = issues + ['🚨 Unsafe queue items present'] %}
+          {% endif %}
+
+          {% if states('sensor.execution_safety_z97_vm_host_state') != 'READY' %}
+            {% set issues = issues + ['🖥️ Z97 not available'] %}
+          {% endif %}
+
+          {% if states('sensor.execution_safety_pi3_oob_controller_state') != 'READY' %}
+            {% set issues = issues + ['📡 Pi3 controller not ready'] %}
+          {% endif %}
+
+          {% if issues | length == 0 %}
+            All systems normal
+          {% else %}
+            {{ issues | join(' | ') }}
+          {% endif %}

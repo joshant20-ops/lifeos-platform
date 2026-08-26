@@ -1,0 +1,13 @@
+command_line:
+  - sensor:
+      name: LifeOS System Health
+      unique_id: lifeos_system_health
+      command: "python3 /config/scripts/lifeos_system_health_ha_sensor.py"
+      scan_interval: 60
+      value_template: "{{ value_json.state }}"
+      json_attributes:
+        - label
+        - summary
+        - blockers
+        - warnings
+        - generated_at

@@ -1,0 +1,29 @@
+command_line:
+  - sensor:
+      name: LifeOS Network Identity Live
+      unique_id: lifeos_network_identity_live
+      command: "python3 /config/scripts/network_identity_live_ha_sensor.py"
+      scan_interval: 60
+      value_template: "{{ value_json.state }}"
+      json_attributes:
+        - summary
+        - total_devices_seen
+        - known_devices
+        - unknown_devices
+        - missing_expected_devices
+        - generated_at
+
+  - sensor:
+      name: LifeOS Paperless AI Status
+      unique_id: lifeos_paperless_ai_status
+      command: "python3 /config/scripts/paperless_ai_status_ha_sensor.py"
+      scan_interval: 60
+      value_template: "{{ value_json.state }}"
+      json_attributes:
+        - document_count
+        - suggestion_count
+        - held_for_review
+        - blocked
+        - watchman_queue_count
+        - action_needed
+        - generated_at

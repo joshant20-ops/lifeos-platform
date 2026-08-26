@@ -1,0 +1,30 @@
+#!/usr/bin/env python3
+from pathlib import Path
+from datetime import datetime, timezone
+import json, sys
+
+CONFIG = Path("/config")
+QUESTION = CONFIG / "lifeos_ask_question.txt"
+ANSWER_JSON = CONFIG / "lifeos_ask_answer.json"
+ANSWER_TXT = CONFIG / "lifeos_ask_answer.txt"
+TRIGGER = CONFIG / "lifeos_ask_trigger.txt"
+
+q = " ".join(sys.argv[1:]).strip() or "No question provided."
+request_id = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S%f")
+
+QUESTION.write_text(q, encoding="utf-8")
+TRIGGER.write_text(request_id + "\n" + q, encoding="utf-8")
+
+thinking = {
+    "ok": None,
+    "created_utc": datetime.now(timezone.utc).isoformat(),
+    "request_id": request_id,
+    "question": q,
+    "route": "pending",
+    "status": "thinking",
+    "answer": "Thinking...",
+    "answer_summary": "Thinking..."
+}
+ANSWER_JSON.write_text(json.dumps(thinking, indent=2), encoding="utf-8")
+ANSWER_TXT.write_text("Thinking...", encoding="utf-8")
+print(json.dumps(thinking))

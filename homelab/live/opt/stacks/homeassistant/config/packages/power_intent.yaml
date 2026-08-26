@@ -1,0 +1,18 @@
+command_line:
+  - sensor:
+      name: "Pi 5 Intended Power Raw"
+      unique_id: pi5_intended_power_raw_v2
+      command: "python3 /config/read_pi5_power_intent.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Z97 Intended Power Raw"
+      unique_id: z97_intended_power_raw_v2
+      command: "python3 /config/read_z97_power_intent.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Pi 3 Intended Power Raw"
+      unique_id: pi3_intended_power_raw_v2
+      command: "python3 /config/read_pi3_power_intent.py"
+      scan_interval: 60

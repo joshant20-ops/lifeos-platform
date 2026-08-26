@@ -1,0 +1,11 @@
+command_line:
+  - sensor:
+      name: LifeOS Chat Payload
+      unique_id: lifeos_chat_payload
+      command: "cat /config/lifeos_chat_payload.json 2>/dev/null || echo '{\"status\":\"idle\",\"answer\":\"No answer yet\",\"audit\":\"No audit yet\",\"links\":\"No documents referenced\"}'"
+      scan_interval: 5
+      value_template: "{{ value_json.status }}"
+      json_attributes:
+        - answer
+        - audit
+        - links

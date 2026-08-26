@@ -1,0 +1,144 @@
+rest:
+
+  - resource: http://127.0.0.1:8110/api/energy/current
+    scan_interval: 60
+    timeout: 10
+
+    sensor:
+
+      - name: LifeOS Energy Solar Power
+        unique_id: lifeos_energy_solar_power
+        value_template: >
+          {{ (value_json.production_w | float(0)) / 1000 }}
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+
+      - name: LifeOS Energy House Load
+        unique_id: lifeos_energy_house_load
+        value_template: >
+          {{ (value_json.consumption_w | float(0)) / 1000 }}
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+
+      - name: LifeOS Energy Grid Import
+        unique_id: lifeos_energy_grid_import
+        value_template: >
+          {{ (value_json.grid_import_w | float(0)) / 1000 }}
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+
+      - name: LifeOS Energy Grid Export
+        unique_id: lifeos_energy_grid_export
+        value_template: >
+          {{ (value_json.grid_export_w | float(0)) / 1000 }}
+        unit_of_measurement: kW
+        device_class: power
+        state_class: measurement
+
+      - name: LifeOS Energy Battery SOC
+        unique_id: lifeos_energy_battery_soc
+        value_template: >
+          {{ value_json.battery.soc_percent | float(0) }}
+        unit_of_measurement: "%"
+        device_class: battery
+        state_class: measurement
+
+
+  - resource: http://127.0.0.1:8110/api/sources/status
+    scan_interval: 900
+    timeout: 20
+
+    sensor:
+
+      - name: LifeOS Energy Tomorrow Solar
+        unique_id: lifeos_energy_tomorrow_solar
+        value_template: >
+          {{ value_json.solar.forecast_kwh | float(0) }}
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total
+
+      - name: LifeOS Energy Import Tariff
+        unique_id: lifeos_energy_import_tariff
+        value_template: >
+          {{ value_json.octopus.import_tariff }}
+
+      - name: LifeOS Energy Export Tariff
+        unique_id: lifeos_energy_export_tariff
+        value_template: >
+          {{ value_json.octopus.export_tariff }}
+
+
+  - resource: http://127.0.0.1:8110/api/ha/plan
+    scan_interval: 300
+    timeout: 20
+
+    sensor:
+
+      - name: LifeOS Energy Plan Status
+        unique_id: lifeos_energy_plan_status
+        value_template: >
+          {{ value_json.status }}
+        json_attributes:
+          - target_date
+          - generated_at
+          - import_tariff
+          - export_tariff
+          - slot_count
+          - action_summary
+
+      - name: LifeOS Energy Planned Solar
+        unique_id: lifeos_energy_planned_solar
+        value_template: >
+          {{ value_json.solar_kwh | float(0) }}
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total
+
+      - name: LifeOS Energy Planned Load
+        unique_id: lifeos_energy_planned_load
+        value_template: >
+          {{ value_json.load_kwh | float(0) }}
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total
+
+      - name: LifeOS Energy Planned Import
+        unique_id: lifeos_energy_planned_import
+        value_template: >
+          {{ value_json.grid_import_kwh | float(0) }}
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total
+
+      - name: LifeOS Energy Planned Export
+        unique_id: lifeos_energy_planned_export
+        value_template: >
+          {{ value_json.grid_export_kwh | float(0) }}
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: total
+
+      - name: LifeOS Energy Planned Net Cost
+        unique_id: lifeos_energy_planned_net_cost
+        value_template: >
+          {{ value_json.net_energy_cost_gbp | float(0) }}
+        unit_of_measurement: GBP
+        state_class: measurement
+
+      - name: LifeOS Energy Planned Start SOC
+        unique_id: lifeos_energy_planned_start_soc
+        value_template: >
+          {{ value_json.starting_soc_percent | float(0) }}
+        unit_of_measurement: "%"
+        device_class: battery
+
+      - name: LifeOS Energy Planned End SOC
+        unique_id: lifeos_energy_planned_end_soc
+        value_template: >
+          {{ value_json.ending_soc_percent | float(0) }}
+        unit_of_measurement: "%"
+        device_class: battery

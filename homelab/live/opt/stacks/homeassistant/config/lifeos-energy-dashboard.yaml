@@ -1,0 +1,170 @@
+title: Energy
+
+views:
+
+  - title: Energy
+    path: energy
+    icon: mdi:solar-power
+
+    cards:
+
+      - type: markdown
+        title: Predbat Energy Optimisation
+        content: >
+          **Status:** {{ states("predbat.status") }}
+
+          **Mode:** {{ states("select.predbat_mode") }}
+
+          **Battery:** {{ states("sensor.predbat_enphase_5731818_soc_percent") }}%
+
+          **Current import rate:** {{ states("predbat.rates") }} p/kWh
+
+          **Current export rate:** {{ states("predbat.rates_export") }} p/kWh
+
+
+      - type: entities
+        title: Live Energy
+        show_header_toggle: false
+        entities:
+          - entity: sensor.predbat_enphase_5731818_pv_power
+            name: Solar generation
+
+          - entity: sensor.predbat_enphase_5731818_load_power
+            name: House load
+
+          - entity: sensor.predbat_enphase_5731818_battery_power
+            name: Battery power
+
+          - entity: sensor.predbat_enphase_5731818_grid_power
+            name: Grid power
+
+          - entity: sensor.predbat_enphase_5731818_soc_percent
+            name: Battery SOC
+
+
+      - type: entities
+        title: Predbat Plan
+        show_header_toggle: false
+        entities:
+          - entity: predbat.status
+            name: Current action
+
+          - entity: predbat.best_charge_start
+            name: Next charge start
+
+          - entity: predbat.best_charge_end
+            name: Next charge end
+
+          - entity: predbat.best_charge_limit
+            name: Charge target
+
+          - entity: predbat.best_export_start
+            name: Next export start
+
+          - entity: predbat.best_export_end
+            name: Next export end
+
+          - entity: predbat.best_export_limit
+            name: Export target SOC
+
+          - entity: predbat.best_soc_min_kwh
+            name: Lowest planned battery
+
+
+      - type: markdown
+        title: What Predbat Plans
+        content: >
+          {% set cs = states("predbat.best_charge_start") %}
+          {% set ce = states("predbat.best_charge_end") %}
+          {% set es = states("predbat.best_export_start") %}
+          {% set ee = states("predbat.best_export_end") %}
+
+          **Current action:** {{ states("predbat.status") }}
+
+          {% if cs not in ["", "unknown", "unavailable"] %}
+          **Charge:** {{ cs }} → {{ ce }},
+          target {{ states("predbat.best_charge_limit") }}%
+          {% else %}
+          **Charge:** No charge currently planned
+          {% endif %}
+
+          {% if es not in ["", "unknown", "unavailable"] %}
+          **Export:** {{ es }} → {{ ee }},
+          battery floor {{ states("predbat.best_export_limit") }}%
+          {% else %}
+          **Export:** No forced export currently planned
+          {% endif %}
+
+          **Forecast import:** {{ states("predbat.best_import_energy") }} kWh
+
+          **Forecast export:** {{ states("predbat.best_export_energy") }} kWh
+
+          **Forecast household load:** {{ states("predbat.best_load_energy") }} kWh
+
+          **Forecast solar:** {{ states("predbat.best_pv_energy") }} kWh
+
+
+      - type: entities
+        title: Solar Forecast
+        show_header_toggle: false
+        entities:
+          - entity: sensor.predbat_pv_today
+            name: Today
+
+          - entity: sensor.predbat_pv_tomorrow
+            name: Tomorrow
+
+          - entity: sensor.predbat_pv_d2
+            name: Day 2
+
+          - entity: sensor.predbat_pv_d3
+            name: Day 3
+
+
+      - type: entities
+        title: Energy Today
+        show_header_toggle: false
+        entities:
+          - entity: sensor.predbat_enphase_5731818_pv_today
+            name: Solar generated
+
+          - entity: sensor.predbat_enphase_5731818_load_today
+            name: House consumption
+
+          - entity: sensor.predbat_enphase_5731818_import_today
+            name: Grid import
+
+          - entity: sensor.predbat_enphase_5731818_export_today
+            name: Grid export
+
+          - entity: sensor.predbat_enphase_5731818_battery_charge_today
+            name: Battery charged
+
+          - entity: sensor.predbat_enphase_5731818_battery_discharge_today
+            name: Battery discharged
+
+
+      - type: entities
+        title: Cost & Optimisation
+        show_header_toggle: false
+        entities:
+          - entity: predbat.cost_today
+            name: Net cost today
+
+          - entity: predbat.ppkwh_today
+            name: Average price today
+
+          - entity: predbat.best_metric
+            name: Optimised plan metric
+
+          - entity: predbat.inverter_register_writes
+            name: Inverter writes
+
+          - entity: predbat.control_conflicts
+            name: Control conflicts
+
+          - entity: binary_sensor.predbat_enphase_5731818_schedule_write_ok
+            name: Enphase schedule writes healthy
+
+          - entity: binary_sensor.predbat_components_healthy
+            name: Predbat components healthy

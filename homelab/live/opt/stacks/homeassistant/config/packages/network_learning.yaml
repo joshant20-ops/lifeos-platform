@@ -1,0 +1,19 @@
+command_line:
+  - sensor:
+      name: network_learning_candidate_count
+      unique_id: network_learning_candidate_count
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_shadow_suppression_report.json').read_text())['candidate_count'])"
+      scan_interval: 60
+  - sensor:
+      name: network_shadow_suppressed_count
+      unique_id: network_shadow_suppressed_count
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_shadow_suppression_report.json').read_text())['would_be_suppressed_count'])"
+      scan_interval: 60
+  - sensor:
+      name: network_shadow_remaining_visible_count
+      unique_id: network_shadow_remaining_visible_count
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_shadow_suppression_report.json').read_text())['remaining_visible_count'])"
+      scan_interval: 60

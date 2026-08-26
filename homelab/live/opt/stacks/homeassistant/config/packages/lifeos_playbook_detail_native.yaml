@@ -1,0 +1,41 @@
+command_line:
+  - sensor:
+      name: LifeOS Playbook Detail
+      unique_id: lifeos_playbook_detail
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py summary"
+      scan_interval: 60
+  - sensor:
+      name: LifeOS Playbook Active Count
+      unique_id: lifeos_playbook_active_count
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py active_count"
+      scan_interval: 60
+  - sensor:
+      name: LifeOS Playbook History Count
+      unique_id: lifeos_playbook_history_count
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py history_count"
+      scan_interval: 60
+  - sensor:
+      name: LifeOS Playbook Active Queue Count
+      unique_id: lifeos_playbook_active_queue_count
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py active_queue_count"
+      scan_interval: 60
+  - sensor:
+      name: LifeOS Playbook Last Action
+      unique_id: lifeos_playbook_last_action
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py last_action"
+      scan_interval: 60
+  - sensor:
+      name: LifeOS Playbook Active Detail
+      unique_id: lifeos_playbook_active_detail
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py active_detail"
+      scan_interval: 60
+  - sensor:
+      name: LifeOS Playbook History Detail
+      unique_id: lifeos_playbook_history_detail
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py history_detail"
+      scan_interval: 60
+  - sensor:
+      name: LifeOS Playbook Queue Detail
+      unique_id: lifeos_playbook_queue_detail
+      command: "python3 /config/scripts/lifeos_playbook_detail_ha_sensor.py queue_detail"
+      scan_interval: 60

@@ -1,0 +1,47 @@
+user:
+  full_name: "Your Full Name"
+  email: "you@example.com"
+  address: |
+    Your Address Line 1
+    Line 2
+    Town
+    Postcode
+  country: "United Kingdom"
+
+email:
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  use_tls: true
+  username: "you@example.com"
+  password: "APP_PASSWORD_HERE"
+  from_name: "Your Full Name"
+  from_email: "you@example.com"
+
+gdpr:
+  send_emails: false     # leave FALSE for the first test
+  subject_template: "Request for erasure of personal data under GDPR"
+  body_template: |
+    To the Data Protection Officer,
+
+    I am writing to you under Article 17 of the UK GDPR / EU GDPR to request the erasure of all personal data relating to me that you process, whether as a controller or processor.
+
+    My details are as follows:
+
+    Name: {full_name}
+    Email: {email}
+    Postal address:
+    {address}
+
+    Please:
+
+    1. Confirm whether you process any personal data relating to me.
+    2. If so, erase all such data, including any profiles associated with my identifiers.
+    3. Confirm in writing, within the statutory timeframe, that you have complied with this request.
+    4. Inform me of any third parties with whom you have shared my data, and ensure that they also erase it.
+
+    Unless you have a clear and specific legal basis for processing that overrides my right to erasure, I expect full deletion.
+
+    Please treat this email as a formal data subject request. If you require any additional information to locate my data, please let me know promptly.
+
+    Kind regards,
+    {full_name}

@@ -1,0 +1,6 @@
+I found relevant local Paperless evidence. Best source candidate: Paperless ID 104.
+
+Evidence checked:
+- Paperless ID 104 | score 455 | labels: mot_reminder,garage_document,bike_document | newer document preferred; domain match: bike_mot_cost; MOT context; contains likely cost value; domain match: bike_mot_cost; bike match | 101 St James Mill Road,Northampton,NN5 5JP Tel: 01604 589179 www.bodymek.cOul BODYMEK JOSHAN TAILOR *** MOT Reminder **k* S5 WESTCOTT NAY NORTHAMPTON Vehicle: WR16TFO NN3 3BE Make:
+- Paperless ID 105 | score 440 | labels: mot_certificate,bike_document | newer document preferred; domain match: bike_mot_cost; MOT context; domain match: bike_mot_cost; bike match | Scan - 2026-04-02 15_40_19. Current tags: Bike. Detected category: vehicle_bike. Preview: Scan - 2026-04-02 15_40_19 Scan - 2026-04-02 15_40_19.pdf MOT test certificate OVehicle id
+- Paperless ID 105 | score 440 | labels: mot_certificate,bike_document | newer document preferred; domain match: bike_mot_cost; MOT context; domain match: bike_mot_cost; bike match | Scan - 2026-04-02 15_40_19. Current tags: Bike. Detected category: vehicle_bike. Preview: Scan - 2026-04-02 15_40_19 Scan - 2026-04-02 15_40_19.pdf MOT test certificate OVehicle id

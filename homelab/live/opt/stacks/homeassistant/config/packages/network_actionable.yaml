@@ -1,0 +1,7 @@
+command_line:
+  - sensor:
+      name: network_actionable_count
+      unique_id: network_actionable_count
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_actionable.json').read_text())['count'])"
+      scan_interval: 60

@@ -1,0 +1,39 @@
+groups:
+  - name: day8-alerts
+    rules:
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Target down"
+          description: "{{ $labels.instance }} for job {{ $labels.job }} has been down for more than 1 minute."
+
+      - alert: HostHighCPU
+        expr: 100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[2m])) * 100) > 85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "{{ $labels.instance }} CPU usage has been above 85% for 5 minutes."
+
+      - alert: HostHighMemory
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "{{ $labels.instance }} memory usage has been above 90% for 5 minutes."
+
+      - alert: ContainerUnhealthy
+        expr: container_health_state{name!=""} == 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container unhealthy"
+          description: "Container {{ $labels.name }} has reported unhealthy for more than 2 minutes."
+

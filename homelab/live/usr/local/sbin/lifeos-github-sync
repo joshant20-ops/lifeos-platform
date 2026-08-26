@@ -1,0 +1,539 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+# ============================================================
+# LifeOS nightly source/config -> GitHub synchronisation
+#
+# Typical runtime: 1-5 minutes
+# Hard timeout:    15 minutes via systemd
+#
+# Scope:
+#   Own scripts/source plus deployment configuration.
+#
+# Explicitly NOT a backup of:
+#   databases, logs, downloaded HACS code, application state,
+#   credentials, user/profile data, caches or generated datasets.
+# ============================================================
+
+USER_NAME="joshan"
+HOME_DIR="/home/joshan"
+REPO="$HOME_DIR/lifeos-platform"
+
+LIVE="$REPO/homelab/live"
+RETIRED="$REPO/homelab/retired"
+MANIFEST="$REPO/homelab/.managed-files.txt"
+
+MAX_BYTES=$((25*1024*1024))
+
+TMP="$(mktemp -d)"
+NEW_MANIFEST="$TMP/manifest"
+LARGE="$TMP/large"
+CHANGES="$TMP/changes"
+
+START="$(date +%s)"
+
+cleanup() {
+    rm -rf "$TMP"
+}
+trap cleanup EXIT
+
+elapsed() {
+    local now diff
+    now="$(date +%s)"
+    diff=$((now-START))
+    printf '%02dm:%02ds' $((diff/60)) $((diff%60))
+}
+
+stage() {
+    echo
+    echo "===== [$(elapsed)] $* ====="
+}
+
+fail() {
+    echo
+    echo "============================================================"
+    echo "[$(elapsed)] SYNC FAILED: $*"
+    echo "============================================================"
+    exit 1
+}
+
+g() {
+    runuser -u "$USER_NAME" -- \
+        env HOME="$HOME_DIR" \
+        git -C "$REPO" "$@"
+}
+
+exec 9>/run/lifeos-github-sync.lock
+
+if ! flock -n 9; then
+    echo "Another LifeOS GitHub sync is already running."
+    exit 0
+fi
+
+ROOTS=(
+    "/opt/stacks"
+    "/home/joshan/scripts"
+    "/usr/local/bin"
+    "/usr/local/sbin"
+)
+
+excluded() {
+    local f="$1"
+    local b
+    b="$(basename "$f")"
+
+    case "$f" in
+        # Version control / packages / caches
+        */.git/*|\
+        */node_modules/*|\
+        */__pycache__/*|\
+        */.pytest_cache/*|\
+        */.mypy_cache/*|\
+        */.ruff_cache/*|\
+        */venv/*|\
+        */.venv/*|\
+        */cache/*|\
+        */logs/*|\
+        */log/*|\
+        */tmp/*|\
+        */temp/*|\
+        */backup/*|\
+        */backups/*|\
+        */downloads/*)
+
+            return 0
+            ;;
+
+        # AdGuard — keep compose only; config/state may contain auth/data
+        /opt/stacks/adguard/conf/*|\
+        /opt/stacks/adguard/config/*|\
+        /opt/stacks/adguard/data/*|\
+        /opt/stacks/adguard/work/*)
+
+            return 0
+            ;;
+
+        # Z-Wave JS downloaded DB + runtime state
+        /opt/stacks/zwave/store/*)
+
+            return 0
+            ;;
+
+        # Home Assistant internal state/history
+        /opt/stacks/homeassistant/config/.storage/*|\
+        /opt/stacks/homeassistant/config/www/*|\
+        /opt/stacks/homeassistant/config/.cloud/*|\
+        /opt/stacks/homeassistant/config/tts/*|\
+        /opt/stacks/homeassistant/config/home-assistant_v2.db*|\
+        /opt/stacks/homeassistant/config/.HA_VERSION)
+
+            return 0
+            ;;
+
+        # HACS/downloaded integrations are dependencies, not our source
+        /opt/stacks/homeassistant/config/custom_components/*)
+
+            return 0
+            ;;
+
+        # Generated LifeOS HA datasets/reports/status outputs
+        /opt/stacks/homeassistant/config/www/*.json|\
+        /opt/stacks/homeassistant/config/www/*.md|\
+        /opt/stacks/homeassistant/config/*status*.json|\
+        /opt/stacks/homeassistant/config/*report*.json)
+
+            return 0
+            ;;
+
+        # Nginx Proxy Manager state/keys/generated config
+        /opt/stacks/npm/data/*|\
+        /opt/stacks/npm/letsencrypt/*)
+
+            return 0
+            ;;
+
+        # qBittorrent application state
+        /opt/stacks/qbittorrent/config/*)
+
+            return 0
+            ;;
+
+        # Privacy Guardian personal/state files
+        /opt/stacks/privacy-guardian/app/data/*|\
+        /opt/stacks/privacy-guardian/app/profiles/*|\
+        /opt/stacks/privacy-guardian/app/config.yaml)
+
+            return 0
+            ;;
+
+        # Paperless user/document/runtime data
+        /opt/stacks/paperless/data/*|\
+        /opt/stacks/paperless/media/*|\
+        /opt/stacks/paperless/export/*)
+
+            return 0
+            ;;
+
+        # Common persistent application data
+        */postgres/data/*|\
+        */postgresql/data/*|\
+        */redis/data/*|\
+        */grafana/data/*|\
+        */prometheus/data/*|\
+        */vaultwarden/data/*|\
+        */mosquitto/data/*|\
+        */letsencrypt/*|\
+        */certs/*|\
+        */certificates/*|\
+        */ssl/*)
+
+            return 0
+            ;;
+
+        # Never back up the secret helper itself
+        /usr/local/sbin/lifeos-secret)
+
+            return 0
+            ;;
+    esac
+
+    case "$b" in
+        .env|.env.*|\
+        secrets.yaml|secrets.yml|secrets.json|\
+        credentials.json|credentials.yaml|credentials.yml|\
+        auth|auth.json|users.json|keys.json|\
+        *.pem|*.key|*.p12|*.pfx|*.crt|\
+        *.sqlite|*.sqlite3|*.db|*.db-shm|*.db-wal)
+
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+source_file() {
+    local f="$1"
+    local b
+    b="$(basename "$f")"
+
+    case "$b" in
+        Dockerfile|Dockerfile.*|\
+        docker-compose.yml|docker-compose.yaml|\
+        compose.yml|compose.yaml|\
+        requirements.txt|requirements-*.txt|\
+        pyproject.toml|poetry.lock|\
+        package.json|package-lock.json|\
+        Makefile|CMakeLists.txt|\
+        .gitignore|.dockerignore|\
+        configuration.yaml|automations.yaml|scripts.yaml|scenes.yaml)
+
+            return 0
+            ;;
+    esac
+
+    case "$f" in
+        *.sh|*.bash|*.zsh|\
+        *.py|*.pyi|\
+        *.js|*.mjs|*.cjs|\
+        *.ts|*.tsx|*.jsx|\
+        *.html|*.css|*.scss|\
+        *.sql|\
+        *.yaml|*.yml|\
+        *.toml|*.ini|*.cfg|*.conf|\
+        *.service|*.timer|*.socket|*.target|\
+        *.md|*.txt|\
+        *.example|*.template|\
+        *.j2|*.jinja|*.jinja2)
+
+            return 0
+            ;;
+    esac
+
+    # JSON is intentionally conservative:
+    # only source/project JSON outside known runtime areas.
+    case "$f" in
+        /opt/stacks/*/app/*.json|\
+        /opt/stacks/*/app/*/*.json|\
+        /opt/stacks/*/src/*.json|\
+        /opt/stacks/*/src/*/*.json|\
+        /opt/stacks/grafana/dashboards/*.json|\
+        /opt/stacks/grafana/dashboards/*/*.json)
+
+            return 0
+            ;;
+    esac
+
+    # Extensionless executable script.
+    if [ -r "$f" ] &&
+       [ "$(head -c 2 "$f" 2>/dev/null | od -An -tx1 | tr -d ' \n')" = "2321" ]; then
+        return 0
+    fi
+
+    return 1
+}
+
+echo "============================================================"
+echo "LIFEOS NIGHTLY GITHUB SYNC"
+echo "Started: $(date --iso-8601=seconds)"
+echo "Typical runtime: 1-5m | Hard timeout: 15m"
+echo "============================================================"
+
+stage "A/8 — VERIFY/UPDATE GITHUB"
+
+[ -d "$REPO/.git" ] || fail "Repository missing"
+
+if ! g diff --quiet || ! g diff --cached --quiet; then
+    g status --short
+    fail "Repository contains uncommitted changes"
+fi
+
+BRANCH="$(g branch --show-current)"
+[ -n "$BRANCH" ] || fail "No active branch"
+
+g fetch origin || fail "git fetch failed"
+g pull --ff-only origin "$BRANCH" || fail "git pull failed"
+
+PRE_HEAD="$(g rev-parse HEAD)"
+
+echo "Repository current."
+
+stage "B/8 — SCAN LIVE SOURCE"
+
+mkdir -p "$TMP/live"
+
+FOUND=0
+SKIP_RUNTIME=0
+SKIP_TYPE=0
+SKIP_LARGE=0
+
+for root in "${ROOTS[@]}"; do
+    if [ ! -e "$root" ]; then
+        echo "Missing, skipped: $root"
+        continue
+    fi
+
+    echo "Scanning: $root"
+
+    while IFS= read -r -d '' f; do
+        if excluded "$f"; then
+            SKIP_RUNTIME=$((SKIP_RUNTIME+1))
+            continue
+        fi
+
+        if ! source_file "$f"; then
+            SKIP_TYPE=$((SKIP_TYPE+1))
+            continue
+        fi
+
+        [ -r "$f" ] || fail "Unreadable selected source: $f"
+
+        size="$(stat -c '%s' "$f")"
+
+        if [ "$size" -gt "$MAX_BYTES" ]; then
+            printf '%s | %s bytes\n' "$f" "$size" >>"$LARGE"
+            SKIP_LARGE=$((SKIP_LARGE+1))
+            continue
+        fi
+
+        rel="${f#/}"
+        dst="$TMP/live/$rel"
+
+        mkdir -p "$(dirname "$dst")"
+        cp -a "$f" "$dst"
+
+        printf '%s\n' "$rel" >>"$NEW_MANIFEST"
+        FOUND=$((FOUND+1))
+
+    done < <(find "$root" -type f -print0 2>/dev/null)
+done
+
+[ "$FOUND" -gt 0 ] || fail "No managed source discovered"
+
+sort -u "$NEW_MANIFEST" -o "$NEW_MANIFEST"
+
+echo
+echo "Managed source/config : $FOUND"
+echo "Runtime/state skipped : $SKIP_RUNTIME"
+echo "Other files skipped   : $SKIP_TYPE"
+echo "Oversized skipped     : $SKIP_LARGE"
+
+if [ -s "$LARGE" ]; then
+    echo
+    echo "Over-25-MiB candidates excluded:"
+    cat "$LARGE"
+fi
+
+stage "C/8 — RETIRE REMOVED SOURCE"
+
+mkdir -p "$LIVE" "$RETIRED"
+
+DATE="$(date +%F)"
+TIME="$(date +%H%M%S)"
+RETIRED_COUNT=0
+
+if [ -f "$MANIFEST" ]; then
+    while IFS= read -r old; do
+        [ -n "$old" ] || continue
+
+        if ! grep -Fxq "$old" "$NEW_MANIFEST"; then
+            oldpath="$LIVE/$old"
+
+            if [ -e "$oldpath" ]; then
+                dest="$RETIRED/$DATE/$TIME/$old"
+                mkdir -p "$(dirname "$dest")"
+                mv "$oldpath" "$dest"
+                RETIRED_COUNT=$((RETIRED_COUNT+1))
+            fi
+        fi
+    done <"$MANIFEST"
+fi
+
+echo "Retired files: $RETIRED_COUNT"
+
+stage "D/8 — COMPARE LIVE VS SNAPSHOT"
+
+NEW_COUNT=0
+CHANGE_COUNT=0
+SAME_COUNT=0
+
+while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+
+    src="$TMP/live/$rel"
+    dst="$LIVE/$rel"
+
+    mkdir -p "$(dirname "$dst")"
+
+    if [ ! -e "$dst" ]; then
+        cp -a "$src" "$dst"
+        NEW_COUNT=$((NEW_COUNT+1))
+    elif cmp -s "$src" "$dst"; then
+        SAME_COUNT=$((SAME_COUNT+1))
+    else
+        cp -a "$src" "$dst"
+        CHANGE_COUNT=$((CHANGE_COUNT+1))
+    fi
+done <"$NEW_MANIFEST"
+
+cp "$NEW_MANIFEST" "$MANIFEST"
+
+find "$LIVE" -depth -type d -empty -delete 2>/dev/null || true
+chown -R "$USER_NAME":"$USER_NAME" "$REPO/homelab"
+
+echo "New       : $NEW_COUNT"
+echo "Updated   : $CHANGE_COUNT"
+echo "Retired   : $RETIRED_COUNT"
+echo "Unchanged : $SAME_COUNT"
+
+stage "E/8 — SECURITY + SIZE GATE"
+
+BAD=0
+
+while IFS= read -r -d '' f; do
+    size="$(stat -c '%s' "$f")"
+
+    if [ "$size" -gt "$MAX_BYTES" ]; then
+        echo "BLOCKED oversized: $f"
+        BAD=1
+    fi
+
+    base="$(basename "$f")"
+
+    case "$base" in
+        .env|.env.*|\
+        secrets.yaml|secrets.yml|secrets.json|\
+        credentials.json|credentials.yaml|credentials.yml|\
+        keys.json|\
+        *.pem|*.key|*.p12|*.pfx|\
+        *.sqlite|*.sqlite3|*.db)
+
+            echo "BLOCKED sensitive filename: $f"
+            BAD=1
+            ;;
+    esac
+
+    # Strong credential signatures only.
+    if grep -aqE \
+      -- '-----BEGIN ([A-Z ]+)?PRIVATE KEY-----|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,}|glsa_[A-Za-z0-9_=-]{20,}' \
+      "$f" 2>/dev/null; then
+
+        echo "BLOCKED credential signature: $f"
+        BAD=1
+    fi
+
+done < <(find "$LIVE" -type f -print0)
+
+[ "$BAD" -eq 0 ] || fail "Security gate rejected snapshot"
+
+echo "Security gate: PASS"
+
+stage "F/8 — GIT DIFFERENCE"
+
+g add homelab/live homelab/retired homelab/.managed-files.txt
+
+if g diff --cached --quiet; then
+    echo
+    echo "============================================================"
+    echo "RESULT: NO CHANGES"
+    echo "Nightly verification succeeded."
+    echo "Elapsed: $(elapsed)"
+    echo "============================================================"
+    exit 0
+fi
+
+# Write full output to a file first.
+# This avoids the old pipefail + head SIGPIPE/exit-141 problem.
+g diff --cached --name-status >"$CHANGES"
+
+TOTAL="$(wc -l <"$CHANGES")"
+
+echo "Changed Git paths: $TOTAL"
+echo
+echo "First 30:"
+sed -n '1,30p' "$CHANGES"
+
+stage "G/8 — COMMIT"
+
+g config user.name >/dev/null 2>&1 ||
+    g config user.name "LifeOS Backup Bot"
+
+g config user.email >/dev/null 2>&1 ||
+    g config user.email "lifeos-backup@users.noreply.github.com"
+
+g commit --quiet \
+    -m "Nightly homelab sync $(date +%F)" ||
+    fail "Commit failed"
+
+g log -1 --oneline
+
+stage "H/8 — PUSH + VERIFY"
+
+if ! g push origin "$BRANCH"; then
+    echo "Push failed; reverting automatic local commit."
+    g reset --hard "$PRE_HEAD" || true
+    fail "GitHub push failed"
+fi
+
+g fetch origin
+
+LOCAL="$(g rev-parse HEAD)"
+REMOTE="$(g rev-parse "origin/$BRANCH")"
+
+[ "$LOCAL" = "$REMOTE" ] || fail "Remote verification mismatch"
+
+echo
+echo "============================================================"
+echo "RESULT: GITHUB UPDATED AND VERIFIED"
+echo
+echo "New       : $NEW_COUNT"
+echo "Updated   : $CHANGE_COUNT"
+echo "Retired   : $RETIRED_COUNT"
+echo "Unchanged : $SAME_COUNT"
+echo
+echo "Commit:"
+g log -1 --oneline
+echo
+echo "Elapsed: $(elapsed)"
+echo "Finished: $(date --iso-8601=seconds)"
+echo "============================================================"

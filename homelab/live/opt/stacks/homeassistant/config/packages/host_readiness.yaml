@@ -1,0 +1,41 @@
+command_line:
+  - sensor:
+      name: "Z97 Readiness"
+      unique_id: z97_readiness_full
+      command: "python3 /config/read_z97_readiness_full.py"
+      value_template: "{{ value_json.state }}"
+      json_attributes_path: "$.attributes"
+      json_attributes:
+        - lifecycle_state
+        - trust_state
+        - blocking_reason
+        - grace_remaining
+        - ping
+        - ssh
+        - docker
+        - metrics
+        - stability_hold
+      scan_interval: 30
+
+template:
+  - sensor:
+      - name: "Z97 Lifecycle State"
+        state: "{{ state_attr('sensor.z97_readiness', 'lifecycle_state') }}"
+      - name: "Z97 Trust State"
+        state: "{{ state_attr('sensor.z97_readiness', 'trust_state') }}"
+      - name: "Z97 Blocking Reason"
+        state: "{{ state_attr('sensor.z97_readiness', 'blocking_reason') }}"
+      - name: "Z97 Grace Countdown"
+        state: >
+          {% set s = state_attr('sensor.z97_readiness', 'grace_remaining') | int %}
+          {{ '%02d:%02d' | format(s//60, s%60) }}
+      - name: "Z97 Ping"
+        state: "{{ state_attr('sensor.z97_readiness', 'ping') }}"
+      - name: "Z97 SSH"
+        state: "{{ state_attr('sensor.z97_readiness', 'ssh') }}"
+      - name: "Z97 Docker"
+        state: "{{ state_attr('sensor.z97_readiness', 'docker') }}"
+      - name: "Z97 Metrics"
+        state: "{{ state_attr('sensor.z97_readiness', 'metrics') }}"
+      - name: "Z97 Stability Hold"
+        state: "{{ state_attr('sensor.z97_readiness', 'stability_hold') }}"
