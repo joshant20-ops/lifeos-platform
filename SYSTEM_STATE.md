@@ -46,6 +46,11 @@
 - `watchtower` — `containrrr/watchtower:latest`
 - `zwave-js-ui` — `zwavejs/zwave-js-ui:latest`
 
+## Key Source Locations
+
+- LifeOS Energy source: `/mnt/docker-data/automation/repos/LifeOS-Energy`
+- LifeOS Energy forecast-learning: `/opt/stacks/lifeos-energy/forecast-learning`
+
 ## Source Stacks Present
 
 - `adguard`
@@ -84,7 +89,7 @@
 - Personal Privacy Guardian profiles/data
 
 ## Snapshot Coverage
-- Managed files: 171
+- Managed files: 173
 
 ## Generated
-- UTC: `2026-08-26T21:19:14+00:00`
+- UTC: `2026-08-26T21:22:41+00:00`

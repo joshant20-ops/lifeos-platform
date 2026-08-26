@@ -71,7 +71,6 @@ if ! flock -n 9; then
 fi
 
 ROOTS=(
-    "/mnt/docker-data/automation/repos/LifeOS-Energy"
     "/opt/stacks"
     "/home/joshan/scripts"
     "/usr/local/bin"
@@ -85,9 +84,6 @@ excluded() {
 
     case "$f" in
         # Version control / packages / caches
-        /mnt/docker-data/automation/repos/LifeOS-Energy/logs/*|\
-        /mnt/docker-data/automation/repos/LifeOS-Energy/config/*|\
-        /mnt/docker-data/automation/repos/LifeOS-Energy/.git/*|\
         */.git/*|\
         */node_modules/*|\
         */__pycache__/*|\
