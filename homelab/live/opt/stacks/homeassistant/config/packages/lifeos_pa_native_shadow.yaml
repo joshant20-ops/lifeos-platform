@@ -1,0 +1,42 @@
+template:
+  - sensor:
+      - name: "LifeOS PA Native Status"
+        unique_id: lifeos_pa_native_status
+        state: >
+          {% set old = states('sensor.lifeos_pa_dashboard_status') %}
+          {{ old if old not in ['unknown','unavailable',''] else 'unknown' }}
+
+      - name: "LifeOS PA Native Active"
+        unique_id: lifeos_pa_native_active
+        state: >
+          {{ states('sensor.lifeos_pa_active_loops') | int(0) }}
+
+      - name: "LifeOS PA Native Attention"
+        unique_id: lifeos_pa_native_attention
+        state: >
+          {{ states('sensor.lifeos_pa_needs_attention') | int(0) }}
+
+      - name: "LifeOS PA Native Awaiting"
+        unique_id: lifeos_pa_native_awaiting
+        state: >
+          {{ states('sensor.lifeos_pa_awaiting_confirmation') | int(0) }}
+
+      - name: "LifeOS PA Native Overdue"
+        unique_id: lifeos_pa_native_overdue
+        state: >
+          {{ states('sensor.lifeos_pa_overdue_loops') | int(0) }}
+
+      - name: "LifeOS PA Native Recently Closed"
+        unique_id: lifeos_pa_native_recently_closed
+        state: >
+          {{ states('sensor.lifeos_pa_recently_closed') | int(0) }}
+
+      - name: "LifeOS PA Native Escalations"
+        unique_id: lifeos_pa_native_escalations
+        state: >
+          {{ states('sensor.lifeos_pa_escalation_count') | int(0) }}
+
+      - name: "LifeOS PA Native High Escalations"
+        unique_id: lifeos_pa_native_high_escalations
+        state: >
+          {{ states('sensor.lifeos_pa_high_escalations') | int(0) }}
