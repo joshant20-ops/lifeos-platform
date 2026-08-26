@@ -1,0 +1,802 @@
+{
+  "id": null,
+  "uid": "lifeos-worker-queues",
+  "title": "LifeOS Worker Queues",
+  "tags": [
+    "lifeos",
+    "queues",
+    "workers",
+    "incremental"
+  ],
+  "timezone": "browser",
+  "schemaVersion": 41,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "RW queue depth",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"rw\",queue_type=\"priority\"}",
+          "legendFormat": "priority",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"rw\",queue_type=\"primary\"}",
+          "legendFormat": "primary",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"rw\",queue_type=\"human_intervention\"}",
+          "legendFormat": "human intervention",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "RW queue flow added/removed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_added_total{worker=\"rw\"}",
+          "legendFormat": "added total",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_removed_total{worker=\"rw\"}",
+          "legendFormat": "removed total",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_added{worker=\"rw\"}",
+          "legendFormat": "last added",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_removed{worker=\"rw\"}",
+          "legendFormat": "last removed",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "ENGINEER queue depth",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"engineer\",queue_type=\"priority\"}",
+          "legendFormat": "priority",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"engineer\",queue_type=\"primary\"}",
+          "legendFormat": "primary",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"engineer\",queue_type=\"human_intervention\"}",
+          "legendFormat": "human intervention",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "ENGINEER queue flow added/removed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_added_total{worker=\"engineer\"}",
+          "legendFormat": "added total",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_removed_total{worker=\"engineer\"}",
+          "legendFormat": "removed total",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_added{worker=\"engineer\"}",
+          "legendFormat": "last added",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_removed{worker=\"engineer\"}",
+          "legendFormat": "last removed",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "WATCHMAN queue depth",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"watchman\",queue_type=\"priority\"}",
+          "legendFormat": "priority",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"watchman\",queue_type=\"primary\"}",
+          "legendFormat": "primary",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"watchman\",queue_type=\"human_intervention\"}",
+          "legendFormat": "human intervention",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "WATCHMAN queue flow added/removed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_added_total{worker=\"watchman\"}",
+          "legendFormat": "added total",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_removed_total{worker=\"watchman\"}",
+          "legendFormat": "removed total",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_added{worker=\"watchman\"}",
+          "legendFormat": "last added",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_removed{worker=\"watchman\"}",
+          "legendFormat": "last removed",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "EXECUTOR queue depth",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 48
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"executor\",queue_type=\"priority\"}",
+          "legendFormat": "priority",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"executor\",queue_type=\"primary\"}",
+          "legendFormat": "primary",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"executor\",queue_type=\"human_intervention\"}",
+          "legendFormat": "human intervention",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "EXECUTOR queue flow added/removed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 56
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_added_total{worker=\"executor\"}",
+          "legendFormat": "added total",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_removed_total{worker=\"executor\"}",
+          "legendFormat": "removed total",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_added{worker=\"executor\"}",
+          "legendFormat": "last added",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_removed{worker=\"executor\"}",
+          "legendFormat": "last removed",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "AUDITOR queue depth",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 64
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"auditor\",queue_type=\"priority\"}",
+          "legendFormat": "priority",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"auditor\",queue_type=\"primary\"}",
+          "legendFormat": "primary",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs{worker=\"auditor\",queue_type=\"human_intervention\"}",
+          "legendFormat": "human intervention",
+          "range": true,
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "AUDITOR queue flow added/removed",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "df5sqjtlyyn7ka"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 72
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_added_total{worker=\"auditor\"}",
+          "legendFormat": "added total",
+          "range": true,
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_jobs_removed_total{worker=\"auditor\"}",
+          "legendFormat": "removed total",
+          "range": true,
+          "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_added{worker=\"auditor\"}",
+          "legendFormat": "last added",
+          "range": true,
+          "refId": "C"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "df5sqjtlyyn7ka"
+          },
+          "editorMode": "code",
+          "expr": "lifeos_worker_queue_last_removed{worker=\"auditor\"}",
+          "legendFormat": "last removed",
+          "range": true,
+          "refId": "D"
+        }
+      ]
+    }
+  ]
+}

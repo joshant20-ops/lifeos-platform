@@ -1,0 +1,52 @@
+template:
+  - sensor:
+
+      - name: LifeOS Grid Import Power
+        unique_id: lifeos_grid_import_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {{ (states('sensor.lifeos_energy_grid_import') | float(0)) * 1000 }}
+      - name: LifeOS Grid Export Power
+        unique_id: lifeos_grid_export_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {{ (states('sensor.lifeos_energy_grid_export') | float(0)) * 1000 }}
+      - name: LifeOS Battery Charge Power
+        unique_id: lifeos_battery_charge_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set p = states('sensor.predbat_enphase_5731818_battery_power') | float(0) %}
+          {{ [-p, 0] | max | round(1) }}
+
+      - name: LifeOS Battery Discharge Power
+        unique_id: lifeos_battery_discharge_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set p = states('sensor.predbat_enphase_5731818_battery_power') | float(0) %}
+          {{ [p, 0] | max | round(1) }}
+
+      - name: LifeOS Solar Generation Power
+        unique_id: lifeos_solar_generation_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set p = states('sensor.predbat_enphase_5731818_pv_power') | float(0) %}
+          {{ [p, 0] | max | round(1) }}
+
+      - name: LifeOS House Demand Power
+        unique_id: lifeos_house_demand_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: >
+          {% set p = states('sensor.predbat_enphase_5731818_load_power') | float(0) %}
+          {{ [p, 0] | max | round(1) }}

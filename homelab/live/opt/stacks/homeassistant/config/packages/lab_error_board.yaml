@@ -1,0 +1,137 @@
+input_select:
+  lab_error_view:
+    name: Lab Error View
+    options:
+      - Active
+      - All Lab
+      - Suppressed
+      - Power Noise
+    initial: Active
+    icon: mdi:view-list
+
+command_line:
+  - sensor:
+      name: Lab Error Board Compact
+      unique_id: lab_error_board_compact
+      command: "cat /config/www/lab/lab_error_board_compact.json"
+      value_template: >
+        {% set summary = value_json.get('summary', {}) %}
+        {{ summary.get('active', {}).get('total', 0) }}
+      json_attributes:
+        - generated_at
+        - stale_minutes
+        - summary
+        - active_markdown
+        - all_lab_markdown
+        - suppressed_markdown
+        - power_transition_noise_markdown
+      scan_interval: 60
+
+  - sensor:
+      name: Lab AI Quality Board
+      unique_id: lab_ai_quality_board
+      command: "cat /config/www/lab/lab_ai_quality_board.json"
+      value_template: >
+        {% set summary = value_json.get('summary', {}) %}
+        {{ summary.get('total_active_items', 0) }}
+      json_attributes:
+        - generated_at
+        - summary
+      scan_interval: 60
+
+  - sensor:
+      name: Lab Human Referral Board
+      unique_id: lab_human_referral_board
+      command: "cat /config/www/lab/lab_human_referral_board.json"
+      value_template: >
+        {{ value_json.get('count', 0) }}
+      json_attributes:
+        - generated_at
+        - count
+        - items
+      scan_interval: 60
+
+template:
+  - sensor:
+      - name: Lab Errors Active Count
+        unique_id: lab_errors_active_count
+        state: >
+          {% set summary = state_attr('sensor.lab_error_board_compact', 'summary') or {} %}
+          {{ summary.get('active', {}).get('total', 0) }}
+      - name: Lab Errors All Lab Count
+        unique_id: lab_errors_all_lab_count
+        state: >
+          {% set summary = state_attr('sensor.lab_error_board_compact', 'summary') or {} %}
+          {{ summary.get('all_lab', {}).get('total', 0) }}
+      - name: Lab Errors Suppressed Count
+        unique_id: lab_errors_suppressed_count
+        state: >
+          {% set summary = state_attr('sensor.lab_error_board_compact', 'summary') or {} %}
+          {{ summary.get('suppressed', {}).get('total', 0) }}
+      - name: Lab Errors Power Noise Count
+        unique_id: lab_errors_power_noise_count
+        state: >
+          {% set summary = state_attr('sensor.lab_error_board_compact', 'summary') or {} %}
+          {{ summary.get('power_transition_noise', {}).get('total', 0) }}
+      - name: Lab Errors Error Count
+        unique_id: lab_errors_error_count
+        state: >
+          {% set summary = state_attr('sensor.lab_error_board_compact', 'summary') or {} %}
+          {{ summary.get('active', {}).get('error', 0) }}
+      - name: Lab Errors Warning Count
+        unique_id: lab_errors_warning_count
+        state: >
+          {% set summary = state_attr('sensor.lab_error_board_compact', 'summary') or {} %}
+          {{ summary.get('active', {}).get('warning', 0) }}
+      - name: Lab Errors Info Count
+        unique_id: lab_errors_info_count
+        state: >
+          {% set summary = state_attr('sensor.lab_error_board_compact', 'summary') or {} %}
+          {{ summary.get('active', {}).get('info', 0) }}
+
+      - name: Lab AI Total Active Items
+        unique_id: lab_ai_total_active_items
+        state: >
+          {% set summary = state_attr('sensor.lab_ai_quality_board', 'summary') or {} %}
+          {{ summary.get('total_active_items', 0) }}
+
+      - name: Lab AI Duplicate Clusters
+        unique_id: lab_ai_duplicate_clusters
+        state: >
+          {% set summary = state_attr('sensor.lab_ai_quality_board', 'summary') or {} %}
+          {{ summary.get('duplicate_clusters', 0) }}
+
+      - name: Lab AI Missing Engineer Decisions
+        unique_id: lab_ai_missing_engineer_decisions
+        state: >
+          {% set summary = state_attr('sensor.lab_ai_quality_board', 'summary') or {} %}
+          {{ summary.get('missing_engineer_decisions', 0) }}
+
+      - name: Lab AI With Engineer Decisions
+        unique_id: lab_ai_with_engineer_decisions
+        state: >
+          {% set summary = state_attr('sensor.lab_ai_quality_board', 'summary') or {} %}
+          {{ summary.get('with_engineer_decisions', 0) }}
+
+      - name: Lab AI Engineer Queue Size
+        unique_id: lab_ai_engineer_queue_size
+        state: >
+          {% set summary = state_attr('sensor.lab_ai_quality_board', 'summary') or {} %}
+          {{ summary.get('engineer_queue_size', 0) }}
+
+      - name: Lab AI Deferred Engineer Items
+        unique_id: lab_ai_deferred_engineer_items
+        state: >
+          {% set summary = state_attr('sensor.lab_ai_quality_board', 'summary') or {} %}
+          {{ summary.get('deferred_engineer_items', 0) }}
+
+      - name: Lab AI Urgent Engineer Items
+        unique_id: lab_ai_urgent_engineer_items
+        state: >
+          {% set summary = state_attr('sensor.lab_ai_quality_board', 'summary') or {} %}
+          {{ summary.get('urgent_engineer_items', 0) }}
+
+      - name: Lab Human Referral Count
+        unique_id: lab_human_referral_count
+        state: >
+          {{ state_attr('sensor.lab_human_referral_board', 'count') or 0 }}

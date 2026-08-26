@@ -1,0 +1,58 @@
+dusk_to_dawn_w_helper:
+  sequence:
+  - condition: sun
+    before: sunrise
+    after: sunset
+  - action: input_boolean.turn_on
+    metadata: {}
+    data: {}
+    target:
+      entity_id:
+      - input_boolean.rear_lights
+      - input_boolean.front_light_flag
+  - wait_for_trigger:
+    - trigger: time
+      at: '22:00:00'
+  - action: input_boolean.turn_off
+    metadata: {}
+    data: {}
+    target:
+      entity_id:
+      - input_boolean.rear_lights
+      - input_boolean.front_light_flag
+  alias: Dusk to dawn w helper
+  description: ''
+close_joshan_room_blinds:
+  sequence:
+  - device_id: 1eb69cd339fce7bc6eea05e39213950c
+    domain: cover
+    entity_id: cover.zemismart_smart_curtain
+    type: close
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 16
+      milliseconds: 500
+  - device_id: 1eb69cd339fce7bc6eea05e39213950c
+    domain: cover
+    entity_id: cover.zemismart_smart_curtain
+    type: stop
+  alias: Close Joshan Room Blinds
+  description: ''
+'1770049187494':
+  sequence:
+  - device_id: 1eb69cd339fce7bc6eea05e39213950c
+    domain: cover
+    entity_id: cover.zemismart_smart_curtain
+    type: open
+  - delay:
+      hours: 0
+      minutes: 0
+      seconds: 21
+      milliseconds: 0
+  - device_id: 1eb69cd339fce7bc6eea05e39213950c
+    domain: cover
+    entity_id: cover.zemismart_smart_curtain
+    type: stop
+  alias: Open Joshan Room Blinds
+  description: ''

@@ -1,0 +1,33 @@
+command_line:
+
+  - sensor:
+      name: z97_llm_first_status
+      command: >
+        python3 /config/scripts/read_json_value.py
+        /config/z97_llm_first_status.json
+        status
+      scan_interval: 60
+
+  - sensor:
+      name: z97_llm_first_route
+      command: >
+        python3 /config/scripts/read_json_value.py
+        /config/z97_llm_first_status.json
+        lifeos_ask_route
+      scan_interval: 60
+
+  - sensor:
+      name: z97_last_selected_agent
+      command: >
+        python3 /config/scripts/read_json_value.py
+        /config/z97_llm_first_status.json
+        last_selected_agent
+      scan_interval: 60
+
+  - sensor:
+      name: z97_last_answer_summary
+      command: >
+        python3 /config/scripts/read_json_value.py
+        /config/z97_llm_first_status.json
+        last_answer_summary
+      scan_interval: 60

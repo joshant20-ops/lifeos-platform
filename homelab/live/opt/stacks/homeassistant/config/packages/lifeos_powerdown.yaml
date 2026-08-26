@@ -1,0 +1,29 @@
+###############################################################################
+# LifeOS Power Down
+#
+# Read-only bridge:
+#   LifeOS Energy -> Home Assistant
+###############################################################################
+
+rest:
+  - resource: http://127.0.0.1:8110/api/energy/powerdown
+    scan_interval: 60
+    timeout: 10
+
+    sensor:
+      - name: LifeOS Power Down Status
+        unique_id: lifeos_power_down_status
+        icon: mdi:power-sleep
+
+        value_template: >-
+          {% if value_json.available | default(false) %}
+            {{ value_json.decision | default('UNAVAILABLE') }}
+          {% else %}
+            UNAVAILABLE
+          {% endif %}
+
+        json_attributes:
+          - available
+          - reason
+          - decision_at
+          - watcher

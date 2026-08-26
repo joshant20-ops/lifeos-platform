@@ -1,0 +1,68 @@
+command_line:
+  - sensor:
+      name: "Container Visibility Total"
+      unique_id: container_visibility_total_v1
+      command: "python3 /config/read_container_visibility_total.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Container Visibility Running"
+      unique_id: container_visibility_running_v1
+      command: "python3 /config/read_container_visibility_running.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Container Visibility Exited"
+      unique_id: container_visibility_exited_v1
+      command: "python3 /config/read_container_visibility_exited.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Container Visibility Restarting"
+      unique_id: container_visibility_restarting_v1
+      command: "python3 /config/read_container_visibility_restarting.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Container Visibility Unhealthy"
+      unique_id: container_visibility_unhealthy_v1
+      command: "python3 /config/read_container_visibility_unhealthy.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Container Visibility Docker Hosts"
+      unique_id: container_visibility_docker_hosts_v1
+      command: "python3 /config/read_container_visibility_docker_hosts.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Container Visibility Reachable Hosts"
+      unique_id: container_visibility_reachable_hosts_v1
+      command: "python3 /config/read_container_visibility_reachable_hosts.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Pi5 Container Visibility State"
+      unique_id: pi5_container_visibility_state_v1
+      command: "python3 /config/read_container_visibility_pi5_state.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Z97 Container Visibility State"
+      unique_id: z97_container_visibility_state_v1
+      command: "python3 /config/read_container_visibility_z97_state.py"
+      scan_interval: 60
+
+template:
+  - binary_sensor:
+      - name: "Containers Exited Present"
+        unique_id: containers_exited_present_v1
+        state: "{{ (states('sensor.container_visibility_exited') | int(0)) > 0 }}"
+
+      - name: "Containers Restarting Present"
+        unique_id: containers_restarting_present_v1
+        state: "{{ (states('sensor.container_visibility_restarting') | int(0)) > 0 }}"
+
+      - name: "Containers Unhealthy Present"
+        unique_id: containers_unhealthy_present_v1
+        state: "{{ (states('sensor.container_visibility_unhealthy') | int(0)) > 0 }}"

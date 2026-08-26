@@ -1,0 +1,14 @@
+Generated: 2026-08-02T17:15:54.873269Z
+Action Required: 2
+Warnings: 0
+Healthy: 1
+
+=== ACTION REQUIRED ===
+- Pi 5 | unexpected_absence | critical | Expected system missing
+- Z97 VM | unexpected_absence | critical | Expected system missing
+
+=== WARNINGS ===
+None
+
+=== HEALTHY ===
+- Pi 3 | expected_off | info | Expected state

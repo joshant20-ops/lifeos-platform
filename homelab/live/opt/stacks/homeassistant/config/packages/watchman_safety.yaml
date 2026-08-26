@@ -1,0 +1,36 @@
+command_line:
+  - sensor:
+      name: "Watchman Guarded Result"
+      unique_id: watchman_guarded_result_v1
+      command: "python3 /config/read_watchman_guarded_result.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Watchman Guarded Message"
+      unique_id: watchman_guarded_message_v1
+      command: "python3 /config/read_watchman_guarded_message.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Watchman Preflight Blocked Count"
+      unique_id: watchman_preflight_blocked_count_v1
+      command: "python3 /config/read_preflight_blocked_count.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Watchman Preflight Safe Count"
+      unique_id: watchman_preflight_safe_count_v1
+      command: "python3 /config/read_preflight_safe_count.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Watchman Queue Total"
+      unique_id: watchman_queue_total_v1
+      command: "python3 /config/read_queue_queued_total.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Watchman Queue Stale Count"
+      unique_id: watchman_queue_stale_count_v1
+      command: "python3 /config/read_queue_stale_count.py"
+      scan_interval: 60

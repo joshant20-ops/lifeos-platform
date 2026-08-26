@@ -1,0 +1,18 @@
+command_line:
+  - sensor:
+      name: "Pi 5 Host Interpretation"
+      unique_id: pi5_host_interpretation_v2
+      command: "python3 /config/read_pi5_host_interpretation.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Z97 Host Interpretation"
+      unique_id: z97_host_interpretation_v2
+      command: "python3 /config/read_z97_host_interpretation.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Pi 3 Host Interpretation"
+      unique_id: pi3_host_interpretation_v2
+      command: "python3 /config/read_pi3_host_interpretation.py"
+      scan_interval: 60

@@ -1,0 +1,18 @@
+command_line:
+  - sensor:
+      name: LifeOS Closed Loop Done
+      unique_id: lifeos_closed_loop_done
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_closed_loop_repair.json\"))[\"queue_counts\"].get(\"done\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Closed Loop Blocked
+      unique_id: lifeos_closed_loop_blocked
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_closed_loop_repair.json\"))[\"queue_counts\"].get(\"blocked\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Closed Loop Intake
+      unique_id: lifeos_closed_loop_intake
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_closed_loop_repair.json\"))[\"queue_counts\"].get(\"intake\",0))'"
+      scan_interval: 300

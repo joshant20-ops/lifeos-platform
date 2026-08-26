@@ -1,0 +1,23 @@
+#!/usr/bin/env python3
+import json
+import sys
+from pathlib import Path
+from datetime import datetime, timezone
+
+config = Path("/config")
+q = " ".join(sys.argv[1:]).strip()
+
+(config / "lifeos_ask_question.txt").write_text(q)
+(config / "lifeos_ask_answer.txt").write_text("Thinking...")
+(config / "lifeos_ask_answer.json").write_text(json.dumps({
+    "generated_at": datetime.now(timezone.utc).isoformat(),
+    "question": q,
+    "route": "pending",
+    "status": "thinking",
+    "answer": "Thinking...",
+    "safety": {
+        "write_actions_enabled": False,
+        "engineer_personal_data_access": False,
+        "personal_writeback": False
+    }
+}, indent=2))

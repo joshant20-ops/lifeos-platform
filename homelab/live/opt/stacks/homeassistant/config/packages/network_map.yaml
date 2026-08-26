@@ -1,0 +1,67 @@
+command_line:
+  - sensor:
+      name: network_total_devices
+      unique_id: network_total_devices
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_reconciliation.json').read_text())['summary']['total_devices_seen'])"
+      scan_interval: 60
+  - sensor:
+      name: network_known_devices
+      unique_id: network_known_devices
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_reconciliation.json').read_text())['summary']['known_devices'])"
+      scan_interval: 60
+  - sensor:
+      name: network_unknown_devices
+      unique_id: network_unknown_devices
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_reconciliation.json').read_text())['summary']['unknown_devices'])"
+      scan_interval: 60
+  - sensor:
+      name: network_missing_devices
+      unique_id: network_missing_devices
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_reconciliation.json').read_text())['summary']['missing_expected_devices'])"
+      scan_interval: 60
+  - sensor:
+      name: network_conflict_devices
+      unique_id: network_conflict_devices
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_reconciliation.json').read_text())['summary']['conflict_devices'])"
+      scan_interval: 60
+  - sensor:
+      name: network_drift_devices
+      unique_id: network_drift_devices
+      command: >-
+        python3 -c "import json; from pathlib import Path; print(json.loads(Path('/config/network_reconciliation.json').read_text())['summary'].get('drift_devices',0))"
+      scan_interval: 60
+  - sensor:
+      name: network_docker_host_state
+      unique_id: network_docker_host_state
+      command: >-
+        python3 -c "import json; from pathlib import Path; data=json.loads(Path('/config/network_reconciliation.json').read_text()); items=data['devices']; item=next((x for x in items if x.get('host_id') == 'docker_host'), {'reconciliation_state':'unknown'}); print(item['reconciliation_state'])"
+      scan_interval: 60
+  - sensor:
+      name: network_z97_vm_host_state
+      unique_id: network_z97_vm_host_state
+      command: >-
+        python3 -c "import json; from pathlib import Path; data=json.loads(Path('/config/network_reconciliation.json').read_text()); items=data['devices']; item=next((x for x in items if x.get('host_id') == 'z97_vm_host'), {'reconciliation_state':'unknown'}); print(item['reconciliation_state'])"
+      scan_interval: 60
+  - sensor:
+      name: network_pi3_oob_controller_state
+      unique_id: network_pi3_oob_controller_state
+      command: >-
+        python3 -c "import json; from pathlib import Path; data=json.loads(Path('/config/network_reconciliation.json').read_text()); items=data['devices']; item=next((x for x in items if x.get('host_id') == 'pi3_oob_controller'), {'reconciliation_state':'unknown'}); print(item['reconciliation_state'])"
+      scan_interval: 60
+
+template:
+  - binary_sensor:
+      - name: network_conflicts_present
+        unique_id: network_conflicts_present
+        state: "{{ states('sensor.network_conflict_devices')|int(0) > 0 }}"
+      - name: network_unknowns_present
+        unique_id: network_unknowns_present
+        state: "{{ states('sensor.network_unknown_devices')|int(0) > 0 }}"
+      - name: network_missing_present
+        unique_id: network_missing_present
+        state: "{{ states('sensor.network_missing_devices')|int(0) > 0 }}"

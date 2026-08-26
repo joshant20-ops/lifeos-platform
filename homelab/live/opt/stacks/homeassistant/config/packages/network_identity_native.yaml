@@ -1,0 +1,11 @@
+command_line:
+  - sensor: {name: Network Identity Known Host Count, unique_id: network_identity_known_host_count, command: "python3 /config/scripts/network_identity_ha_sensor.py known_host_count", scan_interval: 30}
+  - sensor: {name: Network Identity Allowed Host Count, unique_id: network_identity_allowed_host_count, command: "python3 /config/scripts/network_identity_ha_sensor.py allowed_host_count", scan_interval: 30}
+  - sensor: {name: Network Identity Blocked Host Count, unique_id: network_identity_blocked_host_count, command: "python3 /config/scripts/network_identity_ha_sensor.py blocked_host_count", scan_interval: 30}
+  - sensor: {name: Network Identity Summary, unique_id: network_identity_summary, command: "python3 /config/scripts/network_identity_ha_sensor.py identity_summary", scan_interval: 30}
+  - sensor: {name: Network Identity Docker Host, unique_id: network_identity_docker_host, command: "python3 /config/scripts/network_identity_ha_sensor.py host:docker_host:identity", scan_interval: 30}
+  - sensor: {name: Network Identity Docker Host IP, unique_id: network_identity_docker_host_ip, command: "python3 /config/scripts/network_identity_ha_sensor.py host:docker_host:ip", scan_interval: 30}
+  - sensor: {name: Network Identity Z97 Host, unique_id: network_identity_z97_host, command: "python3 /config/scripts/network_identity_ha_sensor.py host:z97_vm_host:identity", scan_interval: 30}
+  - sensor: {name: Network Identity Z97 Host IP, unique_id: network_identity_z97_host_ip, command: "python3 /config/scripts/network_identity_ha_sensor.py host:z97_vm_host:ip", scan_interval: 30}
+  - sensor: {name: Network Identity Pi3 Controller, unique_id: network_identity_pi3_controller, command: "python3 /config/scripts/network_identity_ha_sensor.py host:pi3_oob_controller:identity", scan_interval: 30}
+  - sensor: {name: Network Identity Pi3 Controller IP, unique_id: network_identity_pi3_controller_ip, command: "python3 /config/scripts/network_identity_ha_sensor.py host:pi3_oob_controller:ip", scan_interval: 30}

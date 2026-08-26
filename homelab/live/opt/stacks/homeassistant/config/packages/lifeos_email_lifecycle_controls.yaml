@@ -1,0 +1,116 @@
+shell_command:
+  lifeos_email_lifecycle_close: >-
+    /usr/bin/python3 /home/joshan/automation/scripts/lifeos_email_lifecycle_update_v1.py
+    --lifecycle-id "{{ lifecycle_id }}"
+    --action close
+    --note "{{ note | default('Closed from Home Assistant') }}"
+    --source ha
+
+  lifeos_email_lifecycle_reopen: >-
+    /usr/bin/python3 /home/joshan/automation/scripts/lifeos_email_lifecycle_update_v1.py
+    --lifecycle-id "{{ lifecycle_id }}"
+    --action reopen
+    --note "{{ note | default('Reopened from Home Assistant') }}"
+    --source ha
+
+  lifeos_email_lifecycle_mark_useful: >-
+    /usr/bin/python3 /home/joshan/automation/scripts/lifeos_email_lifecycle_update_v1.py
+    --lifecycle-id "{{ lifecycle_id }}"
+    --action mark_useful
+    --note "{{ note | default('Marked useful from Home Assistant') }}"
+    --source ha
+
+  lifeos_email_lifecycle_archive: >-
+    /usr/bin/python3 /home/joshan/automation/scripts/lifeos_email_lifecycle_update_v1.py
+    --lifecycle-id "{{ lifecycle_id }}"
+    --action archive
+    --note "{{ note | default('Archived from Home Assistant') }}"
+    --source ha
+
+  lifeos_email_lifecycle_add_note: >-
+    /usr/bin/python3 /home/joshan/automation/scripts/lifeos_email_lifecycle_update_v1.py
+    --lifecycle-id "{{ lifecycle_id }}"
+    --action add_note
+    --note "{{ note }}"
+    --source ha
+
+script:
+  lifeos_email_close_item:
+    alias: LifeOS Email - Close lifecycle item
+    mode: queued
+    fields:
+      lifecycle_id:
+        description: Lifecycle ID from LifeOS email dashboard JSON
+        example: abc123
+      note:
+        description: Optional note
+        example: Closed after manual review
+    sequence:
+      - service: shell_command.lifeos_email_lifecycle_close
+        data:
+          lifecycle_id: "{{ lifecycle_id }}"
+          note: "{{ note | default('Closed from Home Assistant') }}"
+
+  lifeos_email_reopen_item:
+    alias: LifeOS Email - Reopen lifecycle item
+    mode: queued
+    fields:
+      lifecycle_id:
+        description: Lifecycle ID from LifeOS email dashboard JSON
+        example: abc123
+      note:
+        description: Optional note
+        example: Reopened after manual review
+    sequence:
+      - service: shell_command.lifeos_email_lifecycle_reopen
+        data:
+          lifecycle_id: "{{ lifecycle_id }}"
+          note: "{{ note | default('Reopened from Home Assistant') }}"
+
+  lifeos_email_mark_useful:
+    alias: LifeOS Email - Mark item useful
+    mode: queued
+    fields:
+      lifecycle_id:
+        description: Lifecycle ID from LifeOS email dashboard JSON
+        example: abc123
+      note:
+        description: Optional note
+        example: Useful account information
+    sequence:
+      - service: shell_command.lifeos_email_lifecycle_mark_useful
+        data:
+          lifecycle_id: "{{ lifecycle_id }}"
+          note: "{{ note | default('Marked useful from Home Assistant') }}"
+
+  lifeos_email_archive_item:
+    alias: LifeOS Email - Archive lifecycle item
+    mode: queued
+    fields:
+      lifecycle_id:
+        description: Lifecycle ID from LifeOS email dashboard JSON
+        example: abc123
+      note:
+        description: Optional note
+        example: Historical only
+    sequence:
+      - service: shell_command.lifeos_email_lifecycle_archive
+        data:
+          lifecycle_id: "{{ lifecycle_id }}"
+          note: "{{ note | default('Archived from Home Assistant') }}"
+
+  lifeos_email_add_note:
+    alias: LifeOS Email - Add lifecycle note
+    mode: queued
+    fields:
+      lifecycle_id:
+        description: Lifecycle ID from LifeOS email dashboard JSON
+        example: abc123
+      note:
+        description: Note to attach
+        example: Called provider, awaiting response
+    sequence:
+      - service: shell_command.lifeos_email_lifecycle_add_note
+        data:
+          lifecycle_id: "{{ lifecycle_id }}"
+          note: "{{ note }}"

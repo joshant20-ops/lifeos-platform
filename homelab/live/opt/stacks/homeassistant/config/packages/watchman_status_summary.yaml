@@ -1,0 +1,24 @@
+command_line:
+  - sensor:
+      name: watchman_status
+      unique_id: watchman_status
+      command: "python3 /config/scripts/read_watchman_status.py status unknown"
+      scan_interval: 30
+
+  - sensor:
+      name: watchman_queue_entries
+      unique_id: watchman_queue_entries
+      command: "python3 /config/scripts/read_watchman_status.py queue_entries 0"
+      scan_interval: 30
+
+  - sensor:
+      name: watchman_blocked_entries
+      unique_id: watchman_blocked_entries
+      command: "python3 /config/scripts/read_watchman_status.py blocked_for_execution 0"
+      scan_interval: 30
+
+  - sensor:
+      name: watchman_llm_connected
+      unique_id: watchman_llm_connected
+      command: "python3 /config/scripts/read_watchman_status.py llm_connected false"
+      scan_interval: 30

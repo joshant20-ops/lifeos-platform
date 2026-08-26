@@ -1,0 +1,42 @@
+command_line:
+  - sensor:
+      name: LifeOS Patch Governance Backlog
+      unique_id: lifeos_patch_governance_backlog
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_patch_governance.json\"))[\"summary\"].get(\"backlog_waiting_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Patch Governance Active
+      unique_id: lifeos_patch_governance_active
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_patch_governance.json\"))[\"summary\"].get(\"active_queue_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Patch Governance Engineer
+      unique_id: lifeos_patch_governance_engineer
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_patch_governance.json\"))[\"summary\"].get(\"engineer_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Patch Governance Blocked
+      unique_id: lifeos_patch_governance_blocked
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_patch_governance.json\"))[\"summary\"].get(\"blocked_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Patch Governance Protected
+      unique_id: lifeos_patch_governance_protected
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_patch_governance.json\"))[\"summary\"].get(\"protected_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Patch Governance Done
+      unique_id: lifeos_patch_governance_done
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_patch_governance.json\"))[\"summary\"].get(\"done_count\",0))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS Patch Governance Total Known
+      unique_id: lifeos_patch_governance_total_known
+      command: "python3 -c 'import json;print(json.load(open(\"/config/www/lifeos/lifeos_patch_governance.json\"))[\"summary\"].get(\"total_known_jobs\",0))'"
+      scan_interval: 300

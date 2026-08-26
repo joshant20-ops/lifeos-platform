@@ -1,0 +1,6 @@
+shell_command:
+  lifeos_request_review_pending: "python3 /config/scripts/lifeos_action_request.py request_review_pending"
+  lifeos_request_clear_quarantine: "python3 /config/scripts/lifeos_action_request.py request_clear_quarantine"
+  lifeos_request_run_watchman_pipeline: "python3 /config/scripts/lifeos_action_request.py request_run_watchman_pipeline"
+
+  lifeos_run_watchman_now: "python3 /config/scripts/lifeos_action_request.py request_run_watchman_pipeline"

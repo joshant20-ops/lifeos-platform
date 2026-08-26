@@ -1,0 +1,18 @@
+command_line:
+  - sensor:
+      name: LifeOS PA Next MOT
+      unique_id: lifeos_pa_next_mot
+      command: "python3 -c 'import json; d=json.load(open(\"/config/www/lifeos/lifeos_dashboard.json\")); print(d.get(\"next_mot\",{}).get(\"due_date\") or \"unknown\")'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA Calendar Candidates
+      unique_id: lifeos_pa_calendar_candidates
+      command: "python3 -c 'import json; d=json.load(open(\"/config/www/lifeos/lifeos_dashboard.json\")); print(len(d.get(\"calendar_candidates\",[])))'"
+      scan_interval: 300
+
+  - sensor:
+      name: LifeOS PA Watchman Queue
+      unique_id: lifeos_pa_watchman_queue
+      command: "python3 -c 'import json; d=json.load(open(\"/config/www/lifeos/lifeos_dashboard.json\")); print(len(d.get(\"watchman_items\",[])))'"
+      scan_interval: 300

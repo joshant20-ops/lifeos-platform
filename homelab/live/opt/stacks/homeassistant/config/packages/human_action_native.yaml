@@ -1,0 +1,12 @@
+command_line:
+  - sensor:
+      name: Human Action Count
+      unique_id: human_action_count
+      command: "python3 /config/scripts/human_action_ha_sensor.py human_action_count"
+      scan_interval: 30
+
+  - sensor:
+      name: Human Action Summary
+      unique_id: human_action_summary
+      command: "python3 /config/scripts/human_action_ha_sensor.py human_action_summary"
+      scan_interval: 30

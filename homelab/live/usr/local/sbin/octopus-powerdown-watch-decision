@@ -1,0 +1,199 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+WATCHER = Path("/usr/local/sbin/octopus-powerdown-watch")
+STATE_DIR = Path("/opt/lifeos-watch/octopus-powerdown")
+
+DECISION_JSON = STATE_DIR / "decision.json"
+DECISION_TXT = STATE_DIR / "decision.txt"
+
+EXPECTED_KEYS = {
+    "checked_at",
+    "future_or_current_joined",
+    "baseline_state",
+    "baseline_numeric",
+}
+
+
+def atomic_write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{path.name}.",
+        dir=str(path.parent),
+        text=True,
+    )
+
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+
+        os.chmod(temp_name, 0o640)
+        os.replace(temp_name, path)
+    finally:
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def parse_output(text: str) -> dict:
+    values = {}
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+
+        if key in EXPECTED_KEYS:
+            values[key] = value.strip()
+
+    return values
+
+
+def build_decision(values: dict, watcher_rc: int) -> tuple[str, str]:
+    if watcher_rc != 0:
+        return (
+            "WATCHER_ERROR",
+            f"Low-level watcher exited with status {watcher_rc}.",
+        )
+
+    missing = sorted(EXPECTED_KEYS - values.keys())
+
+    if missing:
+        return (
+            "WATCHER_ERROR",
+            "Low-level watcher output missing required fields: "
+            + ",".join(missing),
+        )
+
+    try:
+        joined = int(values["future_or_current_joined"])
+    except Exception:
+        return (
+            "WATCHER_ERROR",
+            "future_or_current_joined is not an integer.",
+        )
+
+    state = values["baseline_state"].strip().lower()
+    numeric = values["baseline_numeric"].strip().lower()
+
+    if joined <= 0:
+        return (
+            "WAITING_FOR_EVENT",
+            "No current or future joined Power Down event is available.",
+        )
+
+    if numeric == "yes":
+        return (
+            "BASELINE_VALID",
+            "A current/future joined event exists and the baseline is numeric.",
+        )
+
+    if state in ("unknown", "unavailable", "none", ""):
+        return (
+            "EVENT_FOUND_BASELINE_PENDING",
+            "A current/future joined event exists but its baseline is not populated yet.",
+        )
+
+    return (
+        "BASELINE_NONNUMERIC",
+        "A current/future joined event exists but the baseline state is non-numeric.",
+    )
+
+
+def main() -> int:
+    checked = datetime.now(timezone.utc).isoformat()
+
+    if not WATCHER.exists():
+        result = {
+            "decision": "WATCHER_ERROR",
+            "reason": "Low-level watcher file missing.",
+            "decision_at": checked,
+            "watcher_exit": 127,
+        }
+
+        atomic_write(
+            DECISION_JSON,
+            json.dumps(result, indent=2, sort_keys=True) + "\n",
+        )
+
+        atomic_write(
+            DECISION_TXT,
+            "WATCHER_ERROR\nLow-level watcher file missing.\n",
+        )
+
+        print("decision=WATCHER_ERROR")
+        print("decision_reason=Low-level watcher file missing.")
+        return 1
+
+    proc = subprocess.run(
+        [str(WATCHER)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=os.environ.copy(),
+    )
+
+    if proc.stdout:
+        print(proc.stdout, end="")
+
+    if proc.stderr:
+        print(proc.stderr, end="", file=sys.stderr)
+
+    values = parse_output(proc.stdout)
+
+    decision, reason = build_decision(
+        values,
+        proc.returncode,
+    )
+
+    result = {
+        "decision": decision,
+        "reason": reason,
+        "decision_at": checked,
+        "watcher_exit": proc.returncode,
+        "watcher": {
+            "checked_at": values.get("checked_at"),
+            "future_or_current_joined": values.get(
+                "future_or_current_joined"
+            ),
+            "baseline_state": values.get("baseline_state"),
+            "baseline_numeric": values.get("baseline_numeric"),
+        },
+    }
+
+    atomic_write(
+        DECISION_JSON,
+        json.dumps(result, indent=2, sort_keys=True) + "\n",
+    )
+
+    atomic_write(
+        DECISION_TXT,
+        f"{decision}\n{reason}\n",
+    )
+
+    print(f"decision={decision}")
+    print(f"decision_reason={reason}")
+    print(f"decision_file={DECISION_JSON}")
+
+    if decision == "WATCHER_ERROR":
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,54 @@
+- id: '1766503926305'
+  name: Movie Night
+  entities:
+    switch.corner_light:
+      friendly_name: Corner Light
+      state: 'on'
+    media_player.westcott_way_living_room_tv:
+      source_list:
+      - TV
+      - HDMI
+      - '5'
+      - Apple Music
+      - Apple TV
+      - BBC News
+      - BBC Sounds
+      - BBC Sport
+      - BBC iPlayer
+      - BT Sport
+      - BritBox
+      - CHILI
+      - Channel 4
+      - Deezer
+      - Disney+
+      - Facebook Watch
+      - Gallery
+      - Google Play Movies
+      - Hayu - Watch Reality TV
+      - ITVX - fresh, free streaming.
+      - Internet
+      - McAfee Security for TV
+      - NOW
+      - Netflix
+      - Prime Video
+      - Privacy Choices
+      - Rakuten TV
+      - STV Player
+      - SmartThings
+      - Spotify - Music and Podcasts
+      - TikTok
+      - Tubi - Free Movies ＆ TV
+      - U
+      - Universal Guide
+      - XITE - Free Music Videos
+      - YouTube
+      - e-Manual
+      device_class: tv
+      friendly_name: Westcott Way Living room tv
+      supported_features: 24509
+      state: 'off'
+    remote.westcott_way_living_room_tv:
+      friendly_name: Westcott Way Living room tv
+      supported_features: 0
+      state: 'off'
+  metadata: {}

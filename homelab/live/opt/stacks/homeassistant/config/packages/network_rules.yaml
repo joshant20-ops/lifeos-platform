@@ -1,0 +1,21 @@
+command_line:
+  - sensor:
+      name: network_rule_total
+      unique_id: network_rule_total
+      command: >-
+        python3 -c "import json;from pathlib import Path;print(len(json.loads(Path('/config/network_active_rules.json').read_text())['rules']))"
+      scan_interval: 60
+
+  - sensor:
+      name: network_rule_enabled_count
+      unique_id: network_rule_enabled_count
+      command: >-
+        python3 -c "import json;from pathlib import Path;print(sum(1 for r in json.loads(Path('/config/network_active_rules.json').read_text())['rules'] if r.get('enabled')))"
+      scan_interval: 60
+
+  - sensor:
+      name: network_rule_disabled_count
+      unique_id: network_rule_disabled_count
+      command: >-
+        python3 -c "import json;from pathlib import Path;print(sum(1 for r in json.loads(Path('/config/network_active_rules.json').read_text())['rules'] if not r.get('enabled')))"
+      scan_interval: 60

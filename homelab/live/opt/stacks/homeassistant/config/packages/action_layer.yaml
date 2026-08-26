@@ -1,0 +1,60 @@
+command_line:
+  - sensor:
+      name: "Action Required Count"
+      unique_id: action_required_count_v1
+      command: "python3 /config/read_action_required_count.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Warning Count"
+      unique_id: warning_count_v1
+      command: "python3 /config/read_warning_count.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Healthy Count"
+      unique_id: healthy_count_v1
+      command: "python3 /config/read_healthy_count.py"
+      scan_interval: 60
+
+  - binary_sensor:
+      name: "Pi 5 Action Required"
+      unique_id: pi5_action_required_v1
+      command: "python3 /config/read_pi5_action_required.py"
+      payload_on: "true"
+      payload_off: "false"
+      scan_interval: 60
+
+  - binary_sensor:
+      name: "Z97 Action Required"
+      unique_id: z97_action_required_v1
+      command: "python3 /config/read_z97_action_required.py"
+      payload_on: "true"
+      payload_off: "false"
+      scan_interval: 60
+
+  - binary_sensor:
+      name: "Pi 3 Action Required"
+      unique_id: pi3_action_required_v1
+      command: "python3 /config/read_pi3_action_required.py"
+      payload_on: "true"
+      payload_off: "false"
+      scan_interval: 60
+
+  - sensor:
+      name: "Pi 5 Severity"
+      unique_id: pi5_severity_v1
+      command: "python3 /config/read_pi5_severity.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Z97 Severity"
+      unique_id: z97_severity_v1
+      command: "python3 /config/read_z97_severity.py"
+      scan_interval: 60
+
+  - sensor:
+      name: "Pi 3 Severity"
+      unique_id: pi3_severity_v1
+      command: "python3 /config/read_pi3_severity.py"
+      scan_interval: 60
