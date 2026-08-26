@@ -1,0 +1,53 @@
+{
+  "contract_name": "LifeOS File-Based Worker Contract",
+  "created_time": 1779567647,
+  "version": 1,
+  "hard_rules": [
+    "Steward must not import PA runtime code.",
+    "PA must not import Steward runtime code.",
+    "Watchman must not import Engineer runtime code.",
+    "Engineer must not import Watchman runtime code.",
+    "Communication must happen through queues, result logs, state files, and flags.",
+    "Workers may be offline; producers must queue work and continue safely.",
+    "Workers must not execute privileged actions directly.",
+    "Engineer can propose technical actions, but Watchman remains execution gatekeeper."
+  ],
+  "steward_to_pa": {
+    "job_queue": "/home/joshan/automation/queues/pa_job_queue.jsonl",
+    "pending_flag": "/home/joshan/automation/queues/pa_jobs_pending.flag",
+    "producer": "Steward",
+    "consumer": "PA",
+    "allowed_job_types": [
+      "qa_audit",
+      "document_ocr_review",
+      "open_loop_detection",
+      "useful_information_extraction",
+      "contradiction_check",
+      "lifecycle_tracking"
+    ]
+  },
+  "pa_to_steward": {
+    "result_log": "/home/joshan/automation/logs/pa_audit_results.jsonl",
+    "latest_summary": "/home/joshan/automation/state/pa_latest_summary.json",
+    "open_loops": "/home/joshan/automation/state/open_loops.json",
+    "consumer": "Steward"
+  },
+  "watchman_to_engineer": {
+    "job_queue": "/home/joshan/automation/queues/engineer_job_queue.jsonl",
+    "pending_flag": "/home/joshan/automation/queues/engineer_jobs_pending.flag",
+    "producer": "Watchman",
+    "consumer": "Engineer",
+    "allowed_job_types": [
+      "service_check",
+      "failure_review",
+      "repair_proposal",
+      "health_check",
+      "pipeline_fault_review"
+    ]
+  },
+  "engineer_to_watchman": {
+    "result_log": "/home/joshan/automation/logs/engineer_worker_results.jsonl",
+    "latest_summary": "/home/joshan/automation/state/engineer_latest_summary.json",
+    "consumer": "Watchman"
+  }
+}
