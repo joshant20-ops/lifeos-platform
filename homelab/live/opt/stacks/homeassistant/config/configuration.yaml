@@ -18,3 +18,46 @@ scene: !include scenes.yaml
 homeassistant:
   packages: !include_dir_named packages
 
+
+# Predbat recorder policy.
+# Keeps the small history subset Predbat requires while avoiding
+# high-volume Predbat attributes in the HA recorder.
+recorder:
+  exclude:
+    domains:
+      - predbat
+      - predheat
+    entities:
+      - sensor.predbat_load_ml_forecast
+      - sensor.predbat_pv_today
+      - sensor.predbat_pv_tomorrow
+      - sensor.predbat_pv_forecast_raw
+      - sensor.predbat_pv_d2
+      - sensor.predbat_pv_d3
+      - sensor.predbat_temperature
+      - sensor.predbat_pv_forecast_h0
+  include:
+    entities:
+      - predbat.cost_today
+      - predbat.cost_today_car
+      - predbat.cost_yesterday_car
+      - predbat.load_ml_stats
+      - predbat.load_power
+      - predbat.load_energy_actual
+      - predbat.load_energy_predicted
+      - predbat.load_energy_adjusted
+      - predbat.load_inday_adjustment
+      - predbat.ppkwh_today
+      - predbat.ppkwh_hour
+      - predbat.pv_power
+      - predbat.rates
+      - predbat.rates_export
+      - predbat.soc_kw_h0
+      - predbat.savings_yesterday_pvbat
+      - predbat.status
+      - predbat.savings_total_predbat
+      - predbat.savings_total_pvbat
+      - predheat.external_temperature
+      - predheat.heating_energy
+      - predheat.internal_temperature
+      - predheat.target_temperature
