@@ -298,8 +298,6 @@ PRE_HEAD="$(g rev-parse HEAD)"
 
 echo "Repository current."
 
-/usr/local/sbin/lifeos-system-memory || fail "System memory generation failed"
-
 stage "B/8 — SCAN LIVE SOURCE"
 
 mkdir -p "$TMP/live"
@@ -472,7 +470,7 @@ echo "Security gate: PASS"
 
 stage "F/8 — GIT DIFFERENCE"
 
-g add homelab/live homelab/retired homelab/.managed-files.txt SYSTEM_STATE.md
+g add homelab/live homelab/retired homelab/.managed-files.txt
 
 if g diff --cached --quiet; then
     echo

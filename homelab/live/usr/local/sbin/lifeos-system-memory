@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+OUT=/home/joshan/lifeos-platform/SYSTEM_STATE.md
+TMP=$(mktemp)
+trap 'rm -f "$TMP"' EXIT
+
+{
+echo "# LifeOS System State"
+echo
+echo "> Automatically generated from the live Pi 5."
+echo "> This file is the first reference for AI/human system context."
+echo "> Secrets, credentials, private addresses and runtime databases are intentionally omitted."
+echo
+echo "## Authority"
+echo
+echo "- Primary host: Raspberry Pi 5 \`Docker\`"
+echo "- Repository: \`joshant20-ops/lifeos-platform\`"
+echo "- Branch: \`main\`"
+echo "- Live source snapshot: \`homelab/live/\`"
+echo "- Retired source: \`homelab/retired/\`"
+echo "- Managed-file manifest: \`homelab/.managed-files.txt\`"
+echo "- Snapshot policy: source/config only; runtime data and secrets excluded"
+echo
+echo "## Host"
+echo
+printf -- "- Hostname: \`%s\`\n" "$(hostname)"
+printf -- "- Architecture: \`%s\`\n" "$(uname -m)"
+printf -- "- Kernel: \`%s\`\n" "$(uname -r)"
+if [ -r /etc/os-release ]; then
+    . /etc/os-release
+    printf -- "- OS: \`%s\`\n" "${PRETTY_NAME:-unknown}"
+fi
+echo
+echo "## Active Docker Services"
+echo
+docker ps --format '{{.Names}}|{{.Image}}' |
+    sort |
+    while IFS='|' read -r n i; do
+        printf -- "- \`%s\` — \`%s\`\n" "$n" "$i"
+    done
+echo
+echo "## Source Stacks Present"
+echo
+if [ -d /opt/stacks ]; then
+    find /opt/stacks -mindepth 1 -maxdepth 1 -type d -printf '%f\n' |
+        sort |
+        while read -r n; do printf -- "- \`%s\`\n" "$n"; done
+fi
+echo
+echo "## GitHub Synchronisation"
+echo
+echo "- Nightly schedule: approximately 02:30 Europe/London"
+echo "- Hard timeout: 15 minutes"
+echo "- Maximum managed file size: 25 MiB"
+echo "- No-change runs are journalled without empty commits"
+echo "- Removed managed source is retained under \`homelab/retired/\`"
+echo
+echo "## Important Exclusions"
+echo
+echo "- Credentials, secrets and private keys"
+echo "- Home Assistant \`.storage\`, databases and generated \`www/\` output"
+echo "- Application databases, logs and caches"
+echo "- Z-Wave downloaded device database/state"
+echo "- HACS/downloaded third-party integrations"
+echo "- AdGuard, NPM and qBittorrent runtime state"
+echo "- Personal Privacy Guardian profiles/data"
+echo
+echo "## Snapshot Coverage"
+if [ -f /home/joshan/lifeos-platform/homelab/.managed-files.txt ]; then
+    printf -- "- Managed files: %s\n" \
+        "$(wc -l </home/joshan/lifeos-platform/homelab/.managed-files.txt)"
+else
+    echo "- Managed files: snapshot not yet generated"
+fi
+echo
+echo "## Generated"
+printf -- "- UTC: \`%s\`\n" "$(date -u --iso-8601=seconds)"
+} >"$TMP"
+
+chown joshan:joshan "$TMP"
+mv "$TMP" "$OUT"
