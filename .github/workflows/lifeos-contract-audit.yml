@@ -1,0 +1,42 @@
+name: LifeOS Contract Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'homelab/live/home/joshan/automation/**'
+      - '.github/workflows/lifeos-contract-audit.yml'
+  pull_request:
+    paths:
+      - 'homelab/live/home/joshan/automation/**'
+      - '.github/workflows/lifeos-contract-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run LifeOS contract validator
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          BASE="$GITHUB_WORKSPACE/homelab/live/home/joshan/automation"
+          VALIDATOR="$BASE/contracts/lifeos_file_contract_validator.py"
+          CI_VALIDATOR="$RUNNER_TEMP/lifeos_file_contract_validator_ci.py"
+
+          test -f "$VALIDATOR"
+
+          sed \
+            "s|BASE = Path(\"/home/joshan/automation\")|BASE = Path(\"$BASE\")|" \
+            "$VALIDATOR" > "$CI_VALIDATOR"
+
+          python3 "$CI_VALIDATOR"
