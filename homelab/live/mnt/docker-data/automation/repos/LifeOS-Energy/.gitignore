@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*.log
+.env
+.env.*
+!.env.example
+data/*
+!data/.gitkeep
+logs/*
+!logs/.gitkeep
+backups/
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/

@@ -1,0 +1,89 @@
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+  <title>LifeOS Energy</title>
+  <link rel="stylesheet" href="/static/energy.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="header">
+      <div>
+        <p class="eyebrow">LifeOS</p>
+        <h1>Energy</h1>
+      </div>
+
+      <div class="status">
+        <span id="state-dot" class="state-dot"></span>
+        <span id="state-text">Connecting</span>
+      </div>
+    </header>
+
+    <section class="cards">
+      <article class="card">
+        <span class="label">Solar production</span>
+        <strong id="production">—</strong>
+      </article>
+
+      <article class="card">
+        <span class="label">House consumption</span>
+        <strong id="consumption">—</strong>
+      </article>
+
+      <article class="card">
+        <span class="label">Grid</span>
+        <strong id="grid">—</strong>
+        <small id="grid-direction">—</small>
+      </article>
+
+      <article class="card">
+        <span class="label">Battery</span>
+        <strong id="battery-soc">—</strong>
+        <small id="battery-power">—</small>
+      </article>
+
+      <article class="card" id="powerdown-card">
+        <span class="label">Octopus Power Down</span>
+        <strong id="powerdown-status">Checking…</strong>
+        <small id="powerdown-reason">Waiting for status</small>
+      </article>
+    </section>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Last 24 hours</p>
+          <h2>Power history</h2>
+        </div>
+        <span id="history-count">0 readings</span>
+      </div>
+
+      <canvas
+        id="history-chart"
+        width="1200"
+        height="420"
+        aria-label="Energy history chart"
+      ></canvas>
+
+      <div class="legend">
+        <span>Solar</span>
+        <span>House</span>
+        <span>Grid import</span>
+        <span>Battery</span>
+      </div>
+    </section>
+
+    <footer>
+      <span id="source">Source: —</span>
+      <span id="updated">Updated: —</span>
+    </footer>
+  </main>
+
+  <script src="/static/energy.js"></script>
+</body>
+</html>

@@ -40,6 +40,12 @@ docker ps --format '{{.Names}}|{{.Image}}' |
         printf -- "- \`%s\` — \`%s\`\n" "$n" "$i"
     done
 echo
+echo "## Key Source Locations"
+echo
+printf '%s\n' '- LifeOS Energy source: `/mnt/docker-data/automation/repos/LifeOS-Energy`'
+printf '%s\n' '- LifeOS Energy forecast-learning: `/opt/stacks/lifeos-energy/forecast-learning`'
+echo
+
 echo "## Source Stacks Present"
 echo
 if [ -d /opt/stacks ]; then
