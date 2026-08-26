@@ -134,11 +134,9 @@ rest:
         value_template: >
           {{ value_json.starting_soc_percent | float(0) }}
         unit_of_measurement: "%"
-        device_class: battery
 
       - name: LifeOS Energy Planned End SOC
         unique_id: lifeos_energy_planned_end_soc
         value_template: >
           {{ value_json.ending_soc_percent | float(0) }}
         unit_of_measurement: "%"
-        device_class: battery

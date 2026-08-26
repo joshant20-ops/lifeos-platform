@@ -60,7 +60,6 @@ opt/stacks/homeassistant/config/packages/action_layer.yaml
 opt/stacks/homeassistant/config/packages/container_visibility.yaml
 opt/stacks/homeassistant/config/packages/execution_safety_native.yaml
 opt/stacks/homeassistant/config/packages/host_interpretation.yaml
-opt/stacks/homeassistant/config/packages/host_readiness.yaml
 opt/stacks/homeassistant/config/packages/human_action_native.yaml
 opt/stacks/homeassistant/config/packages/lab_error_board.yaml
 opt/stacks/homeassistant/config/packages/lifeos_action_processor_native.yaml
