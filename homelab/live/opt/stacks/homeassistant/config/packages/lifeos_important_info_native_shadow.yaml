@@ -1,0 +1,66 @@
+command_line:
+  - sensor:
+      name: LifeOS Important Info Native State Raw
+      unique_id: lifeos_important_info_native_state_raw
+      command: "cat /config/www/lifeos/important_info_native_state.json"
+      scan_interval: 30
+      value_template: "{{ value_json.important_info_proposal_status }}"
+      json_attributes:
+        - important_info_pending_proposals
+        - important_info_proposal_status
+        - verification_status
+        - verification_needs_review
+        - verification_conflicting
+        - verification_stale
+        - verification_unknown
+        - verification_unverified
+
+template:
+  - sensor:
+      - name: LifeOS Important Info Pending Proposals Native Shadow
+        unique_id: lifeos_important_info_pending_proposals_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'important_info_pending_proposals') | int(0) }}
+
+      - name: LifeOS Important Info Proposal Status Native Shadow
+        unique_id: lifeos_important_info_proposal_status_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'important_info_proposal_status') or 'unknown' }}
+
+      - name: LifeOS Verification Status Native Shadow
+        unique_id: lifeos_verification_status_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'verification_status') or 'unknown' }}
+
+      - name: LifeOS Verification Needs Review Native Shadow
+        unique_id: lifeos_verification_needs_review_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'verification_needs_review') | int(0) }}
+
+      - name: LifeOS Verification Conflicting Native Shadow
+        unique_id: lifeos_verification_conflicting_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'verification_conflicting') | int(0) }}
+
+      - name: LifeOS Verification Stale Native Shadow
+        unique_id: lifeos_verification_stale_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'verification_stale') | int(0) }}
+
+      - name: LifeOS Verification Unknown Native Shadow
+        unique_id: lifeos_verification_unknown_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'verification_unknown') | int(0) }}
+
+      - name: LifeOS Verification Unverified Native Shadow
+        unique_id: lifeos_verification_unverified_native_shadow
+        state: >
+          {{ state_attr('sensor.lifeos_important_info_native_state_raw',
+                        'verification_unverified') | int(0) }}

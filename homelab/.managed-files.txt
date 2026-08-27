@@ -74,9 +74,11 @@ opt/stacks/homeassistant/config/packages/lifeos_email_lifecycle_controls.yaml
 opt/stacks/homeassistant/config/packages/lifeos_energy_directional.yaml
 opt/stacks/homeassistant/config/packages/lifeos_energy.yaml
 opt/stacks/homeassistant/config/packages/lifeos_human_trust_native.yaml
+opt/stacks/homeassistant/config/packages/lifeos_important_info_native_shadow.yaml
 opt/stacks/homeassistant/config/packages/lifeos_legacy_patch_governance.yaml
 opt/stacks/homeassistant/config/packages/lifeos_open_loops.yaml
 opt/stacks/homeassistant/config/packages/lifeos_pa_lifecycle.yaml
+opt/stacks/homeassistant/config/packages/lifeos_pa_native_shadow.yaml
 opt/stacks/homeassistant/config/packages/lifeos_patch_governance.yaml
 opt/stacks/homeassistant/config/packages/lifeos_pa.yaml
 opt/stacks/homeassistant/config/packages/lifeos_playbook_detail_native.yaml
