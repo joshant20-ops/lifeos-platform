@@ -7,8 +7,7 @@ LOGS = AUTO / 'logs'
 LOGS.mkdir(parents=True, exist_ok=True)
 
 steps = [
-    ('paperless_memory_index', AUTO / 'scripts' / 'lifeos_paperless_memory_index.py'),
-    ('paperless_notes_reader', AUTO / 'scripts' / 'lifeos_paperless_notes_reader.py'),
+    ('paperless_rest_refresh', Path('/home/joshan/automation/scripts/lifeos_paperless_rest_refresh.py')),
     ('evidence_link_proposals', AUTO / 'scripts' / 'lifeos_evidence_link_proposals_refresh.py'),
     ('important_info_proposals', AUTO / 'scripts' / 'lifeos_important_info_proposals_refresh.py'),
     ('important_info_verification', AUTO / 'scripts' / 'lifeos_important_info_verification_refresh.py'),
