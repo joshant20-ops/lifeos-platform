@@ -85,15 +85,8 @@ out = HA / "www" / "lifeos" / "important_information_human.md"
 out.parent.mkdir(parents=True, exist_ok=True)
 out.write_text(md)
 
-lovelace = read_json(LOVELACE, None)
-if lovelace:
-    views = lovelace.setdefault("data", {}).setdefault("config", {}).setdefault("views", [])
-    target = next((v for v in views if v.get("path") == "important-information"), None)
-    if target:
-        for card in target.get("cards", []):
-            if card.get("title") == "Human View":
-                card["content"] = md
-        LOVELACE.write_text(json.dumps(lovelace, indent=2, sort_keys=False) + "\n")
+# Home Assistant owns dashboard presentation.
+# This worker now only generates canonical Markdown.
 
 print(json.dumps({
     "ok": True,
