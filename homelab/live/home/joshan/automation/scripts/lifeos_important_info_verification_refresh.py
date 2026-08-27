@@ -205,121 +205,8 @@ md = render_verification_md(data)
 (HA / "www" / "lifeos").mkdir(parents=True, exist_ok=True)
 (HA / "www" / "lifeos" / "important_information_verification.md").write_text(md)
 
-helper = HA / "scripts" / "lifeos_important_info_verification.py"
-
-helper.write_text("""#!/usr/bin/env python3
-import json, sys
-from pathlib import Path
-
-p = Path('/config/important_information_verification_summary.json')
-
-try:
-    data = json.loads(p.read_text())
-except Exception:
-    print(0)
-    raise SystemExit(0)
-
-field = sys.argv[1] if len(sys.argv) > 1 else 'needs_review_count'
-
-if field == 'status':
-    print(data.get('status','unknown'))
-else:
-    print(data.get('counts',{}).get(field, data.get(field,0)))
-""")
-
-helper.chmod(0o755)
-
-pkg = PKG.read_text() if PKG.exists() else "command_line:\n"
-
-if "LifeOS Verification Needs Review" not in pkg:
-
-    pkg += r'''
-
-  - sensor:
-      name: LifeOS Verification Needs Review
-      command: "python3 /config/scripts/lifeos_important_info_verification.py needs_review_count"
-      scan_interval: 300
-
-  - sensor:
-      name: LifeOS Verification Status
-      command: "python3 /config/scripts/lifeos_important_info_verification.py status"
-      scan_interval: 300
-
-  - sensor:
-      name: LifeOS Verification Unknown
-      command: "python3 /config/scripts/lifeos_important_info_verification.py unknown"
-      scan_interval: 300
-
-  - sensor:
-      name: LifeOS Verification Unverified
-      command: "python3 /config/scripts/lifeos_important_info_verification.py unverified"
-      scan_interval: 300
-
-  - sensor:
-      name: LifeOS Verification Conflicting
-      command: "python3 /config/scripts/lifeos_important_info_verification.py conflicting"
-      scan_interval: 300
-
-  - sensor:
-      name: LifeOS Verification Stale
-      command: "python3 /config/scripts/lifeos_important_info_verification.py stale"
-      scan_interval: 300
-'''
-
-    PKG.write_text(pkg)
-
-lovelace = read_json(LOVELACE, None)
-
-if not lovelace:
-    raise SystemExit("Could not read Lovelace dashboard")
-
-views = lovelace.setdefault("data", {}).setdefault("config", {}).setdefault("views", [])
-
-target = None
-
-for v in views:
-    if v.get("path") == "important-information":
-        target = v
-        break
-
-if target is None:
-    raise SystemExit("Important Information dashboard view missing")
-
-cards = target.setdefault("cards", [])
-
-cards = [
-    c for c in cards
-    if c.get("title") not in {
-        "Verification Summary",
-        "Needs Verification"
-    }
-]
-
-cards.insert(0, {
-    "type": "entities",
-    "title": "Verification Summary",
-    "show_header_toggle": False,
-    "entities": [
-        "sensor.lifeos_verification_status",
-        "sensor.lifeos_verification_needs_review",
-        "sensor.lifeos_verification_unknown",
-        "sensor.lifeos_verification_unverified",
-        "sensor.lifeos_verification_conflicting",
-        "sensor.lifeos_verification_stale"
-    ]
-})
-
-cards.insert(1, {
-    "type": "markdown",
-    "title": "Needs Verification",
-    "content": md
-})
-
-target["cards"] = cards
-
-LOVELACE.write_text(
-    json.dumps(lovelace, indent=2, sort_keys=False) + "\n"
-)
+# MQTT owns Home Assistant scalar state transport.
+# Home Assistant owns dashboard presentation.
 
 print(json.dumps({
     "ok": True,
@@ -330,3 +217,47 @@ print(json.dumps({
     "markdown": str(HA / "www/lifeos/important_information_verification.md"),
     "needs_review_count": summary["needs_review_count"]
 }, indent=2))
+
+# LIFEOS_NATIVE_STATE_PUBLISHER_V1
+try:
+    _proposal_summary = read_json(
+        HA / "important_information_proposal_summary.json",
+        {}
+    )
+    _verification_summary = read_json(
+        HA / "important_information_verification_summary.json",
+        {}
+    )
+    _counts = _verification_summary.get("counts", {})
+
+    _native_state = {
+        "important_info_pending_proposals":
+            _proposal_summary.get("pending_count", 0),
+        "important_info_proposal_status":
+            _proposal_summary.get("status", "unknown"),
+        "verification_status":
+            _verification_summary.get("status", "unknown"),
+        "verification_needs_review":
+            _verification_summary.get("needs_review_count", 0),
+        "verification_conflicting":
+            _counts.get("conflicting", 0),
+        "verification_stale":
+            _counts.get("stale", 0),
+        "verification_unknown":
+            _counts.get("unknown", 0),
+        "verification_unverified":
+            _counts.get("unverified", 0),
+    }
+
+    _native_path = (
+        HA / "www" / "lifeos" /
+        "important_info_native_state.json"
+    )
+    _native_path.parent.mkdir(parents=True, exist_ok=True)
+    _native_path.write_text(
+        json.dumps(_native_state, separators=(",", ":")) + "\n"
+    )
+except Exception as _native_exc:
+    raise SystemExit(
+        f"native HA state publication failed: {_native_exc}"
+    )

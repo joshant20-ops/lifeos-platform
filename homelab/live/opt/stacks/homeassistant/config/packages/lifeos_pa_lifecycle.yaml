@@ -42,43 +42,10 @@ command_line:
       scan_interval: 300
 
 
-  - sensor:
-      name: LifeOS Important Info Pending Proposals
-      command: "python3 /config/scripts/lifeos_important_info_proposals.py pending_count"
-      scan_interval: 300
-
-  - sensor:
-      name: LifeOS Important Info Proposal Status
-      command: "python3 /config/scripts/lifeos_important_info_proposals.py status"
-      scan_interval: 300
 
 
-  - sensor:
-      name: LifeOS Verification Needs Review
-      command: "python3 /config/scripts/lifeos_important_info_verification.py needs_review_count"
-      scan_interval: 300
 
-  - sensor:
-      name: LifeOS Verification Status
-      command: "python3 /config/scripts/lifeos_important_info_verification.py status"
-      scan_interval: 300
 
-  - sensor:
-      name: LifeOS Verification Unknown
-      command: "python3 /config/scripts/lifeos_important_info_verification.py unknown"
-      scan_interval: 300
 
-  - sensor:
-      name: LifeOS Verification Unverified
-      command: "python3 /config/scripts/lifeos_important_info_verification.py unverified"
-      scan_interval: 300
 
-  - sensor:
-      name: LifeOS Verification Conflicting
-      command: "python3 /config/scripts/lifeos_important_info_verification.py conflicting"
-      scan_interval: 300
 
-  - sensor:
-      name: LifeOS Verification Stale
-      command: "python3 /config/scripts/lifeos_important_info_verification.py stale"
-      scan_interval: 300

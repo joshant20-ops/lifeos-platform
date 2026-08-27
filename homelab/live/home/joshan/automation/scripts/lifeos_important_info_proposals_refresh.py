@@ -100,82 +100,8 @@ md = render_md(data)
 (HA / "www" / "lifeos").mkdir(parents=True, exist_ok=True)
 (HA / "www" / "lifeos" / "important_information_proposals.md").write_text(md)
 
-# Add helper script for HA sensors
-helper = HA / "scripts" / "lifeos_important_info_proposals.py"
-helper.parent.mkdir(parents=True, exist_ok=True)
-helper.write_text("""#!/usr/bin/env python3
-import json, sys
-from pathlib import Path
-
-p = Path('/config/important_information_proposal_summary.json')
-try:
-    data = json.loads(p.read_text())
-except Exception:
-    print(0)
-    raise SystemExit(0)
-
-field = sys.argv[1] if len(sys.argv) > 1 else 'pending_count'
-print(data.get(field, 0))
-""")
-helper.chmod(0o755)
-
-# Extend package
-pkg = PKG.read_text() if PKG.exists() else "command_line:\n"
-if "LifeOS Important Info Pending Proposals" not in pkg:
-    pkg += r'''
-
-  - sensor:
-      name: LifeOS Important Info Pending Proposals
-      command: "python3 /config/scripts/lifeos_important_info_proposals.py pending_count"
-      scan_interval: 300
-
-  - sensor:
-      name: LifeOS Important Info Proposal Status
-      command: "python3 /config/scripts/lifeos_important_info_proposals.py status"
-      scan_interval: 300
-'''
-    PKG.write_text(pkg)
-
-# Patch Important Information Lovelace view
-lovelace = read_json(LOVELACE, None)
-if not lovelace:
-    raise SystemExit("Could not read Lovelace dashboard")
-
-views = lovelace.setdefault("data", {}).setdefault("config", {}).setdefault("views", [])
-target = None
-for v in views:
-    if v.get("path") == "important-information" or v.get("title") == "Important Information":
-        target = v
-        break
-
-if target is None:
-    target = {
-        "title": "Important Information",
-        "path": "important-information",
-        "icon": "mdi:information-outline",
-        "cards": []
-    }
-    views.append(target)
-
-cards = target.setdefault("cards", [])
-cards = [c for c in cards if c.get("title") not in {"Important Information Proposals", "Proposal Sensors"}]
-cards.insert(0, {
-    "type": "entities",
-    "title": "Proposal Sensors",
-    "show_header_toggle": False,
-    "entities": [
-        "sensor.lifeos_important_info_pending_proposals",
-        "sensor.lifeos_important_info_proposal_status"
-    ]
-})
-cards.insert(1, {
-    "type": "markdown",
-    "title": "Important Information Proposals",
-    "content": md
-})
-target["cards"] = cards
-
-LOVELACE.write_text(json.dumps(lovelace, indent=2, sort_keys=False) + "\n")
+# MQTT owns Home Assistant scalar state transport.
+# Home Assistant owns dashboard presentation.
 
 print(json.dumps({
     "ok": True,

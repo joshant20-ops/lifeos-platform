@@ -38,6 +38,70 @@ for name, script in steps:
         result['ok'] = False
     result['steps'].append(step)
 
+# LIFEOS_MQTT_PUBLISH_V1
+if result.get("ok"):
+    try:
+        mqtt_state = LOGS.parent / "dummy"
+        state_file = Path(
+            "/opt/stacks/homeassistant/config/www/lifeos/"
+            "important_info_native_state.json"
+        )
+
+        if not state_file.is_file():
+            raise RuntimeError(
+                "canonical MQTT state file missing"
+            )
+
+        payload = state_file.read_text().strip()
+        json.loads(payload)
+
+        mqtt_commands = [
+            [
+                "mosquitto_pub",
+                "-h", "127.0.0.1",
+                "-p", "1883",
+                "-t", "lifeos/status",
+                "-m", "online",
+                "-r",
+            ],
+            [
+                "mosquitto_pub",
+                "-h", "127.0.0.1",
+                "-p", "1883",
+                "-t", "lifeos/important_info/state",
+                "-m", payload,
+                "-r",
+            ],
+        ]
+
+        for cmd in mqtt_commands:
+            proc = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    proc.stderr[-500:] or
+                    "mosquitto_pub failed"
+                )
+
+        result["mqtt"] = {
+            "ok": True,
+            "topic": "lifeos/important_info/state",
+            "retained": True,
+        }
+
+    except Exception as e:
+        result["ok"] = False
+        result["mqtt"] = {
+            "ok": False,
+            "error": str(e),
+        }
+
+
 out = LOGS / 'important_info_daily_refresh_status.json'
 out.write_text(json.dumps(result, indent=2, sort_keys=True) + '\n')
 
