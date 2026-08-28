@@ -218,6 +218,16 @@ excluded() {
 
 source_file() {
     local f="$1"
+
+    # LIFEOS_PREDBAT_SANITY_RUNTIME_EXPORT_V1
+    # Deliberately sanitised compact runtime evidence only.
+    case "$f" in
+        /opt/stacks/lifeos-energy/predbat-sanity-export/latest.json|\
+        /opt/stacks/lifeos-energy/predbat-sanity-export/daily.json)
+            return 0
+            ;;
+    esac
+
     local b
     b="$(basename "$f")"
 

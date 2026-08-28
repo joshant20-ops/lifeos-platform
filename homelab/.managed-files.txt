@@ -74,7 +74,6 @@ opt/stacks/homeassistant/config/packages/lifeos_email_lifecycle_controls.yaml
 opt/stacks/homeassistant/config/packages/lifeos_energy_directional.yaml
 opt/stacks/homeassistant/config/packages/lifeos_energy.yaml
 opt/stacks/homeassistant/config/packages/lifeos_human_trust_native.yaml
-opt/stacks/homeassistant/config/packages/lifeos_important_info_native_shadow.yaml
 opt/stacks/homeassistant/config/packages/lifeos_legacy_patch_governance.yaml
 opt/stacks/homeassistant/config/packages/lifeos_open_loops.yaml
 opt/stacks/homeassistant/config/packages/lifeos_pa_lifecycle.yaml
@@ -159,8 +158,6 @@ opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py.bak_simple_qa_only_
 opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py.bak_wire_submit_once_20260522_231341
 opt/stacks/homeassistant/config/scripts/lifeos_ha_ask.py
 opt/stacks/homeassistant/config/scripts/lifeos_human_trust_ha_sensor.py
-opt/stacks/homeassistant/config/scripts/lifeos_important_info_proposals.py
-opt/stacks/homeassistant/config/scripts/lifeos_important_info_verification.py
 opt/stacks/homeassistant/config/scripts/lifeos_pa_lifecycle_export.py
 opt/stacks/homeassistant/config/scripts/lifeos_playbook_detail_ha_sensor.py
 opt/stacks/homeassistant/config/scripts/lifeos_system_health_ha_sensor.py
@@ -177,6 +174,11 @@ opt/stacks/lifeos-energy/forecast-learning/collector.py
 opt/stacks/lifeos-energy/forecast-learning/shadow_learner.py
 opt/stacks/lifeos-energy/forecast-learning/shadow_learner.py.pre_battery_entity_fix.20260824-094155.bak
 opt/stacks/lifeos-energy/forecast-learning/wait_for_ha_energy.py
+opt/stacks/lifeos-energy/powerdown-assurance/lifeos-powerdown-assurance-active.service
+opt/stacks/lifeos-energy/powerdown-assurance/lifeos-powerdown-assurance-active.timer
+opt/stacks/lifeos-energy/predbat-sanity/collector.py
+opt/stacks/lifeos-energy/predbat-sanity-export/daily.json
+opt/stacks/lifeos-energy/predbat-sanity-export/latest.json
 opt/stacks/mosquitto/config/mosquitto.conf
 opt/stacks/mosquitto/docker-compose.yml
 opt/stacks/npm/docker-compose.yml
@@ -208,6 +210,8 @@ usr/local/sbin/lifeos-github-sync
 usr/local/sbin/lifeos-github-sync.bak_energy_source_20260826_222151
 usr/local/sbin/lifeos-github-sync.bak_memory_20260826_221911
 usr/local/sbin/lifeos_network_identity_refresh_root_wrapper.sh
+usr/local/sbin/lifeos-powerdown-assurance
+usr/local/sbin/lifeos-powerdown-assurance-active
 usr/local/sbin/lifeos-system-memory
 usr/local/sbin/octopus-powerdown-watch
 usr/local/sbin/octopus-powerdown-watch-decision

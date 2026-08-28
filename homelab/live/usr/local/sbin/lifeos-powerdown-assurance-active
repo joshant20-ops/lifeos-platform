@@ -1,0 +1,421 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+TZ=ZoneInfo("Europe/London")
+BASE="http://127.0.0.1:8123"
+
+STATUS=Path(
+    "/opt/lifeos-watch/octopus-powerdown-assurance/active-status.json"
+)
+STATE=Path(
+    "/opt/lifeos-watch/octopus-powerdown-assurance/active-state.json"
+)
+
+EVENT="event.octopus_energy_a_8b23e5b8_octoplus_power_down_events"
+BASELINE="sensor.octopus_energy_electricity_24e8170948_1100019745755_octoplus_power_down_baseline"
+
+IMPORT="sensor.lifeos_grid_import_power"
+ENVOY="sensor.envoy_122425011227_current_net_power_consumption"
+
+SOC="sensor.predbat_enphase_5731818_soc_percent"
+LOAD="sensor.predbat_enphase_5731818_load_power"
+PV="sensor.predbat_enphase_5731818_pv_power"
+BATTERY="sensor.predbat_enphase_5731818_battery_power"
+
+RESERVE_MIN="sensor.predbat_enphase_5731818_battery_reserve_min"
+
+# V45 proved LifeOS grid import against Envoy to within only a few watts.
+MAX_CROSSCHECK_DIFFERENCE_W=100.0
+
+# HA/Envoy normally updates around every minute.
+MAX_TELEMETRY_AGE_SECONDS=120
+
+# Do not interfere when battery is effectively at its native reserve.
+SOC_SAFETY_MARGIN_PERCENT=2.0
+
+# The desired event operating point.
+GRID_IMPORT_TARGET_W=0.0
+
+TOKEN=os.environ.get("HA_TOKEN")
+if not TOKEN:
+    raise SystemExit("HA_TOKEN missing")
+
+now=datetime.now(TZ)
+
+def request(path, method="GET", body=None):
+    data=None
+
+    if body is not None:
+        data=json.dumps(body).encode()
+
+    req=urllib.request.Request(
+        BASE+path,
+        method=method,
+        data=data,
+        headers={
+            "Authorization":"Bearer "+TOKEN,
+            "Content-Type":"application/json",
+        },
+    )
+
+    with urllib.request.urlopen(req,timeout=10) as r:
+        raw=r.read()
+
+    if not raw:
+        return None
+
+    return json.loads(raw)
+
+def state(entity):
+    return request("/api/states/"+entity)
+
+def fnum(entity):
+    obj=state(entity)
+    try:
+        value=float(obj["state"])
+    except Exception:
+        value=None
+    return value,obj
+
+def age_seconds(obj):
+    try:
+        stamp=datetime.fromisoformat(
+            obj["last_updated"].replace("Z","+00:00")
+        )
+        return (
+            datetime.now(TZ)-stamp.astimezone(TZ)
+        ).total_seconds()
+    except Exception:
+        return 999999
+
+def discover_reserve_control():
+    items=request("/api/states")
+
+    matches=[
+        x["entity_id"]
+        for x in items
+        if x["entity_id"].startswith("number.")
+        and "battery_schedule_reserve" in x["entity_id"]
+    ]
+
+    if len(matches) != 1:
+        return None
+
+    return matches[0]
+
+def set_number(entity,value):
+    return request(
+        "/api/services/number/set_value",
+        method="POST",
+        body={
+            "entity_id":entity,
+            "value":float(value),
+        },
+    )
+
+def read_internal():
+    try:
+        with STATE.open() as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+def write_atomic(path,data,mode=0o644):
+    tmp=path.with_suffix(path.suffix+".tmp")
+
+    with tmp.open("w") as f:
+        json.dump(data,f,indent=2,sort_keys=True)
+        f.write("\n")
+
+    os.chmod(tmp,mode)
+    os.replace(tmp,path)
+
+event_obj=state(EVENT)
+
+baseline,baseline_obj=fnum(BASELINE)
+grid_import,import_obj=fnum(IMPORT)
+envoy_kw,envoy_obj=fnum(ENVOY)
+
+soc,soc_obj=fnum(SOC)
+load,load_obj=fnum(LOAD)
+pv,pv_obj=fnum(PV)
+battery,battery_obj=fnum(BATTERY)
+
+reserve_min,reserve_min_obj=fnum(RESERVE_MIN)
+
+reserve_entity=discover_reserve_control()
+
+joined=event_obj.get("attributes",{}).get("joined_events",[]) or []
+
+active=None
+future=[]
+
+for e in joined:
+    try:
+        start=datetime.fromisoformat(e["start"]).astimezone(TZ)
+        end=datetime.fromisoformat(e["end"]).astimezone(TZ)
+    except Exception:
+        continue
+
+    if start <= now < end:
+        active=(e,start,end)
+    elif start > now:
+        future.append((start,end,e))
+
+future.sort(key=lambda x:x[0])
+
+next_event=future[0] if future else None
+
+import_age=age_seconds(import_obj)
+envoy_age=age_seconds(envoy_obj)
+
+envoy_import_w=None
+if envoy_kw is not None:
+    # Proven by V45:
+    # +Envoy net = import
+    # -Envoy net = export
+    envoy_import_w=max(0.0,envoy_kw*1000.0)
+
+crosscheck_diff=None
+if grid_import is not None and envoy_import_w is not None:
+    crosscheck_diff=abs(grid_import-envoy_import_w)
+
+telemetry_fresh=(
+    grid_import is not None
+    and envoy_import_w is not None
+    and import_age <= MAX_TELEMETRY_AGE_SECONDS
+    and envoy_age <= MAX_TELEMETRY_AGE_SECONDS
+)
+
+telemetry_agrees=(
+    telemetry_fresh
+    and crosscheck_diff is not None
+    and crosscheck_diff <= MAX_CROSSCHECK_DIFFERENCE_W
+)
+
+safe_soc=(
+    soc is not None
+    and reserve_min is not None
+    and soc > reserve_min + SOC_SAFETY_MARGIN_PERCENT
+)
+
+internal=read_internal()
+
+previous_epoch=internal.get("last_epoch")
+previous_import=internal.get("last_import_w")
+previous_event_id=internal.get("event_id")
+integrated=internal.get("event_import_kwh",0.0)
+
+event_id=None
+
+if active:
+    event_id=active[0].get("id")
+
+    if previous_event_id != event_id:
+        integrated=0.0
+        previous_epoch=None
+        previous_import=None
+
+    current_epoch=time.time()
+
+    if (
+        previous_epoch is not None
+        and previous_import is not None
+        and grid_import is not None
+    ):
+        dt=max(0.0,min(current_epoch-previous_epoch,90.0))
+        avg=(max(previous_import,0.0)+max(grid_import,0.0))/2
+        integrated += avg*dt/3600000.0
+
+    internal={
+        "event_id":event_id,
+        "last_epoch":current_epoch,
+        "last_import_w":grid_import,
+        "event_import_kwh":integrated,
+    }
+
+else:
+    internal={
+        "event_id":None,
+        "last_epoch":None,
+        "last_import_w":None,
+        "event_import_kwh":0.0,
+    }
+
+write_atomic(STATE,internal,0o600)
+
+action="NO_WRITE_OUTSIDE_EVENT"
+write_performed=False
+write_value=None
+block_reason=None
+
+if active:
+
+    if not reserve_entity:
+        action="BLOCKED"
+        block_reason="reserve_control_missing"
+
+    elif not telemetry_fresh:
+        action="BLOCKED"
+        block_reason="telemetry_stale"
+
+    elif not telemetry_agrees:
+        action="BLOCKED"
+        block_reason="independent_grid_sources_disagree"
+
+    elif not safe_soc:
+        action="BLOCKED"
+        block_reason="battery_soc_at_or_near_native_reserve"
+
+    else:
+        # We intentionally do NOT set an arbitrary discharge rate.
+        #
+        # Lowering reserve to the inverter's own native minimum merely
+        # permits normal Enphase self-consumption to use the battery.
+        #
+        # This is reasserted only during a joined active Power Down event,
+        # counteracting a raised reserve/freeze condition that could cause
+        # avoidable grid import.
+        set_number(reserve_entity,reserve_min)
+
+        action="ACTIVE_EVENT_RESERVE_RELEASE"
+        write_performed=True
+        write_value=reserve_min
+
+target_kwh=None
+if baseline is not None:
+    # Monitoring margin only. Actual operating objective is zero import.
+    target_kwh=baseline*0.5
+
+remaining_budget=None
+if target_kwh is not None:
+    remaining_budget=max(target_kwh-integrated,0.0)
+
+flags=[]
+
+if baseline is None:
+    flags.append("native_baseline_unavailable")
+
+if not telemetry_fresh:
+    flags.append("grid_telemetry_stale")
+
+if telemetry_fresh and not telemetry_agrees:
+    flags.append("grid_crosscheck_disagreement")
+
+if active and not safe_soc:
+    flags.append("battery_soc_low")
+
+if active and grid_import is not None and grid_import > 100:
+    flags.append("active_event_import_above_100w")
+
+if (
+    active
+    and target_kwh is not None
+    and integrated >= target_kwh
+):
+    flags.append("conservative_event_energy_budget_exceeded")
+
+status={
+    "schema":"lifeos.powerdown_assurance.active.v1",
+    "generated_at":now.isoformat(),
+
+    "mode":"ARMED_ACTIVE_EVENT_ONLY",
+
+    "policy":{
+        "outside_event_writes":False,
+        "during_event_reserve_release":True,
+        "artificial_baseline_inflation":False,
+        "grid_import_target_w":GRID_IMPORT_TARGET_W,
+    },
+
+    "event":{
+        "active":bool(active),
+        "event_id":event_id,
+        "start":active[1].isoformat() if active else None,
+        "end":active[2].isoformat() if active else None,
+        "seconds_remaining":
+            max(0,int((active[2]-now).total_seconds()))
+            if active else None,
+        "next_event":{
+            "id":next_event[2].get("id"),
+            "start":next_event[0].isoformat(),
+            "end":next_event[1].isoformat(),
+        } if next_event else None,
+    },
+
+    "baseline":{
+        "native_kwh":baseline,
+        "conservative_target_kwh":target_kwh,
+    },
+
+    "event_energy":{
+        "integrated_import_kwh":round(integrated,6),
+        "remaining_conservative_budget_kwh":
+            round(remaining_budget,6)
+            if remaining_budget is not None else None,
+    },
+
+    "telemetry":{
+        "lifeos_grid_import_w":grid_import,
+        "lifeos_age_seconds":round(import_age,1),
+        "envoy_import_w":envoy_import_w,
+        "envoy_age_seconds":round(envoy_age,1),
+        "crosscheck_difference_w":
+            round(crosscheck_diff,1)
+            if crosscheck_diff is not None else None,
+        "crosscheck_pass":telemetry_agrees,
+
+        "load_w":load,
+        "pv_w":pv,
+        "battery_w":battery,
+        "battery_soc_percent":soc,
+        "native_reserve_min_percent":reserve_min,
+    },
+
+    "control":{
+        "reserve_entity":reserve_entity,
+        "action":action,
+        "write_performed":write_performed,
+        "write_value_percent":write_value,
+        "blocked_reason":block_reason,
+    },
+
+    "anomaly_flags":flags,
+}
+
+write_atomic(STATUS,status,0o644)
+
+print("CONTROLLER_STATUS=PASS")
+print("MODE=ARMED_ACTIVE_EVENT_ONLY")
+print("POWERDOWN_ACTIVE="+("yes" if active else "no"))
+
+if next_event:
+    print("NEXT_POWERDOWN_START="+next_event[0].isoformat())
+    print("NEXT_POWERDOWN_END="+next_event[1].isoformat())
+else:
+    print("NEXT_POWERDOWN=none")
+
+print("NATIVE_BASELINE_KWH="+str(baseline))
+print("TARGET_GRID_IMPORT_W=0")
+print("GRID_IMPORT_W="+str(grid_import))
+print("ENVOY_IMPORT_W="+str(envoy_import_w))
+print("GRID_CROSSCHECK_PASS="+("yes" if telemetry_agrees else "no"))
+print("BATTERY_SOC_PERCENT="+str(soc))
+print("RESERVE_MIN_PERCENT="+str(reserve_min))
+print("RESERVE_CONTROL="+str(reserve_entity))
+print("EVENT_IMPORT_KWH="+f"{integrated:.6f}")
+print("ACTION="+action)
+print("WRITE_PERFORMED="+("yes" if write_performed else "no"))
+print(
+    "ANOMALY_FLAGS="
+    +(",".join(flags) if flags else "none")
+)
+print("STATUS="+str(STATUS))
