@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+
+import json
+import os
+import time
+import urllib.request
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("Europe/London")
+HA = "http://127.0.0.1:8123"
+OUT = "/opt/lifeos-watch/octopus-powerdown-assurance/status.json"
+
+EVENT = "event.octopus_energy_a_8b23e5b8_octoplus_power_down_events"
+CALENDAR = "calendar.octopus_energy_a_8b23e5b8_octoplus_power_down"
+BASELINE = "sensor.octopus_energy_electricity_24e8170948_1100019745755_octoplus_power_down_baseline"
+
+GRID_LIFEOS = "sensor.lifeos_grid_import_power"
+GRID_ENPHASE = "sensor.predbat_enphase_5731818_grid_power"
+LOAD = "sensor.predbat_enphase_5731818_load_power"
+PV = "sensor.predbat_enphase_5731818_pv_power"
+BATTERY = "sensor.predbat_enphase_5731818_battery_power"
+SOC = "sensor.predbat_enphase_5731818_soc_percent"
+
+TARGET_FRACTION = 0.50
+
+token = os.environ.get("HA_TOKEN")
+if not token:
+    raise SystemExit("HA_TOKEN missing")
+
+def state(entity):
+    req = urllib.request.Request(
+        HA + "/api/states/" + entity,
+        headers={"Authorization": "Bearer " + token}
+    )
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.load(r)
+
+def num(entity):
+    try:
+        return float(state(entity)["state"])
+    except Exception:
+        return None
+
+now = datetime.now(TZ)
+
+event_state = state(EVENT)
+calendar_state = state(CALENDAR)
+
+baseline = num(BASELINE)
+lifeos_import_w = num(GRID_LIFEOS)
+enphase_grid_w = num(GRID_ENPHASE)
+load_w = num(LOAD)
+pv_w = num(PV)
+battery_w = num(BATTERY)
+soc = num(SOC)
+
+joined = event_state.get("attributes", {}).get("joined_events", []) or []
+
+active = None
+next_event = None
+
+for event in joined:
+    try:
+        start = datetime.fromisoformat(event["start"]).astimezone(TZ)
+        end = datetime.fromisoformat(event["end"]).astimezone(TZ)
+    except Exception:
+        continue
+
+    if start <= now < end:
+        active = (event, start, end)
+        break
+
+    if start > now and (next_event is None or start < next_event[1]):
+        next_event = (event, start, end)
+
+# V42 live evidence:
+#   LifeOS import +239 W corresponded with Enphase grid -235.6 W.
+# Therefore negative Enphase grid is provisionally classified as import.
+#
+# Do NOT use this for control yet. Cross-check it against LifeOS.
+enphase_import_w = None
+if enphase_grid_w is not None:
+    enphase_import_w = max(0.0, -enphase_grid_w)
+
+sign_verified_now = False
+sign_reason = "insufficient_live_evidence"
+
+if lifeos_import_w is not None and enphase_grid_w is not None:
+    if lifeos_import_w > 50 and enphase_grid_w < -50:
+        difference = abs(lifeos_import_w - abs(enphase_grid_w))
+        tolerance = max(100.0, lifeos_import_w * 0.25)
+        if difference <= tolerance:
+            sign_verified_now = True
+            sign_reason = "lifeos_import_matches_negative_enphase_grid"
+    elif lifeos_import_w <= 10 and enphase_grid_w > 50:
+        sign_verified_now = True
+        sign_reason = "lifeos_zero_import_with_positive_enphase_export"
+
+status = {
+    "schema": "lifeos.powerdown_assurance.v1",
+    "generated_at": now.isoformat(),
+    "mode": "SHADOW_NO_CONTROL",
+    "control_writes_enabled": False,
+    "artificial_baseline_inflation": False,
+
+    "event": {
+        "calendar_state": calendar_state.get("state"),
+        "active": bool(active),
+        "next_event": None
+    },
+
+    "baseline": {
+        "native_kwh": baseline,
+        "target_fraction": TARGET_FRACTION,
+        "target_kwh": baseline * TARGET_FRACTION if baseline is not None else None
+    },
+
+    "telemetry": {
+        "lifeos_grid_import_w": lifeos_import_w,
+        "enphase_grid_w": enphase_grid_w,
+        "derived_enphase_import_w": enphase_import_w,
+        "load_w": load_w,
+        "pv_w": pv_w,
+        "battery_w": battery_w,
+        "battery_soc_percent": soc
+    },
+
+    "sign_validation": {
+        "verified_this_sample": sign_verified_now,
+        "reason": sign_reason,
+        "expected_enphase_import_sign": "negative"
+    },
+
+    "strategy": {
+        "event_grid_import_target_w": 0,
+        "compliance_target": "50_percent_of_native_baseline",
+        "pre_event_action": "observe_only",
+        "during_event_action": "observe_only"
+    },
+
+    "anomaly_flags": []
+}
+
+if next_event:
+    e,s,en = next_event
+    status["event"]["next_event"] = {
+        "id": e.get("id"),
+        "start": s.isoformat(),
+        "end": en.isoformat(),
+        "reward_octopoints_per_kwh": e.get("octopoints_per_kwh")
+    }
+
+if active:
+    e,s,en = active
+    status["event"]["active_event"] = {
+        "id": e.get("id"),
+        "start": s.isoformat(),
+        "end": en.isoformat(),
+        "seconds_remaining": max(0, int((en-now).total_seconds()))
+    }
+
+if baseline is None:
+    status["anomaly_flags"].append("baseline_unavailable")
+
+if lifeos_import_w is None:
+    status["anomaly_flags"].append("lifeos_import_unavailable")
+
+if enphase_grid_w is None:
+    status["anomaly_flags"].append("enphase_grid_unavailable")
+
+if active and not sign_verified_now:
+    status["anomaly_flags"].append("grid_sign_not_verified_during_event")
+
+if active and lifeos_import_w is not None and lifeos_import_w > 100:
+    status["anomaly_flags"].append("powerdown_grid_import_above_100w")
+
+tmp = OUT + ".tmp"
+
+with open(tmp, "w") as f:
+    json.dump(status, f, indent=2, sort_keys=True)
+    f.write("\n")
+
+os.chmod(tmp, 0o644)
+os.replace(tmp, OUT)
+
+print("CONTROLLER_STATUS=PASS")
+print("MODE=SHADOW_NO_CONTROL")
+print(f"POWERDOWN_ACTIVE={'yes' if active else 'no'}")
+print(f"NATIVE_BASELINE_KWH={baseline}")
+print(
+    "COMPLIANCE_TARGET_KWH="
+    + (f"{baseline * TARGET_FRACTION:.6f}" if baseline is not None else "unknown")
+)
+print(f"LIFEOS_GRID_IMPORT_W={lifeos_import_w}")
+print(f"ENPHASE_GRID_W={enphase_grid_w}")
+print(f"GRID_SIGN_VERIFIED_THIS_SAMPLE={'yes' if sign_verified_now else 'no'}")
+print(f"SIGN_REASON={sign_reason}")
+print("EVENT_GRID_IMPORT_TARGET_W=0")
+print("CONTROL_WRITES_ENABLED=no")
+print("ARTIFICIAL_BASELINE_INFLATION=no")
+print("STATUS=" + OUT)

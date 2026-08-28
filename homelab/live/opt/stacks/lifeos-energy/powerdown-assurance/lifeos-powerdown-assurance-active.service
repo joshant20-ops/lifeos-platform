@@ -1,0 +1,21 @@
+[Unit]
+Description=LifeOS Octopus Power Down Active Assurance
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+
+ExecStart=/usr/local/sbin/lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN /usr/local/sbin/lifeos-powerdown-assurance-active
+
+Nice=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+ReadWritePaths=/opt/lifeos-watch/octopus-powerdown-assurance
+ReadWritePaths=/opt/lifeos-secrets

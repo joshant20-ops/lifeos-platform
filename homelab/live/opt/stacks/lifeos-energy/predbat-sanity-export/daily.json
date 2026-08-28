@@ -1,0 +1,242 @@
+[
+  {
+    "anomaly_flags": [],
+    "forecast_summary": {
+      "grid_points": 408,
+      "high_import_points_beyond_live_tariff_horizon": 0,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-08-28T03:25:00+0100",
+      "soc_min_kwh": 2.945,
+      "soc_min_time": "2026-08-27T00:00:00+0100",
+      "soc_points": 284
+    },
+    "generated_at": "2026-08-28T00:47:31.013535+01:00",
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 4.23,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 8.903,
+      "predbat.best_import_energy_battery": 6.696,
+      "predbat.best_load_energy": 25.254,
+      "predbat.best_pv_energy": 21.191,
+      "predbat.best_soc_min_kwh": 2.945,
+      "predbat.rates": 26.69,
+      "predbat.rates_export": 14.3,
+      "predbat.status": "Freeze charging",
+      "sensor.predbat_enphase_5731818_battery_power": 15,
+      "sensor.predbat_enphase_5731818_battery_reserve": 23,
+      "sensor.predbat_enphase_5731818_grid_power": -519.8,
+      "sensor.predbat_enphase_5731818_load_power": 534.8,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 23
+    },
+    "tariff_horizon": {
+      "export": "2026-08-28T23:00:00+01:00",
+      "import": "2026-08-28T23:00:00+01:00"
+    }
+  },
+  {
+    "anomaly_flags": [],
+    "forecast_summary": {
+      "grid_points": 408,
+      "high_import_points_beyond_live_tariff_horizon": 0,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-08-28T03:25:00+0100",
+      "soc_min_kwh": 2.945,
+      "soc_min_time": "2026-08-27T00:00:00+0100",
+      "soc_points": 284
+    },
+    "generated_at": "2026-08-28T00:47:33.776563+01:00",
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 4.23,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 8.903,
+      "predbat.best_import_energy_battery": 6.696,
+      "predbat.best_load_energy": 25.254,
+      "predbat.best_pv_energy": 21.191,
+      "predbat.best_soc_min_kwh": 2.945,
+      "predbat.rates": 26.69,
+      "predbat.rates_export": 14.3,
+      "predbat.status": "Freeze charging",
+      "sensor.predbat_enphase_5731818_battery_power": 15,
+      "sensor.predbat_enphase_5731818_battery_reserve": 23,
+      "sensor.predbat_enphase_5731818_grid_power": -519.8,
+      "sensor.predbat_enphase_5731818_load_power": 534.8,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 23
+    },
+    "tariff_horizon": {
+      "export": "2026-08-28T23:00:00+01:00",
+      "import": "2026-08-28T23:00:00+01:00"
+    }
+  },
+  {
+    "anomaly_flags": [],
+    "forecast_summary": {
+      "grid_points": 408,
+      "high_import_points_beyond_live_tariff_horizon": 0,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-08-28T03:25:00+0100",
+      "soc_min_kwh": 2.945,
+      "soc_min_time": "2026-08-27T00:00:00+0100",
+      "soc_points": 284
+    },
+    "generated_at": "2026-08-28T01:12:37.717648+01:00",
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 4.23,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 8.903,
+      "predbat.best_import_energy_battery": 6.696,
+      "predbat.best_load_energy": 25.254,
+      "predbat.best_pv_energy": 21.191,
+      "predbat.best_soc_min_kwh": 2.945,
+      "predbat.rates": 26.73,
+      "predbat.rates_export": 14.32,
+      "predbat.status": "Freeze charging",
+      "sensor.predbat_enphase_5731818_battery_power": 30,
+      "sensor.predbat_enphase_5731818_battery_reserve": 25,
+      "sensor.predbat_enphase_5731818_grid_power": -525.9,
+      "sensor.predbat_enphase_5731818_load_power": 555.9,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 24
+    },
+    "tariff_horizon": {
+      "export": "2026-08-28T23:00:00+01:00",
+      "import": "2026-08-28T23:00:00+01:00"
+    }
+  },
+  {
+    "anomaly_flags": [],
+    "forecast_summary": {
+      "grid_points": 408,
+      "high_import_points_beyond_live_tariff_horizon": 0,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-08-28T03:25:00+0100",
+      "soc_min_kwh": 2.945,
+      "soc_min_time": "2026-08-27T00:00:00+0100",
+      "soc_points": 284
+    },
+    "generated_at": "2026-08-28T01:16:03.356950+01:00",
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 4.23,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 8.903,
+      "predbat.best_import_energy_battery": 6.696,
+      "predbat.best_load_energy": 25.254,
+      "predbat.best_pv_energy": 21.191,
+      "predbat.best_soc_min_kwh": 2.945,
+      "predbat.rates": 26.73,
+      "predbat.rates_export": 14.32,
+      "predbat.status": "Freeze charging",
+      "sensor.predbat_enphase_5731818_battery_power": -644,
+      "sensor.predbat_enphase_5731818_battery_reserve": 25,
+      "sensor.predbat_enphase_5731818_grid_power": -1096,
+      "sensor.predbat_enphase_5731818_load_power": 452,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 24
+    },
+    "tariff_horizon": {
+      "export": "2026-08-28T23:00:00+01:00",
+      "import": "2026-08-28T23:00:00+01:00"
+    }
+  },
+  {
+    "anomaly_flags": [],
+    "forecast_summary": {
+      "grid_points": 408,
+      "high_import_points_beyond_live_tariff_horizon": 0,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-08-28T03:25:00+0100",
+      "soc_min_kwh": 2.945,
+      "soc_min_time": "2026-08-27T00:00:00+0100",
+      "soc_points": 284
+    },
+    "generated_at": "2026-08-28T01:46:07.972351+01:00",
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 4.23,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 8.903,
+      "predbat.best_import_energy_battery": 6.696,
+      "predbat.best_load_energy": 25.254,
+      "predbat.best_pv_energy": 21.191,
+      "predbat.best_soc_min_kwh": 2.945,
+      "predbat.rates": 26.12,
+      "predbat.rates_export": 14.04,
+      "predbat.status": "Freeze charging",
+      "sensor.predbat_enphase_5731818_battery_power": -6323,
+      "sensor.predbat_enphase_5731818_battery_reserve": 28,
+      "sensor.predbat_enphase_5731818_grid_power": -6732.5,
+      "sensor.predbat_enphase_5731818_load_power": 409.5,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 27
+    },
+    "tariff_horizon": {
+      "export": "2026-08-28T23:00:00+01:00",
+      "import": "2026-08-28T23:00:00+01:00"
+    }
+  },
+  {
+    "anomaly_flags": [],
+    "forecast_summary": {
+      "grid_points": 408,
+      "high_import_points_beyond_live_tariff_horizon": 0,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-08-28T03:25:00+0100",
+      "soc_min_kwh": 2.945,
+      "soc_min_time": "2026-08-27T00:00:00+0100",
+      "soc_points": 284
+    },
+    "generated_at": "2026-08-28T02:16:27.766856+01:00",
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 4.23,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 8.903,
+      "predbat.best_import_energy_battery": 6.696,
+      "predbat.best_load_energy": 25.254,
+      "predbat.best_pv_energy": 21.191,
+      "predbat.best_soc_min_kwh": 2.945,
+      "predbat.rates": 25.41,
+      "predbat.rates_export": 13.72,
+      "predbat.status": "Freeze charging",
+      "sensor.predbat_enphase_5731818_battery_power": 14,
+      "sensor.predbat_enphase_5731818_battery_reserve": 31,
+      "sensor.predbat_enphase_5731818_grid_power": -368.8,
+      "sensor.predbat_enphase_5731818_load_power": 382.8,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 29.5
+    },
+    "tariff_horizon": {
+      "export": "2026-08-28T23:00:00+01:00",
+      "import": "2026-08-28T23:00:00+01:00"
+    }
+  }
+]
