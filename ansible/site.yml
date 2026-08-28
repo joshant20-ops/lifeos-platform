@@ -1,0 +1,46 @@
+---
+- name: LifeOS Pi5 baseline audit
+  hosts: pi5
+  gather_facts: true
+
+  tasks:
+
+    - name: Verify ARM64
+      ansible.builtin.assert:
+        that:
+          - ansible_architecture in ['aarch64', 'arm64']
+
+    - name: Verify Debian
+      ansible.builtin.assert:
+        that:
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '13'
+
+    - name: Inspect required paths
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /opt/stacks
+        - /mnt/docker-data/automation/repos/LifeOS-Energy
+      register: lifeos_paths
+
+    - name: Require source paths
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isdir
+      loop: "{{ lifeos_paths.results }}"
+
+    - name: Check Docker
+      ansible.builtin.command:
+        cmd: systemctl is-active docker
+      changed_when: false
+
+    - name: Check Git timers
+      ansible.builtin.command:
+        cmd: systemctl is-enabled {{ item }}
+      changed_when: false
+      loop:
+        - lifeos-github-sync.timer
+        - lifeos-github-sync-30min.timer
+        - lifeos-restic-backup.timer
