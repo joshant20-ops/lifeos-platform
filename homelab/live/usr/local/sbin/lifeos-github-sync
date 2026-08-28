@@ -316,6 +316,18 @@ echo "Repository current."
 
 stage "B/8 — SCAN LIVE SOURCE"
 
+# Required authoritative roots.
+# A missing mount/source is an error, NOT mass deletion.
+REQUIRED_ROOTS=(
+    "/opt/stacks"
+    "/mnt/docker-data/automation/repos/LifeOS-Energy"
+)
+
+for required_root in "${REQUIRED_ROOTS[@]}"; do
+    [ -d "$required_root" ] \
+        || fail "Required source root unavailable: $required_root"
+done
+
 mkdir -p "$TMP/live"
 
 FOUND=0
@@ -483,6 +495,11 @@ done < <(find "$LIVE" -type f -print0)
 [ "$BAD" -eq 0 ] || fail "Security gate rejected snapshot"
 
 echo "Security gate: PASS"
+
+# OTS secret-scanning gate.
+# This is in addition to filename/size checks.
+/usr/local/sbin/lifeos-gitleaks-gate \
+    || fail "Gitleaks rejected candidate repository"
 
 stage "F/8 — GIT DIFFERENCE"
 
