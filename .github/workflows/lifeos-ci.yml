@@ -2,18 +2,16 @@ name: LifeOS CI
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   pull_request:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
 
-  gitleaks:
+  security:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,25 +24,76 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  syntax:
+  validate:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Bash syntax
-        shell: bash
+      - name: Install validators
         run: |
-          set -Eeuo pipefail
+          python3 -m pip install \
+            'ansible-core>=2.19,<2.20' \
+            PyYAML
 
-          while IFS= read -r -d '' f; do
-              bash -n "$f"
-          done < <(
-              find homelab/live/usr/local \
-                  -type f \
-                  -name '*.sh' \
-                  -print0 2>/dev/null
+      - name: Validate desired Compose YAML
+        run: |
+          python3 - <<'PY'
+          import pathlib
+          import yaml
+
+          files = (
+              list(pathlib.Path(
+                  "ansible/desired/compose"
+              ).rglob("*.yml"))
+              +
+              list(pathlib.Path(
+                  "ansible/desired/compose"
+              ).rglob("*.yaml"))
           )
 
-      - name: Validate Renovate JSON
-        run: python3 -m json.tool renovate.json >/dev/null
+          if not files:
+              raise SystemExit(
+                  "No desired Compose files found"
+              )
+
+          for file in files:
+              data=yaml.safe_load(file.read_text())
+
+              if not isinstance(data,dict):
+                  raise SystemExit(
+                      f"{file}: invalid YAML root"
+                  )
+
+              if "services" not in data:
+                  raise SystemExit(
+                      f"{file}: services missing"
+                  )
+
+          print(
+              f"Validated {len(files)} Compose files"
+          )
+          PY
+
+      - name: Ansible syntax
+        run: |
+          ansible-playbook \
+            -i ansible/inventory.ini \
+            ansible/site.yml \
+            --syntax-check
+
+          ansible-playbook \
+            -i ansible/inventory.ini \
+            ansible/adopt_all.yml \
+            --syntax-check
+
+      - name: Validate JSON
+        run: |
+          python3 -m json.tool \
+            ansible/vars/adopt_files.json >/dev/null
+
+          python3 -m json.tool \
+            ansible/vars/compose_projects.json >/dev/null
+
+          python3 -m json.tool \
+            renovate.json >/dev/null

@@ -1,0 +1,14 @@
+services:
+  matter-server:
+    image: ghcr.io/home-assistant-libs/python-matter-server:stable
+    container_name: matter-server
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./data:/data
+    command: ["--storage-path", "/data", "--port", "5580"]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5580/ >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
