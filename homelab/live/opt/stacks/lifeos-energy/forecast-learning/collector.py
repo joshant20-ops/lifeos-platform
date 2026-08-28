@@ -697,7 +697,7 @@ def publish_mqtt_discovery():
     mqtt_discovery(
         "forecast_recorder",
         "LifeOS Forecast Recorder MQTT",
-        "{{ value_json.recorder.state }}",
+        "{{ value_json.get('recorder', {}).get('state', 'unknown') }}",
     )
 
 def publish_mqtt_state():
