@@ -2831,5 +2831,119 @@
       "export": "2026-08-29T23:00:00+01:00",
       "import": "2026-08-29T23:00:00+01:00"
     }
+  },
+  {
+    "anomaly_flags": [
+      "high_grid_charge_planned_on_provisional_tariff"
+    ],
+    "forecast_freshness": {
+      "active_headline_count": 7,
+      "checked_at": "2026-08-28T20:33:32.108024+01:00",
+      "fresh_active_headline_count": 7,
+      "fresh_headline_count": 8,
+      "headline_count": 8,
+      "headline_entities": {
+        "predbat.best_export_energy": {
+          "age_seconds": 209.353,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_import_energy": {
+          "age_seconds": 209.334,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_import_energy_battery": {
+          "age_seconds": 209.328,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_import_energy_house": {
+          "age_seconds": 209.322,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_load_energy": {
+          "age_seconds": 209.348,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_pv_energy": {
+          "age_seconds": 209.341,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_soc_min_kwh": {
+          "age_seconds": 209.358,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.soc_kw_best": {
+          "age_seconds": 209.405,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        }
+      },
+      "stale_active_headlines": []
+    },
+    "forecast_provenance": {
+      "forecast_entity_count": 6,
+      "live_api": {
+        "queried_at": "2026-08-28T20:33:31.421799+01:00",
+        "request_seconds": 0.0395,
+        "source": "home_assistant_live_api",
+        "state_count": 813,
+        "status": "live_api_ok"
+      },
+      "live_overlay_count": 13,
+      "source": "home_assistant_live_api"
+    },
+    "forecast_summary": {
+      "grid_points": 432,
+      "high_import_points_beyond_live_tariff_horizon": 18,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-08-29T05:45:00+0100",
+      "soc_min_kwh": 1.0,
+      "soc_min_time": "2026-08-28T21:15:00+0100",
+      "soc_points": 234
+    },
+    "generated_at": "2026-08-28T20:33:32.107994+01:00",
+    "sanity_assessment": {
+      "fail_flags": [],
+      "level": "WATCH",
+      "other_flags": [],
+      "reason": "forecast_current_but_strategy_deserves_review",
+      "requires_operator_attention": true,
+      "watch_flags": [
+        "high_grid_charge_planned_on_provisional_tariff"
+      ]
+    },
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 12.719,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 23.607,
+      "predbat.best_import_energy_battery": 12.61,
+      "predbat.best_load_energy": 28.849,
+      "predbat.best_pv_energy": 20.742,
+      "predbat.best_soc_min_kwh": 1,
+      "predbat.rates": 29.49,
+      "predbat.rates_export": 15.55,
+      "predbat.status": "Demand",
+      "sensor.predbat_enphase_5731818_battery_power": 522,
+      "sensor.predbat_enphase_5731818_battery_reserve": 10,
+      "sensor.predbat_enphase_5731818_grid_power": 0,
+      "sensor.predbat_enphase_5731818_load_power": 522,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 15
+    },
+    "tariff_horizon": {
+      "export": "2026-08-29T23:00:00+01:00",
+      "import": "2026-08-29T23:00:00+01:00"
+    }
   }
 ]
