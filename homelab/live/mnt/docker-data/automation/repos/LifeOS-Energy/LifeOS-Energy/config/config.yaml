@@ -1,0 +1,33 @@
+application:
+  name: LifeOS Energy
+  version: 0.3.0
+  environment: production
+site:
+  timezone: Europe/London
+  currency: GBP
+energy:
+  solar_capacity_kw: 4.4
+  battery_capacity_kwh: 10.0
+  battery_minimum_percent: 10
+  battery_maximum_percent: 95
+planner:
+  daily_run_hour: 16
+  daily_run_minute: 10
+  planning_start_soc_percent: 10
+  interval_minutes: 30
+  maximum_charge_kw: 3.68
+  maximum_discharge_kw: 3.68
+  charge_efficiency: 0.95
+  discharge_efficiency: 0.95
+  state_step_kwh: 0.1
+tariff:
+  name: Agile Octopus
+  provider: Octopus Energy
+  source: live_api
+logging:
+  level: INFO
+  file: /app/logs/lifeos-energy.log
+weather:
+  provider: open-meteo
+  latitude: 52.25
+  longitude: -0.88333

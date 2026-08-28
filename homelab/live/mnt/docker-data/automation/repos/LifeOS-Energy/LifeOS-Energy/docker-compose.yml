@@ -1,0 +1,44 @@
+services:
+  lifeos-energy:
+    build:
+      context: .
+    image: lifeos-energy:0.1.0-dev
+    container_name: lifeos-energy
+    restart: unless-stopped
+    environment:
+      LIFEOS_CONFIG: /app/config/config.yaml
+      ENPHASE_GATEWAY: 192.168.0.18
+      ENPHASE_TOKEN_FILE: /run/secrets/enphase-token
+      ENPHASE_VERIFY_TLS: 'false'
+      ENPHASE_TIMEOUT_SECONDS: '8'
+      ENPHASE_STALE_SECONDS: '60'
+      ENERGY_HISTORY_DATABASE: /data/lifeos-energy-history.sqlite3
+      ENERGY_COLLECTION_INTERVAL_SECONDS: '60'
+      OCTOPUS_API_KEY_FILE: /run/secrets/lifeos-energy/octopus-api-key
+      OCTOPUS_ACCOUNT_FILE: /run/secrets/lifeos-energy/octopus-account
+    ports:
+    - 8110:8110
+    volumes:
+    - ./config:/app/config:ro
+    - ./logs:/app/logs
+    - /mnt/docker-data/automation/secrets/lifeos-energy/enphase-token:/run/secrets/enphase-token:ro
+    - /mnt/docker-data/automation/data/lifeos-energy:/data
+    - /mnt/docker-data/automation/secrets/lifeos-energy:/run/secrets/lifeos-energy:ro
+    - /opt/lifeos-watch/octopus-powerdown:/run/lifeos-powerdown:ro
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8110/health',
+        timeout=3)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - reverse_proxy
+
+networks:
+  reverse_proxy:
+    external: true
