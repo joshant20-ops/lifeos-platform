@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  >
+
+  <title>{{ application.name }}</title>
+
+  <link
+    rel="stylesheet"
+    href="/static/app.css"
+  >
+</head>
+
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">LifeOS application</p>
+
+        <h1>{{ application.name }}</h1>
+
+        <p class="subtitle">
+          Energy monitoring and optimisation platform
+        </p>
+      </div>
+
+      <div class="health">
+        <span class="health-dot"></span>
+        <span id="health-text">Checking</span>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="card">
+        <p class="label">Release</p>
+
+        <p class="metric">
+          {{ application.version }}
+        </p>
+
+        <p class="muted">
+          {{ application.environment }}
+        </p>
+      </article>
+
+      <article class="card">
+        <p class="label">Solar capacity</p>
+
+        <p class="metric">
+          {{ energy.solar_capacity_kw }} kW
+        </p>
+
+        <p class="muted">Configured array</p>
+      </article>
+
+      <article class="card">
+        <p class="label">Battery capacity</p>
+
+        <p class="metric">
+          {{ energy.battery_capacity_kwh }} kWh
+        </p>
+
+        <p class="muted">
+          {{ energy.battery_minimum_percent }}–{{ energy.battery_maximum_percent }}%
+        </p>
+      </article>
+
+      <article class="card">
+        <p class="label">Tariff</p>
+
+        <p class="metric">
+          {{ tariff.name }}
+        </p>
+
+        <p class="muted">
+          {{ tariff.import_unit_rate_p_per_kwh }}p import
+        </p>
+      </article>
+    </section>
+
+    <section class="card status-card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Simulation</p>
+          <h2>Modelled daily energy</h2>
+        </div>
+
+        <p class="muted">
+          Deterministic profile v1
+        </p>
+      </div>
+
+      <div class="grid simulation-grid">
+        <article class="metric-panel">
+          <p class="label">Solar generation</p>
+          <p class="metric" id="solar-total">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Household load</p>
+          <p class="metric" id="load-total">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Grid import</p>
+          <p class="metric" id="import-total">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Grid export</p>
+          <p class="metric" id="export-total">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Self consumption</p>
+          <p class="metric" id="self-consumption">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Grid independence</p>
+          <p class="metric" id="grid-independence">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Final battery SOC</p>
+          <p class="metric" id="final-soc">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Simulation points</p>
+          <p class="metric" id="point-count">Loading</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="card status-card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Pricing</p>
+          <h2>Modelled daily cost</h2>
+        </div>
+
+        <p class="muted" id="tariff-name">
+          Loading tariff
+        </p>
+      </div>
+
+      <div class="grid simulation-grid">
+        <article class="metric-panel">
+          <p class="label">Import cost</p>
+          <p class="metric" id="import-cost">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Export income</p>
+          <p class="metric" id="export-income">Loading</p>
+        </article>
+
+        <article class="metric-panel">
+          <p class="label">Standing charge</p>
+          <p class="metric" id="standing-charge">Loading</p>
+        </article>
+
+        <article class="metric-panel emphasised-panel">
+          <p class="label">Net daily cost</p>
+          <p class="metric" id="net-daily-cost">Loading</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="card status-card">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Runtime</p>
+          <h2>Module status</h2>
+        </div>
+
+        <p class="muted" id="uptime">
+          Loading uptime
+        </p>
+      </div>
+
+      <div id="modules" class="modules">
+        Loading module state…
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
