@@ -1,0 +1,251 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+VERSION="phase2-v3"
+
+USER_NAME="joshan"
+HOME_DIR="/home/joshan"
+REPO="$HOME_DIR/lifeos-platform"
+
+STATE_DIR="$HOME_DIR/.local/state/lifeos-ansible-adoption-v3"
+STATE="$STATE_DIR/state"
+WORK="$STATE_DIR/work"
+LOGS="$STATE_DIR/logs"
+
+RESTIC_REPO="/mnt/synology-backups/restic/lifeos-pi5"
+RESTIC_PASS="/etc/lifeos/restic-password"
+
+START="$(date +%s)"
+
+mkdir -p "$STATE_DIR" "$WORK" "$LOGS"
+chmod 700 "$STATE_DIR"
+
+elapsed() {
+    local d
+    d=$(($(date +%s)-START))
+    printf '%02dm:%02ds' $((d/60)) $((d%60))
+}
+
+g() {
+    sudo -u "$USER_NAME" \
+        env HOME="$HOME_DIR" \
+        git -C "$REPO" "$@"
+}
+
+state_get() {
+    local key="$1"
+
+    [ -f "$STATE" ] || return 0
+
+    awk -F= -v key="$key" \
+        '$1 == key {
+            sub(/^[^=]*=/,"")
+            print
+        }' "$STATE"
+}
+
+status() {
+    echo "===== LIFEOS ANSIBLE ADOPTION V3 ====="
+
+    if [ ! -f "$STATE" ]; then
+        echo "Status : NOT INITIALISED"
+        return 1
+    fi
+
+    cat "$STATE"
+
+    echo
+    echo "Runner : $(readlink -f "$0")"
+    echo "Git    : $(g rev-parse --short HEAD 2>/dev/null || echo unavailable)"
+
+    echo
+    echo "Critical containers:"
+
+    for c in \
+        homeassistant \
+        lifeos-energy \
+        predbat \
+        vaultwarden \
+        uptime-kuma \
+        prometheus \
+        autoheal \
+        watchtower
+    do
+        if docker ps --format '{{.Names}}' |
+           grep -Fxq "$c"
+        then
+            echo "  PASS $c"
+        else
+            echo "  FAIL $c"
+        fi
+    done
+}
+
+assure() {
+    echo "============================================================"
+    echo "LIFEOS V3 — OPERATIONAL ASSURANCE"
+    echo "Expected: <5 min"
+    echo "No deployment changes"
+    echo "============================================================"
+
+    echo
+    echo "===== 1/6 — PLATFORM ====="
+
+    . /etc/os-release
+
+    [ "$ID" = "debian" ]
+    [ "$VERSION_ID" = "13" ]
+    [ "$(uname -m)" = "aarch64" ]
+
+    echo "PASS"
+
+    echo
+    echo "===== 2/6 — GIT ====="
+
+    g fetch origin
+
+    [ "$(g rev-parse HEAD)" = \
+      "$(g rev-parse origin/main)" ]
+
+    [ -z "$(g status --porcelain)" ]
+
+    echo "PASS"
+
+    echo
+    echo "===== 3/6 — ANSIBLE ====="
+
+    ansible-playbook \
+        -i "$REPO/ansible/inventory.ini" \
+        "$REPO/ansible/adopt_all.yml" \
+        --check \
+        >"$WORK/v3-assurance-ansible.log"
+
+    RECAP="$(
+        grep '^localhost ' \
+            "$WORK/v3-assurance-ansible.log" |
+        tail -1
+    )"
+
+    echo "$RECAP"
+
+    echo "$RECAP" | grep -q 'changed=0'
+    echo "$RECAP" | grep -q 'failed=0'
+
+    echo "PASS"
+
+    echo
+    echo "===== 4/6 — RESTIC ====="
+
+    # Detect actual Restic executables, not strings containing "restic".
+    mapfile -t RPIDS < <(
+        ps -eo pid=,comm= |
+        awk '$2=="restic"{print $1}'
+    )
+
+    if [ "${#RPIDS[@]}" -gt 0 ]; then
+        echo "Active Restic process detected:"
+        ps -p "$(IFS=,; echo "${RPIDS[*]}")" \
+            -o pid,ppid,user,etime,comm,args || true
+        exit 1
+    fi
+
+    sudo timeout 120s \
+        restic \
+            --repo "$RESTIC_REPO" \
+            --password-file "$RESTIC_PASS" \
+            snapshots >/dev/null
+
+    echo "PASS"
+
+    echo
+    echo "===== 5/6 — SECURITY ====="
+
+    gitleaks git "$REPO" \
+        --no-banner \
+        --no-color \
+        --redact >/dev/null
+
+    echo "PASS"
+
+    echo
+    echo "===== 6/6 — SERVICES ====="
+
+    for c in \
+        homeassistant \
+        lifeos-energy \
+        predbat \
+        vaultwarden \
+        uptime-kuma \
+        prometheus \
+        autoheal \
+        watchtower
+    do
+        docker ps --format '{{.Names}}' |
+            grep -Fxq "$c" || {
+                echo "FAIL: $c"
+                exit 1
+            }
+
+        echo "PASS: $c"
+    done
+
+    echo
+    echo "============================================================"
+    echo "V3 OPERATIONAL ASSURANCE: PASS"
+    echo "Runtime: $(elapsed)"
+    echo "============================================================"
+}
+
+case "${1:-}" in
+    --status)
+        status
+        exit
+        ;;
+
+    --assure)
+        assure
+        exit
+        ;;
+
+    "")
+        if [ ! -f "$STATE" ]; then
+            echo "V3 state is not initialised."
+            exit 1
+        fi
+
+        LAST="$(state_get LAST_PASS)"
+        FAILED="$(state_get FAILED_GATE)"
+
+        if [ "$LAST" = "8" ] && [ -z "$FAILED" ]; then
+            echo "============================================================"
+            echo "LIFEOS ANSIBLE ADOPTION V3"
+            echo
+            echo "Migration status: COMPLETE"
+            echo "All Gates 0-8: PASS"
+            echo
+            echo "Nothing to resume."
+            echo
+            echo "Run assurance:"
+            echo "  sudo lifeos-ansible-adopt --assure"
+            echo "============================================================"
+            exit 0
+        fi
+
+        echo "Migration is not complete."
+        echo "LAST_PASS=${LAST:-unknown}"
+        echo "FAILED_GATE=${FAILED:-unknown}"
+        echo
+        echo "This permanent runner will host future resumable"
+        echo "migration/repair gates; automatic replay is disabled"
+        echo "until a gate implementation is explicitly installed."
+        exit 1
+        ;;
+
+    *)
+        echo "Usage:"
+        echo "  sudo lifeos-ansible-adopt"
+        echo "  sudo lifeos-ansible-adopt --status"
+        echo "  sudo lifeos-ansible-adopt --assure"
+        exit 2
+        ;;
+esac
