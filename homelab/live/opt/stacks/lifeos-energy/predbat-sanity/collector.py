@@ -67,6 +67,64 @@ FORECAST_IDS = [
     "predbat.rates_export",
 ]
 
+# LIFEOS_PREDBAT_SANITY_MQTT_V1
+MQTT_HOST = os.environ.get("MQTT_HOST", "127.0.0.1")
+MQTT_PORT = int(os.environ.get("MQTT_PORT", "1883"))
+MQTT_TOPIC = "lifeos/energy/predbat_sanity/state"
+
+def mqtt_publish(topic, payload, retain=True):
+    if not isinstance(payload, str):
+        payload = json.dumps(payload, separators=(",", ":"))
+
+    cmd = [
+        "mosquitto_pub",
+        "-h", MQTT_HOST,
+        "-p", str(MQTT_PORT),
+        "-t", topic,
+        "-m", payload,
+    ]
+
+    if retain:
+        cmd.append("-r")
+
+    result = subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr[-500:]
+            or f"MQTT publish failed for {topic}"
+        )
+
+def publish_mqtt_discovery():
+    config = {
+        "name": "LifeOS Predbat Sanity Status",
+        "unique_id": "lifeos_predbat_sanity_status_mqtt_v1",
+        "state_topic": MQTT_TOPIC,
+        "value_template": "{{ 'ok' if value_json.anomaly_flags | length == 0 else 'attention' }}",
+        # Full diagnostic snapshot remains retained on MQTT/JSON.
+        # Do not attach it wholesale to the HA entity: HA recorder
+        # attributes have a 16 KiB storage limit.
+        "availability_topic": "lifeos/status",
+        "payload_available": "online",
+        "payload_not_available": "offline",
+        "device": {
+            "identifiers": ["lifeos_energy_learning"],
+            "name": "LifeOS Energy Learning",
+            "manufacturer": "LifeOS",
+        },
+    }
+
+    mqtt_publish(
+        "homeassistant/sensor/lifeos_predbat_sanity_status_mqtt_v1/config",
+        config,
+        True,
+    )
+
 def now_local():
     return datetime.now(TZ)
 
@@ -410,6 +468,10 @@ def main():
     )
 
     snapshot["anomaly_flags"] = anomaly_flags(snapshot)
+
+    mqtt_publish("lifeos/status", "online", True)
+    publish_mqtt_discovery()
+    mqtt_publish(MQTT_TOPIC, snapshot, True)
 
     local_latest = DATA / "latest.json"
     atomic_json(local_latest, snapshot, 0o600)
