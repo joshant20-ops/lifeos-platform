@@ -5,6 +5,7 @@ import math
 import os
 import sqlite3
 import statistics
+import subprocess
 import sys
 import urllib.error
 import urllib.request
@@ -547,130 +548,142 @@ def atomic_json(path,data):
     temp.replace(path)
 
 
-def ha_request(path,payload=None):
-    base=os.environ.get(
-        "HA_URL",
-        "http://127.0.0.1:8123"
-    ).rstrip("/")
 
-    token=os.environ.get("HA_TOKEN")
+# LIFEOS_MQTT_SHADOW_TRANSPORT_V1
+MQTT_HOST=os.environ.get("MQTT_HOST","127.0.0.1")
+MQTT_PORT=int(os.environ.get("MQTT_PORT","1883"))
+MQTT_STATE_TOPIC="lifeos/energy/shadow_learning/state"
+MQTT_DISCOVERY_PREFIX="homeassistant"
 
-    if not token:
-        raise RuntimeError(
-            "HA_TOKEN not available"
-        )
+def mqtt_publish(topic,payload,retain=True):
+    if not isinstance(payload,str):
+        payload=json.dumps(payload,separators=(",",":"))
 
-    body=None
+    cmd=[
+        "mosquitto_pub",
+        "-h",MQTT_HOST,
+        "-p",str(MQTT_PORT),
+        "-t",topic,
+        "-m",payload,
+    ]
 
-    headers={
-        "Authorization":f"Bearer {token}",
-        "Content-Type":"application/json",
-    }
+    if retain:
+        cmd.append("-r")
 
-    if payload is not None:
-        body=json.dumps(payload).encode()
-
-    req=urllib.request.Request(
-        base+path,
-        data=body,
-        headers=headers,
-        method="POST" if payload is not None else "GET",
+    result=subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=10,
     )
 
-    with urllib.request.urlopen(
-        req,
-        timeout=10
-    ) as response:
-        raw=response.read()
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr[-500:]
+            or f"MQTT publish failed for {topic}"
+        )
 
-    if not raw:
-        return None
+def mqtt_discovery(
+    object_id,
+    name,
+    value_template,
+    unit=None,
+):
+    config={
+        "name":name,
+        "unique_id":f"lifeos_{object_id}_mqtt_v1",
+        "state_topic":MQTT_STATE_TOPIC,
+        "value_template":value_template,
+        "availability_topic":"lifeos/status",
+        "payload_available":"online",
+        "payload_not_available":"offline",
+        "device":{
+            "identifiers":["lifeos_energy_learning"],
+            "name":"LifeOS Energy Learning",
+            "manufacturer":"LifeOS",
+        },
+    }
 
-    return json.loads(raw)
+    if unit:
+        config["unit_of_measurement"]=unit
+        config["state_class"]="measurement"
+
+    mqtt_publish(
+        f"{MQTT_DISCOVERY_PREFIX}/sensor/"
+        f"lifeos_{object_id}_mqtt_v1/config",
+        config,
+        True,
+    )
+
+def publish_shadow_discovery():
+    mqtt_discovery(
+        "shadow_learning_status",
+        "LifeOS Energy Shadow Learning Status MQTT",
+        "{{ value_json.status }}",
+    )
+
+    mqtt_discovery(
+        "shadow_solar_improvement",
+        "LifeOS Solar Shadow Improvement MQTT",
+        "{{ value_json.metrics.solar_kw.improvement_percent }}",
+        "%",
+    )
+
+    mqtt_discovery(
+        "shadow_house_improvement",
+        "LifeOS House Shadow Improvement MQTT",
+        "{{ value_json.metrics.house_kw.improvement_percent }}",
+        "%",
+    )
+
+    mqtt_discovery(
+        "shadow_battery_improvement",
+        "LifeOS Battery Shadow Improvement MQTT",
+        "{{ value_json.metrics.battery_kwh.improvement_percent }}",
+        "%",
+    )
+
+    mqtt_discovery(
+        "shadow_export_improvement",
+        "LifeOS Export Shadow Improvement MQTT",
+        "{{ value_json.metrics.export_kw.improvement_percent }}",
+        "%",
+    )
+
+
 
 
 def publish_sensor(entity_id,state,attributes):
-    ha_request(
-        f"/api/states/{entity_id}",
-        {
-            "state":str(state),
-            "attributes":attributes,
-        }
+    # Retained only as a compatibility stub during the migration.
+    # Direct Home Assistant state injection is no longer used.
+    raise RuntimeError(
+        "direct HA state publication retired; use MQTT"
     )
+
+
 
 
 def publish_home_assistant(report):
-    publish_sensor(
-        "sensor.lifeos_shadow_learning_status",
-        report["status"],
-        {
-            "friendly_name":
-                "LifeOS Energy Shadow Learning Status",
-            "mode":"shadow_only",
-            "control_enabled":False,
-            "forecast_horizon_minutes":
-                report["horizon_minutes"],
-            "source_error_rows":
-                report["source_error_rows"],
-            "coverage_hours":
-                report["coverage_hours"],
-            "model":
-                report["model"],
-            "generated_at":
-                report["generated_at"],
-        }
+    # Function name retained so the learning algorithm's call graph
+    # is unchanged. Transport is now MQTT, not HA REST POST.
+    mqtt_publish(
+        "lifeos/status",
+        "online",
+        True,
     )
 
-    names={
-        "solar_kw":"Solar",
-        "house_kw":"House",
-        "battery_kwh":"Battery",
-        "export_kw":"Export",
-    }
+    publish_shadow_discovery()
 
-    entity_ids={
-        "solar_kw":
-            "sensor.lifeos_shadow_solar_improvement",
-        "house_kw":
-            "sensor.lifeos_shadow_house_improvement",
-        "battery_kwh":
-            "sensor.lifeos_shadow_battery_improvement",
-        "export_kw":
-            "sensor.lifeos_shadow_export_improvement",
-    }
+    mqtt_publish(
+        MQTT_STATE_TOPIC,
+        report,
+        True,
+    )
 
-    for metric,name in names.items():
-        result=report["metrics"][metric]
+    log(
+        "Published shadow-learning report via retained MQTT"
+    )
 
-        improvement=(
-            result["improvement_percent"]
-            if result["improvement_percent"] is not None
-            else 0
-        )
-
-        publish_sensor(
-            entity_ids[metric],
-            improvement,
-            {
-                "friendly_name":
-                    f"LifeOS {name} Shadow Improvement",
-                "unit_of_measurement":"%",
-                "state_class":"measurement",
-                "samples":
-                    result["samples"],
-                "raw_mae":
-                    result["raw_mae"],
-                "shadow_mae":
-                    result["shadow_mae"],
-                "raw_rmse":
-                    result["raw_rmse"],
-                "shadow_rmse":
-                    result["shadow_rmse"],
-                "latest_correction":
-                    result["latest_correction"],
-                "mode":"shadow_only",
-            }
-        )
 
 
 def save_run(db,report):
