@@ -89,7 +89,7 @@
 - Personal Privacy Guardian profiles/data
 
 ## Snapshot Coverage
-- Managed files: 218
+- Managed files: 222
 
 ## Generated
-- UTC: `2026-08-28T15:00:17+00:00`
+- UTC: `2026-08-28T15:30:04+00:00`
