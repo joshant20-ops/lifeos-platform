@@ -4,6 +4,7 @@ import bisect
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 import time
 import traceback
@@ -583,126 +584,193 @@ def calculate_errors(
     }
 
 
-def post_sensor(
-    entity_id,
-    value,
-    friendly_name,
-    unit,
-    extra=None
+
+# LIFEOS_MQTT_TRANSPORT_V1
+MQTT_HOST=os.environ.get("MQTT_HOST","127.0.0.1")
+MQTT_PORT=int(os.environ.get("MQTT_PORT","1883"))
+MQTT_STATE_TOPIC="lifeos/energy/forecast/state"
+MQTT_DISCOVERY_PREFIX="homeassistant"
+
+MQTT_STATE={
+    "forecast_horizon_minutes":HORIZON_MIN,
+    "errors":{},
+    "recorder":{},
+}
+
+def mqtt_publish(topic,payload,retain=True):
+    if not isinstance(payload,str):
+        payload=json.dumps(payload,separators=(",",":"))
+
+    cmd=[
+        "mosquitto_pub",
+        "-h",MQTT_HOST,
+        "-p",str(MQTT_PORT),
+        "-t",topic,
+        "-m",payload,
+    ]
+
+    if retain:
+        cmd.append("-r")
+
+    result=subprocess.run(
+        cmd,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr[-500:]
+            or f"MQTT publish failed for {topic}"
+        )
+
+def mqtt_discovery(
+    object_id,
+    name,
+    value_template,
+    unit=None,
+    device_class=None,
 ):
-    attrs={
-        "friendly_name":friendly_name,
-        "unit_of_measurement":unit,
-        "state_class":"measurement",
-        "forecast_horizon_minutes":HORIZON_MIN,
-        "calculation":"actual - forecast",
+    config={
+        "name":name,
+        "unique_id":f"lifeos_{object_id}_mqtt_v1",
+        "state_topic":MQTT_STATE_TOPIC,
+        "value_template":value_template,
+        "availability_topic":"lifeos/status",
+        "payload_available":"online",
+        "payload_not_available":"offline",
+        "device":{
+            "identifiers":["lifeos_energy_learning"],
+            "name":"LifeOS Energy Learning",
+            "manufacturer":"LifeOS",
+        },
     }
 
-    if unit=="kW":
-        attrs["device_class"]="power"
+    if unit:
+        config["unit_of_measurement"]=unit
+        config["state_class"]="measurement"
 
-    if extra:
-        attrs.update(extra)
+    if device_class:
+        config["device_class"]=device_class
 
-    request(
-        f"/api/states/{entity_id}",
-        method="POST",
-        body={
-            "state":(
-                "unavailable"
-                if value is None
-                else round(float(value),4)
-            ),
-            "attributes":attrs
-        }
+    mqtt_publish(
+        f"{MQTT_DISCOVERY_PREFIX}/sensor/"
+        f"lifeos_{object_id}_mqtt_v1/config",
+        config,
+        True,
+    )
+
+def publish_mqtt_discovery():
+    mqtt_discovery(
+        "forecast_error_solar_30m",
+        "LifeOS Forecast Error Solar 30m MQTT",
+        "{{ value_json.errors.solar.state }}",
+        "kW",
+        "power",
+    )
+
+    mqtt_discovery(
+        "forecast_error_house_30m",
+        "LifeOS Forecast Error House 30m MQTT",
+        "{{ value_json.errors.house.state }}",
+        "kW",
+        "power",
+    )
+
+    mqtt_discovery(
+        "forecast_error_battery_30m",
+        "LifeOS Forecast Error Battery 30m MQTT",
+        "{{ value_json.errors.battery.state }}",
+        "kWh",
+        "energy",
+    )
+
+    mqtt_discovery(
+        "forecast_error_export_30m",
+        "LifeOS Forecast Error Export 30m MQTT",
+        "{{ value_json.errors.export.state }}",
+        "kW",
+        "power",
+    )
+
+    mqtt_discovery(
+        "forecast_recorder",
+        "LifeOS Forecast Recorder MQTT",
+        "{{ value_json.recorder.state }}",
+    )
+
+def publish_mqtt_state():
+    MQTT_STATE["generated_at"] = (
+        datetime.now(timezone.utc)
+        .isoformat(timespec="seconds")
+    )
+
+    mqtt_publish(
+        "lifeos/status",
+        "online",
+        True,
+    )
+
+    publish_mqtt_discovery()
+
+    mqtt_publish(
+        MQTT_STATE_TOPIC,
+        MQTT_STATE,
+        True,
     )
 
 
+
+
 def publish_errors(result,target_at):
-    if result is None:
-        for entity,name,unit in (
-            (
-                "sensor.lifeos_forecast_error_solar_30m",
-                "LifeOS Solar Forecast Error 30m",
-                "kW"
-            ),
-            (
-                "sensor.lifeos_forecast_error_house_30m",
-                "LifeOS House Forecast Error 30m",
-                "kW"
-            ),
-            (
-                "sensor.lifeos_forecast_error_battery_30m",
-                "LifeOS Battery Forecast Error 30m",
-                "kWh"
-            ),
-            (
-                "sensor.lifeos_forecast_error_export_30m",
-                "LifeOS Export Forecast Error 30m",
-                "kW"
-            ),
-        ):
-            post_sensor(
-                entity,
-                None,
-                name,
-                unit,
-                {
-                    "status":"collecting_baseline"
-                }
-            )
-
-        return
-
-    errors=result["errors"]
-    forecast=result["forecast"]
-
     iso=datetime.fromtimestamp(
         target_at,
         timezone.utc
     ).isoformat()
 
-    mappings=(
-        (
-            "sensor.lifeos_forecast_error_solar_30m",
-            "LifeOS Solar Forecast Error 30m",
-            "kW",
-            "solar_kw"
-        ),
-        (
-            "sensor.lifeos_forecast_error_house_30m",
-            "LifeOS House Forecast Error 30m",
-            "kW",
-            "house_kw"
-        ),
-        (
-            "sensor.lifeos_forecast_error_battery_30m",
-            "LifeOS Battery Forecast Error 30m",
-            "kWh",
-            "battery_kwh"
-        ),
-        (
-            "sensor.lifeos_forecast_error_export_30m",
-            "LifeOS Export Forecast Error 30m",
-            "kW",
-            "export_kw"
-        ),
-    )
-
-    for entity,name,unit,metric in mappings:
-        post_sensor(
-            entity,
-            errors[metric],
-            name,
-            unit,
-            {
-                "status":"ready",
+    if result is None:
+        for key in (
+            "solar",
+            "house",
+            "battery",
+            "export",
+        ):
+            MQTT_STATE["errors"][key]={
+                "state":"unavailable",
+                "status":"collecting_baseline",
                 "target_timestamp":iso,
-                "locked_forecast":round(
-                    forecast[metric],4
-                ),
             }
-        )
+
+        publish_mqtt_state()
+        return
+
+    errors=result["errors"]
+    forecast=result["forecast"]
+
+    mapping={
+        "solar":("solar_kw","kW"),
+        "house":("house_kw","kW"),
+        "battery":("battery_kwh","kWh"),
+        "export":("export_kw","kW"),
+    }
+
+    for key,(metric,unit) in mapping.items():
+        MQTT_STATE["errors"][key]={
+            "state":round(float(errors[metric]),4),
+            "status":"ready",
+            "unit":unit,
+            "target_timestamp":iso,
+            "locked_forecast":round(
+                float(forecast[metric]),
+                4,
+            ),
+            "calculation":"actual - forecast",
+        }
+
+    publish_mqtt_state()
+
+
 
 
 def publish_health(db):
@@ -723,26 +791,16 @@ def publish_health(db):
         (HORIZON_MIN,)
     ).fetchone()[0]
 
-    request(
-        "/api/states/sensor.lifeos_forecast_recorder",
-        method="POST",
-        body={
-            "state":"running",
-            "attributes":{
-                "friendly_name":
-                    "LifeOS Forecast Recorder",
-                "forecast_snapshots":
-                    forecast_count,
-                "actual_samples":
-                    actual_count,
-                "error_samples":
-                    error_count,
-                "forecast_horizon_minutes":
-                    HORIZON_MIN,
-                "database":DB,
-            }
-        }
-    )
+    MQTT_STATE["recorder"]={
+        "state":"running",
+        "forecast_snapshots":forecast_count,
+        "actual_samples":actual_count,
+        "error_samples":error_count,
+        "forecast_horizon_minutes":HORIZON_MIN,
+        "database":DB,
+    }
+
+    publish_mqtt_state()
 
     log(
         "Database: "
@@ -750,6 +808,7 @@ def publish_health(db):
         f"{actual_count} actual rows, "
         f"{error_count} error rows"
     )
+
 
 
 def prune(db,now):
