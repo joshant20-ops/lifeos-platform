@@ -1,0 +1,14 @@
+services:
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    restart: unless-stopped
+    environment:
+    - DOCKER_API_VERSION=1.44
+    - PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    command:
+    - --cleanup
+    entrypoint:
+    - /watchtower
+    volumes:
+    - /var/run/docker.sock:/var/run/docker.sock

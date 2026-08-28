@@ -54,6 +54,7 @@
 ## Source Stacks Present
 
 - `adguard`
+- `autoheal`
 - `grafana`
 - `homeassistant`
 - `lifeos-energy`
@@ -67,6 +68,7 @@
 - `qbittorrent_backup_2026-07-01_171445`
 - `uptime-kuma`
 - `vaultwarden`
+- `watchtower`
 - `zwave`
 - `zwave-js-ui`
 

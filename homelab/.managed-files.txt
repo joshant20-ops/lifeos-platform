@@ -78,6 +78,7 @@ mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_history.py
 mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_pricing.py
 mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_simulator.py
 opt/stacks/adguard/docker-compose.yml
+opt/stacks/autoheal/docker-compose.yml
 opt/stacks/grafana/dashboards/lifeos/lifeos-worker-queues.json
 opt/stacks/grafana/docker-compose.yml
 opt/stacks/grafana/provisioning/dashboards/lifeos/lifeos-worker-queues.yml
@@ -247,6 +248,7 @@ opt/stacks/qbittorrent_backup_2026-07-01_171445/docker-compose.yml
 opt/stacks/qbittorrent/docker-compose.yml
 opt/stacks/uptime-kuma/docker-compose.yml
 opt/stacks/vaultwarden/docker-compose.yml
+opt/stacks/watchtower/docker-compose.yml
 opt/stacks/zwave/docker-compose.yml
 opt/stacks/zwave-js-ui/docker-compose.yml
 usr/local/sbin/lifeos-github-first-gate
