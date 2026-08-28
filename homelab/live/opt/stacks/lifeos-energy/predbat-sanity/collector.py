@@ -169,6 +169,109 @@ def scalar(v):
     except Exception:
         return str(v)
 
+
+# LIFEOS_PREDBAT_LIVE_FORECAST_V55
+#
+# Forecast/headline values are operational current-state data.
+# Home Assistant's recorder database is intentionally retained for
+# historical/general state collection, but must not be treated as the
+# authoritative source of current Predbat forecast state.
+#
+# The long-lived HA token is injected only for collector execution via
+# lifeos-secret. It is never written into an export.
+def live_ha_states():
+    token = os.environ.get("HA_TOKEN", "").strip()
+    if not token:
+        return {}, {
+            "status": "token_missing",
+            "source": "home_assistant_live_api",
+        }
+
+    req = urllib.request.Request(
+        "http://127.0.0.1:8123/api/states",
+        headers={
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+        },
+    )
+
+    started = datetime.now(timezone.utc)
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            payload = json.load(response)
+    except Exception as exc:
+        return {}, {
+            "status": "error",
+            "source": "home_assistant_live_api",
+            "error": str(exc)[:200],
+        }
+
+    finished = datetime.now(timezone.utc)
+
+    states = {}
+    for item in payload:
+        entity_id = item.get("entity_id")
+        if not entity_id:
+            continue
+        states[entity_id] = item
+
+    return states, {
+        "status": "live_api_ok",
+        "source": "home_assistant_live_api",
+        "request_seconds": round(
+            (finished - started).total_seconds(), 4
+        ),
+        "state_count": len(states),
+        "queried_at": finished.astimezone(TZ).isoformat(),
+    }
+
+
+def live_state_record(item):
+    if not item:
+        return None
+
+    return {
+        "state": scalar(item.get("state")),
+        "last_updated": item.get("last_updated"),
+        "source": "home_assistant_live_api",
+    }
+
+
+def live_results(item):
+    if not item:
+        return []
+
+    attrs_live = item.get("attributes") or {}
+    return compact_results(attrs_live)
+
+
+def state_age_seconds(record, now=None):
+    if not record:
+        return None
+
+    value = record.get("last_updated")
+    if not value:
+        return None
+
+    try:
+        dt = datetime.fromisoformat(
+            str(value).replace("Z", "+00:00")
+        )
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+
+        if now is None:
+            now = datetime.now(timezone.utc)
+
+        return round(
+            max(0.0, (now - dt.astimezone(timezone.utc)).total_seconds()),
+            3,
+        )
+    except Exception:
+        return None
+
+
 def connect_db():
     con = sqlite3.connect(
         f"file:{DB}?mode=ro",
@@ -378,6 +481,18 @@ def forecast_summary(forecast, tariff):
 def anomaly_flags(snapshot):
     flags = []
 
+    provenance = snapshot.get("forecast_provenance", {})
+    freshness = snapshot.get("forecast_freshness", {})
+
+    if provenance.get("source") != "home_assistant_live_api":
+        flags.append("live_forecast_source_unavailable")
+
+    headline_count = freshness.get("headline_count", 0)
+    fresh_count = freshness.get("fresh_headline_count", 0)
+
+    if headline_count and fresh_count < headline_count:
+        flags.append("predbat_forecast_headline_stale")
+
     fs = snapshot["forecast_summary"]
 
     if fs.get("high_import_points_beyond_live_tariff_horizon", 0) > 0:
@@ -428,6 +543,8 @@ def compact_record(snapshot):
             "export": snapshot["tariff"]["export"].get("latest_local_to"),
         },
         "forecast_summary": snapshot["forecast_summary"],
+        "forecast_provenance": snapshot.get("forecast_provenance", {}),
+        "forecast_freshness": snapshot.get("forecast_freshness", {}),
         "anomaly_flags": snapshot["anomaly_flags"],
     }
 
@@ -436,13 +553,45 @@ def main():
     DAILY_DIR.mkdir(parents=True, exist_ok=True)
     EXPORT.mkdir(parents=True, exist_ok=True)
 
+    # Recorder remains the historical/general-state source.
     with connect_db() as con:
         states = latest_states(con)
 
-        forecast = {
-            e: compact_results(attrs(con, e))
-            for e in FORECAST_IDS
-        }
+    # Current forecast/headline data comes from HA's live state machine.
+    live_states, live_api = live_ha_states()
+
+    live_overlay_ids = set(FORECAST_IDS) | {
+        "predbat.best_import_energy",
+        "predbat.best_import_energy_battery",
+        "predbat.best_import_energy_house",
+        "predbat.best_export_energy",
+        "predbat.best_pv_energy",
+        "predbat.best_load_energy",
+        "predbat.best_soc_min_kwh",
+        "predbat.soc_kw_best",
+    }
+
+    live_overlay_count = 0
+
+    if live_api.get("status") == "live_api_ok":
+        for entity_id in live_overlay_ids:
+            item = live_states.get(entity_id)
+            record = live_state_record(item)
+
+            if record is not None:
+                states[entity_id] = record
+                live_overlay_count += 1
+
+    forecast = {
+        entity_id: live_results(live_states.get(entity_id))
+        for entity_id in FORECAST_IDS
+    }
+
+    forecast_source = (
+        "home_assistant_live_api"
+        if live_api.get("status") == "live_api_ok"
+        else "unavailable"
+    )
 
     tariff = {
         "import": tariff_horizon(config_value("rates_import_octopus_url")),
@@ -460,6 +609,52 @@ def main():
         "entities": states,
         "tariff": tariff,
         "forecast": forecast,
+        "forecast_provenance": {
+            "source": forecast_source,
+            "live_api": live_api,
+            "live_overlay_count": live_overlay_count,
+            "forecast_entity_count": len(FORECAST_IDS),
+        },
+    }
+
+    freshness_now = datetime.now(timezone.utc)
+
+    headline_ids = [
+        "predbat.best_load_energy",
+        "predbat.best_pv_energy",
+        "predbat.best_import_energy",
+        "predbat.best_import_energy_battery",
+        "predbat.best_import_energy_house",
+        "predbat.best_export_energy",
+        "predbat.best_soc_min_kwh",
+        "predbat.soc_kw_best",
+    ]
+
+    headline_freshness = {}
+
+    for entity_id in headline_ids:
+        record = states.get(entity_id)
+        age = state_age_seconds(record, freshness_now)
+
+        headline_freshness[entity_id] = {
+            "age_seconds": age,
+            "fresh_1h": age is not None and age <= 3600,
+            "source": (
+                record.get("source", "recorder_db")
+                if record
+                else "missing"
+            ),
+        }
+
+    snapshot["forecast_freshness"] = {
+        "checked_at": freshness_now.astimezone(TZ).isoformat(),
+        "headline_entities": headline_freshness,
+        "fresh_headline_count": sum(
+            1
+            for value in headline_freshness.values()
+            if value["fresh_1h"]
+        ),
+        "headline_count": len(headline_freshness),
     }
 
     snapshot["forecast_summary"] = forecast_summary(

@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+REPO="${LIFEOS_REPO:-/home/joshan/lifeos-platform}"
+EXPECTED_BRANCH="${LIFEOS_BRANCH:-main}"
+
+USER_NAME="${LIFEOS_GIT_USER:-joshan}"
+HOME_DIR="${LIFEOS_GIT_HOME:-/home/joshan}"
+
+START="$(date +%s)"
+
+elapsed() {
+    local d=$(( $(date +%s) - START ))
+    printf '[%02dm:%02ds]' $((d/60)) $((d%60))
+}
+
+fail() {
+    echo
+    echo "GITHUB_FIRST_GATE=FAIL"
+    echo "REASON=$1"
+    echo "$(elapsed) COMPLETE"
+    exit 1
+}
+
+g() {
+    if [[ "$(id -u)" -eq 0 ]]; then
+        runuser -u "$USER_NAME" -- \
+            env HOME="$HOME_DIR" \
+            git -C "$REPO" "$@"
+    else
+        env HOME="$HOME_DIR" \
+            git -C "$REPO" "$@"
+    fi
+}
+
+echo "========================================================================"
+echo "LIFEOS — GITHUB-FIRST PRE-CHANGE GATE"
+echo "========================================================================"
+date --iso-8601=seconds
+echo
+
+[[ -d "$REPO/.git" ]] || fail "repository_missing"
+
+echo "[1/4] Refresh authoritative GitHub metadata"
+echo "GIT_EXECUTION_USER=$USER_NAME"
+echo "GIT_EXECUTION_HOME=$HOME_DIR"
+echo "TIMEOUT=15_seconds"
+
+if [[ "$(id -u)" -eq 0 ]]; then
+    timeout 15s \
+        runuser -u "$USER_NAME" -- \
+        env HOME="$HOME_DIR" \
+        git -C "$REPO" fetch --quiet origin \
+        || fail "git_fetch_failed"
+else
+    timeout 15s \
+        env HOME="$HOME_DIR" \
+        git -C "$REPO" fetch --quiet origin \
+        || fail "git_fetch_failed"
+fi
+
+echo "FETCH=PASS"
+
+echo
+echo "[2/4] Repository alignment"
+
+BRANCH="$(g branch --show-current)"
+LOCAL_HEAD="$(g rev-parse HEAD)"
+REMOTE_HEAD="$(g rev-parse "origin/${EXPECTED_BRANCH}")"
+DIRTY_COUNT="$(g status --porcelain | wc -l | tr -d ' ')"
+
+echo "BRANCH=$BRANCH"
+echo "EXPECTED_BRANCH=$EXPECTED_BRANCH"
+echo "LOCAL_HEAD=$LOCAL_HEAD"
+echo "REMOTE_HEAD=$REMOTE_HEAD"
+echo "WORKTREE_DIRTY_COUNT=$DIRTY_COUNT"
+
+[[ "$BRANCH" == "$EXPECTED_BRANCH" ]] \
+    || fail "wrong_branch"
+
+[[ "$LOCAL_HEAD" == "$REMOTE_HEAD" ]] \
+    || fail "local_remote_diverged"
+
+[[ "$DIRTY_COUNT" == "0" ]] \
+    || fail "dirty_worktree"
+
+echo "REPOSITORY_ALIGNMENT=PASS"
+
+echo
+echo "[3/4] Managed runtime-file comparison"
+
+if [[ $# -eq 0 ]]; then
+    echo "MANAGED_FILE_CHECK=not_requested"
+else
+    RUNTIME="$1"
+
+    [[ "$RUNTIME" == /* ]] \
+        || fail "runtime_path_not_absolute"
+
+    REPO_REL="homelab/live${RUNTIME}"
+    REPO_COPY="$REPO/$REPO_REL"
+
+    echo "RUNTIME_PATH=$RUNTIME"
+    echo "MANAGED_REPOSITORY_PATH=$REPO_REL"
+
+    if [[ ! -f "$RUNTIME" ]]; then
+        echo "RUNTIME_FILE=missing"
+        fail "runtime_file_missing"
+    fi
+
+    if [[ ! -f "$REPO_COPY" ]]; then
+        echo "MANAGED_GITHUB_COPY=missing"
+        echo "RUNTIME_VS_GITHUB=NOT_MANAGED_OR_NOT_YET_SYNCED"
+    else
+        RUNTIME_SHA="$(sha256sum "$RUNTIME" | awk '{print $1}')"
+        MANAGED_SHA="$(sha256sum "$REPO_COPY" | awk '{print $1}')"
+
+        echo "RUNTIME_SHA256=$RUNTIME_SHA"
+        echo "MANAGED_SHA256=$MANAGED_SHA"
+
+        if [[ "$RUNTIME_SHA" == "$MANAGED_SHA" ]]; then
+            echo "RUNTIME_VS_GITHUB=ALIGNED"
+        else
+            echo "RUNTIME_VS_GITHUB=DIFFERENT"
+            echo "ACTION=inspect_difference_before_patch"
+            fail "runtime_managed_source_difference"
+        fi
+    fi
+fi
+
+echo
+echo "[4/4] Verdict"
+echo "GITHUB_FIRST_GATE=PASS"
+echo "SAFE_TO_INSPECT_AND_BUILD_PATCH=yes"
+echo "$(elapsed) COMPLETE"
