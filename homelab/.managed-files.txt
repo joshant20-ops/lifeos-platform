@@ -251,6 +251,7 @@ opt/stacks/vaultwarden/docker-compose.yml
 opt/stacks/watchtower/docker-compose.yml
 opt/stacks/zwave/docker-compose.yml
 opt/stacks/zwave-js-ui/docker-compose.yml
+usr/local/sbin/lifeos-ansible-adopt
 usr/local/sbin/lifeos-github-first-gate
 usr/local/sbin/lifeos-github-sync
 usr/local/sbin/lifeos-github-sync.bak_energy_source_20260826_222151
