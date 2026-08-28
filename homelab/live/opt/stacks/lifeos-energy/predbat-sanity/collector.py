@@ -487,11 +487,37 @@ def anomaly_flags(snapshot):
     if provenance.get("source") != "home_assistant_live_api":
         flags.append("live_forecast_source_unavailable")
 
-    headline_count = freshness.get("headline_count", 0)
-    fresh_count = freshness.get("fresh_headline_count", 0)
+    # LIFEOS_PREDBAT_SANITY_ASSESSMENT_V56
+    #
+    # best_import_energy_house may legitimately remain zero and unchanged
+    # for many hours. Do not treat unchanged zero as evidence that the
+    # actively-changing Predbat forecast is stale.
+    active_headline_ids = [
+        "predbat.best_load_energy",
+        "predbat.best_pv_energy",
+        "predbat.best_import_energy",
+        "predbat.best_import_energy_battery",
+        "predbat.best_export_energy",
+        "predbat.best_soc_min_kwh",
+        "predbat.soc_kw_best",
+    ]
 
-    if headline_count and fresh_count < headline_count:
-        flags.append("predbat_forecast_headline_stale")
+    headline_entities = freshness.get("headline_entities", {})
+
+    stale_active = [
+        entity_id
+        for entity_id in active_headline_ids
+        if not headline_entities.get(entity_id, {}).get("fresh_1h", False)
+    ]
+
+    freshness["active_headline_count"] = len(active_headline_ids)
+    freshness["fresh_active_headline_count"] = (
+        len(active_headline_ids) - len(stale_active)
+    )
+    freshness["stale_active_headlines"] = stale_active
+
+    if stale_active:
+        flags.append("predbat_forecast_active_headline_stale")
 
     fs = snapshot["forecast_summary"]
 
@@ -505,6 +531,55 @@ def anomaly_flags(snapshot):
         flags.append("export_tariff_source_unhealthy")
 
     return flags
+
+def sanity_assessment(snapshot):
+    """
+    Produce a compact operator-facing PASS / WATCH / FAIL verdict.
+
+    FAIL means the current forecast/provenance cannot be trusted.
+    WATCH means data is trustworthy but the economic strategy deserves
+    attention.
+    PASS means no material sanity concern was detected.
+    """
+    flags = list(snapshot.get("anomaly_flags", []))
+
+    fail_flags = {
+        "live_forecast_source_unavailable",
+        "predbat_forecast_active_headline_stale",
+        "import_tariff_source_unhealthy",
+        "export_tariff_source_unhealthy",
+    }
+
+    watch_flags = {
+        "high_grid_charge_planned_on_provisional_tariff",
+    }
+
+    fails = sorted(flag for flag in flags if flag in fail_flags)
+    watches = sorted(flag for flag in flags if flag in watch_flags)
+    other = sorted(
+        flag for flag in flags
+        if flag not in fail_flags and flag not in watch_flags
+    )
+
+    if fails:
+        level = "FAIL"
+        reason = "forecast_or_provenance_not_safe_to_trust"
+    elif watches or other:
+        level = "WATCH"
+        reason = "forecast_current_but_strategy_deserves_review"
+    else:
+        level = "PASS"
+        reason = "forecast_current_and_no_material_sanity_flags"
+
+    return {
+        "level": level,
+        "reason": reason,
+        "fail_flags": fails,
+        "watch_flags": watches,
+        "other_flags": other,
+        "requires_operator_attention": level != "PASS",
+    }
+
 
 def compact_record(snapshot):
     wanted = [
@@ -545,6 +620,7 @@ def compact_record(snapshot):
         "forecast_summary": snapshot["forecast_summary"],
         "forecast_provenance": snapshot.get("forecast_provenance", {}),
         "forecast_freshness": snapshot.get("forecast_freshness", {}),
+        "sanity_assessment": snapshot.get("sanity_assessment", {}),
         "anomaly_flags": snapshot["anomaly_flags"],
     }
 
@@ -663,6 +739,7 @@ def main():
     )
 
     snapshot["anomaly_flags"] = anomaly_flags(snapshot)
+    snapshot["sanity_assessment"] = sanity_assessment(snapshot)
 
     mqtt_publish("lifeos/status", "online", True)
     publish_mqtt_discovery()
@@ -703,6 +780,14 @@ def main():
             if snapshot["anomaly_flags"]
             else "none"
         )
+    )
+    print(
+        "SANITY_ASSESSMENT="
+        + snapshot["sanity_assessment"]["level"]
+    )
+    print(
+        "SANITY_REASON="
+        + snapshot["sanity_assessment"]["reason"]
     )
 
 if __name__ == "__main__":
