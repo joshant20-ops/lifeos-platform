@@ -80,8 +80,6 @@ else
     echo "- Managed files: snapshot not yet generated"
 fi
 echo
-echo "## Generated"
-printf -- "- UTC: \`%s\`\n" "$(date -u --iso-8601=seconds)"
 } >"$TMP"
 
 chown joshan:joshan "$TMP"

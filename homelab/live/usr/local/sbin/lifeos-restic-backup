@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+export RESTIC_REPOSITORY="/mnt/synology-backups/restic/lifeos-pi5"
+export RESTIC_PASSWORD_FILE="/etc/lifeos/restic-password"
+
+mountpoint -q /mnt/synology-backups || {
+    echo "Synology backup mount unavailable"
+    exit 1
+}
+
+restic backup \
+    --exclude-file=/etc/lifeos/restic-excludes \
+    --tag lifeos-pi5 \
+    /etc/systemd/system \
+    /usr/local/sbin \
+    /usr/local/bin \
+    /opt/stacks \
+    /mnt/docker-data/automation/repos \
+    /mnt/docker-data/automation/secrets
+
+restic forget \
+    --tag lifeos-pi5 \
+    --keep-daily 7 \
+    --keep-weekly 4 \
+    --keep-monthly 6

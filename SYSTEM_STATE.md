@@ -91,5 +91,3 @@
 ## Snapshot Coverage
 - Managed files: 222
 
-## Generated
-- UTC: `2026-08-28T15:30:04+00:00`
