@@ -1,0 +1,58 @@
+---
+- name: LifeOS full source and configuration adoption
+  hosts: pi5
+  become: true
+  gather_facts: true
+
+  vars:
+    repo_root: "{{ playbook_dir }}/.."
+
+  vars_files:
+    - vars/adopt_files.json
+    - vars/compose_projects.json
+
+  pre_tasks:
+
+    - name: Require Pi ARM64 Debian 13
+      ansible.builtin.assert:
+        that:
+          - ansible_architecture in ['aarch64', 'arm64']
+          - ansible_distribution == 'Debian'
+          - ansible_distribution_major_version == '13'
+
+    - name: Inspect authoritative roots
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /opt/stacks
+        - /mnt/docker-data/automation/repos/LifeOS-Energy
+      register: roots
+
+    - name: Require authoritative roots
+      ansible.builtin.assert:
+        that:
+          - item.stat.exists
+          - item.stat.isdir
+      loop: "{{ roots.results }}"
+
+  tasks:
+
+    - name: Manage Git-owned source and configuration
+      ansible.builtin.copy:
+        src: "{{ repo_root }}/homelab/live/{{ item.path }}"
+        dest: "/{{ item.path }}"
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+        backup: true
+      loop: "{{ managed_files }}"
+
+    - name: Manage discovered Docker Compose definitions
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/{{ item.desired_rel }}"
+        dest: "{{ item.live_path }}"
+        owner: "{{ item.owner }}"
+        group: "{{ item.group }}"
+        mode: "{{ item.mode }}"
+        backup: true
+      loop: "{{ compose_files }}"

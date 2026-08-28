@@ -1,0 +1,1384 @@
+{
+  "managed_files": [
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/config.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/__init__.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/logging_setup.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/energy.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/enphase.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/home_assistant.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/__init__.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/enphase.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/forecast_history.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/forecast.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/history.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/__init__.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/octopus.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/plan_executor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/planner.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/pricing.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/scheduler.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/simulator.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/app/services/solar_forecast.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/Dockerfile",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/.dockerignore",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/docs/architecture/ADR-0001-open-source-dependencies.md",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/docs/build-status.md",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/.gitignore",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/config.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/__init__.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/logging_setup.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/main.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/routers/energy.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/routers/enphase.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/routers/home_assistant.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/routers/__init__.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/enphase.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/forecast_history.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/forecast.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/history.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/__init__.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/octopus.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/plan_executor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/planner.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/pricing.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/scheduler.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/simulator.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/app/services/solar_forecast.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/config/config.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/Dockerfile",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/.dockerignore",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/docs/architecture/ADR-0001-open-source-dependencies.md",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/docs/build-status.md",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/.gitignore",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/README.md",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/requirements.txt",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/scripts/validate.sh",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0755"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/static/app.css",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/static/app.js",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/static/energy.css",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/static/energy.js",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/templates/energy.html",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/templates/index.html",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/tests/test_enphase.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/tests/test_history.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/tests/test_pricing.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/LifeOS-Energy/tests/test_simulator.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/README.md",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/requirements.txt",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/scripts/validate.sh",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0755"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/static/app.css",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/static/app.js",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/static/energy.css",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/static/energy.js",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/templates/energy.html",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/templates/index.html",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_enphase.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_history.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_pricing.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_simulator.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/grafana/dashboards/lifeos/lifeos-worker-queues.json",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/grafana/provisioning/dashboards/lifeos/lifeos-worker-queues.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/grafana/provisioning/dashboards/lifeos-worker-queues.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/automations.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/blueprints/automation/homeassistant/motion_light.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/blueprints/automation/homeassistant/notify_leaving_zone.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/blueprints/script/homeassistant/confirmable_notification.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/blueprints/template/homeassistant/inverted_binary_sensor.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/configuration.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/lifeos-energy-dashboard.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/action_layer.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/container_visibility.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/execution_safety_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/host_interpretation.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/human_action_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lab_error_board.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_action_processor_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_actions.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_ask.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_attention.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_chat.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_closed_loop_missing_entity_fallbacks.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_closed_loop_repair.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_day49_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_email_lifecycle_controls.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_energy_directional.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_energy.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_human_trust_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_legacy_patch_governance.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_open_loops.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_pa_lifecycle.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_pa_native_shadow.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_patch_governance.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_pa.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_playbook_detail_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_powerdown.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/lifeos_system_health_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_actionable.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_effective.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_identity_native.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_learning.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_map.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_observations.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_rule_controls.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/network_rules.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/power_intent.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/runtime_visibility.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/watchman_safety.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/watchman_status_summary.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/packages/z97_llm_first.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_action_required_count.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_docker_hosts.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_exited.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_pi5_state.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_reachable_hosts.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_restarting.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_running.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_total.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_unhealthy.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_container_visibility_z97_state.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_healthy_count.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi3_action_required.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi3_host_interpretation.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi3_power_intent.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi3_severity.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi5_action_required.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi5_host_interpretation.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi5_power_intent.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_pi5_severity.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_power_intent.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_preflight_blocked_count.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_preflight_safe_count.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_queue_queued_total.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_queue_stale_count.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_engineer_vm_hostname.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_engineer_vm_reachable.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_pi5_container_total.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_pi5_exited_containers.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_pi5_restarting_containers.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_pi5_running_containers.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_pi5_unhealthy_containers.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_proxmox_reachable.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_proxmox_reachable_vms.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_proxmox_running_vms.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_proxmox_stopped_vms.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_proxmox_truth_ip_count.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_proxmox_unreachable_vms.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_runtime_proxmox_vm_total.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_warning_count.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_watchman_guarded_message.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_watchman_guarded_result.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_z97_action_required.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_z97_host_interpretation.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_z97_power_intent.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_z97_readiness_full.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_z97_readiness.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_z97_readiness_state.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/read_z97_severity.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scenes.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/execution_safety_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/human_action_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_action_processor_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_action_request.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_action_run_watchman.sh",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_ha_ask.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_human_trust_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_pa_lifecycle_export.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_playbook_detail_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/lifeos_system_health_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/network_identity_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/network_identity_live_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/network_rule_toggle.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/paperless_ai_status_ha_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/read_json_value.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/read_watchman_status.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts/watchman_gate_sensor.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0775"
+    },
+    {
+      "path": "opt/stacks/homeassistant/config/scripts.yaml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/forecast-learning/collector.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/forecast-learning/shadow_learner.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/forecast-learning/wait_for_ha_energy.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/ops/LIFEOS_GITHUB_FIRST_CHANGE_SOP.md",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/ops/lifeos-github-first-gate",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/powerdown-assurance/lifeos-powerdown-assurance-active.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/powerdown-assurance/lifeos-powerdown-assurance-active.service",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/powerdown-assurance/lifeos-powerdown-assurance-active.timer",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "path": "opt/stacks/lifeos-energy/predbat-sanity/collector.py",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "opt/stacks/mosquitto/config/mosquitto.conf",
+      "owner": "1883",
+      "group": "1883",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/app.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/checks/address_exposure.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/checks/change_detection.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/checks/phone_exposure.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/checks/public_exposure.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/checks/site_scoped_exposure.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/checks/username_exposure.py",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/config.default.yaml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/Dockerfile",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/requirements.txt",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/privacy-guardian/app/templates/index.html",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/prometheus/alerts.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/prometheus/prometheus.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "opt/stacks/prometheus/rules/day8-alerts.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "path": "usr/local/sbin/lifeos-github-first-gate",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/lifeos-github-sync",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/lifeos-gitleaks-gate",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/lifeos_network_identity_refresh_root_wrapper.sh",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/lifeos-powerdown-assurance",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/lifeos-powerdown-assurance-active",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/lifeos-restic-backup",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/lifeos-system-memory",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    },
+    {
+      "path": "usr/local/sbin/octopus-powerdown-watch",
+      "owner": "root",
+      "group": "root",
+      "mode": "0750"
+    },
+    {
+      "path": "usr/local/sbin/octopus-powerdown-watch-decision",
+      "owner": "root",
+      "group": "root",
+      "mode": "0750"
+    },
+    {
+      "path": "usr/local/sbin/pi_sd_image_backup.sh",
+      "owner": "root",
+      "group": "root",
+      "mode": "0755"
+    }
+  ]
+}

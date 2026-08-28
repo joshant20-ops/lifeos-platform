@@ -1,0 +1,406 @@
+{
+  "compose_projects": [
+    {
+      "project": "adguard",
+      "working_dir": "/opt/stacks/adguard",
+      "config_files": [
+        "/opt/stacks/adguard/docker-compose.yml"
+      ],
+      "containers": [
+        "adguardhome"
+      ],
+      "desired_files": [
+        "desired/compose/adguard/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "autoheal",
+      "working_dir": "/opt/stacks/autoheal",
+      "config_files": [
+        "/opt/stacks/autoheal/docker-compose.yml"
+      ],
+      "containers": [
+        "autoheal"
+      ],
+      "desired_files": [
+        "desired/compose/autoheal/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "grafana",
+      "working_dir": "/opt/stacks/grafana",
+      "config_files": [
+        "/opt/stacks/grafana/docker-compose.yml"
+      ],
+      "containers": [
+        "grafana"
+      ],
+      "desired_files": [
+        "desired/compose/grafana/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "homeassistant",
+      "working_dir": "/opt/stacks/homeassistant",
+      "config_files": [
+        "/opt/stacks/homeassistant/docker-compose.yml"
+      ],
+      "containers": [
+        "homeassistant"
+      ],
+      "desired_files": [
+        "desired/compose/homeassistant/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "lifeos-energy",
+      "working_dir": "/mnt/docker-data/automation/repos/LifeOS-Energy",
+      "config_files": [
+        "/mnt/docker-data/automation/repos/LifeOS-Energy/docker-compose.yml"
+      ],
+      "containers": [
+        "lifeos-energy"
+      ],
+      "desired_files": [
+        "desired/compose/lifeos-energy/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "matter-server",
+      "working_dir": "/home/joshan/docker/matter-server",
+      "config_files": [
+        "/home/joshan/docker/matter-server/docker-compose.yml"
+      ],
+      "containers": [
+        "matter-server"
+      ],
+      "desired_files": [
+        "desired/compose/matter-server/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "mosquitto",
+      "working_dir": "/opt/stacks/mosquitto",
+      "config_files": [
+        "/opt/stacks/mosquitto/docker-compose.yml"
+      ],
+      "containers": [
+        "mosquitto"
+      ],
+      "desired_files": [
+        "desired/compose/mosquitto/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "npm",
+      "working_dir": "/opt/stacks/npm",
+      "config_files": [
+        "/opt/stacks/npm/docker-compose.yml"
+      ],
+      "containers": [
+        "nginx-proxy-manager"
+      ],
+      "desired_files": [
+        "desired/compose/npm/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "paperless",
+      "working_dir": "/home/joshan/paperless",
+      "config_files": [
+        "/home/joshan/paperless/docker-compose.yml"
+      ],
+      "containers": [
+        "paperless-paperless-1",
+        "paperless-redis-1",
+        "paperless-db-1"
+      ],
+      "desired_files": [
+        "desired/compose/paperless/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "portainer",
+      "working_dir": "/opt/stacks/portainer",
+      "config_files": [
+        "/opt/stacks/portainer/docker-compose.yml"
+      ],
+      "containers": [
+        "portainer"
+      ],
+      "desired_files": [
+        "desired/compose/portainer/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "predbat",
+      "working_dir": "/opt/stacks/predbat",
+      "config_files": [
+        "/opt/stacks/predbat/docker-compose.yml"
+      ],
+      "containers": [
+        "predbat"
+      ],
+      "desired_files": [
+        "desired/compose/predbat/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "privacy-guardian",
+      "working_dir": "/opt/stacks/privacy-guardian",
+      "config_files": [
+        "/opt/stacks/privacy-guardian/docker-compose.yml"
+      ],
+      "containers": [
+        "privacy-guardian"
+      ],
+      "desired_files": [
+        "desired/compose/privacy-guardian/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "prometheus",
+      "working_dir": "/opt/stacks/prometheus",
+      "config_files": [
+        "/opt/stacks/prometheus/docker-compose.yml"
+      ],
+      "containers": [
+        "prometheus",
+        "cadvisor",
+        "node-exporter"
+      ],
+      "desired_files": [
+        "desired/compose/prometheus/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "qbittorrent",
+      "working_dir": "/opt/stacks/qbittorrent",
+      "config_files": [
+        "/opt/stacks/qbittorrent/docker-compose.yml"
+      ],
+      "containers": [
+        "qbittorrent"
+      ],
+      "desired_files": [
+        "desired/compose/qbittorrent/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "uptime-kuma",
+      "working_dir": "/opt/stacks/uptime-kuma",
+      "config_files": [
+        "/opt/stacks/uptime-kuma/docker-compose.yml"
+      ],
+      "containers": [
+        "uptime-kuma"
+      ],
+      "desired_files": [
+        "desired/compose/uptime-kuma/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "vaultwarden",
+      "working_dir": "/opt/stacks/vaultwarden",
+      "config_files": [
+        "/opt/stacks/vaultwarden/docker-compose.yml"
+      ],
+      "containers": [
+        "vaultwarden"
+      ],
+      "desired_files": [
+        "desired/compose/vaultwarden/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "watchtower",
+      "working_dir": "/opt/stacks/watchtower",
+      "config_files": [
+        "/opt/stacks/watchtower/docker-compose.yml"
+      ],
+      "containers": [
+        "watchtower"
+      ],
+      "desired_files": [
+        "desired/compose/watchtower/docker-compose.yml"
+      ]
+    },
+    {
+      "project": "zwave-js-ui",
+      "working_dir": "/opt/stacks/zwave-js-ui",
+      "config_files": [
+        "/opt/stacks/zwave-js-ui/docker-compose.yml"
+      ],
+      "containers": [
+        "zwave-js-ui"
+      ],
+      "desired_files": [
+        "desired/compose/zwave-js-ui/docker-compose.yml"
+      ]
+    }
+  ],
+  "compose_files": [
+    {
+      "project": "adguard",
+      "working_dir": "/opt/stacks/adguard",
+      "live_path": "/opt/stacks/adguard/docker-compose.yml",
+      "desired_rel": "desired/compose/adguard/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "autoheal",
+      "working_dir": "/opt/stacks/autoheal",
+      "live_path": "/opt/stacks/autoheal/docker-compose.yml",
+      "desired_rel": "desired/compose/autoheal/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "project": "grafana",
+      "working_dir": "/opt/stacks/grafana",
+      "live_path": "/opt/stacks/grafana/docker-compose.yml",
+      "desired_rel": "desired/compose/grafana/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "homeassistant",
+      "working_dir": "/opt/stacks/homeassistant",
+      "live_path": "/opt/stacks/homeassistant/docker-compose.yml",
+      "desired_rel": "desired/compose/homeassistant/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "lifeos-energy",
+      "working_dir": "/mnt/docker-data/automation/repos/LifeOS-Energy",
+      "live_path": "/mnt/docker-data/automation/repos/LifeOS-Energy/docker-compose.yml",
+      "desired_rel": "desired/compose/lifeos-energy/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "matter-server",
+      "working_dir": "/home/joshan/docker/matter-server",
+      "live_path": "/home/joshan/docker/matter-server/docker-compose.yml",
+      "desired_rel": "desired/compose/matter-server/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "mosquitto",
+      "working_dir": "/opt/stacks/mosquitto",
+      "live_path": "/opt/stacks/mosquitto/docker-compose.yml",
+      "desired_rel": "desired/compose/mosquitto/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "npm",
+      "working_dir": "/opt/stacks/npm",
+      "live_path": "/opt/stacks/npm/docker-compose.yml",
+      "desired_rel": "desired/compose/npm/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "paperless",
+      "working_dir": "/home/joshan/paperless",
+      "live_path": "/home/joshan/paperless/docker-compose.yml",
+      "desired_rel": "desired/compose/paperless/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "portainer",
+      "working_dir": "/opt/stacks/portainer",
+      "live_path": "/opt/stacks/portainer/docker-compose.yml",
+      "desired_rel": "desired/compose/portainer/docker-compose.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "project": "predbat",
+      "working_dir": "/opt/stacks/predbat",
+      "live_path": "/opt/stacks/predbat/docker-compose.yml",
+      "desired_rel": "desired/compose/predbat/docker-compose.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "project": "privacy-guardian",
+      "working_dir": "/opt/stacks/privacy-guardian",
+      "live_path": "/opt/stacks/privacy-guardian/docker-compose.yml",
+      "desired_rel": "desired/compose/privacy-guardian/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "prometheus",
+      "working_dir": "/opt/stacks/prometheus",
+      "live_path": "/opt/stacks/prometheus/docker-compose.yml",
+      "desired_rel": "desired/compose/prometheus/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "qbittorrent",
+      "working_dir": "/opt/stacks/qbittorrent",
+      "live_path": "/opt/stacks/qbittorrent/docker-compose.yml",
+      "desired_rel": "desired/compose/qbittorrent/docker-compose.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "project": "uptime-kuma",
+      "working_dir": "/opt/stacks/uptime-kuma",
+      "live_path": "/opt/stacks/uptime-kuma/docker-compose.yml",
+      "desired_rel": "desired/compose/uptime-kuma/docker-compose.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    },
+    {
+      "project": "vaultwarden",
+      "working_dir": "/opt/stacks/vaultwarden",
+      "live_path": "/opt/stacks/vaultwarden/docker-compose.yml",
+      "desired_rel": "desired/compose/vaultwarden/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0664"
+    },
+    {
+      "project": "watchtower",
+      "working_dir": "/opt/stacks/watchtower",
+      "live_path": "/opt/stacks/watchtower/docker-compose.yml",
+      "desired_rel": "desired/compose/watchtower/docker-compose.yml",
+      "owner": "joshan",
+      "group": "joshan",
+      "mode": "0644"
+    },
+    {
+      "project": "zwave-js-ui",
+      "working_dir": "/opt/stacks/zwave-js-ui",
+      "live_path": "/opt/stacks/zwave-js-ui/docker-compose.yml",
+      "desired_rel": "desired/compose/zwave-js-ui/docker-compose.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
+    }
+  ]
+}

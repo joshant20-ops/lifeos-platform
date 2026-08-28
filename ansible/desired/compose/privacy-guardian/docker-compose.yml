@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  privacy-guardian:
+    build: ./app
+    container_name: privacy-guardian
+    restart: unless-stopped
+    ports:
+      - "8085:8080"
+    volumes:
+      - ./app:/app
+    environment:
+      - TZ=Europe/London
+    networks:
+      - reverse_proxy
+
+networks:
+  reverse_proxy:
+    external: true
