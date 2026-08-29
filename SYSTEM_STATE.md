@@ -91,5 +91,5 @@
 - Personal Privacy Guardian profiles/data
 
 ## Snapshot Coverage
-- Managed files: 268
+- Managed files: 269
 
