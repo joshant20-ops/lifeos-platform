@@ -1,0 +1,183 @@
+#!/usr/bin/env python3
+import hashlib
+import json
+import pathlib
+import re
+import shutil
+import subprocess
+import sys
+
+REPO = pathlib.Path('/home/joshan/lifeos-pi-control')
+STAGING = REPO / 'jobs/staging'
+PENDING = REPO / 'jobs/pending'
+ARCHIVE = REPO / 'jobs/archive'
+RESULTS = REPO / 'results'
+SCRIPT_ROOTS = {
+    'diagnostic': REPO / 'jobs/scripts',
+    'control-state': REPO / 'jobs/change-scripts',
+    'root-broker': REPO / 'jobs/root-scripts',
+}
+JOB_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$')
+
+
+def fail(msg, code=1):
+    print(f'PUBLISH REJECTED: {msg}', file=sys.stderr)
+    raise SystemExit(code)
+
+
+def sha256(path):
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def gitleaks(path):
+    return subprocess.run([
+        'gitleaks', 'dir', str(path), '--no-banner', '--no-color', '--redact'
+    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+
+
+def git(*args, check=True, capture=False):
+    return subprocess.run(
+        ['git', *args],
+        cwd=REPO,
+        text=True,
+        check=check,
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
+    )
+
+
+def validate_manifest(path):
+    try:
+        d = json.loads(path.read_text())
+    except Exception as exc:
+        fail(f'{path.name}: invalid JSON: {exc}')
+
+    required = {
+        'schema_version','job_id','target','job_type','script','script_sha256',
+        'timeout_seconds','created_by','description'
+    }
+    missing = required - set(d)
+    if missing:
+        fail(f"{path.name}: missing manifest fields: {','.join(sorted(missing))}")
+
+    if d['schema_version'] != 1:
+        fail(f'{path.name}: unsupported schema_version')
+    if not isinstance(d['job_id'], str) or not JOB_RE.fullmatch(d['job_id']):
+        fail(f'{path.name}: invalid job_id')
+    if path.stem != d['job_id']:
+        fail(f'{path.name}: filename/job_id mismatch')
+    if not isinstance(d['target'], str) or not d['target']:
+        fail(f'{path.name}: invalid target')
+    if d['job_type'] not in {'diagnostic','change'}:
+        fail(f'{path.name}: invalid job_type')
+    if not isinstance(d['timeout_seconds'], int) or not 1 <= d['timeout_seconds'] <= 900:
+        fail(f'{path.name}: timeout_seconds out of range')
+    if not isinstance(d['created_by'], str) or not d['created_by']:
+        fail(f'{path.name}: created_by required')
+    if not isinstance(d['description'], str) or not d['description']:
+        fail(f'{path.name}: description required')
+
+    if d['job_type'] == 'diagnostic':
+        scope = 'diagnostic'
+        if any(k in d for k in ('change_scope','change_policy','requires_root')):
+            fail(f'{path.name}: diagnostic contains change-only fields')
+    else:
+        for key in ('change_scope','change_policy','requires_root'):
+            if key not in d:
+                fail(f'{path.name}: missing {key}')
+        if d['change_policy'] != 'gated-v1':
+            fail(f'{path.name}: unsupported change policy')
+        scope = d['change_scope']
+        if scope not in {'control-state','root-broker'}:
+            fail(f'{path.name}: change scope not allowlisted')
+        if scope == 'control-state' and d['requires_root'] is not False:
+            fail(f'{path.name}: control-state requires_root must be false')
+        if scope == 'root-broker' and d['requires_root'] is not True:
+            fail(f'{path.name}: root-broker requires_root must be true')
+
+    if 'resume_after' in d and (not isinstance(d['resume_after'], str) or not d['resume_after']):
+        fail(f'{path.name}: invalid resume_after')
+
+    expected_prefix = {
+        'diagnostic': 'jobs/scripts/',
+        'control-state': 'jobs/change-scripts/',
+        'root-broker': 'jobs/root-scripts/',
+    }[scope]
+    script_rel = d['script']
+    if not isinstance(script_rel, str) or not script_rel.startswith(expected_prefix):
+        fail(f'{path.name}: script path outside allowed root')
+    script = REPO / script_rel
+    if not script.is_file():
+        fail(f'{path.name}: referenced script missing: {script_rel}')
+
+    actual = sha256(script)
+    if actual != d['script_sha256']:
+        fail(f'{path.name}: checksum mismatch expected={d["script_sha256"]} actual={actual}')
+
+    for final in (PENDING/path.name, ARCHIVE/path.name, RESULTS/f'{d["job_id"]}.json'):
+        if final.exists():
+            fail(f'{path.name}: job_id already exists at {final.relative_to(REPO)}')
+
+    if not gitleaks(path):
+        fail(f'{path.name}: manifest failed Gitleaks')
+    if not gitleaks(script):
+        fail(f'{path.name}: script failed Gitleaks')
+
+    return d, script
+
+
+def stage_promotion(manifest, dest, script):
+    # Stage the promoted destination and its script first.
+    git('add', '--', str(dest.relative_to(REPO)), str(script.relative_to(REPO)))
+
+    # If the staging manifest came from GitHub it is tracked and its deletion
+    # must be staged. If it was created locally for a self-test, it was never
+    # tracked, so there is no deletion to stage. Never pass a missing untracked
+    # path directly to `git add`, which caused the original pathspec failure.
+    staging_rel = str(manifest.relative_to(REPO))
+    tracked = git('ls-files', '--error-unmatch', '--', staging_rel, check=False, capture=True)
+    if tracked.returncode == 0:
+        git('add', '-u', '--', staging_rel)
+
+
+def main():
+    STAGING.mkdir(parents=True, exist_ok=True)
+    PENDING.mkdir(parents=True, exist_ok=True)
+    manifests = sorted(STAGING.glob('*.json'))
+    if not manifests:
+        print('No staged manifests')
+        return 0
+
+    promoted = 0
+    rejected = 0
+    for manifest in manifests:
+        try:
+            d, script = validate_manifest(manifest)
+        except SystemExit:
+            rejected += 1
+            continue
+
+        # Only the manifest moves. The script is already in its non-executable
+        # repository location, while jobs/staging is never consumed by runners.
+        dest = PENDING / manifest.name
+        shutil.move(str(manifest), str(dest))
+
+        stage_promotion(manifest, dest, script)
+        git('-c','user.name=LifeOS Job Publisher','-c','user.email=lifeos-job-publisher@localhost',
+            'commit','-m',f'publish: {d["target"]} {d["job_id"]}')
+        git('fetch','origin','main')
+        git('rebase','origin/main')
+        git('push','origin','main')
+        print(f'PUBLISHED: {d["job_id"]} target={d["target"]}')
+        promoted += 1
+
+    print(f'Publisher summary: promoted={promoted} rejected={rejected}')
+    return 0 if rejected == 0 else 10
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
