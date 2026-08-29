@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+umask 027
+
+SOURCE="/opt/lifeos-watch/octopus-powerdown-assurance/active-state-v48.json"
+DEST_DIR="/run/lifeos-control"
+DEST="$DEST_DIR/powerdown-active-state.json"
+
+[ "$(id -u)" -eq 0 ] || {
+    echo "Exporter must run as root" >&2
+    exit 64
+}
+
+[ "$#" -eq 0 ] || {
+    echo "Exporter accepts no arguments" >&2
+    exit 64
+}
+
+[ -f "$SOURCE" ] || {
+    echo "Protected source missing" >&2
+    exit 65
+}
+
+python3 - "$SOURCE" <<'PY'
+import json
+import pathlib
+import sys
+
+json.loads(pathlib.Path(sys.argv[1]).read_text())
+PY
+
+install -d \
+    -o root \
+    -g joshan \
+    -m 0750 \
+    "$DEST_DIR"
+
+tmp="$(mktemp "$DEST_DIR/.powerdown-state.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+
+install \
+    -o root \
+    -g joshan \
+    -m 0640 \
+    "$SOURCE" \
+    "$tmp"
+
+mv -f "$tmp" "$DEST"
+trap - EXIT
