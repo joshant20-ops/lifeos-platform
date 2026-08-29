@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+import grp
+import json
+import os
+import pathlib
+import subprocess
+import sys
+import tempfile
+from datetime import datetime, timezone
+
+IDENTITY = pathlib.Path('/etc/lifeos-control/identity.json')
+STATE_DIR = pathlib.Path('/var/lib/lifeos-control')
+PROOF = STATE_DIR / 'root-broker-proof.json'
+
+APPROVED_RESTART_UNITS = {
+    'lifeos-export-powerdown-state.service',
+}
+
+
+def reply(payload):
+    print(json.dumps(payload, sort_keys=True), flush=True)
+
+
+def reject(message, code=64):
+    reply({'status': 'REJECTED', 'reason': message})
+    raise SystemExit(code)
+
+
+def require_keys(request, keys):
+    expected = set(keys)
+    actual = set(request)
+    if actual != expected:
+        reject(
+            'request fields mismatch: expected=' +
+            ','.join(sorted(expected)) +
+            ' actual=' + ','.join(sorted(actual))
+        )
+
+
+def load_identity():
+    try:
+        data = json.loads(IDENTITY.read_text())
+    except Exception as exc:
+        reject(f'identity unavailable: {exc}', 65)
+    target = data.get('target_id')
+    if not isinstance(target, str) or not target:
+        reject('identity target_id invalid', 65)
+    return target
+
+
+def validate_common(request, canonical):
+    job_id = request.get('job_id')
+    target = request.get('target')
+    if not isinstance(job_id, str) or not job_id:
+        reject('invalid job_id')
+    if target != canonical:
+        reject('target identity mismatch')
+    return job_id
+
+
+def proof_marker(request, canonical):
+    require_keys(request, {'operation', 'job_id', 'target'})
+    job_id = validate_common(request, canonical)
+    STATE_DIR.mkdir(mode=0o750, parents=True, exist_ok=True)
+    payload = {
+        'schema_version': 1,
+        'operation': 'proof-marker',
+        'job_id': job_id,
+        'target': canonical,
+        'executed_uid': os.geteuid(),
+        'executed_gid': os.getegid(),
+        'executed_at': datetime.now(timezone.utc).isoformat(),
+        'result': 'PASS',
+    }
+    fd, tmp = tempfile.mkstemp(prefix='.root-proof-', dir=STATE_DIR, text=True)
+    try:
+        with os.fdopen(fd, 'w') as handle:
+            json.dump(payload, handle, indent=2)
+            handle.write('\n')
+        os.chmod(tmp, 0o640)
+        gid = grp.getgrnam('lifeos-control').gr_gid
+        os.chown(tmp, 0, gid)
+        os.replace(tmp, PROOF)
+    finally:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+    reply({
+        'status': 'PASS',
+        'operation': 'proof-marker',
+        'job_id': job_id,
+        'target': canonical,
+        'executed_uid': 0,
+    })
+
+
+def restart_approved_unit(request, canonical):
+    require_keys(request, {'operation', 'job_id', 'target', 'unit'})
+    job_id = validate_common(request, canonical)
+    unit = request.get('unit')
+    if unit not in APPROVED_RESTART_UNITS:
+        reject('unit not allowlisted')
+
+    before = subprocess.run(
+        ['systemctl', 'show', unit, '-p', 'ActiveState', '--value'],
+        text=True,
+        capture_output=True,
+        timeout=15,
+    )
+    if before.returncode != 0:
+        reject('unable to read unit state', 70)
+
+    action = subprocess.run(
+        ['systemctl', 'restart', unit],
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    if action.returncode != 0:
+        reply({
+            'status': 'FAIL',
+            'operation': 'restart-approved-unit',
+            'job_id': job_id,
+            'target': canonical,
+            'unit': unit,
+            'returncode': action.returncode,
+            'stderr': action.stderr[-2000:],
+        })
+        raise SystemExit(71)
+
+    after = subprocess.run(
+        ['systemctl', 'show', unit, '-p', 'ActiveState', '-p', 'Result'],
+        text=True,
+        capture_output=True,
+        timeout=15,
+    )
+    if after.returncode != 0:
+        reject('unable to verify unit state', 72)
+
+    state = {}
+    for line in after.stdout.splitlines():
+        if '=' in line:
+            key, value = line.split('=', 1)
+            state[key] = value
+
+    active = state.get('ActiveState')
+    result = state.get('Result')
+    if active not in {'active', 'inactive'} or result not in {'success', ''}:
+        reply({
+            'status': 'FAIL',
+            'operation': 'restart-approved-unit',
+            'job_id': job_id,
+            'target': canonical,
+            'unit': unit,
+            'before_active_state': before.stdout.strip(),
+            'after_active_state': active,
+            'result': result,
+        })
+        raise SystemExit(73)
+
+    reply({
+        'status': 'PASS',
+        'operation': 'restart-approved-unit',
+        'job_id': job_id,
+        'target': canonical,
+        'unit': unit,
+        'before_active_state': before.stdout.strip(),
+        'after_active_state': active,
+        'result': result,
+        'executed_uid': os.geteuid(),
+    })
+
+
+def main():
+    if os.geteuid() != 0:
+        reject('broker is not root')
+    try:
+        line = sys.stdin.readline()
+        request = json.loads(line)
+    except Exception:
+        reject('invalid JSON request')
+    if not isinstance(request, dict):
+        reject('request must be object')
+
+    operation = request.get('operation')
+    canonical = load_identity()
+
+    if operation == 'proof-marker':
+        proof_marker(request, canonical)
+        return
+    if operation == 'restart-approved-unit':
+        restart_approved_unit(request, canonical)
+        return
+
+    reject('operation not allowlisted')
+
+
+if __name__ == '__main__':
+    main()

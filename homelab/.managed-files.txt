@@ -263,6 +263,7 @@ usr/local/sbin/lifeos-pi-control-runner
 usr/local/sbin/lifeos-powerdown-assurance
 usr/local/sbin/lifeos-powerdown-assurance-active
 usr/local/sbin/lifeos-restic-backup
+usr/local/sbin/lifeos-root-broker
 usr/local/sbin/lifeos-system-memory
 usr/local/sbin/octopus-powerdown-watch
 usr/local/sbin/octopus-powerdown-watch-decision
