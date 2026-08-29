@@ -1,236 +1,742 @@
-#!/usr/bin/env bash
-set -Eeuo pipefail
+#!/usr/bin/env python3
 
-REPO="${LIFEOS_CONTROL_REPO:-/home/joshan/lifeos-pi-control}"
-STATE_DIR="/home/joshan/.local/state/lifeos-pi-control"
-LOCAL_LOGS="$STATE_DIR/logs"
-LOCK="$STATE_DIR/runner.lock"
-PAUSE_FILE="$STATE_DIR/paused_job"
-MAX_JOBS_PER_RUN=50
-mkdir -p "$STATE_DIR" "$LOCAL_LOGS"
+import fcntl
+import hashlib
+import json
+import os
+import pathlib
+import shutil
+import socket
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
 
-exec 9>"$LOCK"
-flock -n 9 || { echo "Another control runner is active"; exit 0; }
+REPO=pathlib.Path(
+    os.environ.get(
+        "LIFEOS_CONTROL_REPO",
+        "/home/joshan/lifeos-pi-control",
+    )
+)
 
-ts(){ date --iso-8601=seconds; }
-die(){ echo "REJECTED: $*" >&2; exit 20; }
+IDENTITY_FILE=pathlib.Path(
+    "/etc/lifeos-control/identity.json"
+)
 
-critical_health(){
-  local c
-  for c in homeassistant lifeos-energy predbat vaultwarden uptime-kuma prometheus autoheal watchtower; do
-    docker ps --format '{{.Names}}' | grep -Fxq "$c" || return 1
-  done
-}
+STATE_DIR=pathlib.Path(
+    "/home/joshan/.local/state/lifeos-pi-control"
+)
 
-sync_repo(){
-  cd "$REPO"
-  git fetch origin main
-  local local_sha remote_sha
-  local_sha="$(git rev-parse HEAD)"
-  remote_sha="$(git rev-parse origin/main)"
-  if [ "$local_sha" != "$remote_sha" ]; then
-    git merge-base --is-ancestor "$local_sha" "$remote_sha" || die "non-fast-forward remote history"
-    git merge --ff-only origin/main
-  fi
-}
+LOG_DIR=STATE_DIR/"logs"
+LOCK=STATE_DIR/"runner.lock"
+PAUSE=STATE_DIR/"paused_job"
 
-select_manifest(){
-  local paused=""
-  [ -f "$PAUSE_FILE" ] && paused="$(cat "$PAUSE_FILE")"
+MAX_JOBS=50
 
-  if [ -z "$paused" ]; then
-    find jobs/pending -maxdepth 1 -type f -name '*.json' -printf '%f\n' 2>/dev/null | sort | head -n1
-    return 0
-  fi
+STATE_DIR.mkdir(parents=True,exist_ok=True)
+LOG_DIR.mkdir(parents=True,exist_ok=True)
 
-  python3 - "$paused" <<'PY'
-import json, pathlib, sys
-paused=sys.argv[1]
-for p in sorted(pathlib.Path('jobs/pending').glob('*.json')):
-    try:
-        d=json.loads(p.read_text())
-    except Exception:
-        continue
-    if d.get('resume_after') == paused:
-        print(p.name)
-        break
-PY
-}
+lock_handle=LOCK.open("w")
 
-process_one(){
-  local manifest_name="$1"
-  local MANIFEST="jobs/pending/$manifest_name"
-  local job_id job_type script script_sha256 timeout_seconds change_scope change_policy requires_root resume_after
-  local -a FIELDS
+try:
+    fcntl.flock(
+        lock_handle,
+        fcntl.LOCK_EX | fcntl.LOCK_NB,
+    )
+except BlockingIOError:
+    print("Another control runner is active")
+    raise SystemExit(0)
 
-  # Use one field per line. Bash IFS whitespace parsing collapses adjacent tabs,
-  # which previously shifted empty diagnostic fields and lost resume_after.
-  mapfile -t FIELDS < <(
-    python3 - "$MANIFEST" <<'PY'
-import json, pathlib, re, sys
-p=pathlib.Path(sys.argv[1])
-d=json.loads(p.read_text())
-req=['schema_version','job_id','target','job_type','script','script_sha256','timeout_seconds','created_by','description']
-missing=[x for x in req if x not in d]
-if missing: raise SystemExit('missing fields: '+','.join(missing))
-if d['schema_version'] != 1: raise SystemExit('unsupported schema_version')
-if d['target'] != 'pi5': raise SystemExit('wrong target')
-if d['job_type'] not in ('diagnostic','change'): raise SystemExit('job_type not enabled')
-if not re.fullmatch(r'[A-Za-z0-9._-]{1,100}', d['job_id']): raise SystemExit('invalid job_id')
-if not re.fullmatch(r'[0-9a-f]{64}', d['script_sha256']): raise SystemExit('invalid sha256')
-if not isinstance(d['timeout_seconds'], int) or not 1 <= d['timeout_seconds'] <= 900: raise SystemExit('timeout_seconds out of range')
-resume=d.get('resume_after','')
-if resume and not re.fullmatch(r'[A-Za-z0-9._-]{1,100}', resume): raise SystemExit('invalid resume_after')
-scope=policy=''
-requires_root=False
-if d['job_type'] == 'diagnostic':
-    if not re.fullmatch(r'jobs/scripts/[A-Za-z0-9._-]+\.sh', d['script']): raise SystemExit('invalid diagnostic script path')
-else:
-    for key in ('change_scope','change_policy','requires_root'):
-        if key not in d: raise SystemExit('missing change field: '+key)
-    scope=d['change_scope']; policy=d['change_policy']; requires_root=d['requires_root']
-    if policy != 'gated-v1': raise SystemExit('change_policy not enabled')
-    if scope == 'control-state':
-        if requires_root is not False: raise SystemExit('control-state cannot require root')
-        if not re.fullmatch(r'jobs/change-scripts/[A-Za-z0-9._-]+\.sh', d['script']): raise SystemExit('invalid control-state script path')
-    elif scope == 'root-broker':
-        raise SystemExit('root-broker jobs are disabled')
-    else:
-        raise SystemExit('change_scope not enabled')
-for value in (
-    d['job_id'], d['job_type'], d['script'], d['script_sha256'],
-    str(d['timeout_seconds']), scope, policy, str(requires_root).lower(), resume
+identity=json.loads(IDENTITY_FILE.read_text())
+
+TARGET_ID=identity["target_id"]
+ALIASES=set(identity.get("aliases",[]))
+ACCEPTED_TARGETS={TARGET_ID,*ALIASES}
+
+def now():
+    return datetime.now(
+        timezone.utc
+    ).astimezone().isoformat()
+
+def run(
+    args,
+    *,
+    check=True,
+    capture=False,
+    env=None,
+    timeout=None,
 ):
-    print(value)
-PY
-  ) || die "manifest validation failed: $MANIFEST"
+    result=subprocess.run(
+        args,
+        cwd=REPO,
+        text=True,
+        stdout=(
+            subprocess.PIPE
+            if capture else None
+        ),
+        stderr=(
+            subprocess.STDOUT
+            if capture else None
+        ),
+        env=env,
+        timeout=timeout,
+    )
 
-  [ "${#FIELDS[@]}" -eq 9 ] || die "manifest parser returned ${#FIELDS[@]} fields, expected 9"
-  job_id="${FIELDS[0]}"
-  job_type="${FIELDS[1]}"
-  script="${FIELDS[2]}"
-  script_sha256="${FIELDS[3]}"
-  timeout_seconds="${FIELDS[4]}"
-  change_scope="${FIELDS[5]}"
-  change_policy="${FIELDS[6]}"
-  requires_root="${FIELDS[7]}"
-  resume_after="${FIELDS[8]}"
+    if check and result.returncode != 0:
+        raise RuntimeError(
+            f"command failed rc={result.returncode}: "
+            + " ".join(args)
+        )
 
-  [ -n "$job_id" ] && [ -n "$job_type" ] && [ -n "$script" ] && [ -n "$script_sha256" ] && [ -n "$timeout_seconds" ] || die "manifest parser incomplete"
-  [ -f "$script" ] || die "script missing: $script"
+    return result
 
-  local ACTUAL
-  ACTUAL="$(sha256sum "$script" | awk '{print $1}')"
-  [ "$ACTUAL" = "$script_sha256" ] || die "script checksum mismatch"
+def git(*args,check=True,capture=False):
+    return run(
+        ["git",*args],
+        check=check,
+        capture=capture,
+    )
 
-  gitleaks dir "$MANIFEST" --no-banner --no-color --redact >/dev/null
-  gitleaks dir "$script" --no-banner --no-color --redact >/dev/null
+def sync_repo():
+    git("fetch","origin","main")
 
-  [ ! -e "results/${job_id}.json" ] || die "job already completed"
-  [ ! -e "jobs/archive/${job_id}.json" ] || die "job already archived"
+    local=git(
+        "rev-parse","HEAD",
+        capture=True,
+    ).stdout.strip()
 
-  if [ "$job_type" = "change" ]; then
-    /usr/local/sbin/lifeos-ansible-adopt --status >/dev/null || die "V3 pre-change baseline failed"
-    critical_health || die "critical container pre-change baseline failed"
-    [ "$change_scope" = "control-state" ] || die "change scope refused"
-    [ "$requires_root" = "false" ] || die "root changes disabled"
-  fi
+    remote=git(
+        "rev-parse","origin/main",
+        capture=True,
+    ).stdout.strip()
 
-  mkdir -p results jobs/archive state
-  local RUN_LOG="$LOCAL_LOGS/${job_id}.log"
-  local START_ISO START_EPOCH MANIFEST_COMMIT RC END_ISO END_EPOCH ELAPSED CLASS OUTPUT_PATH OUTPUT_WITHHELD
-  START_ISO="$(ts)"; START_EPOCH="$(date +%s)"; MANIFEST_COMMIT="$(git rev-parse HEAD)"
+    if local == remote:
+        return
 
-  set +e
-  LIFEOS_JOB_ID="$job_id" LIFEOS_CONTROL_REPO="$REPO" timeout --signal=TERM --kill-after=5s "${timeout_seconds}s" bash "$script" >"$RUN_LOG" 2>&1
-  RC=$?
-  set -e
+    ancestor=git(
+        "merge-base",
+        "--is-ancestor",
+        local,
+        remote,
+        check=False,
+    )
 
-  if [ "$RC" -eq 0 ] && [ "$job_type" = "change" ]; then
-    /usr/local/sbin/lifeos-ansible-adopt --status >>"$RUN_LOG" 2>&1 || RC=91
-    critical_health >>"$RUN_LOG" 2>&1 || RC=92
-  fi
+    if ancestor.returncode != 0:
+        raise RuntimeError(
+            "non-fast-forward remote history"
+        )
 
-  END_ISO="$(ts)"; END_EPOCH="$(date +%s)"; ELAPSED=$((END_EPOCH-START_EPOCH))
-  CLASS="FAIL"; [ "$RC" -eq 0 ] && CLASS="PASS"; [ "$RC" -eq 124 ] && CLASS="TIMEOUT"
+    git("merge","--ff-only","origin/main")
 
-  OUTPUT_PATH="results/${job_id}.log"; OUTPUT_WITHHELD=false
-  if gitleaks dir "$RUN_LOG" --no-banner --no-color --redact >/dev/null 2>&1; then
-    cp "$RUN_LOG" "$OUTPUT_PATH"
-  else
-    OUTPUT_WITHHELD=true
-    rm -f "$OUTPUT_PATH"
-  fi
+def target_matches(data):
+    return data.get("target") in ACCEPTED_TARGETS
 
-  python3 - "$MANIFEST" "results/${job_id}.json" "$MANIFEST_COMMIT" "$ACTUAL" "$START_ISO" "$END_ISO" "$ELAPSED" "$RC" "$CLASS" "$OUTPUT_WITHHELD" <<'PY'
-import json, pathlib, socket, sys
-m=json.loads(pathlib.Path(sys.argv[1]).read_text())
-out={'schema_version':1,'job_id':m['job_id'],'job_type':m['job_type'],'target':'pi5','manifest_commit':sys.argv[3],'script':m['script'],'script_sha256':sys.argv[4],'started_at':sys.argv[5],'finished_at':sys.argv[6],'elapsed_seconds':int(sys.argv[7]),'exit_code':int(sys.argv[8]),'classification':sys.argv[9],'host':socket.gethostname(),'output_withheld':sys.argv[10].lower()=='true','output_path':None if sys.argv[10].lower()=='true' else f"results/{m['job_id']}.log"}
-if m['job_type']=='change':
-    out['change_scope']=m['change_scope']; out['change_policy']=m['change_policy']; out['requires_root']=m['requires_root']
-if 'resume_after' in m: out['resume_after']=m['resume_after']
-pathlib.Path(sys.argv[2]).write_text(json.dumps(out,indent=2)+'\n')
-PY
+def read_pause():
+    if not PAUSE.exists():
+        return None
 
-  cp "$MANIFEST" "jobs/archive/${job_id}.json"
-  rm "$MANIFEST"
+    value=PAUSE.read_text().strip()
+    return value or None
 
-  python3 - "$job_id" "$CLASS" "$END_ISO" "$MANIFEST_COMMIT" <<'PY'
-import json, pathlib, sys
-pathlib.Path('state/pi5.json').write_text(json.dumps({'schema_version':1,'last_job_id':sys.argv[1],'last_result':sys.argv[2],'updated_at':sys.argv[3],'manifest_commit':sys.argv[4]},indent=2)+'\n')
-PY
+def select_manifest():
+    paused=read_pause()
 
-  gitleaks dir results --no-banner --no-color --redact >/dev/null || die "result safety gate failed"
-  git add jobs/pending jobs/archive results state
-  git -c user.name="LifeOS Pi Control" -c user.email="lifeos-pi-control@localhost" commit -m "result: ${job_id} ${CLASS}"
-  git fetch origin main
-  git rebase origin/main
-  git push origin main
+    for path in sorted(
+        (REPO/"jobs/pending").glob("*.json")
+    ):
+        try:
+            data=json.loads(path.read_text())
+        except Exception:
+            continue
 
-  echo "JOB ${job_id}: ${CLASS} rc=${RC} elapsed=${ELAPSED}s type=${job_type} scope=${change_scope:-none} resume_after=${resume_after:-none}"
+        #
+        # KEY MULTI-NODE RULE:
+        # jobs for other machines are ignored,
+        # not rejected and not allowed to block this node.
+        #
+        if not target_matches(data):
+            continue
 
-  if [ "$CLASS" != "PASS" ]; then
-    printf '%s\n' "$job_id" >"$PAUSE_FILE"
-    echo "QUEUE PAUSED after ${job_id}; awaiting a job with resume_after=${job_id}"
-    return 10
-  fi
+        if paused is None:
+            return path
 
-  if [ -f "$PAUSE_FILE" ] && [ -n "${resume_after:-}" ] && [ "$(cat "$PAUSE_FILE")" = "$resume_after" ]; then
-    rm -f "$PAUSE_FILE"
-    echo "QUEUE RESUMED after successful repair job ${job_id}"
-  fi
+        if data.get("resume_after") == paused:
+            return path
 
-  return 0
-}
+    return None
 
-sync_repo
-COUNT=0
-while [ "$COUNT" -lt "$MAX_JOBS_PER_RUN" ]; do
-  MANIFEST_NAME="$(select_manifest)"
-  if [ -z "$MANIFEST_NAME" ]; then
-    if [ -f "$PAUSE_FILE" ]; then
-      echo "Queue paused on $(cat "$PAUSE_FILE"); no matching resume job"
-    else
-      echo "No pending jobs"
-    fi
-    exit 0
-  fi
+def validate_manifest(path):
+    data=json.loads(path.read_text())
 
-  COUNT=$((COUNT+1))
-  echo "===== CONTROL JOB ${COUNT}: ${MANIFEST_NAME} ====="
+    required={
+        "schema_version",
+        "job_id",
+        "target",
+        "job_type",
+        "script",
+        "script_sha256",
+        "timeout_seconds",
+        "created_by",
+        "description",
+    }
 
-  set +e
-  process_one "$MANIFEST_NAME"
-  RC=$?
-  set -e
+    missing=required-set(data)
 
-  if [ "$RC" -eq 10 ]; then
-    exit 0
-  fi
-  [ "$RC" -eq 0 ] || exit "$RC"
+    if missing:
+        raise RuntimeError(
+            "missing manifest fields: "
+            + ",".join(sorted(missing))
+        )
 
-  echo "Result uploaded; immediately checking GitHub for next job..."
-  sync_repo
-done
+    if data["schema_version"] != 1:
+        raise RuntimeError(
+            "unsupported schema_version"
+        )
 
-echo "Reached safety cap of ${MAX_JOBS_PER_RUN} jobs; timer will resume later"
+    if not target_matches(data):
+        raise RuntimeError(
+            f"job target {data['target']!r} "
+            f"does not match {TARGET_ID!r}"
+        )
+
+    if data["job_type"] not in {
+        "diagnostic",
+        "change",
+    }:
+        raise RuntimeError(
+            "unsupported job_type"
+        )
+
+    if not isinstance(
+        data["timeout_seconds"],
+        int,
+    ) or not 1 <= data["timeout_seconds"] <= 900:
+        raise RuntimeError(
+            "timeout_seconds out of range"
+        )
+
+    sha=data["script_sha256"]
+
+    if (
+        not isinstance(sha,str)
+        or len(sha) != 64
+        or any(
+            c not in "0123456789abcdef"
+            for c in sha
+        )
+    ):
+        raise RuntimeError(
+            "invalid script_sha256"
+        )
+
+    script=data["script"]
+
+    if data["job_type"] == "diagnostic":
+
+        if not script.startswith(
+            "jobs/scripts/"
+        ):
+            raise RuntimeError(
+                "invalid diagnostic path"
+            )
+
+    else:
+
+        for key in (
+            "change_scope",
+            "change_policy",
+            "requires_root",
+        ):
+            if key not in data:
+                raise RuntimeError(
+                    f"missing change field {key}"
+                )
+
+        if data["change_policy"] != "gated-v1":
+            raise RuntimeError(
+                "unsupported change policy"
+            )
+
+        scope=data["change_scope"]
+
+        if scope == "control-state":
+
+            if data["requires_root"] is not False:
+                raise RuntimeError(
+                    "control-state cannot require root"
+                )
+
+            if not script.startswith(
+                "jobs/change-scripts/"
+            ):
+                raise RuntimeError(
+                    "invalid control-state path"
+                )
+
+        elif scope == "root-broker":
+
+            if data["requires_root"] is not True:
+                raise RuntimeError(
+                    "root-broker must require root"
+                )
+
+            if not script.startswith(
+                "jobs/root-scripts/"
+            ):
+                raise RuntimeError(
+                    "invalid root-broker script path"
+                )
+
+        else:
+            raise RuntimeError(
+                "change scope not allowlisted"
+            )
+
+    resume=data.get("resume_after")
+
+    if resume is not None and (
+        not isinstance(resume,str)
+        or not resume
+    ):
+        raise RuntimeError(
+            "invalid resume_after"
+        )
+
+    return data
+
+def sha256(path):
+    h=hashlib.sha256()
+
+    with path.open("rb") as f:
+        for chunk in iter(
+            lambda:f.read(1024*1024),
+            b"",
+        ):
+            h.update(chunk)
+
+    return h.hexdigest()
+
+def gitleaks(path):
+    result=run(
+        [
+            "gitleaks",
+            "dir",
+            str(path),
+            "--no-banner",
+            "--no-color",
+            "--redact",
+        ],
+        check=False,
+    )
+
+    return result.returncode == 0
+
+def critical_health():
+    names=run(
+        [
+            "docker","ps",
+            "--format","{{.Names}}",
+        ],
+        capture=True,
+    ).stdout.splitlines()
+
+    running=set(names)
+
+    required={
+        "homeassistant",
+        "lifeos-energy",
+        "predbat",
+        "vaultwarden",
+        "uptime-kuma",
+        "prometheus",
+        "autoheal",
+        "watchtower",
+    }
+
+    return required <= running
+
+def v3_status(log=None):
+    kwargs={}
+
+    if log is not None:
+        kwargs["stdout"]=log
+        kwargs["stderr"]=subprocess.STDOUT
+
+    return subprocess.run(
+        [
+            "/usr/local/sbin/lifeos-ansible-adopt",
+            "--status",
+        ],
+        **kwargs,
+    ).returncode == 0
+
+def broker_available():
+    try:
+        s=socket.socket(
+            socket.AF_UNIX,
+            socket.SOCK_STREAM,
+        )
+
+        s.settimeout(2)
+        s.connect(
+            "/run/lifeos-root-broker.sock"
+        )
+        s.close()
+        return True
+
+    except Exception:
+        return False
+
+def process_one(manifest_path):
+    data=validate_manifest(
+        manifest_path
+    )
+
+    job_id=data["job_id"]
+
+    script=REPO/data["script"]
+
+    if not script.is_file():
+        raise RuntimeError(
+            f"script missing: {script}"
+        )
+
+    actual=sha256(script)
+
+    if actual != data["script_sha256"]:
+        raise RuntimeError(
+            "script checksum mismatch"
+        )
+
+    if not gitleaks(manifest_path):
+        raise RuntimeError(
+            "manifest failed Gitleaks"
+        )
+
+    if not gitleaks(script):
+        raise RuntimeError(
+            "script failed Gitleaks"
+        )
+
+    result_json=REPO/f"results/{job_id}.json"
+    archive=REPO/f"jobs/archive/{job_id}.json"
+
+    if result_json.exists():
+        raise RuntimeError(
+            "job already completed"
+        )
+
+    if archive.exists():
+        raise RuntimeError(
+            "job already archived"
+        )
+
+    if data["job_type"] == "change":
+
+        if not v3_status():
+            raise RuntimeError(
+                "V3 pre-change baseline failed"
+            )
+
+        if not critical_health():
+            raise RuntimeError(
+                "critical pre-change health failed"
+            )
+
+        if (
+            data["change_scope"]
+            == "root-broker"
+            and not broker_available()
+        ):
+            raise RuntimeError(
+                "root broker unavailable"
+            )
+
+    run_log=LOG_DIR/f"{job_id}.log"
+
+    started=now()
+    start_epoch=time.time()
+
+    manifest_commit=git(
+        "rev-parse","HEAD",
+        capture=True,
+    ).stdout.strip()
+
+    env=os.environ.copy()
+    env.update({
+        "LIFEOS_JOB_ID":job_id,
+        "LIFEOS_CONTROL_REPO":str(REPO),
+        "LIFEOS_TARGET_ID":TARGET_ID,
+    })
+
+    with run_log.open("w") as log:
+        result=subprocess.run(
+            [
+                "timeout",
+                "--signal=TERM",
+                "--kill-after=5s",
+                f"{data['timeout_seconds']}s",
+                "bash",
+                str(script),
+            ],
+            cwd=REPO,
+            env=env,
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
+
+    rc=result.returncode
+
+    if (
+        rc == 0
+        and data["job_type"] == "change"
+    ):
+        with run_log.open("a") as log:
+
+            if not v3_status(log):
+                rc=91
+
+            if (
+                rc == 0
+                and not critical_health()
+            ):
+                print(
+                    "critical post-change "
+                    "health failed",
+                    file=log,
+                )
+                rc=92
+
+    finished=now()
+    elapsed=int(
+        time.time()-start_epoch
+    )
+
+    classification=(
+        "PASS"
+        if rc == 0
+        else "TIMEOUT"
+        if rc == 124
+        else "FAIL"
+    )
+
+    output_withheld=not gitleaks(
+        run_log
+    )
+
+    output_path=None
+
+    if not output_withheld:
+        output_path=f"results/{job_id}.log"
+        shutil.copy2(
+            run_log,
+            REPO/output_path,
+        )
+
+    result_data={
+        "schema_version":1,
+        "job_id":job_id,
+        "job_type":data["job_type"],
+        "requested_target":data["target"],
+        "target_id":TARGET_ID,
+        "manifest_commit":manifest_commit,
+        "script":data["script"],
+        "script_sha256":actual,
+        "started_at":started,
+        "finished_at":finished,
+        "elapsed_seconds":elapsed,
+        "exit_code":rc,
+        "classification":classification,
+        "host":socket.gethostname(),
+        "output_withheld":output_withheld,
+        "output_path":output_path,
+    }
+
+    if data["job_type"] == "change":
+        result_data.update({
+            "change_scope":
+                data["change_scope"],
+            "change_policy":
+                data["change_policy"],
+            "requires_root":
+                data["requires_root"],
+        })
+
+    if "resume_after" in data:
+        result_data["resume_after"]=(
+            data["resume_after"]
+        )
+
+    result_json.write_text(
+        json.dumps(
+            result_data,
+            indent=2,
+        )+"\n"
+    )
+
+    archive.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    shutil.copy2(
+        manifest_path,
+        archive,
+    )
+
+    manifest_path.unlink()
+
+    state_dir=REPO/"state"
+    state_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    state_file=(
+        state_dir/f"{TARGET_ID}.json"
+    )
+
+    state_file.write_text(
+        json.dumps({
+            "schema_version":1,
+            "target_id":TARGET_ID,
+            "last_job_id":job_id,
+            "last_result":classification,
+            "updated_at":finished,
+            "manifest_commit":
+                manifest_commit,
+        },indent=2)+"\n"
+    )
+
+    if not gitleaks(REPO/"results"):
+        raise RuntimeError(
+            "result safety gate failed"
+        )
+
+    git(
+        "add",
+        "jobs/pending",
+        "jobs/archive",
+        "results",
+        "state",
+    )
+
+    run(
+        [
+            "git",
+            "-c",
+            "user.name=LifeOS Pi Control",
+            "-c",
+            "user.email=lifeos-pi-control@localhost",
+            "commit",
+            "-m",
+            f"result: {TARGET_ID} "
+            f"{job_id} {classification}",
+        ]
+    )
+
+    git("fetch","origin","main")
+    git("rebase","origin/main")
+    git("push","origin","main")
+
+    print(
+        f"JOB {job_id}: "
+        f"{classification} "
+        f"rc={rc} "
+        f"elapsed={elapsed}s "
+        f"target={TARGET_ID} "
+        f"type={data['job_type']} "
+        f"scope={data.get('change_scope','none')} "
+        f"resume_after="
+        f"{data.get('resume_after','none')}"
+    )
+
+    if classification != "PASS":
+        PAUSE.write_text(job_id+"\n")
+
+        print(
+            f"QUEUE PAUSED after {job_id}; "
+            f"awaiting resume_after={job_id}"
+        )
+
+        return 10
+
+    paused=read_pause()
+
+    if (
+        paused
+        and data.get("resume_after")
+        == paused
+    ):
+        PAUSE.unlink(missing_ok=True)
+
+        print(
+            f"QUEUE RESUMED after "
+            f"successful repair {job_id}"
+        )
+
+    return 0
+
+
+sync_repo()
+
+count=0
+
+while count < MAX_JOBS:
+
+    manifest=select_manifest()
+
+    if manifest is None:
+
+        paused=read_pause()
+
+        if paused:
+            print(
+                f"Queue paused on {paused}; "
+                "no matching resume job "
+                f"for target {TARGET_ID}"
+            )
+        else:
+            print(
+                f"No pending jobs for "
+                f"target {TARGET_ID}"
+            )
+
+        raise SystemExit(0)
+
+    count += 1
+
+    print(
+        f"===== CONTROL JOB {count}: "
+        f"{manifest.name} "
+        f"[target={TARGET_ID}] ====="
+    )
+
+    try:
+        rc=process_one(manifest)
+
+    except Exception as exc:
+        print(
+            f"REJECTED: {exc}",
+            file=sys.stderr,
+        )
+        raise SystemExit(20)
+
+    if rc == 10:
+        raise SystemExit(0)
+
+    if rc != 0:
+        raise SystemExit(rc)
+
+    print(
+        "Result uploaded; immediately "
+        "checking GitHub for next "
+        f"{TARGET_ID} job..."
+    )
+
+    sync_repo()
+
+print(
+    f"Reached safety cap of "
+    f"{MAX_JOBS} jobs"
+)
