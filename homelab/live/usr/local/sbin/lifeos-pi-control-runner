@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+REPO="${LIFEOS_CONTROL_REPO:-/home/joshan/lifeos-pi-control}"
+STATE_DIR="/home/joshan/.local/state/lifeos-pi-control"
+LOCAL_LOGS="$STATE_DIR/logs"
+LOCK="$STATE_DIR/runner.lock"
+mkdir -p "$STATE_DIR" "$LOCAL_LOGS"
+
+exec 9>"$LOCK"
+flock -n 9 || { echo "Another control runner is active"; exit 0; }
+
+ts() { date --iso-8601=seconds; }
+die() { echo "REJECTED: $*" >&2; exit 20; }
+
+cd "$REPO"
+git fetch origin main
+LOCAL="$(git rev-parse HEAD)"
+REMOTE="$(git rev-parse origin/main)"
+if [ "$LOCAL" != "$REMOTE" ]; then
+  git merge-base --is-ancestor "$LOCAL" "$REMOTE" || die "non-fast-forward remote history"
+  git merge --ff-only origin/main
+fi
+
+mapfile -t JOBS < <(find jobs/pending -maxdepth 1 -type f -name '*.json' -printf '%f\n' 2>/dev/null | sort)
+[ "${#JOBS[@]}" -gt 0 ] || { echo "No pending jobs"; exit 0; }
+
+MANIFEST="jobs/pending/${JOBS[0]}"
+IFS=$'\t' read -r job_id script script_sha256 timeout_seconds < <(
+python3 - "$MANIFEST" <<'PY'
+import json, pathlib, re, sys
+p=pathlib.Path(sys.argv[1])
+d=json.loads(p.read_text())
+req=["schema_version","job_id","target","job_type","script","script_sha256","timeout_seconds","created_by","description"]
+missing=[x for x in req if x not in d]
+if missing: raise SystemExit("missing fields: "+",".join(missing))
+if d["schema_version"] != 1: raise SystemExit("unsupported schema_version")
+if d["target"] != "pi5": raise SystemExit("wrong target")
+if d["job_type"] != "diagnostic": raise SystemExit("job_type not enabled")
+if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", d["job_id"]): raise SystemExit("invalid job_id")
+if not re.fullmatch(r"jobs/scripts/[A-Za-z0-9._-]+\.sh", d["script"]): raise SystemExit("invalid script path")
+if not re.fullmatch(r"[0-9a-f]{64}", d["script_sha256"]): raise SystemExit("invalid sha256")
+if not isinstance(d["timeout_seconds"], int) or not 1 <= d["timeout_seconds"] <= 900:
+    raise SystemExit("timeout_seconds out of range")
+print(d["job_id"], d["script"], d["script_sha256"], d["timeout_seconds"], sep="\t")
+PY
+) || die "manifest validation failed"
+
+[ -n "${job_id:-}" ] && [ -n "${script:-}" ] && [ -n "${script_sha256:-}" ] && [ -n "${timeout_seconds:-}" ] || die "manifest parser returned incomplete data"
+[ -f "$script" ] || die "script missing"
+ACTUAL="$(sha256sum "$script" | awk '{print $1}')"
+[ "$ACTUAL" = "$script_sha256" ] || die "script checksum mismatch"
+
+gitleaks dir "$MANIFEST" --no-banner --no-color --redact >/dev/null
+gitleaks dir "$script" --no-banner --no-color --redact >/dev/null
+
+[ ! -e "results/${job_id}.json" ] || die "job already completed"
+[ ! -e "jobs/archive/${job_id}.json" ] || die "job already archived"
+
+mkdir -p results jobs/archive state
+RUN_LOG="$LOCAL_LOGS/${job_id}.log"
+START_ISO="$(ts)"
+START_EPOCH="$(date +%s)"
+MANIFEST_COMMIT="$(git rev-parse HEAD)"
+
+set +e
+timeout --signal=TERM --kill-after=5s "${timeout_seconds}s" bash "$script" >"$RUN_LOG" 2>&1
+RC=$?
+set -e
+
+END_ISO="$(ts)"
+END_EPOCH="$(date +%s)"
+ELAPSED=$((END_EPOCH-START_EPOCH))
+CLASS="FAIL"
+[ "$RC" -eq 0 ] && CLASS="PASS"
+[ "$RC" -eq 124 ] && CLASS="TIMEOUT"
+
+OUTPUT_PATH="results/${job_id}.log"
+OUTPUT_WITHHELD=false
+if gitleaks dir "$RUN_LOG" --no-banner --no-color --redact >/dev/null 2>&1; then
+  cp "$RUN_LOG" "$OUTPUT_PATH"
+else
+  OUTPUT_WITHHELD=true
+  rm -f "$OUTPUT_PATH"
+fi
+
+python3 - "$MANIFEST" "results/${job_id}.json" "$MANIFEST_COMMIT" "$ACTUAL" \
+  "$START_ISO" "$END_ISO" "$ELAPSED" "$RC" "$CLASS" "$OUTPUT_WITHHELD" <<'PY'
+import json, pathlib, socket, sys
+manifest=json.loads(pathlib.Path(sys.argv[1]).read_text())
+out={
+  "schema_version":1,
+  "job_id":manifest["job_id"],
+  "target":"pi5",
+  "manifest_commit":sys.argv[3],
+  "script":manifest["script"],
+  "script_sha256":sys.argv[4],
+  "started_at":sys.argv[5],
+  "finished_at":sys.argv[6],
+  "elapsed_seconds":int(sys.argv[7]),
+  "exit_code":int(sys.argv[8]),
+  "classification":sys.argv[9],
+  "host":socket.gethostname(),
+  "output_withheld":sys.argv[10].lower()=="true",
+  "output_path":None if sys.argv[10].lower()=="true" else f"results/{manifest['job_id']}.log"
+}
+pathlib.Path(sys.argv[2]).write_text(json.dumps(out,indent=2)+"\n")
+PY
+
+cp "$MANIFEST" "jobs/archive/${job_id}.json"
+rm "$MANIFEST"
+
+python3 - "$job_id" "$CLASS" "$END_ISO" "$MANIFEST_COMMIT" <<'PY'
+import json, pathlib, sys
+pathlib.Path("state/pi5.json").write_text(json.dumps({
+ "schema_version":1,
+ "last_job_id":sys.argv[1],
+ "last_result":sys.argv[2],
+ "updated_at":sys.argv[3],
+ "manifest_commit":sys.argv[4]
+},indent=2)+"\n")
+PY
+
+gitleaks dir results --no-banner --no-color --redact >/dev/null || die "result safety gate failed"
+git add jobs/pending jobs/archive results state
+git -c user.name="LifeOS Pi Control" -c user.email="lifeos-pi-control@localhost" \
+  commit -m "result: ${job_id} ${CLASS}"
+
+git fetch origin main
+git rebase origin/main
+git push origin main
+
+echo "JOB ${job_id}: ${CLASS} rc=${RC} elapsed=${ELAPSED}s"
