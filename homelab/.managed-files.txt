@@ -258,6 +258,7 @@ usr/local/sbin/lifeos-github-sync.bak_energy_source_20260826_222151
 usr/local/sbin/lifeos-github-sync.bak_memory_20260826_221911
 usr/local/sbin/lifeos-gitleaks-gate
 usr/local/sbin/lifeos_network_identity_refresh_root_wrapper.sh
+usr/local/sbin/lifeos-pi-control-runner
 usr/local/sbin/lifeos-powerdown-assurance
 usr/local/sbin/lifeos-powerdown-assurance-active
 usr/local/sbin/lifeos-restic-backup
