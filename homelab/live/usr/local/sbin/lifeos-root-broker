@@ -172,6 +172,55 @@ def restart_approved_unit(request, canonical):
     })
 
 
+
+def ansible_assure(request, canonical):
+    require_keys(request, {'operation', 'job_id', 'target'})
+    job_id = validate_common(request, canonical)
+
+    command = [
+        '/usr/local/sbin/lifeos-ansible-adopt',
+        '--assure',
+    ]
+
+    try:
+        action = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        reply({
+            'status': 'FAIL',
+            'operation': 'ansible-assure',
+            'job_id': job_id,
+            'target': canonical,
+            'reason': 'timeout',
+        })
+        raise SystemExit(74)
+
+    if action.returncode != 0:
+        reply({
+            'status': 'FAIL',
+            'operation': 'ansible-assure',
+            'job_id': job_id,
+            'target': canonical,
+            'returncode': action.returncode,
+            'stdout': action.stdout[-4000:],
+            'stderr': action.stderr[-4000:],
+        })
+        raise SystemExit(75)
+
+    reply({
+        'status': 'PASS',
+        'operation': 'ansible-assure',
+        'job_id': job_id,
+        'target': canonical,
+        'executed_uid': os.geteuid(),
+        'returncode': 0,
+        'stdout': action.stdout[-4000:],
+    })
+
 def main():
     if os.geteuid() != 0:
         reject('broker is not root')
@@ -191,6 +240,9 @@ def main():
         return
     if operation == 'restart-approved-unit':
         restart_approved_unit(request, canonical)
+        return
+    if operation == 'ansible-assure':
+        ansible_assure(request, canonical)
         return
 
     reject('operation not allowlisted')
