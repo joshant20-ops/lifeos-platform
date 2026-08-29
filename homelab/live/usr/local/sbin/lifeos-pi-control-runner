@@ -13,6 +13,13 @@ flock -n 9 || { echo "Another control runner is active"; exit 0; }
 ts() { date --iso-8601=seconds; }
 die() { echo "REJECTED: $*" >&2; exit 20; }
 
+critical_health() {
+  local c
+  for c in homeassistant lifeos-energy predbat vaultwarden uptime-kuma prometheus autoheal watchtower; do
+    docker ps --format '{{.Names}}' | grep -Fxq "$c" || return 1
+  done
+}
+
 cd "$REPO"
 git fetch origin main
 LOCAL="$(git rev-parse HEAD)"
@@ -26,7 +33,7 @@ mapfile -t JOBS < <(find jobs/pending -maxdepth 1 -type f -name '*.json' -printf
 [ "${#JOBS[@]}" -gt 0 ] || { echo "No pending jobs"; exit 0; }
 
 MANIFEST="jobs/pending/${JOBS[0]}"
-IFS=$'\t' read -r job_id script script_sha256 timeout_seconds < <(
+IFS=$'\t' read -r job_id job_type script script_sha256 timeout_seconds change_scope change_policy requires_root < <(
 python3 - "$MANIFEST" <<'PY'
 import json, pathlib, re, sys
 p=pathlib.Path(sys.argv[1])
@@ -36,17 +43,30 @@ missing=[x for x in req if x not in d]
 if missing: raise SystemExit("missing fields: "+",".join(missing))
 if d["schema_version"] != 1: raise SystemExit("unsupported schema_version")
 if d["target"] != "pi5": raise SystemExit("wrong target")
-if d["job_type"] != "diagnostic": raise SystemExit("job_type not enabled")
+if d["job_type"] not in ("diagnostic","change"): raise SystemExit("job_type not enabled")
 if not re.fullmatch(r"[A-Za-z0-9._-]{1,100}", d["job_id"]): raise SystemExit("invalid job_id")
-if not re.fullmatch(r"jobs/scripts/[A-Za-z0-9._-]+\.sh", d["script"]): raise SystemExit("invalid script path")
 if not re.fullmatch(r"[0-9a-f]{64}", d["script_sha256"]): raise SystemExit("invalid sha256")
 if not isinstance(d["timeout_seconds"], int) or not 1 <= d["timeout_seconds"] <= 900:
     raise SystemExit("timeout_seconds out of range")
-print(d["job_id"], d["script"], d["script_sha256"], d["timeout_seconds"], sep="\t")
+scope=policy=""
+requires_root=False
+if d["job_type"] == "diagnostic":
+    if not re.fullmatch(r"jobs/scripts/[A-Za-z0-9._-]+\.sh", d["script"]): raise SystemExit("invalid diagnostic script path")
+else:
+    for key in ("change_scope","change_policy","requires_root"):
+        if key not in d: raise SystemExit("missing change field: "+key)
+    scope=d["change_scope"]
+    policy=d["change_policy"]
+    requires_root=d["requires_root"]
+    if scope != "control-state": raise SystemExit("change_scope not enabled")
+    if policy != "gated-v1": raise SystemExit("change_policy not enabled")
+    if requires_root is not False: raise SystemExit("root change jobs remain disabled")
+    if not re.fullmatch(r"jobs/change-scripts/[A-Za-z0-9._-]+\.sh", d["script"]): raise SystemExit("invalid change script path")
+print(d["job_id"], d["job_type"], d["script"], d["script_sha256"], d["timeout_seconds"], scope, policy, str(requires_root).lower(), sep="\t")
 PY
 ) || die "manifest validation failed"
 
-[ -n "${job_id:-}" ] && [ -n "${script:-}" ] && [ -n "${script_sha256:-}" ] && [ -n "${timeout_seconds:-}" ] || die "manifest parser returned incomplete data"
+[ -n "${job_id:-}" ] && [ -n "${job_type:-}" ] && [ -n "${script:-}" ] && [ -n "${script_sha256:-}" ] && [ -n "${timeout_seconds:-}" ] || die "manifest parser returned incomplete data"
 [ -f "$script" ] || die "script missing"
 ACTUAL="$(sha256sum "$script" | awk '{print $1}')"
 [ "$ACTUAL" = "$script_sha256" ] || die "script checksum mismatch"
@@ -56,6 +76,14 @@ gitleaks dir "$script" --no-banner --no-color --redact >/dev/null
 
 [ ! -e "results/${job_id}.json" ] || die "job already completed"
 [ ! -e "jobs/archive/${job_id}.json" ] || die "job already archived"
+
+if [ "$job_type" = "change" ]; then
+  [ "$change_scope" = "control-state" ] || die "change scope refused"
+  [ "$change_policy" = "gated-v1" ] || die "change policy refused"
+  [ "$requires_root" = "false" ] || die "root change refused"
+  /usr/local/sbin/lifeos-ansible-adopt --status >/dev/null || die "V3 pre-change baseline failed"
+  critical_health || die "critical container pre-change baseline failed"
+fi
 
 mkdir -p results jobs/archive state
 RUN_LOG="$LOCAL_LOGS/${job_id}.log"
@@ -67,6 +95,11 @@ set +e
 timeout --signal=TERM --kill-after=5s "${timeout_seconds}s" bash "$script" >"$RUN_LOG" 2>&1
 RC=$?
 set -e
+
+if [ "$RC" -eq 0 ] && [ "$job_type" = "change" ]; then
+  /usr/local/sbin/lifeos-ansible-adopt --status >>"$RUN_LOG" 2>&1 || RC=91
+  critical_health >>"$RUN_LOG" 2>&1 || RC=92
+fi
 
 END_ISO="$(ts)"
 END_EPOCH="$(date +%s)"
@@ -91,6 +124,7 @@ manifest=json.loads(pathlib.Path(sys.argv[1]).read_text())
 out={
   "schema_version":1,
   "job_id":manifest["job_id"],
+  "job_type":manifest["job_type"],
   "target":"pi5",
   "manifest_commit":sys.argv[3],
   "script":manifest["script"],
@@ -104,6 +138,10 @@ out={
   "output_withheld":sys.argv[10].lower()=="true",
   "output_path":None if sys.argv[10].lower()=="true" else f"results/{manifest['job_id']}.log"
 }
+if manifest["job_type"] == "change":
+    out["change_scope"]=manifest["change_scope"]
+    out["change_policy"]=manifest["change_policy"]
+    out["requires_root"]=manifest["requires_root"]
 pathlib.Path(sys.argv[2]).write_text(json.dumps(out,indent=2)+"\n")
 PY
 
@@ -130,4 +168,4 @@ git fetch origin main
 git rebase origin/main
 git push origin main
 
-echo "JOB ${job_id}: ${CLASS} rc=${RC} elapsed=${ELAPSED}s"
+echo "JOB ${job_id}: ${CLASS} rc=${RC} elapsed=${ELAPSED}s type=${job_type}"
