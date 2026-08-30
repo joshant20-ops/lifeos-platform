@@ -6,6 +6,13 @@ All authoritative implementation belongs here: Homelab infrastructure, Home Assi
 
 The companion `lifeos-pi-control` repository is transport only. It carries execution manifests, thin wrappers, Pi results and runner state. It must not become a second authoritative implementation repository.
 
+## Automated engineer quick start
+
+1. Read `SYSTEM_STATE.md` for the generated, secret-free inventory of the live system; do not edit it as hand-maintained documentation.
+2. Read `architecture/REPOSITORY_MODEL.md` before changing source ownership, relay jobs or migration state.
+3. Treat `ansible/desired/` and the top-level component directories (for example, `energy/`) as desired source. Treat `homelab/live/` as a captured live snapshot and `homelab/retired/` as retained history, not default edit targets.
+4. Check `git status` before editing because automated snapshots and other engineers may leave unrelated work in the tree.
+
 ## Repository contract
 
 - Source changes are made here first.
