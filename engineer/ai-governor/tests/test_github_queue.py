@@ -112,6 +112,12 @@ class QueueWorkerTests(unittest.TestCase):
         })
         self.assertTrue(job.allow_offline_fallback)
 
+    def test_reviewable_changes_requires_nonempty_status(self):
+        with mock.patch.object(worker, "git", return_value=mock.Mock(stdout="")):
+            self.assertEqual(worker.reviewable_changes(self.root), [])
+        with mock.patch.object(worker, "git", return_value=mock.Mock(stdout=" M engineer/file.py\n?? docs/new.md\n")):
+            self.assertEqual(worker.reviewable_changes(self.root), ["engineer/file.py", "docs/new.md"])
+
     def test_route_only_worker_returns_job_to_pending(self):
         paths = worker.queue_dirs(self.root / "state")
         job = {
@@ -126,6 +132,33 @@ class QueueWorkerTests(unittest.TestCase):
                                         False, 10, 10)
         self.assertEqual(result["status"], "ROUTED_DRY_RUN")
         self.assertTrue((paths["pending"] / "github-test-issue-1.json").exists())
+
+    def test_empty_successful_agent_draft_is_retried_not_reviewed(self):
+        paths = worker.queue_dirs(self.root / "state")
+        job = {
+            "id": "github-test-issue-noop", "task": "make a real change", "risk": "NORMAL",
+            "deterministic_available": False, "substantial": True, "requires_review": True,
+            "base_commit": "a" * 40, "context_paths": [], "acceptance_commands": ["true"],
+        }
+        pending = paths["pending"] / "github-test-issue-noop.json"
+        pending.write_text(json.dumps(job), encoding="utf-8")
+        completed = mock.Mock(returncode=0, stdout="done", stderr="")
+        with mock.patch.object(worker, "ensure_base"), \
+             mock.patch.object(self.gov, "route", return_value={"status": "ROUTED", "provider": "ollama", "model": "test"}), \
+             mock.patch.object(worker, "worktree_for", return_value=self.root), \
+             mock.patch.object(worker, "compact_packet", return_value={}), \
+             mock.patch.object(worker, "provider_environment", return_value={}), \
+             mock.patch.object(worker.subprocess, "run", return_value=completed), \
+             mock.patch.object(worker, "acceptance", return_value=[{"command": "true", "returncode": 0, "stdout_tail": "", "stderr_tail": ""}]), \
+             mock.patch.object(worker, "reviewable_changes", return_value=[]), \
+             mock.patch.object(worker, "git", return_value=mock.Mock(returncode=0, stdout="")):
+            result = worker.process_one(self.gov, self.root / "state", self.root, HERE / "adapters/openhands.sh",
+                                        True, 10, 10)
+        self.assertEqual(result["status"], "FAILED_ATTEMPT")
+        self.assertIn("no reviewable workspace changes", result["error"])
+        self.assertTrue(result["retry"])
+        self.assertTrue((paths["pending"] / "github-test-issue-noop.json").exists())
+        self.assertFalse((paths["awaiting_review"] / "github-test-issue-noop.json").exists())
 
     def test_high_risk_goes_to_blocked_not_agent(self):
         paths = worker.queue_dirs(self.root / "state")
