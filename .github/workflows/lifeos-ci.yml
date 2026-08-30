@@ -36,6 +36,11 @@ jobs:
             'ansible-core>=2.19,<2.20' \
             PyYAML
 
+      - name: Publisher FIFO regression tests
+        run: |
+          python3 -m unittest -v \
+            tests.test_job_publisher_fifo
+
       - name: Validate desired Compose YAML
         run: |
           python3 - <<'PY'
