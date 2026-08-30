@@ -1,0 +1,12 @@
+{
+  "$schema": "./job.schema.json",
+  "id": "job-20260830-example",
+  "task": "Update one targeted health gate",
+  "risk": "NORMAL",
+  "deterministic_available": false,
+  "substantial": true,
+  "requires_review": true,
+  "base_commit": "0123456789abcdef0123456789abcdef01234567",
+  "context_paths": ["engineer/ai-governor/governor.py"],
+  "acceptance_commands": ["python3 -m unittest discover engineer/ai-governor/tests"]
+}
