@@ -41,6 +41,82 @@ jobs:
           python3 -m unittest -v \
             tests.test_job_publisher_fifo
 
+      - name: Validate live control queue manifests
+        run: |
+          set -Eeuo pipefail
+          git clone --depth 1 \
+            https://github.com/joshant20-ops/lifeos-pi-control.git \
+            /tmp/lifeos-pi-control
+          python3 - <<'PY'
+          import hashlib, json, pathlib, re
+
+          root=pathlib.Path('/tmp/lifeos-pi-control')
+          required={
+              'schema_version','job_id','target','job_type','script','script_sha256',
+              'timeout_seconds','created_by','description'
+          }
+          job_re=re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$')
+          errors=[]
+
+          for queue in ('jobs/staging','jobs/pending'):
+              for path in sorted((root/queue).glob('*.json')):
+                  try:
+                      d=json.loads(path.read_text())
+                  except Exception as exc:
+                      errors.append(f'{path.name}: invalid JSON: {exc}')
+                      continue
+                  missing=required-set(d)
+                  if missing:
+                      errors.append(f'{path.name}: missing fields {sorted(missing)}')
+                      continue
+                  if d['schema_version'] != 1:
+                      errors.append(f'{path.name}: schema_version must be 1')
+                  if not isinstance(d['job_id'],str) or not job_re.fullmatch(d['job_id']):
+                      errors.append(f'{path.name}: invalid job_id')
+                  if path.stem != d['job_id']:
+                      errors.append(f'{path.name}: filename/job_id mismatch')
+                  if d['job_type'] not in {'diagnostic','change'}:
+                      errors.append(f'{path.name}: invalid job_type')
+                  if not isinstance(d['timeout_seconds'],int) or not 1 <= d['timeout_seconds'] <= 900:
+                      errors.append(f'{path.name}: timeout out of range')
+
+                  if d['job_type'] == 'diagnostic':
+                      if any(k in d for k in ('change_scope','change_policy','requires_root')):
+                          errors.append(f'{path.name}: diagnostic has change-only fields')
+                      prefix='jobs/scripts/'
+                  else:
+                      scope=d.get('change_scope')
+                      if d.get('change_policy') != 'gated-v1':
+                          errors.append(f'{path.name}: unsupported change policy')
+                      if scope == 'control-state' and d.get('requires_root') is False:
+                          prefix='jobs/change-scripts/'
+                      elif scope == 'root-broker' and d.get('requires_root') is True:
+                          prefix='jobs/root-scripts/'
+                      else:
+                          errors.append(f'{path.name}: invalid change scope/root pairing')
+                          prefix=''
+
+                  script_rel=d.get('script')
+                  if not isinstance(script_rel,str) or not prefix or not script_rel.startswith(prefix):
+                      errors.append(f'{path.name}: script outside allowed root')
+                      continue
+                  script=root/script_rel
+                  if not script.is_file():
+                      errors.append(f'{path.name}: missing script {script_rel}')
+                      continue
+                  actual=hashlib.sha256(script.read_bytes()).hexdigest()
+                  if actual != d.get('script_sha256'):
+                      errors.append(
+                          f'{path.name}: checksum mismatch '
+                          f'expected={d.get("script_sha256")} actual={actual}'
+                      )
+
+          if errors:
+              print('\n'.join(errors))
+              raise SystemExit(1)
+          print('CONTROL_QUEUE_VALIDATION=PASS')
+          PY
+
       - name: Validate desired Compose YAML
         run: |
           python3 - <<'PY'
