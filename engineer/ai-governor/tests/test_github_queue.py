@@ -148,7 +148,7 @@ class QueueWorkerTests(unittest.TestCase):
              mock.patch.object(worker, "worktree_for", return_value=self.root), \
              mock.patch.object(worker, "compact_packet", return_value={}), \
              mock.patch.object(worker, "provider_environment", return_value={}), \
-             mock.patch.object(worker.subprocess, "run", return_value=completed), \
+             mock.patch.object(worker.subprocess, "run", return_value=completed) as run_agent, \
              mock.patch.object(worker, "acceptance", return_value=[{"command": "true", "returncode": 0, "stdout_tail": "", "stderr_tail": ""}]), \
              mock.patch.object(worker, "reviewable_changes", return_value=[]), \
              mock.patch.object(worker, "git", return_value=mock.Mock(returncode=0, stdout="")):
@@ -159,6 +159,7 @@ class QueueWorkerTests(unittest.TestCase):
         self.assertTrue(result["retry"])
         self.assertTrue((paths["pending"] / "github-test-issue-noop.json").exists())
         self.assertFalse((paths["awaiting_review"] / "github-test-issue-noop.json").exists())
+        self.assertEqual(run_agent.call_args.kwargs["env"]["LIFEOS_JOB_TASK"], "make a real change")
 
     def test_high_risk_goes_to_blocked_not_agent(self):
         paths = worker.queue_dirs(self.root / "state")
