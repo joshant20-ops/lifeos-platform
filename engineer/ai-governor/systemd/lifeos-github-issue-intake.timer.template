@@ -1,0 +1,14 @@
+[Unit]
+Description=Poll eligible LifeOS GitHub issues every five minutes (template only)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=5min
+AccuracySec=20s
+Persistent=true
+Unit=lifeos-github-issue-intake.service
+
+[Install]
+WantedBy=timers.target
+
+# TEMPLATE ONLY: do not enable until the paired service has passed a dry-run intake test.
