@@ -36,10 +36,11 @@ jobs:
             'ansible-core>=2.19,<2.20' \
             PyYAML
 
-      - name: Publisher FIFO regression tests
+      - name: Control-plane regression tests
         run: |
           python3 -m unittest -v \
-            tests.test_job_publisher_fifo
+            tests.test_job_publisher_fifo \
+            tests.test_github_sync_protection
 
       - name: Validate live control queue manifests
         run: |
