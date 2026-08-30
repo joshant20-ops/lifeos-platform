@@ -221,6 +221,7 @@ def process_one(governor: Governor, state_dir: Path, repo: Path, adapter: Path,
         context_path = paths["context"] / f"{job.id}.json"
         atomic_json(context_path, packet)
         env = provider_environment(governor, decision, context_path)
+        env["LIFEOS_JOB_TASK"] = job.task
         completed = subprocess.run(
             [str(adapter)], cwd=worktree, env=env, text=True,
             capture_output=True, timeout=agent_timeout, check=False,
