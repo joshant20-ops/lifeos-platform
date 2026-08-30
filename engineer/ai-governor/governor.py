@@ -50,6 +50,7 @@ class Job:
     requires_review: bool = True
     base_commit: str | None = None
     exclude_provider: str | None = None
+    allow_offline_fallback: bool = False
     created_at: str = field(default_factory=now)
 
 
@@ -117,6 +118,27 @@ class Governor:
             attempted.append({"provider": name, "status": status})
             if status == "READY":
                 return self._decision(job, name, "first healthy zero-spend provider", attempted=attempted)
+
+        if job.allow_offline_fallback and "ollama" in self.config["providers"]:
+            name = "ollama"
+            if name == job.exclude_provider:
+                attempted.append({"provider": name, "status": "EXCLUDED_FOR_INDEPENDENCE"})
+            else:
+                provider = self.config["providers"][name]
+                roles = provider.get("roles", [])
+                if "offline_fallback" not in roles:
+                    attempted.append({"provider": name, "status": "OFFLINE_FALLBACK_NOT_ALLOWED"})
+                else:
+                    status = self.status(name, provider)
+                    attempted.append({"provider": name, "status": status})
+                    if status == "READY":
+                        return self._decision(
+                            job,
+                            name,
+                            "explicit offline fallback after normal zero-spend providers unavailable",
+                            attempted=attempted,
+                        )
+
         return {"job_id": job.id, "status": "NO_FREE_PROVIDER_AVAILABLE", "attempted": attempted,
                 "retry": False, "max_retries": self.config["policy"]["max_retries"]}
 
@@ -194,7 +216,8 @@ def parser() -> argparse.ArgumentParser:
     route.add_argument("--task", required=True); route.add_argument("--risk", choices=RISKS, default="NORMAL")
     route.add_argument("--deterministic", action="store_true"); route.add_argument("--tiny", action="store_true")
     route.add_argument("--no-review", action="store_true"); route.add_argument("--base-commit")
-    route.add_argument("--review-of", choices=("gemini", "groq", "openrouter", "cloudflare"),
+    route.add_argument("--allow-offline-fallback", action="store_true")
+    route.add_argument("--review-of", choices=("gemini", "groq", "openrouter", "cloudflare", "ollama"),
                        help="exclude the drafting provider for independent review")
     record = sub.add_parser("record", help="record provider outcome and local evidence")
     record.add_argument("--provider", required=True); record.add_argument("--outcome", required=True,
@@ -213,8 +236,17 @@ def main() -> int:
         print(json.dumps(governor.health(), indent=2)); return 0
     if args.command == "route":
         job_id = "job-" + hashlib.sha256((args.task + now()).encode()).hexdigest()[:12]
-        job = Job(job_id, args.task, "TINY" if args.tiny else args.risk, args.deterministic,
-                  not args.tiny, not args.no_review, args.base_commit, args.review_of)
+        job = Job(
+            job_id,
+            args.task,
+            "TINY" if args.tiny else args.risk,
+            args.deterministic,
+            not args.tiny,
+            not args.no_review,
+            args.base_commit,
+            args.review_of,
+            args.allow_offline_fallback,
+        )
         print(json.dumps(governor.route(job), indent=2)); return 0
     if args.command == "record":
         governor.record(args.provider, args.outcome, args.job_id); return 0
