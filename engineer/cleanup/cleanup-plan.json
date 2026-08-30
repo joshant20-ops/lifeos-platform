@@ -1,0 +1,21 @@
+{
+  "inventory_source": "/tmp/engineer_cleanup_inventory.txt",
+  "generated_from": "2026-08-30 sanitized inventory",
+  "entries": [
+    {"path": "/home/joshan/workspace/lifeos-platform", "category": "DO_NOT_TOUCH", "reason": "authoritative source checkout"},
+    {"path": "/home/joshan/.codex", "category": "DO_NOT_TOUCH", "reason": "Codex installation and state; auth.json explicitly protected"},
+    {"path": "/home/joshan/.config/gh", "category": "DO_NOT_TOUCH", "reason": "GitHub CLI credentials and configuration"},
+    {"path": "/home/joshan/.ssh", "category": "DO_NOT_TOUCH", "reason": "SSH keys and configuration"},
+    {"path": "/home/joshan/.openhands", "category": "DO_NOT_TOUCH", "reason": "current OpenHands state"},
+    {"path": "/home/joshan/.ollama", "category": "DO_NOT_TOUCH", "reason": "possible Ollama model storage"},
+    {"path": "/usr/share/ollama", "category": "DO_NOT_TOUCH", "reason": "possible system Ollama model storage"},
+    {"path": "/home/joshan/automation/backups/openhands_thinking_fix_20260729_225430", "category": "REVIEW", "reason": "old OpenHands repair backup; inspect before reclassification"},
+    {"path": "/home/joshan/automation/backups/openhands_openai_endpoint_20260729_225849", "category": "REVIEW", "reason": "old OpenHands repair backup; inspect before reclassification"},
+    {"path": "/home/joshan/automation/backups/openhands_model_20260729_223738", "category": "REVIEW", "reason": "old OpenHands repair backup; inspect before reclassification"},
+    {"path": "/home/joshan/automation/backups/openhands_qwen7b_20260729_224724", "category": "REVIEW", "reason": "old OpenHands repair backup; inspect before reclassification"},
+    {"path": "/home/joshan/automation/backups/openhands_cli_collision_20260830_015750", "category": "REVIEW", "reason": "recent CLI collision backup; retain pending validation"},
+    {"path": "/home/joshan/automation/backups/z97_disk_resize_20260729T211107Z", "category": "REVIEW", "reason": "bootstrap-era backup candidate; ownership review required"},
+    {"path": "apt:linux-image-6.1.0-29-amd64", "category": "REVIEW", "reason": "autoremove simulation only; apt removal prohibited in this phase"},
+    {"path": "/var/log/journal", "category": "KEEP", "reason": "large but journal vacuum prohibited in this phase"}
+  ]
+}

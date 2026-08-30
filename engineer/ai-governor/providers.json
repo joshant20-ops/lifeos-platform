@@ -1,0 +1,16 @@
+{
+  "policy": {"zero_spend": true, "max_retries": 2, "quota_cooldown_minutes": 60},
+  "routing": {
+    "normal": ["groq", "gemini", "openrouter", "cloudflare"],
+    "tiny": ["ollama", "gemini", "groq", "openrouter", "cloudflare"]
+  },
+  "providers": {
+    "deterministic": {"kind": "deterministic", "free_only": true},
+    "gemini": {"kind": "openai_compatible", "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/", "credential_env": ["GEMINI_API_KEY"], "model": "gemini-3.7-flash", "free_only": true},
+    "groq": {"kind": "openai_compatible", "base_url": "https://api.groq.com/openai/v1", "credential_env": ["GROQ_API_KEY"], "model": "qwen/qwen3.8-27b", "reviewer_model": "openai/gpt-oss-120b", "free_only": true},
+    "openrouter": {"kind": "openai_compatible", "base_url": "https://openrouter.ai/api/v1", "credential_env": ["OPENROUTER_API_KEY"], "model": "openrouter/free", "free_only": true},
+    "cloudflare": {"kind": "openai_compatible", "base_url_template": "https://api.cloudflare.com/client/v4/accounts/{CLOUDFLARE_ACCOUNT_ID}/ai/v1", "credential_env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"], "model_env": "CLOUDFLARE_AI_MODEL", "model": "@cf/zai-org/glm-4.7-flash", "free_only": true},
+    "ollama": {"kind": "openai_compatible", "base_url": "http://127.0.0.1:11434/v1", "credential_env": [], "model": "qwen2.5-coder-openhands:latest", "free_only": true, "roles": ["tiny", "classification", "summarisation", "offline_fallback"]},
+    "codex": {"kind": "senior_review", "auth": "separate", "free_only": false, "daily_scheduled_cap": 1}
+  }
+}

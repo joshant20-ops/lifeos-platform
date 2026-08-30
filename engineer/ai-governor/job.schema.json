@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["id", "task", "risk", "base_commit", "acceptance_commands"],
+  "properties": {
+    "id": {"type": "string", "minLength": 1},
+    "task": {"type": "string", "minLength": 1},
+    "risk": {"enum": ["TINY", "NORMAL", "HIGH_RISK", "SENIOR_REVIEW"]},
+    "deterministic_available": {"type": "boolean"},
+    "substantial": {"type": "boolean"},
+    "requires_review": {"type": "boolean"},
+    "base_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "context_paths": {"type": "array", "items": {"type": "string"}},
+    "acceptance_commands": {"type": "array", "items": {"type": "string"}, "minItems": 1}
+  },
+  "additionalProperties": false
+}
