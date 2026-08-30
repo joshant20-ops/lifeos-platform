@@ -1,0 +1,10 @@
+# Paths are relative to homelab/live.
+# These files are desired-state control-plane sources. The nightly live
+# snapshot must preserve the GitHub copy and must never import a stale live
+# runtime copy over them.
+usr/local/sbin/lifeos-github-sync
+usr/local/sbin/lifeos-job-publisher
+usr/local/sbin/lifeos-pi-control-runner
+usr/local/sbin/lifeos-root-broker
+usr/local/sbin/lifeos-ansible-adopt
+usr/local/sbin/lifeos-gitleaks-gate
