@@ -2,8 +2,9 @@
 """Claim queued LifeOS jobs and run bounded OpenHands engineering drafts.
 
 This worker consumes the *same* governor state queue populated by GitHub intake.
-It never deploys to the Pi, never merges, and never pushes.  Successful drafts
-stop in awaiting_review after deterministic acceptance commands pass.
+It never deploys to the Pi, never merges, and never pushes. Successful drafts
+stop in awaiting_review only after deterministic acceptance commands pass and
+reviewable workspace changes are present.
 """
 
 from __future__ import annotations
@@ -155,6 +156,12 @@ def acceptance(worktree: Path, commands: list[str], timeout: int) -> list[dict[s
     return results
 
 
+def reviewable_changes(worktree: Path) -> list[str]:
+    """Return changed paths that make an implementation draft reviewable."""
+    lines = git(worktree, "status", "--porcelain").stdout.splitlines()
+    return [line[3:] if len(line) > 3 else line for line in lines if line.strip()]
+
+
 def move(path: Path, destination: Path) -> Path:
     target = destination / path.name
     path.replace(target)
@@ -230,6 +237,11 @@ def process_one(governor: Governor, state_dir: Path, repo: Path, adapter: Path,
         evidence["diff_check"] = git(worktree, "diff", "--check", check=False).returncode
         if evidence["diff_check"] != 0:
             raise RuntimeError("git diff --check failed")
+        changed_paths = reviewable_changes(worktree)
+        evidence["changed_paths"] = changed_paths
+        evidence["changed_path_count"] = len(changed_paths)
+        if not changed_paths:
+            raise RuntimeError("OpenHands produced no reviewable workspace changes")
         evidence["status"] = "AWAITING_REVIEW"
         evidence["finished_at"] = now()
         evidence["worktree"] = str(worktree)
