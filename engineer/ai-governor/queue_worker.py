@@ -56,6 +56,7 @@ def valid_job(data: dict[str, Any]) -> Job:
         substantial=bool(data.get("substantial", True)),
         requires_review=bool(data.get("requires_review", True)),
         base_commit=str(data["base_commit"]),
+        allow_offline_fallback=bool(data.get("allow_offline_fallback", False)),
     )
 
 
@@ -98,7 +99,6 @@ def worktree_for(repo: Path, paths: dict[str, Path], job: Job) -> Path:
         check=False,
     )
     if result.returncode != 0:
-        # A previous interrupted run may have created the branch but not the directory.
         result = subprocess.run(
             ["git", "worktree", "add", str(worktree), branch],
             cwd=repo,
