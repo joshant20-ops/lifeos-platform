@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""Ingest explicitly eligible GitHub issues into the LifeOS AI governor queue.
-
-The intake is deliberately narrow and idempotent.  An issue is eligible only when
-its body contains the ready marker or it carries the configured ready label.
-Pull requests are ignored.  The queue lives in the governor state directory and
-uses stable GitHub issue IDs, so repeated polling cannot enqueue duplicates.
-"""
+"""Ingest explicitly eligible, trusted GitHub issues into the LifeOS governor queue."""
 
 from __future__ import annotations
 
@@ -25,6 +19,7 @@ DEFAULT_REPOSITORY = os.environ.get("LIFEOS_GITHUB_REPOSITORY", "joshant20-ops/l
 DEFAULT_BRANCH = os.environ.get("LIFEOS_GITHUB_BASE_BRANCH", "main")
 DEFAULT_READY_LABEL = os.environ.get("LIFEOS_GITHUB_READY_LABEL", "lifeos-engineer-ready")
 DEFAULT_READY_MARKER = os.environ.get("LIFEOS_GITHUB_READY_MARKER", "<!-- lifeos-engineer:ready -->")
+DEFAULT_ALLOWED_AUTHORS = os.environ.get("LIFEOS_GITHUB_ALLOWED_AUTHORS", "joshant20-ops")
 DEFAULT_STATE_DIR = Path(os.environ.get("LIFEOS_GOVERNOR_STATE_DIR", Path.home() / ".local/state/lifeos-ai-governor"))
 API_ROOT = "https://api.github.com"
 MAX_ISSUE_BODY = 64 * 1024
@@ -91,8 +86,13 @@ def labels(issue: dict[str, Any]) -> set[str]:
     return result
 
 
-def eligible(issue: dict[str, Any], ready_label: str, ready_marker: str) -> bool:
-    if "pull_request" in issue:
+def author(issue: dict[str, Any]) -> str:
+    user = issue.get("user") or {}
+    return str(user.get("login") or "") if isinstance(user, dict) else ""
+
+
+def eligible(issue: dict[str, Any], ready_label: str, ready_marker: str, allowed_authors: set[str]) -> bool:
+    if "pull_request" in issue or author(issue) not in allowed_authors:
         return False
     body = str(issue.get("body") or "")
     return ready_marker in body or ready_label in labels(issue)
@@ -140,8 +140,7 @@ def build_job(issue: dict[str, Any], repository: str, branch: str, commit: str) 
         risk = "NORMAL"
     task = (
         f"GitHub issue #{number}: {title}\n\n"
-        f"Source: {url}\nRepository: {repository}\nBase branch: {branch}\n\n"
-        f"{body}"
+        f"Source: {url}\nRepository: {repository}\nBase branch: {branch}\n\n{body}"
     )
     return {
         "id": f"github-{repository.replace('/', '-')}-issue-{number}",
@@ -164,13 +163,16 @@ def list_open_issues(repository: str) -> list[dict[str, Any]]:
 
 
 def ingest(repository: str, branch: str, state_dir: Path, ready_label: str, ready_marker: str,
-           dry_run: bool = False) -> dict[str, Any]:
+           allowed_authors: set[str], dry_run: bool = False) -> dict[str, Any]:
     pending = state_dir / "queue" / "pending"
     source_dir = state_dir / "queue" / "sources"
-    selected = [issue for issue in list_open_issues(repository) if eligible(issue, ready_label, ready_marker)]
+    selected = [
+        issue for issue in list_open_issues(repository)
+        if eligible(issue, ready_label, ready_marker, allowed_authors)
+    ]
     commit = base_commit(repository, branch) if selected else None
-    queued = []
-    duplicates = []
+    queued: list[dict[str, Any]] = []
+    duplicates: list[dict[str, Any]] = []
     for issue in selected:
         job = build_job(issue, repository, branch, str(commit))
         number = int(issue["number"])
@@ -180,6 +182,7 @@ def ingest(repository: str, branch: str, state_dir: Path, ready_label: str, read
             "repository": repository,
             "issue_number": number,
             "issue_url": issue.get("html_url"),
+            "issue_author": author(issue),
             "issue_updated_at": issue.get("updated_at"),
             "queued_at": now(),
             "job_id": job["id"],
@@ -198,6 +201,7 @@ def ingest(repository: str, branch: str, state_dir: Path, ready_label: str, read
         "generated_at": now(),
         "repository": repository,
         "base_branch": branch,
+        "allowed_authors": sorted(allowed_authors),
         "eligible": len(selected),
         "queued": queued,
         "duplicates": duplicates,
@@ -212,14 +216,20 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--state-dir", type=Path, default=DEFAULT_STATE_DIR)
     p.add_argument("--ready-label", default=DEFAULT_READY_LABEL)
     p.add_argument("--ready-marker", default=DEFAULT_READY_MARKER)
+    p.add_argument("--allowed-authors", default=DEFAULT_ALLOWED_AUTHORS,
+                   help="comma-separated GitHub logins allowed to create executable jobs")
     p.add_argument("--dry-run", action="store_true")
     return p
 
 
 def main() -> int:
     args = parser().parse_args()
+    allowed = {item.strip() for item in args.allowed_authors.split(",") if item.strip()}
+    if not allowed:
+        print(json.dumps({"status": "ERROR", "error": "allowed author set is empty", "generated_at": now()}))
+        return 2
     try:
-        result = ingest(args.repository, args.branch, args.state_dir, args.ready_label, args.ready_marker, args.dry_run)
+        result = ingest(args.repository, args.branch, args.state_dir, args.ready_label, args.ready_marker, allowed, args.dry_run)
     except (RuntimeError, urllib.error.URLError, urllib.error.HTTPError, ValueError) as exc:
         print(json.dumps({"status": "ERROR", "error": str(exc), "generated_at": now()}))
         return 2
