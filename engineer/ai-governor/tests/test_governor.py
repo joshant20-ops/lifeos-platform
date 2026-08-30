@@ -35,6 +35,45 @@ class GovernorTests(unittest.TestCase):
             self.assertEqual(decision["status"], "NO_FREE_PROVIDER_AVAILABLE")
             self.assertFalse(decision["retry"])
 
+    def test_normal_without_explicit_offline_fallback_preserves_no_provider_result(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch.object(self.gov, "status") as status:
+                def provider_status(name, provider):
+                    if name == "ollama":
+                        return "READY"
+                    if provider.get("credential_env"):
+                        return "CREDENTIAL_REQUIRED"
+                    return "READY"
+                status.side_effect = provider_status
+                result = self.gov.route(governor_module.Job("j-offline-disabled", "normal"))
+                self.assertEqual(result["status"], "NO_FREE_PROVIDER_AVAILABLE")
+
+    def test_explicit_offline_fallback_routes_to_ollama_after_cloud_unavailable(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            with mock.patch.object(self.gov, "status") as status:
+                def provider_status(name, provider):
+                    if name == "ollama":
+                        return "READY"
+                    return "CREDENTIAL_REQUIRED"
+                status.side_effect = provider_status
+                result = self.gov.route(governor_module.Job(
+                    "j-offline-enabled",
+                    "normal",
+                    allow_offline_fallback=True,
+                ))
+                self.assertEqual(result["status"], "ROUTED")
+                self.assertEqual(result["provider"], "ollama")
+                self.assertIn("offline fallback", result["reason"])
+
+    def test_cloud_provider_still_wins_when_offline_fallback_enabled(self):
+        with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}, clear=True):
+            result = self.gov.route(governor_module.Job(
+                "j-cloud-first",
+                "normal",
+                allow_offline_fallback=True,
+            ))
+            self.assertEqual(result["provider"], "groq")
+
     def test_normal_prefers_first_configured_free_cloud(self):
         with mock.patch.dict(os.environ, {"GROQ_API_KEY": "test"}, clear=True):
             result = self.gov.route(governor_module.Job("j3", "change"))
