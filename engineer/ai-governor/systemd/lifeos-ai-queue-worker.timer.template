@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the LifeOS AI governor queue worker every five minutes (template only)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=20s
+Persistent=true
+Unit=lifeos-ai-queue-worker.service
+
+[Install]
+WantedBy=timers.target
+
+# TEMPLATE ONLY: enable only after GitHub intake, governor routing and OpenHands
+# execution have each passed their independent validation gates.
