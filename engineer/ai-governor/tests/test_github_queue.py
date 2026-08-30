@@ -53,6 +53,24 @@ class GithubIntakeTests(unittest.TestCase):
         self.assertEqual(job["context_paths"], ["engineer/ai-governor"])
         self.assertEqual(job["id"], "github-joshant20-ops-lifeos-platform-issue-5")
 
+    def test_offline_fallback_requires_explicit_marker_or_label(self):
+        normal = intake.build_job(self.issue(), "joshant20-ops/lifeos-platform", "main", "a" * 40)
+        marked = intake.build_job(
+            self.issue(body="<!-- lifeos-engineer:ready -->\n<!-- lifeos-offline-fallback:true -->"),
+            "joshant20-ops/lifeos-platform",
+            "main",
+            "a" * 40,
+        )
+        labelled = intake.build_job(
+            self.issue(labels=[{"name": "lifeos-engineer-ready"}, {"name": "provider:offline-fallback"}]),
+            "joshant20-ops/lifeos-platform",
+            "main",
+            "a" * 40,
+        )
+        self.assertFalse(normal["allow_offline_fallback"])
+        self.assertTrue(marked["allow_offline_fallback"])
+        self.assertTrue(labelled["allow_offline_fallback"])
+
     def test_ingest_is_idempotent(self):
         with tempfile.TemporaryDirectory() as td:
             with mock.patch.object(intake, "list_open_issues", return_value=[self.issue()]), \
@@ -85,6 +103,14 @@ class QueueWorkerTests(unittest.TestCase):
                 "id": "../../bad", "task": "x", "risk": "NORMAL",
                 "base_commit": "a" * 40, "acceptance_commands": ["true"],
             })
+
+    def test_job_validation_propagates_offline_fallback(self):
+        job = worker.valid_job({
+            "id": "github-test-issue-fallback", "task": "x", "risk": "NORMAL",
+            "base_commit": "a" * 40, "acceptance_commands": ["true"],
+            "allow_offline_fallback": True,
+        })
+        self.assertTrue(job.allow_offline_fallback)
 
     def test_route_only_worker_returns_job_to_pending(self):
         paths = worker.queue_dirs(self.root / "state")
