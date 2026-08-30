@@ -114,6 +114,13 @@ def risk_for(issue: dict[str, Any]) -> str:
     return match.group(1) if match else "NORMAL"
 
 
+def offline_fallback_for(issue: dict[str, Any]) -> bool:
+    body = str(issue.get("body") or "")
+    if re.search(r"<!--\s*lifeos-offline-fallback:(?:true|yes|1)\s*-->", body, re.IGNORECASE):
+        return True
+    return "provider:offline-fallback" in labels(issue)
+
+
 def comment_values(body: str, name: str) -> list[str]:
     pattern = rf"<!--\s*{re.escape(name)}:(.*?)\s*-->"
     return [match.strip() for match in re.findall(pattern, body) if match.strip()]
@@ -149,6 +156,7 @@ def build_job(issue: dict[str, Any], repository: str, branch: str, commit: str) 
         "deterministic_available": False,
         "substantial": risk != "TINY",
         "requires_review": risk != "TINY",
+        "allow_offline_fallback": offline_fallback_for(issue),
         "base_commit": commit,
         "context_paths": context_paths,
         "acceptance_commands": acceptance,
