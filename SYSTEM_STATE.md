@@ -29,6 +29,7 @@
 - `grafana` — `grafana/grafana:latest`
 - `homeassistant` — `ghcr.io/home-assistant/home-assistant:stable`
 - `lifeos-energy` — `lifeos-energy:0.1.0-dev`
+- `lifeos-engineer-ui` — `ghcr.io/open-webui/open-webui:v0.11.1`
 - `matter-server` — `ghcr.io/home-assistant-libs/python-matter-server:stable`
 - `mosquitto` — `eclipse-mosquitto:latest`
 - `nginx-proxy-manager` — `jc21/nginx-proxy-manager:latest`
