@@ -15,13 +15,29 @@ if [[ "$PRIVACY" == "local-only" ]]; then
   exit 42
 fi
 
+RUNTIME_PATH="governor/runtime_jobs/${JOB_ID}.sh"
+
 PROMPT=$(cat <<EOF
 You are the cloud engineering builder for LifeOS autonomous job $JOB_ID.
-Work toward the user's goal until this iteration has produced a concrete, testable improvement.
-The Pi5 is the central controller. Do not require the user to run commands on secondary machines; any secondary-host work must be orchestrated from Pi5 via SSH.
-Use the existing LifeOS repository conventions and safety boundaries. Do not expose secrets or private Paperless/document content.
-Run relevant tests before finishing. Commit and push changes to origin/main only when tests pass and the change is ready for the Pi5 control plane to consume.
-Do not merely explain what should be done: perform the repository engineering work available to you.
+Work toward the user's original goal until this iteration has produced a concrete, testable improvement.
+
+ARCHITECTURE AND SAFETY:
+- Pi5/Docker is the central controller and runtime executor.
+- Do not require the user to run commands on secondary machines.
+- If runtime inspection/change is required on Pi5, Engineer, TowerPC, Home Assistant, or another LAN host, create exactly one Pi5 launcher at: $RUNTIME_PATH
+- That launcher must start with #!/usr/bin/env bash, be non-interactive, timeout-aware, and may SSH to secondary machines itself.
+- Never put secrets or private Paperless/document content in GitHub, prompts, logs, commits, or runtime launchers.
+- This cloud builder is forbidden from processing private document contents.
+- Scope tests to the user's requested outcome. Unrelated pre-existing repository failures may be reported but MUST NOT block a scoped job if the requested outcome can still be verified safely.
+- The local verifier, not you, decides final completion.
+
+REPOSITORY WORK:
+- You are working in a clean per-job worktree based on origin/main.
+- Make any repository changes needed for this iteration.
+- If you create $RUNTIME_PATH, make it safe and self-verifying: it should print clear PASS/FAIL evidence for the requested outcome.
+- Run focused tests for files you changed.
+- Commit and push ready changes to origin/main. If origin/main moved, fetch/rebase or otherwise resolve safely; never force-push.
+- Do not merely explain what should be done: perform all repository engineering work available to you.
 
 USER GOAL:
 $REQUEST
@@ -31,27 +47,26 @@ ITERATION: $ITERATION
 LOCAL VERIFIER FEEDBACK:
 ${FEEDBACK:-none yet}
 
-At the end print a concise machine-readable summary containing RESULT, COMMIT if any, TESTS, and NEXT_RUNTIME_CHECK.
+FINAL OUTPUT CONTRACT:
+Print these lines at the end:
+RESULT=PASS|RETRY|BLOCKED
+COMMIT=<sha-or-none>
+TESTS=<concise result>
+RUN_SCRIPT=$RUNTIME_PATH   # only if that file was committed and should be executed by Pi5
+NEXT_RUNTIME_CHECK=<concise check or none>
 EOF
 )
 
-# Do not pass a multiline prompt as a shell argument through SSH. Encode it so
-# quotes/newlines cannot corrupt the remote command line.
 PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
 
 ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" \
-  bash -s -- "$REPO" "$PROMPT_B64" <<'REMOTE'
+  bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" <<'REMOTE'
 set -euo pipefail
 REPO=$1
 PROMPT_B64=$2
+JOB_ID=$3
+ITERATION=$4
 PROMPT=$(printf '%s' "$PROMPT_B64" | base64 -d)
-cd "$REPO"
-
-git fetch origin main >/dev/null 2>&1 || true
-# Preserve local work: only fast-forward when clean.
-if [[ -z "$(git status --porcelain)" ]]; then
-  git merge --ff-only origin/main >/dev/null 2>&1 || true
-fi
 
 CODEX="${LIFEOS_CODEX_BIN:-$HOME/.local/bin/codex}"
 if [[ ! -x "$CODEX" ]]; then
@@ -64,10 +79,29 @@ if [[ -z "$CODEX" || ! -x "$CODEX" ]]; then
 fi
 
 echo "CODEX_BIN=$CODEX"
-HELP="$("$CODEX" exec --help 2>&1 || true)"
 
-# Explicitly disconnect stdin so Codex cannot treat the SSH heredoc as extra
-# user input appended to the supplied prompt.
+cd "$REPO"
+git fetch origin main
+
+WORKROOT="$HOME/.local/share/lifeos-agent/worktrees"
+WORKTREE="$WORKROOT/${JOB_ID}-${ITERATION}"
+mkdir -p "$WORKROOT"
+
+# Remove only our own stale worktree path. The user's normal Engineer checkout is untouched.
+git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+rm -rf "$WORKTREE"
+git worktree add --detach "$WORKTREE" origin/main >/dev/null
+
+cleanup() {
+  git -C "$REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+cd "$WORKTREE"
+BASE=$(git rev-parse HEAD)
+echo "WORKTREE_BASE=$BASE"
+
+HELP="$("$CODEX" exec --help 2>&1 || true)"
 if grep -q -- '--full-auto' <<<"$HELP"; then
   "$CODEX" exec --full-auto "$PROMPT" </dev/null
 elif "$CODEX" --help 2>&1 | grep -q -- '--full-auto'; then
@@ -75,4 +109,10 @@ elif "$CODEX" --help 2>&1 | grep -q -- '--full-auto'; then
 else
   "$CODEX" exec "$PROMPT" </dev/null
 fi
+
+# Give the control plane objective post-Codex repository state even if Codex's prose is imperfect.
+echo "WORKTREE_HEAD=$(git rev-parse HEAD)"
+echo "WORKTREE_STATUS_BEGIN"
+git status --short
+echo "WORKTREE_STATUS_END"
 REMOTE
