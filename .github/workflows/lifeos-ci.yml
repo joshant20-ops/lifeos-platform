@@ -40,7 +40,8 @@ jobs:
         run: |
           python3 -m unittest -v \
             tests.test_job_publisher_fifo \
-            tests.test_github_sync_protection
+            tests.test_github_sync_protection \
+            tests.test_snapshot_protected_drift
 
       - name: Validate desired Compose YAML
         run: |
