@@ -48,6 +48,23 @@ def test_docker_health_prevents_destruction_during_host_probe_failure():
     assert existing.index('[[ "$(ui_container_health)" == healthy ]]') > existing.index("wait_for_health OPEN_WEBUI_EXISTING")
 
 
+def test_existing_ui_is_rechecked_at_destructive_boundary_after_image_pull():
+    script = DEPLOY.read_text()
+    pull = script.index('timeout 300 docker pull "$OWUI_IMAGE"')
+    recovered = script.index(
+        "OPEN_WEBUI_REUSED=healthy_existing_container source=pre_removal_recheck",
+        pull,
+    )
+    removal = script.index('docker rm -f "$UI_NAME"', recovered)
+    between = script[pull:removal]
+    assert 'UI_DOCKER_HEALTH=$(ui_container_health)' in between
+    assert 'curl -fsS --max-time 5 "$UI_HEALTH_URL"' in between
+    assert "RECREATE_UI=false" in between
+    # Removal and replacement are in a fresh guard evaluated after the final
+    # readiness probe; recovery during the pull therefore preserves identity.
+    assert script.count('if [[ "$RECREATE_UI" == true ]]') >= 2
+
+
 def test_failure_diagnostics_and_safe_ha_rollback_are_present():
     deploy = DEPLOY.read_text()
     runtime = RUNTIME.read_text()
