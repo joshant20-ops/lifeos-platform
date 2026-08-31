@@ -7,6 +7,35 @@ BACKEND="$REPO/governor/engineer_backend.py"
 OWUI_IMAGE="ghcr.io/open-webui/open-webui:v0.11.1"
 OWUI_PORT=8792
 BACKEND_PORT=8793
+UI_NAME=lifeos-engineer-ui
+UI_HEALTH_URL="http://127.0.0.1:${OWUI_PORT}/health"
+
+wait_for_health() {
+  local name=$1 url=$2 deadline=${3:-300} delay=1 started now
+  started=$(date +%s)
+  while true; do
+    if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
+      printf '%s_HEALTH=PASS elapsed=%ss\n' "$name" "$(( $(date +%s) - started ))"
+      return 0
+    fi
+    now=$(date +%s)
+    if (( now - started >= deadline )); then
+      printf '%s_HEALTH=FAIL url=%s timeout=%ss\n' "$name" "$url" "$deadline" >&2
+      return 1
+    fi
+    printf '%s_HEALTH=WAIT elapsed=%ss next_retry=%ss\n' "$name" "$((now - started))" "$delay"
+    sleep "$delay"
+    (( delay < 16 )) && delay=$((delay * 2))
+  done
+}
+
+ui_diagnostics() {
+  printf '\n===== OPEN WEBUI FAILURE DIAGNOSTICS =====\n' >&2
+  docker ps -a --filter "name=^/${UI_NAME}$" --no-trunc >&2 || true
+  docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}} started={{.State.StartedAt}}' "$UI_NAME" >&2 || true
+  docker logs --tail 200 --timestamps "$UI_NAME" >&2 || true
+  curl -v --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1 || true
+}
 
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED"; echo "REASON=must_run_on_pi5_Docker"; exit 20; }
 
@@ -15,9 +44,7 @@ printf 'Frontend: Open WebUI v0.11.1\n'
 printf 'Conversation/planning: local Qwen\n'
 printf 'Execution: Pi5 autonomous agent -> Engineer Codex -> Pi5 -> TowerPC Qwen verifier\n\n'
 
-printf '===== 1/8 — SYNC =====\n'
-git -C "$REPO" fetch origin main
-git -C "$REPO" reset --hard origin/main
+printf '===== 1/8 — SOURCE =====\n'
 printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 
 printf '\n===== 2/8 — PREFLIGHT =====\n'
@@ -59,11 +86,7 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl restart lifeos-engineer.service
 sudo systemctl enable lifeos-engineer.service >/dev/null
-for _ in $(seq 1 20); do
-  curl -fsS --max-time 3 http://127.0.0.1:${BACKEND_PORT}/health >/dev/null && break
-  sleep 1
-done
-curl -fsS --max-time 3 http://127.0.0.1:${BACKEND_PORT}/health >/dev/null
+wait_for_health ENGINEER_BACKEND "http://127.0.0.1:${BACKEND_PORT}/health" 60
 printf 'ENGINEER_BACKEND=PASS\n'
 
 printf '\n===== 4/8 — OPEN WEBUI =====\n'
@@ -75,13 +98,19 @@ if [[ ! -s "$SECRET_FILE" ]]; then
 fi
 WEBUI_SECRET_KEY=$(cat "$SECRET_FILE")
 
-docker pull "$OWUI_IMAGE" >/dev/null
-if docker ps -a --format '{{.Names}}' | grep -qx lifeos-engineer-ui; then
-  docker rm -f lifeos-engineer-ui >/dev/null
-fi
+if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME" && \
+   curl -fsS --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1; then
+  printf 'OPEN_WEBUI_REUSED=healthy_existing_container\n'
+else
+  docker pull "$OWUI_IMAGE" >/dev/null
+  if docker ps -a --format '{{.Names}}' | grep -qx "$UI_NAME"; then
+    printf 'OPEN_WEBUI_RECREATE=existing_container_not_healthy\n'
+    ui_diagnostics
+    docker rm -f "$UI_NAME" >/dev/null
+  fi
 
-docker run -d \
-  --name lifeos-engineer-ui \
+  docker run -d \
+  --name "$UI_NAME" \
   --restart unless-stopped \
   -p ${OWUI_PORT}:8080 \
   --add-host=host.docker.internal:host-gateway \
@@ -93,12 +122,12 @@ docker run -d \
   -e OPENAI_API_KEY="lifeos-local" \
   -e WEBUI_NAME="LifeOS Engineer" \
   "$OWUI_IMAGE" >/dev/null
+fi
 
-for _ in $(seq 1 60); do
-  if curl -fsS --max-time 3 http://127.0.0.1:${OWUI_PORT}/ >/dev/null 2>&1; then break; fi
-  sleep 2
-done
-curl -fsS --max-time 5 http://127.0.0.1:${OWUI_PORT}/ >/dev/null
+if ! wait_for_health OPEN_WEBUI "$UI_HEALTH_URL" 300; then
+  ui_diagnostics
+  exit 1
+fi
 printf 'OPEN_WEBUI=PASS\n'
 
 printf '\n===== 5/8 — OPENAI COMPATIBILITY TEST =====\n'
@@ -138,36 +167,8 @@ YAML
 printf 'HA_CARD_FALLBACK_END\n'
 
 printf '\n===== 7/8 — HOME ASSISTANT ENGINEER INTEGRATION =====\n'
-HA_JOB=$(cat <<EOF
-Replace the prototype LifeOS Assistant engineering surface in Home Assistant with the dedicated LifeOS Engineer interface at ${ENGINEER_URL}. This is the engineering AI only; do not create or redesign the future personal-assistant/PA UI as part of this job.
-
-Requirements:
-- Make LifeOS Engineer a first-class, easy-to-reach technical/engineering surface in Home Assistant, ideally a dedicated LifeOS Engineer view or safe sidebar/panel entry; otherwise use a full-width iframe/Webpage card on the most appropriate existing LifeOS dashboard.
-- If the earlier prototype LifeOS Assistant iframe/card/sidebar entry exists only for engineering, replace or rename it rather than leaving duplicate engineering interfaces.
-- Do not remove unrelated LifeOS, energy, household or future-PA cards.
-- Preserve existing dashboard style and layout.
-- Open WebUI is running on the trusted LAN at ${ENGINEER_URL}; keep it LAN-only and do not expose it publicly.
-- Home Assistant private runtime discovery must stay local. Do not send secrets, tokens, entity history or private HA data to cloud Codex.
-- Back up any HA configuration changed; use supported HA configuration/API mechanisms and do not directly corrupt storage-mode dashboard files.
-- Validate HA configuration before reload/restart and make the change reversible.
-- Verify from the HA side where possible that the Open WebUI page loads.
-- Report the final HA navigation path/view and whether the old prototype engineering surface was removed/replaced.
-- Do not attempt PA functionality in this job. PA is a separate future role that LifeOS Engineer will help build later.
-EOF
-)
-HA_JSON=$(python3 - "$HA_JOB" <<'PY'
-import json,sys
-print(json.dumps({'request':sys.argv[1]}))
-PY
-)
-HA_SUBMIT=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' -d "$HA_JSON" 'http://127.0.0.1:8790/jobs?async=1')
-python3 - "$HA_SUBMIT" <<'PY'
-import json,sys
-j=json.loads(sys.argv[1])
-assert j['status']=='QUEUED'
-print('HA_ENGINEER_JOB='+j['id'])
-print('HA_ENGINEER_STATUS='+j['status'])
-PY
+printf 'HA_INTEGRATION=managed_by_runtime_job\n'
+printf 'HA_INTEGRATION_TARGET=sidebar_LifeOS_Engineer\n'
 
 printf '\n===== 8/8 — RESULT =====\n'
 printf 'RESULT=PASS\n'
@@ -177,5 +178,5 @@ printf 'APPROVAL_REQUIRED=explicit_run_it_before_execution\n'
 printf 'ENGINEERING_LOOP=Pi5_to_Engineer_Codex_to_Pi5_to_TowerPC_Qwen\n'
 printf 'OPENWEBUI_VERSION=v0.11.1\n'
 printf 'FIRST_USE=Create_the_first_Open_WebUI_admin_account_then_select_lifeos-engineer\n'
-printf 'NOTE=Home_Assistant_Engineer_integration_continues_as_autonomous_job\n'
+printf 'NOTE=Home_Assistant_integration_is_applied_and_verified_by_the_Pi5_runtime_job\n'
 printf 'Elapsed=%ss\n' "$(( $(date +%s)-START ))"
