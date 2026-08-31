@@ -24,7 +24,7 @@
 ## Active Docker Services
 
 - `adguardhome` — `adguard/adguardhome:latest`
-- `autoheal` — `willfarrell/autoheal:latest`
+- `autoheal` — `1c00ddf72362`
 - `cadvisor` — `gcr.io/cadvisor/cadvisor:latest`
 - `grafana` — `grafana/grafana:latest`
 - `homeassistant` — `ghcr.io/home-assistant/home-assistant:stable`
@@ -35,7 +35,7 @@
 - `nginx-proxy-manager` — `jc21/nginx-proxy-manager:latest`
 - `node-exporter` — `quay.io/prometheus/node-exporter:latest`
 - `paperless-db-1` — `postgres:15`
-- `paperless-paperless-1` — `ghcr.io/paperless-ngx/paperless-ngx:latest`
+- `paperless-paperless-1` — `49eba766581b`
 - `paperless-redis-1` — `redis:7`
 - `portainer` — `portainer/portainer-ce:latest`
 - `predbat` — `nipar44/predbat_addon:latest`
