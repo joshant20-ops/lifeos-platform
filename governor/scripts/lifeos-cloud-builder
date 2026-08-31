@@ -108,10 +108,14 @@ else
   "$CODEX" exec "$PROMPT" </dev/null
 fi
 
-# Codex may stage files, leave them unstaged, or even create local commits.
-# Export the complete resulting tree delta against the immutable starting point.
+# Codex may stage files, leave them unstaged, create untracked files, or even
+# make local commits. Stage the full resulting tree state, then export the
+# complete delta against the immutable starting point. `git diff` alone would
+# omit new untracked files such as per-job runtime launchers.
+git reset --mixed "$BASE" >/dev/null 2>&1 || true
+git add -A
 PATCH_FILE=$(mktemp)
-git diff --binary "$BASE" -- . >"$PATCH_FILE"
+git diff --cached --binary "$BASE" -- . >"$PATCH_FILE"
 PATCH_BYTES=$(wc -c <"$PATCH_FILE")
 if (( PATCH_BYTES > 1048576 )); then
   echo "HANDOFF_ERROR=patch_exceeds_1MiB"
