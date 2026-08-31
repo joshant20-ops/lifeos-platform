@@ -198,13 +198,20 @@ else
   install -m 0644 "$PANEL_TMP" "$HA_PANEL"
   rm -f "$PANEL_TMP"
   HA_CHANGED=true
+  printf 'HA_PANEL=UPDATED file_written\n'
+fi
+
+# The include and the panel file form one configuration transaction. In
+# particular, an already-current panel file still requires a restart when the
+# panel_iframe include was added to configuration.yaml in this run.
+if [[ "$HA_CHANGED" == true ]]; then
   timeout 180 docker exec "$HA_CONTAINER" python3 -m homeassistant --script check_config -c /config >/dev/null || fail home_assistant_config_invalid
   # Mark the restart attempt before invoking Docker. Even an interrupted or
   # timed-out restart may have loaded the candidate files and needs recovery.
   HA_RESTARTED=true
   timeout 120 docker restart "$HA_CONTAINER" >/dev/null || fail home_assistant_restart_failed
   wait_url http://127.0.0.1:8123/ 180 || fail home_assistant_startup_timeout
-  printf 'HA_PANEL=UPDATED old_engineering_prototype_replaced\n'
+  printf 'HA_CONFIGURATION=ACTIVATED\n'
 fi
 timeout 180 docker exec "$HA_CONTAINER" python3 -m homeassistant --script check_config -c /config >/dev/null || fail home_assistant_config_invalid
 grep -q '^lifeos_engineer:$' "$HA_PANEL" || fail home_assistant_engineer_panel_missing
