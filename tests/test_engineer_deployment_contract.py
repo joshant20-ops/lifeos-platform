@@ -20,10 +20,21 @@ def test_readiness_uses_health_and_full_backoff_budget():
 
 def test_healthy_running_ui_is_reused_before_any_removal():
     script = DEPLOY.read_text()
-    reuse = script.index("OPEN_WEBUI_REUSED=healthy_existing_container")
+    reuse = script.index("OPEN_WEBUI_REUSED=healthy_existing_container source=docker_health")
     removal = script.index('docker rm -f "$UI_NAME"')
     assert reuse < removal
     assert "RECREATE_UI=false" in script[reuse:removal]
+
+
+def test_docker_health_prevents_destruction_during_host_probe_failure():
+    script = DEPLOY.read_text()
+    existing = script[script.index("RECREATE_UI=true"):script.index('if [[ "$RECREATE_UI" == true ]]')]
+    assert "UI_DOCKER_HEALTH=$(ui_container_health)" in existing
+    assert '[[ "$UI_DOCKER_HEALTH" == healthy ]]' in existing
+    assert '[[ "$(ui_container_health)" == healthy ]]' in existing
+    assert existing.count("RECREATE_UI=false") == 3
+    assert existing.index('[[ "$UI_DOCKER_HEALTH" == healthy ]]') < existing.index("wait_for_health OPEN_WEBUI_EXISTING")
+    assert existing.index('[[ "$(ui_container_health)" == healthy ]]') > existing.index("wait_for_health OPEN_WEBUI_EXISTING")
 
 
 def test_failure_diagnostics_and_safe_ha_rollback_are_present():

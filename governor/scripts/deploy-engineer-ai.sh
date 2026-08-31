@@ -48,6 +48,11 @@ backend_diagnostics() {
   curl -v --max-time 5 "http://127.0.0.1:${BACKEND_PORT}/health" -o /dev/null >&2 || true
 }
 
+ui_container_health() {
+  docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
+    "$UI_NAME" 2>/dev/null || printf 'missing\n'
+}
+
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED"; echo "REASON=must_run_on_pi5_Docker"; exit 20; }
 
 printf '===== LIFEOS ENGINEER AI DEPLOY =====\n'
@@ -114,12 +119,24 @@ WEBUI_SECRET_KEY=$(cat "$SECRET_FILE")
 
 RECREATE_UI=true
 if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-  printf 'OPEN_WEBUI_EXISTING=running_waiting_for_readiness\n'
+  UI_DOCKER_HEALTH=$(ui_container_health)
+  printf 'OPEN_WEBUI_EXISTING=running docker_health=%s\n' "$UI_DOCKER_HEALTH"
+  # Docker's healthcheck also calls /health. Preserve a container that has
+  # already passed that readiness contract even if this one host-side probe is
+  # affected by a transient bridge/published-port problem.
+  if [[ "$UI_DOCKER_HEALTH" == healthy ]]; then
+    printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=docker_health\n'
+    RECREATE_UI=false
   # Open WebUI can take several minutes to migrate its database on the first
   # start (or after an image upgrade).  Give the existing process the same
   # readiness budget as a new one before deciding that it has failed.
-  if wait_for_health OPEN_WEBUI_EXISTING "$UI_HEALTH_URL" 300; then
-    printf 'OPEN_WEBUI_REUSED=healthy_existing_container\n'
+  elif wait_for_health OPEN_WEBUI_EXISTING "$UI_HEALTH_URL" 300; then
+    printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=host_health\n'
+    RECREATE_UI=false
+  elif [[ "$(ui_container_health)" == healthy ]]; then
+    # Close the race where Docker records a successful /health probe just as
+    # the host-side readiness budget expires.
+    printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=docker_health_after_wait\n'
     RECREATE_UI=false
   else
     printf 'OPEN_WEBUI_EXISTING=failed_readiness_will_recreate\n' >&2
