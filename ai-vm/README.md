@@ -2,7 +2,16 @@
 
 Role: private/local AI execution, heavy document processing, embeddings, offline fallback, and sensitive-data workloads.
 
-Control plane remains on Pi5 in `lifeos-governor`.
+Control plane remains on Pi5 in `lifeos-governor`, but Pi5 is not a transport/proxy hop for AI VM jobs.
+
+## Control and transport model
+
+- GitHub is the shared source of truth and job/result transport.
+- AI VM pulls its own `ai-vm`-targeted jobs and immutable artifacts directly from GitHub.
+- AI VM publishes its own results directly back to GitHub.
+- Pi5 Governor reads shared state from GitHub and coordinates policy, priorities, and scheduling.
+- Pi5 must not relay scripts/files to AI VM as part of normal execution.
+- Multi-node runners ignore jobs for other targets, so `pi5-docker` and `ai-vm` can safely share one relay repository.
 
 ## Provider policy
 
