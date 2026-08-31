@@ -14,8 +14,6 @@ command -v git >/dev/null
 command -v python3 >/dev/null
 command -v gh >/dev/null
 
-# Reuse the GitHub CLI credential path already proven for the platform repo.
-# This avoids requiring a separate SSH deploy key on the AI VM.
 gh auth status >/dev/null 2>&1 || {
   echo "FAIL: GitHub CLI is not authenticated"
   exit 21
@@ -53,9 +51,6 @@ Environment=LIFEOS_CONTROL_REPO=/home/joshan/lifeos-pi-control
 ExecStart=/home/joshan/.local/bin/lifeos-ai-vm-runner
 NoNewPrivileges=true
 PrivateTmp=true
-ProtectSystem=full
-ProtectHome=read-only
-ReadWritePaths=/home/joshan/lifeos-pi-control /home/joshan/.local/state/lifeos-ai-vm
 UNIT
 
 cat >"$HOME/.config/systemd/user/lifeos-ai-vm-runner.timer" <<'UNIT'
@@ -74,6 +69,7 @@ UNIT
 
 systemctl --user daemon-reload
 systemctl --user enable --now lifeos-ai-vm-runner.timer
+systemctl --user reset-failed lifeos-ai-vm-runner.service 2>/dev/null || true
 systemctl --user start lifeos-ai-vm-runner.service
 
 echo "AI_VM_RUNNER=installed"
