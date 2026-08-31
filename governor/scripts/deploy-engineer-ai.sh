@@ -25,7 +25,11 @@ wait_for_health() {
     fi
     printf '%s_HEALTH=WAIT elapsed=%ss next_retry=%ss\n' "$name" "$((now - started))" "$delay"
     sleep "$delay"
-    (( delay < 16 )) && delay=$((delay * 2))
+    # Do not use a short-circuit arithmetic expression here: once delay is 16,
+    # its false status would terminate this script because set -e is enabled.
+    if (( delay < 16 )); then
+      delay=$((delay * 2))
+    fi
   done
 }
 
