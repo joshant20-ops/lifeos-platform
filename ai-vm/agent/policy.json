@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "role": "ai-vm-autonomous-agent",
+  "local_model": "qwen2.5-coder:7b-instruct",
+  "ollama_url": "http://127.0.0.1:11434",
+  "goal_loop": ["plan", "act", "verify", "refine", "complete"],
+  "max_iterations_per_goal": 50,
+  "checkpoint_every_iteration": true,
+  "resume_after_restart": true,
+  "privacy": {
+    "private_data_local_only_by_default": true,
+    "cloud_requires_explicit_policy_permission": true
+  },
+  "execution": {
+    "default_mode": "proposal_or_allowlisted_local_action",
+    "shell_allowlist": [
+      "python3",
+      "git",
+      "gh",
+      "docker",
+      "systemctl --user",
+      "ollama"
+    ],
+    "root_actions": "blocked_without_separate_broker_authority",
+    "paperless_writeback": "blocked_until_separately_enabled_and_tested"
+  },
+  "stop_conditions": [
+    "goal_complete_and_verified",
+    "requires_new_privilege",
+    "requires_secret_not_available_locally",
+    "safety_policy_block",
+    "iteration_limit_reached",
+    "repeated_unrecoverable_failure"
+  ]
+}
