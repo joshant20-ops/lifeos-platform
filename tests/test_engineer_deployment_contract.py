@@ -4,8 +4,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "governor/scripts/deploy-engineer-ai.sh"
+BACKEND = ROOT / "governor/engineer_backend.py"
 RUNTIME = ROOT / "governor/runtime_jobs/ebf8a71d4bff.sh"
-JOB_RUNTIME = ROOT / "governor/runtime_jobs/e589eb65fbbc.sh"
+JOB_RUNTIME = ROOT / "governor/runtime_jobs/feb1efaecf51.sh"
+
+
+def test_engineer_backend_exposes_health_readiness_endpoint():
+    backend = BACKEND.read_text()
+    assert 'if self.path in ("/health", "/v1/health"):' in backend
+    assert 'self.send_json(200, {"service": "lifeos-engineer", "status": "ok"' in backend
+    assert 'self.send_json(503, {"service": "lifeos-engineer", "status": "degraded"' in backend
 
 
 def test_readiness_uses_health_and_full_backoff_budget():
@@ -145,6 +153,7 @@ def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
     assert 'readonly ROLLBACK_GRACE_SECONDS=360' in launcher
     assert 'timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s"' in launcher
     assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
+    assert "readonly JOB_ID=feb1efaecf51" in launcher
     assert "RUNTIME_CHECK=PASS" in launcher
     assert "runtime_timeout" in launcher
 
