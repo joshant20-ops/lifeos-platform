@@ -14,6 +14,7 @@ def test_launcher_is_bounded_and_delegates_reversible_runtime() -> None:
     assert "timeout --signal=TERM" in text
     assert 'LIFEOS_RUNTIME_JOB_ID="$JOB_ID"' in text
     assert 'LIFEOS_ENGINEER_LAN_IP="$ENGINEER_HOST"' in text
+    assert "LIFEOS_ENGINEER_VERIFY_ONLY=true" in text
 
 
 def test_launcher_verifies_requested_url_and_reports_navigation() -> None:
@@ -21,5 +22,6 @@ def test_launcher_verifies_requested_url_and_reports_navigation() -> None:
 
     assert "readonly ENGINEER_URL=http://192.168.0.203:8792/" in text
     assert 'curl -fsSI --max-time 10 "$ENGINEER_URL"' in text
+    assert "ENGINEER_FIXED_URL_PREFLIGHT=PASS" in text
     assert "FINAL_NAVIGATION_PATH=Home Assistant sidebar > LifeOS Engineer" in text
     assert 'printf \'RESULT=PASS job=%s\\n\' "$JOB_ID"' in text

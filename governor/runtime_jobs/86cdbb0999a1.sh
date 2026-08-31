@@ -24,10 +24,18 @@ fail() {
 [[ -x "$RUNTIME" ]] || fail engineer_runtime_implementation_missing 21
 
 printf 'RUNTIME_CHECK=START job=%s scope=engineer_home_assistant_sidebar\n' "$JOB_ID"
+# This job integrates the already-addressed Engineer service. Do not turn a
+# Home Assistant panel repair into a privileged Engineer redeployment: the
+# delegated transaction still verifies both local health endpoints before it
+# writes any HA configuration.
+timeout 15 curl -fsSI --max-time 10 "$ENGINEER_URL" >/dev/null \
+  || fail fixed_engineer_url_unreachable_before_ha_change 22
+printf 'ENGINEER_FIXED_URL_PREFLIGHT=PASS url=%s\n' "$ENGINEER_URL"
 if timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s" \
   "$OUTER_TIMEOUT_SECONDS" env \
     LIFEOS_RUNTIME_JOB_ID="$JOB_ID" \
     LIFEOS_ENGINEER_LAN_IP="$ENGINEER_HOST" \
+    LIFEOS_ENGINEER_VERIFY_ONLY=true \
     "$RUNTIME"; then
   :
 else
