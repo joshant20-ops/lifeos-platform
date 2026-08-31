@@ -5,7 +5,9 @@ import os
 import pathlib
 import re
 import subprocess
+import threading
 import time
+import urllib.parse
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,9 +20,11 @@ BUILDER = os.environ.get("LIFEOS_AGENT_BUILDER", "/usr/local/libexec/lifeos-clou
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
+UI_PATH = PLATFORM_REPO / "governor" / "agent_ui.html"
 RUNTIME_PREFIX = "governor/runtime_jobs/"
 MAX_PATCH_BYTES = 1048576
 MAX_RUNTIME_BYTES = 65536
+EXECUTION_LOCK = threading.Lock()
 
 PRIVATE_TERMS = {
     "paperless", "document", "documents", "private data", "personal data",
@@ -44,6 +48,16 @@ def save(job):
 
 def load(job_id):
     return json.loads(job_path(job_id).read_text())
+
+
+def list_jobs(limit=100):
+    jobs = []
+    for path in sorted(ROOT.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
+        try:
+            jobs.append(json.loads(path.read_text()))
+        except Exception:
+            continue
+    return jobs
 
 
 def classify_privacy(text):
@@ -127,18 +141,15 @@ def apply_and_publish_patch(job, iteration, handoff):
         return "PI5_PATCH=none\n"
     if job["privacy"] == "local-only":
         return "PI5_PATCH=blocked_for_cloud_authored_private_job\n"
-
     try:
         patch = base64.b64decode(payload, validate=True)
     except Exception as exc:
         return f"PI5_PATCH=invalid_base64 error={type(exc).__name__}\n"
     if len(patch) > MAX_PATCH_BYTES:
         return f"PI5_PATCH=rejected size={len(patch)} limit={MAX_PATCH_BYTES}\n"
-
     status = git("status", "--porcelain").stdout.strip()
     if status:
         return "PI5_PATCH=retry canonical_checkout_dirty\n" + status[-4000:] + "\n"
-
     try:
         git("fetch", "origin", "main")
         git("reset", "--hard", "origin/main")
@@ -188,7 +199,6 @@ def run_pi5_runtime(job, handoff):
     text = script.decode("utf-8", errors="strict")
     if not (text.startswith("#!/usr/bin/env bash") or text.startswith("#!/bin/bash")):
         return "RUNTIME_ACTION=rejected_shebang\n"
-
     runtime_dir = ROOT / "runtime"
     runtime_dir.mkdir(mode=0o750, exist_ok=True)
     target = runtime_dir / f"{job['id']}.sh"
@@ -207,51 +217,53 @@ def run_pi5_runtime(job, handoff):
 
 
 def execute_job(job):
-    job["status"] = "RUNNING"
-    save(job)
-    feedback = None
-    for iteration in range(1, MAX_ITERATIONS + 1):
-        rec = {"iteration": iteration, "started_at": now()}
-        try:
-            rc, build_evidence, handoff = run_builder(job, iteration, feedback)
-            rec["builder_rc"] = rc
-        except Exception as exc:
-            rc = 255
-            build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
-            handoff = {}
-            rec["builder_rc"] = rc
-
-        publication = apply_and_publish_patch(job, iteration, handoff)
-        runtime = run_pi5_runtime(job, handoff)
-        evidence = f"BUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\nPUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
-        rec["evidence"] = evidence[-26000:]
-
-        try:
-            verdict = local_verify(job, iteration, rec["evidence"])
-        except Exception as exc:
-            verdict = {"verdict": "RETRY", "reason": f"local verifier unavailable: {type(exc).__name__}", "next_instruction": "Retry local verifier and runtime verification."}
-        rec["verification"] = verdict
-        rec["finished_at"] = now()
-        job.setdefault("iterations", []).append(rec)
-        v = str(verdict.get("verdict", "RETRY")).upper()
-        if v == "PASS":
-            job["status"] = "PASS"
-            job["completed_at"] = now()
-            save(job)
-            return
-        if v == "BLOCKED":
-            job["status"] = "BLOCKED"
-            job["blocked_reason"] = verdict.get("reason")
-            save(job)
-            return
-        feedback = str(verdict.get("next_instruction") or verdict.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
+    with EXECUTION_LOCK:
+        job = load(job["id"])
+        job["status"] = "RUNNING"
+        job["started_at"] = now()
         save(job)
-    job["status"] = "BLOCKED"
-    job["blocked_reason"] = "maximum iterations reached"
-    save(job)
+        feedback = None
+        for iteration in range(1, MAX_ITERATIONS + 1):
+            rec = {"iteration": iteration, "started_at": now()}
+            try:
+                rc, build_evidence, handoff = run_builder(job, iteration, feedback)
+                rec["builder_rc"] = rc
+            except Exception as exc:
+                build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
+                handoff = {}
+                rec["builder_rc"] = 255
+            publication = apply_and_publish_patch(job, iteration, handoff)
+            runtime = run_pi5_runtime(job, handoff)
+            evidence = f"BUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\nPUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
+            rec["evidence"] = evidence[-26000:]
+            try:
+                verdict = local_verify(job, iteration, rec["evidence"])
+            except Exception as exc:
+                verdict = {"verdict": "RETRY", "reason": f"local verifier unavailable: {type(exc).__name__}", "next_instruction": "Retry local verifier and runtime verification."}
+            rec["verification"] = verdict
+            rec["finished_at"] = now()
+            job.setdefault("iterations", []).append(rec)
+            v = str(verdict.get("verdict", "RETRY")).upper()
+            if v == "PASS":
+                job["status"] = "PASS"
+                job["completed_at"] = now()
+                save(job)
+                return
+            if v == "BLOCKED":
+                job["status"] = "BLOCKED"
+                job["blocked_reason"] = verdict.get("reason")
+                job["completed_at"] = now()
+                save(job)
+                return
+            feedback = str(verdict.get("next_instruction") or verdict.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
+            save(job)
+        job["status"] = "BLOCKED"
+        job["blocked_reason"] = "maximum iterations reached"
+        job["completed_at"] = now()
+        save(job)
 
 
-def create_job(request):
+def new_job(request, retry_of=None):
     job = {
         "id": uuid.uuid4().hex[:12],
         "created_at": now(),
@@ -260,26 +272,52 @@ def create_job(request):
         "status": "QUEUED",
         "iterations": [],
     }
+    if retry_of:
+        job["retry_of"] = retry_of
     save(job)
-    execute_job(job)
     return job
 
 
+def create_job(request, async_mode=False, retry_of=None):
+    job = new_job(request, retry_of=retry_of)
+    if async_mode:
+        threading.Thread(target=execute_job, args=(job,), daemon=True, name=f"job-{job['id']}").start()
+        return job
+    execute_job(job)
+    return load(job["id"])
+
+
 class Handler(BaseHTTPRequestHandler):
-    def send_json(self, code, payload):
-        data = json.dumps(payload, sort_keys=True).encode()
+    def send_bytes(self, code, data, content_type):
         self.send_response(code)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 
+    def send_json(self, code, payload):
+        self.send_bytes(code, json.dumps(payload, sort_keys=True).encode(), "application/json")
+
     def do_GET(self):
-        if self.path == "/health":
-            self.send_json(200, {"service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS, "runtime_controller": "pi5", "git_controller": "pi5"})
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path in ("/", "/ui"):
+            try:
+                self.send_bytes(200, UI_PATH.read_bytes(), "text/html; charset=utf-8")
+            except Exception as exc:
+                self.send_json(503, {"error": "ui_unavailable", "detail": type(exc).__name__})
             return
-        if self.path.startswith("/jobs/"):
-            job_id = self.path.split("/", 2)[2]
+        if path == "/health":
+            self.send_json(200, {"service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS, "runtime_controller": "pi5", "git_controller": "pi5", "ui": "/"})
+            return
+        if path == "/jobs":
+            jobs = list_jobs()
+            summaries = [{k: j.get(k) for k in ("id", "created_at", "started_at", "completed_at", "request", "privacy", "status", "retry_of") if k in j} for j in jobs]
+            self.send_json(200, {"jobs": summaries})
+            return
+        if path.startswith("/jobs/"):
+            job_id = path.split("/", 2)[2]
             try:
                 self.send_json(200, load(job_id))
             except Exception:
@@ -288,7 +326,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "not_found"})
 
     def do_POST(self):
-        if self.path != "/jobs":
+        parsed = urllib.parse.urlparse(self.path)
+        path = parsed.path
+        if path.startswith("/jobs/") and path.endswith("/retry"):
+            job_id = path.split("/")[2]
+            try:
+                old = load(job_id)
+            except Exception:
+                self.send_json(404, {"error": "not_found"})
+                return
+            job = create_job(old["request"], async_mode=True, retry_of=job_id)
+            self.send_json(202, job)
+            return
+        if path != "/jobs":
             self.send_json(404, {"error": "not_found"})
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -300,8 +350,9 @@ class Handler(BaseHTTPRequestHandler):
         if not request:
             self.send_json(400, {"error": "request_required"})
             return
-        job = create_job(request)
-        self.send_json(200, job)
+        async_mode = urllib.parse.parse_qs(parsed.query).get("async", ["0"])[0].lower() in ("1", "true", "yes")
+        job = create_job(request, async_mode=async_mode)
+        self.send_json(202 if async_mode else 200, job)
 
     def log_message(self, fmt, *args):
         print("agent", self.address_string(), fmt % args, flush=True)
