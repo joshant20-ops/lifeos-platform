@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REQUEST=${1:?request required}
+ITERATION=${2:?iteration required}
+FEEDBACK=${3:-}
+PRIVACY=${LIFEOS_JOB_PRIVACY:-normal}
+JOB_ID=${LIFEOS_JOB_ID:-unknown}
+ENGINEER=${LIFEOS_ENGINEER_SSH:-Engineer}
+REPO=${LIFEOS_ENGINEER_REPO:-/home/joshan/workspace/lifeos-platform}
+
+if [[ "$PRIVACY" == "local-only" ]]; then
+  echo "RESULT=BLOCKED"
+  echo "REASON=cloud_builder_forbidden_for_local_only_job"
+  exit 42
+fi
+
+PROMPT=$(cat <<EOF
+You are the cloud engineering builder for LifeOS autonomous job $JOB_ID.
+Work toward the user's goal until this iteration has produced a concrete, testable improvement.
+The Pi5 is the central controller. Do not require the user to run commands on secondary machines; any secondary-host work must be orchestrated from Pi5 via SSH.
+Use the existing LifeOS repository conventions and safety boundaries. Do not expose secrets or private Paperless/document content.
+Run relevant tests before finishing. Commit and push changes to origin/main only when tests pass and the change is ready for the Pi5 control plane to consume.
+Do not merely explain what should be done: perform the repository engineering work available to you.
+
+USER GOAL:
+$REQUEST
+
+ITERATION: $ITERATION
+
+LOCAL VERIFIER FEEDBACK:
+${FEEDBACK:-none yet}
+
+At the end print a concise machine-readable summary containing RESULT, COMMIT if any, TESTS, and NEXT_RUNTIME_CHECK.
+EOF
+)
+
+ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT" <<'REMOTE'
+set -euo pipefail
+REPO=$1
+PROMPT=$2
+cd "$REPO"
+git fetch origin main >/dev/null 2>&1 || true
+# Preserve local work: only fast-forward when clean.
+if [[ -z "$(git status --porcelain)" ]]; then
+  git merge --ff-only origin/main >/dev/null 2>&1 || true
+fi
+
+if ! command -v codex >/dev/null 2>&1; then
+  echo "RESULT=BLOCKED"
+  echo "REASON=codex_missing_on_engineer"
+  exit 50
+fi
+
+HELP="$(codex exec --help 2>&1 || true)"
+if grep -q -- '--full-auto' <<<"$HELP"; then
+  codex exec --full-auto "$PROMPT"
+elif codex --help 2>&1 | grep -q -- '--full-auto'; then
+  codex --full-auto exec "$PROMPT"
+else
+  codex exec "$PROMPT"
+fi
+REMOTE
