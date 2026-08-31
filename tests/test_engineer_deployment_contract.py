@@ -78,3 +78,12 @@ def test_runtime_waits_for_ha_and_verifies_registered_panel_route():
     assert 'HA_PANEL_ROUTE=PASS status=%s' in runtime
     assert 'curl -sS -i --max-time 10 "$BACKEND_HEALTH"' in runtime
     assert 'curl -sS -i --max-time 10 "$UI_HEALTH"' in runtime
+
+
+def test_runtime_discovers_real_lan_address_and_nonstandard_ha_container():
+    runtime = RUNTIME.read_text()
+    assert "ip -4 route get 192.168.0.201" in runtime
+    assert "pi5_lan_address_not_found" in runtime
+    assert "{{.Names}}|{{.Ports}}" in runtime
+    assert "8123->8123\\/tcp" in runtime
+    assert "HA_CONTAINER=$(discover_ha_container)" in runtime
