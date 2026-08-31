@@ -131,9 +131,24 @@ def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
     assert os.access(JOB_RUNTIME, os.X_OK)
     launcher = JOB_RUNTIME.read_text()
     assert launcher.startswith("#!/usr/bin/env bash\n")
-    assert 'readonly OUTER_TIMEOUT_SECONDS=1800' in launcher
+    assert 'readonly OUTER_TIMEOUT_SECONDS=2400' in launcher
     assert 'readonly ROLLBACK_GRACE_SECONDS=360' in launcher
     assert 'timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s"' in launcher
     assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
     assert "RUNTIME_CHECK=PASS" in launcher
     assert "runtime_timeout" in launcher
+
+
+def test_job_timeout_has_headroom_above_nested_runtime_budgets():
+    launcher = JOB_RUNTIME.read_text()
+    runtime = RUNTIME.read_text()
+    outer_timeout = int(
+        launcher.split("readonly OUTER_TIMEOUT_SECONDS=", 1)[1].splitlines()[0]
+    )
+    deployment_timeout = int(
+        runtime.split("TIMEOUT_SECONDS=", 1)[1].splitlines()[0]
+    )
+    # HA can use 180s initial readiness + 30s reachability + two 180s config
+    # checks + 120s restart + 180s post-restart readiness + 15s route probe.
+    ha_timeout_budget = 180 + 30 + 180 + 120 + 180 + 180 + 15
+    assert outer_timeout >= deployment_timeout + ha_timeout_budget + 300
