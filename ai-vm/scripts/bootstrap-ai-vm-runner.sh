@@ -8,12 +8,26 @@ fi
 
 CONTROL=/home/joshan/lifeos-pi-control
 PLATFORM=/home/joshan/workspace/lifeos-platform
+CONTROL_URL=https://github.com/joshant20-ops/lifeos-pi-control.git
 
 command -v git >/dev/null
 command -v python3 >/dev/null
+command -v gh >/dev/null
 
-if [[ ! -d "$CONTROL/.git" ]]; then
-  git clone git@github.com:joshant20-ops/lifeos-pi-control.git "$CONTROL"
+# Reuse the GitHub CLI credential path already proven for the platform repo.
+# This avoids requiring a separate SSH deploy key on the AI VM.
+gh auth status >/dev/null 2>&1 || {
+  echo "FAIL: GitHub CLI is not authenticated"
+  exit 21
+}
+
+gh auth setup-git >/dev/null
+
+if [[ -d "$CONTROL/.git" ]]; then
+  git -C "$CONTROL" remote set-url origin "$CONTROL_URL"
+else
+  rm -rf "$CONTROL"
+  git clone "$CONTROL_URL" "$CONTROL"
 fi
 
 git -C "$CONTROL" fetch origin main
