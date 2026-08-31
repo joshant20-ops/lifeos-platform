@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-JOB_ID=ebf8a71d4bff
+JOB_ID=${LIFEOS_RUNTIME_JOB_ID:-ebf8a71d4bff}
 REPO=/home/joshan/lifeos-platform
 DEPLOY="$REPO/governor/scripts/deploy-engineer-ai.sh"
 UI_HEALTH=http://127.0.0.1:8792/health
