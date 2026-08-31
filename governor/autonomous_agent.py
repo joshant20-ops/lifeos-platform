@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import base64
+import hashlib
 import json
 import os
 import pathlib
@@ -24,6 +25,7 @@ UI_PATH = PLATFORM_REPO / "governor" / "agent_ui.html"
 RUNTIME_PREFIX = "governor/runtime_jobs/"
 MAX_PATCH_BYTES = 1048576
 MAX_RUNTIME_BYTES = 65536
+REPEATED_FAILURE_LIMIT = int(os.environ.get("LIFEOS_REPEATED_FAILURE_LIMIT", "3"))
 EXECUTION_LOCK = threading.Lock()
 
 PRIVATE_TERMS = {
@@ -60,6 +62,16 @@ def list_jobs(limit=100):
     return jobs
 
 
+def set_stage(job, stage, detail=None):
+    job["stage"] = stage
+    job["stage_changed_at"] = now()
+    if detail:
+        job["stage_detail"] = str(detail)[:1000]
+    else:
+        job.pop("stage_detail", None)
+    save(job)
+
+
 def classify_privacy(text):
     lower = text.lower()
     return "local-only" if any(term in lower for term in PRIVATE_TERMS) else "normal"
@@ -79,6 +91,7 @@ Rules:
 - A builder saying BLOCKED does not force BLOCKED if the issue is internally actionable.
 - Do not ask the user to run diagnostics the automation can run itself.
 - Do not assume success merely because a process exited zero.
+- If evidence shows the same deterministic failure as a prior iteration, change the plan materially rather than repeating the same action.
 
 User goal: {job['request']}
 Privacy class: {job['privacy']}
@@ -118,6 +131,47 @@ def parse_handoff(raw):
     return handoff, sanitized
 
 
+def failure_signature(evidence, verdict):
+    lines = []
+    patterns = (
+        r"(?m)^RUNTIME_RC=.*$",
+        r"(?m)^RESULT=FAIL.*$",
+        r"(?m)^REASON=.*$",
+        r"(?m)^DEPLOYMENT_FAILURE=.*$",
+        r"(?m)^PRIVILEGED_BOOTSTRAP_REQUIRED.*$",
+        r"(?m)^PI5_PATCH=RETRY.*$",
+        r"(?m)^HANDOFF_ERROR=.*$",
+    )
+    for pattern in patterns:
+        matches = re.findall(pattern, evidence)
+        if matches:
+            lines.append(matches[-1])
+    reason = str((verdict or {}).get("reason") or "").strip()
+    if reason:
+        lines.append("VERIFIER_REASON=" + reason[:1000])
+    if not lines:
+        return None
+    normalized = "\n".join(lines)
+    normalized = re.sub(r"\b[a-f0-9]{12,64}\b", "<id>", normalized, flags=re.I)
+    normalized = re.sub(r"\b\d{4}-\d{2}-\d{2}T[^\s]+", "<time>", normalized)
+    normalized = re.sub(r"line=\d+", "line=<n>", normalized)
+    return hashlib.sha256(normalized.encode()).hexdigest()[:16]
+
+
+def update_failure_history(job, signature):
+    if not signature:
+        job["repeated_failure_count"] = 0
+        job.pop("last_failure_signature", None)
+        return 0
+    if job.get("last_failure_signature") == signature:
+        count = int(job.get("repeated_failure_count") or 1) + 1
+    else:
+        count = 1
+    job["last_failure_signature"] = signature
+    job["repeated_failure_count"] = count
+    return count
+
+
 def run_builder(job, iteration, verifier_feedback=None):
     env = os.environ.copy()
     env["LIFEOS_JOB_ID"] = job["id"]
@@ -133,6 +187,23 @@ def run_builder(job, iteration, verifier_feedback=None):
 
 def git(*args, check=True, timeout=120):
     return subprocess.run(["git", *args], cwd=PLATFORM_REPO, text=True, capture_output=True, check=check, timeout=timeout)
+
+
+def repo_context():
+    result = {"status": "ok"}
+    try:
+        result["head"] = git("rev-parse", "HEAD").stdout.strip()
+        result["branch"] = git("symbolic-ref", "--short", "-q", "HEAD", check=False).stdout.strip() or "detached"
+        result["dirty"] = bool(git("status", "--porcelain", check=False).stdout.strip())
+        result["origin_main"] = git("rev-parse", "origin/main", check=False).stdout.strip()
+    except Exception as exc:
+        return {"status": "unavailable", "detail": type(exc).__name__}
+    running = [j for j in list_jobs(20) if j.get("status") in ("QUEUED", "RUNNING")]
+    result["active_jobs"] = [
+        {k: j.get(k) for k in ("id", "status", "stage", "stage_changed_at", "created_at", "started_at", "request")}
+        for j in running[:5]
+    ]
+    return result
 
 
 def apply_and_publish_patch(job, iteration, handoff):
@@ -221,10 +292,11 @@ def execute_job(job):
         job = load(job["id"])
         job["status"] = "RUNNING"
         job["started_at"] = now()
-        save(job)
+        set_stage(job, "starting")
         feedback = None
         for iteration in range(1, MAX_ITERATIONS + 1):
             rec = {"iteration": iteration, "started_at": now()}
+            set_stage(job, "builder", f"iteration {iteration}: Codex implementation")
             try:
                 rc, build_evidence, handoff = run_builder(job, iteration, feedback)
                 rec["builder_rc"] = rc
@@ -232,35 +304,67 @@ def execute_job(job):
                 build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
                 handoff = {}
                 rec["builder_rc"] = 255
+
+            set_stage(job, "publication", f"iteration {iteration}: apply/publish patch")
             publication = apply_and_publish_patch(job, iteration, handoff)
+
+            set_stage(job, "runtime", f"iteration {iteration}: Pi5 runtime verification")
             runtime = run_pi5_runtime(job, handoff)
             evidence = f"BUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\nPUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
             rec["evidence"] = evidence[-26000:]
+
+            set_stage(job, "verifier", f"iteration {iteration}: local Qwen verification")
             try:
                 verdict = local_verify(job, iteration, rec["evidence"])
             except Exception as exc:
                 verdict = {"verdict": "RETRY", "reason": f"local verifier unavailable: {type(exc).__name__}", "next_instruction": "Retry local verifier and runtime verification."}
             rec["verification"] = verdict
             rec["finished_at"] = now()
+            signature = failure_signature(rec["evidence"], verdict)
+            if signature:
+                rec["failure_signature"] = signature
             job.setdefault("iterations", []).append(rec)
             v = str(verdict.get("verdict", "RETRY")).upper()
+
             if v == "PASS":
                 job["status"] = "PASS"
                 job["completed_at"] = now()
-                save(job)
+                set_stage(job, "complete", "local verifier accepted result")
                 return
             if v == "BLOCKED":
                 job["status"] = "BLOCKED"
                 job["blocked_reason"] = verdict.get("reason")
                 job["completed_at"] = now()
-                save(job)
+                set_stage(job, "blocked", job["blocked_reason"])
                 return
-            feedback = str(verdict.get("next_instruction") or verdict.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
+
+            repeat_count = update_failure_history(job, signature)
+            if repeat_count >= REPEATED_FAILURE_LIMIT:
+                job["status"] = "BLOCKED"
+                job["blocked_reason"] = (
+                    f"repeated deterministic failure detected ({repeat_count} occurrences); "
+                    "stopped before exhausting the full iteration budget"
+                )
+                job["completed_at"] = now()
+                set_stage(job, "blocked_repeated_failure", job["blocked_reason"])
+                return
+
+            base_feedback = str(verdict.get("next_instruction") or verdict.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
+            if repeat_count >= 2:
+                feedback = (
+                    f"REPLAN REQUIRED: failure signature {signature} repeated {repeat_count} times. "
+                    "Do not repeat the previous implementation/runtime approach. Diagnose the deterministic cause and choose a materially different plan. "
+                    + base_feedback
+                )
+            else:
+                feedback = base_feedback
+            set_stage(job, "retry_planning", f"iteration {iteration} failed; preparing next plan")
             save(job)
+
         job["status"] = "BLOCKED"
         job["blocked_reason"] = "maximum iterations reached"
         job["completed_at"] = now()
-        save(job)
+        set_stage(job, "blocked", job["blocked_reason"])
 
 
 def new_job(request, retry_of=None):
@@ -270,7 +374,10 @@ def new_job(request, retry_of=None):
         "request": request.strip(),
         "privacy": classify_privacy(request),
         "status": "QUEUED",
+        "stage": "queued",
+        "stage_changed_at": now(),
         "iterations": [],
+        "repeated_failure_count": 0,
     }
     if retry_of:
         job["retry_of"] = retry_of
@@ -309,11 +416,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(503, {"error": "ui_unavailable", "detail": type(exc).__name__})
             return
         if path == "/health":
-            self.send_json(200, {"service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS, "runtime_controller": "pi5", "git_controller": "pi5", "ui": "/"})
+            self.send_json(200, {
+                "service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS,
+                "repeated_failure_limit": REPEATED_FAILURE_LIMIT, "runtime_controller": "pi5", "git_controller": "pi5", "ui": "/"
+            })
+            return
+        if path == "/context":
+            self.send_json(200, repo_context())
             return
         if path == "/jobs":
             jobs = list_jobs()
-            summaries = [{k: j.get(k) for k in ("id", "created_at", "started_at", "completed_at", "request", "privacy", "status", "retry_of") if k in j} for j in jobs]
+            keys = ("id", "created_at", "started_at", "completed_at", "request", "privacy", "status", "stage", "stage_changed_at", "stage_detail", "retry_of", "repeated_failure_count")
+            summaries = [{k: j.get(k) for k in keys if k in j} for j in jobs]
             self.send_json(200, {"jobs": summaries})
             return
         if path.startswith("/jobs/"):
