@@ -35,11 +35,18 @@ At the end print a concise machine-readable summary containing RESULT, COMMIT if
 EOF
 )
 
-ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT" <<'REMOTE'
+# Do not pass a multiline prompt as a shell argument through SSH. Encode it so
+# quotes/newlines cannot corrupt the remote command line.
+PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
+
+ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" \
+  bash -s -- "$REPO" "$PROMPT_B64" <<'REMOTE'
 set -euo pipefail
 REPO=$1
-PROMPT=$2
+PROMPT_B64=$2
+PROMPT=$(printf '%s' "$PROMPT_B64" | base64 -d)
 cd "$REPO"
+
 git fetch origin main >/dev/null 2>&1 || true
 # Preserve local work: only fast-forward when clean.
 if [[ -z "$(git status --porcelain)" ]]; then
@@ -47,11 +54,9 @@ if [[ -z "$(git status --porcelain)" ]]; then
 fi
 
 CODEX="${LIFEOS_CODEX_BIN:-$HOME/.local/bin/codex}"
-
 if [[ ! -x "$CODEX" ]]; then
   CODEX="$(command -v codex 2>/dev/null || true)"
 fi
-
 if [[ -z "$CODEX" || ! -x "$CODEX" ]]; then
   echo "RESULT=BLOCKED"
   echo "REASON=codex_missing_on_engineer"
@@ -59,14 +64,15 @@ if [[ -z "$CODEX" || ! -x "$CODEX" ]]; then
 fi
 
 echo "CODEX_BIN=$CODEX"
-
 HELP="$("$CODEX" exec --help 2>&1 || true)"
 
+# Explicitly disconnect stdin so Codex cannot treat the SSH heredoc as extra
+# user input appended to the supplied prompt.
 if grep -q -- '--full-auto' <<<"$HELP"; then
-  "$CODEX" exec --full-auto "$PROMPT"
+  "$CODEX" exec --full-auto "$PROMPT" </dev/null
 elif "$CODEX" --help 2>&1 | grep -q -- '--full-auto'; then
-  "$CODEX" --full-auto exec "$PROMPT"
+  "$CODEX" --full-auto exec "$PROMPT" </dev/null
 else
-  "$CODEX" exec "$PROMPT"
+  "$CODEX" exec "$PROMPT" </dev/null
 fi
 REMOTE
