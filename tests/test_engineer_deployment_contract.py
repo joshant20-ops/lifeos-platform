@@ -158,6 +158,17 @@ def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
     assert "runtime_timeout" in launcher
 
 
+def test_runtime_proves_healthy_container_identity_is_preserved():
+    runtime = RUNTIME.read_text()
+    before = runtime.index("HEALTHY_UI_ID_BEFORE=$(docker inspect")
+    deploy = runtime.index('timeout "$TIMEOUT_SECONDS" "$DEPLOY"')
+    after = runtime.index("HEALTHY_UI_ID_AFTER=$(docker inspect")
+    assert before < deploy < after
+    assert '[[ "$HEALTHY_UI_ID_AFTER" == "$HEALTHY_UI_ID_BEFORE" ]]' in runtime
+    assert "healthy_openwebui_container_was_recreated" in runtime
+    assert "OPEN_WEBUI_REUSE=PASS" in runtime
+
+
 def test_job_timeout_has_safe_headroom_above_nested_runtime_budgets():
     launcher = JOB_RUNTIME.read_text()
     runtime = RUNTIME.read_text()

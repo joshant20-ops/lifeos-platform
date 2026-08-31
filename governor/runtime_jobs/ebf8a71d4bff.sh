@@ -21,6 +21,7 @@ HA_RESTARTED=false
 HA_CONTAINER=
 ROLLING_BACK=false
 FAILURE_ACTIVE=false
+HEALTHY_UI_ID_BEFORE=
 
 rollback_ha() {
   [[ "$HA_CHANGED" == true && -n "$BACKUP_DIR" ]] || return 0
@@ -138,7 +139,27 @@ discover_ha_container() {
 [[ "$(hostname)" == Docker ]] || fail must_run_on_pi5_Docker
 [[ -x "$DEPLOY" ]] || fail deploy_script_missing
 
+# Record the immutable ID only when Docker's /health-backed healthcheck says
+# the running container is healthy. A redeployment must leave that exact
+# container in place; checking only the name after deployment would miss an
+# unnecessary remove-and-recreate cycle.
+if docker ps --format '{{.Names}}' | grep -qx lifeos-engineer-ui && \
+   [[ "$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' lifeos-engineer-ui 2>/dev/null)" == healthy ]]; then
+  HEALTHY_UI_ID_BEFORE=$(docker inspect --format '{{.Id}}' lifeos-engineer-ui)
+  printf 'OPEN_WEBUI_REUSE_GUARD=ARMED container_id=%s\n' "${HEALTHY_UI_ID_BEFORE:0:12}"
+else
+  printf 'OPEN_WEBUI_REUSE_GUARD=SKIP reason=no_healthy_running_container\n'
+fi
+
 timeout "$TIMEOUT_SECONDS" "$DEPLOY" || fail deployment_failed
+
+if [[ -n "$HEALTHY_UI_ID_BEFORE" ]]; then
+  HEALTHY_UI_ID_AFTER=$(docker inspect --format '{{.Id}}' lifeos-engineer-ui 2>/dev/null) \
+    || fail healthy_openwebui_container_missing_after_deploy
+  [[ "$HEALTHY_UI_ID_AFTER" == "$HEALTHY_UI_ID_BEFORE" ]] \
+    || fail healthy_openwebui_container_was_recreated
+  printf 'OPEN_WEBUI_REUSE=PASS container_id=%s\n' "${HEALTHY_UI_ID_AFTER:0:12}"
+fi
 
 BACKEND_JSON=$(curl -fsS --max-time 10 "$BACKEND_HEALTH") || fail backend_health_failed
 UI_JSON=$(curl -fsS --max-time 10 "$UI_HEALTH") || fail ui_health_failed
@@ -240,4 +261,4 @@ HA_CHANGED=false
 HA_RESTARTED=false
 
 printf 'RESULT=PASS job=%s\n' "$JOB_ID"
-printf 'CHECKS=backend_/health,openwebui_/health,home_assistant_reachability\n'
+printf 'CHECKS=backend_/health,openwebui_/health,healthy_container_identity,home_assistant_reachability\n'
