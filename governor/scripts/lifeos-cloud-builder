@@ -46,18 +46,27 @@ if [[ -z "$(git status --porcelain)" ]]; then
   git merge --ff-only origin/main >/dev/null 2>&1 || true
 fi
 
-if ! command -v codex >/dev/null 2>&1; then
+CODEX="${LIFEOS_CODEX_BIN:-$HOME/.local/bin/codex}"
+
+if [[ ! -x "$CODEX" ]]; then
+  CODEX="$(command -v codex 2>/dev/null || true)"
+fi
+
+if [[ -z "$CODEX" || ! -x "$CODEX" ]]; then
   echo "RESULT=BLOCKED"
   echo "REASON=codex_missing_on_engineer"
   exit 50
 fi
 
-HELP="$(codex exec --help 2>&1 || true)"
+echo "CODEX_BIN=$CODEX"
+
+HELP="$("$CODEX" exec --help 2>&1 || true)"
+
 if grep -q -- '--full-auto' <<<"$HELP"; then
-  codex exec --full-auto "$PROMPT"
-elif codex --help 2>&1 | grep -q -- '--full-auto'; then
-  codex --full-auto exec "$PROMPT"
+  "$CODEX" exec --full-auto "$PROMPT"
+elif "$CODEX" --help 2>&1 | grep -q -- '--full-auto'; then
+  "$CODEX" --full-auto exec "$PROMPT"
 else
-  codex exec "$PROMPT"
+  "$CODEX" exec "$PROMPT"
 fi
 REMOTE
