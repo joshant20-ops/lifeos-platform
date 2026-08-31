@@ -62,6 +62,12 @@ def test_failure_handler_cannot_recursively_trap_rollback_errors():
     assert "HA_ROLLBACK=FAIL reason=restored_config_startup_timeout" in rollback
 
 
+def test_runtime_signals_trigger_transactional_ha_rollback():
+    runtime = RUNTIME.read_text()
+    assert "trap 'fail runtime_terminated' TERM" in runtime
+    assert "trap 'fail runtime_interrupted' INT" in runtime
+
+
 def test_new_ui_exposes_docker_health_from_health_endpoint():
     script = DEPLOY.read_text()
     assert '--health-cmd=' in script
@@ -94,7 +100,9 @@ def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
     assert os.access(JOB_RUNTIME, os.X_OK)
     launcher = JOB_RUNTIME.read_text()
     assert launcher.startswith("#!/usr/bin/env bash\n")
-    assert "timeout --signal=TERM --kill-after=15s" in launcher
+    assert 'readonly OUTER_TIMEOUT_SECONDS=1800' in launcher
+    assert 'readonly ROLLBACK_GRACE_SECONDS=360' in launcher
+    assert 'timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s"' in launcher
     assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
     assert "RUNTIME_CHECK=PASS" in launcher
     assert "runtime_timeout" in launcher

@@ -86,6 +86,12 @@ fail() {
   exit 1
 }
 trap 'fail unexpected_error_at_line_$LINENO' ERR
+# The per-job launcher uses TERM for its deadline. Treat termination like any
+# other failure so an HA candidate config is restored and diagnostics are
+# printed instead of leaving the transaction half-applied. The fail guard and
+# disabled ERR trap prevent recursive recovery.
+trap 'fail runtime_terminated' TERM
+trap 'fail runtime_interrupted' INT
 
 wait_url() {
   local url=$1 limit=$2 delay=1 started

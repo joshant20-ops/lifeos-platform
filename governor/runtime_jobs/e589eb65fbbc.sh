@@ -6,7 +6,12 @@ set -euo pipefail
 readonly JOB_ID=e589eb65fbbc
 readonly REPO=/home/joshan/lifeos-platform
 readonly RUNTIME="$REPO/governor/runtime_jobs/ebf8a71d4bff.sh"
-readonly OUTER_TIMEOUT_SECONDS=1500
+# The delegated runtime can legitimately consume 900s deploying Open WebUI,
+# then up to 870s checking and restarting Home Assistant. Keep this
+# guard above that nested budget, and allow a signal-triggered HA rollback to
+# finish before timeout escalates from TERM to KILL.
+readonly OUTER_TIMEOUT_SECONDS=1800
+readonly ROLLBACK_GRACE_SECONDS=360
 
 if [[ "$(hostname)" != Docker ]]; then
   printf 'RESULT=FAIL job=%s reason=must_run_on_pi5_Docker\n' "$JOB_ID"
@@ -18,7 +23,7 @@ if [[ ! -x "$RUNTIME" ]]; then
 fi
 
 printf 'RUNTIME_CHECK=START job=%s scope=engineer_deployment_and_home_assistant\n' "$JOB_ID"
-if timeout --signal=TERM --kill-after=15s "$OUTER_TIMEOUT_SECONDS" \
+if timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s" "$OUTER_TIMEOUT_SECONDS" \
   env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"; then
   printf 'RUNTIME_CHECK=PASS job=%s\n' "$JOB_ID"
   exit 0
