@@ -5,6 +5,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "governor/scripts/deploy-engineer-ai.sh"
 RUNTIME = ROOT / "governor/runtime_jobs/ebf8a71d4bff.sh"
+JOB_RUNTIME = ROOT / "governor/runtime_jobs/e589eb65fbbc.sh"
 
 
 def test_readiness_uses_health_and_full_backoff_budget():
@@ -87,3 +88,13 @@ def test_runtime_discovers_real_lan_address_and_nonstandard_ha_container():
     assert "{{.Names}}|{{.Ports}}" in runtime
     assert "8123->8123\\/tcp" in runtime
     assert "HA_CONTAINER=$(discover_ha_container)" in runtime
+
+
+def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
+    assert os.access(JOB_RUNTIME, os.X_OK)
+    launcher = JOB_RUNTIME.read_text()
+    assert launcher.startswith("#!/usr/bin/env bash\n")
+    assert "timeout --signal=TERM --kill-after=15s" in launcher
+    assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
+    assert "RUNTIME_CHECK=PASS" in launcher
+    assert "runtime_timeout" in launcher
