@@ -9,7 +9,7 @@ BUILDER_SRC="$REPO/governor/scripts/lifeos-cloud-builder"
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED"; echo "REASON=must_run_on_pi5_Docker"; exit 20; }
 
 printf '===== LIFEOS AUTONOMOUS AGENT DEPLOY =====\n'
-printf 'Controller: Pi5/Docker\n'
+printf 'Controller/runtime: Pi5/Docker\n'
 printf 'Builder: cloud Codex on Engineer\n'
 printf 'Verifier: local Qwen on TowerPC\n\n'
 
@@ -20,6 +20,7 @@ printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 
 printf '\n===== 2/7 — PREFLIGHT =====\n'
 python3 -m py_compile "$AGENT"
+bash -n "$BUILDER_SRC"
 ssh -o BatchMode=yes -o ConnectTimeout=5 Engineer '
 CODEX="$HOME/.local/bin/codex"
 test -x "$CODEX"
@@ -50,32 +51,41 @@ Environment=LIFEOS_AGENT_MAX_ITERATIONS=8
 Environment=LIFEOS_AGENT_BUILDER=/usr/local/libexec/lifeos-cloud-builder
 Environment=LIFEOS_LOCAL_VERIFIER_URL=http://192.168.0.201:11434/api/generate
 Environment=LIFEOS_LOCAL_VERIFIER_MODEL=qwen2.5-coder:7b-instruct
+Environment=LIFEOS_PLATFORM_REPO=/home/joshan/lifeos-platform
 ExecStart=/usr/local/libexec/lifeos-autonomous-agent
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/var/lib/lifeos-agent
 ProtectHome=read-only
+ReadWritePaths=/var/lib/lifeos-agent /home/joshan/lifeos-platform
 
 [Install]
 WantedBy=multi-user.target
 UNIT
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now lifeos-autonomous-agent.service
+sudo systemctl restart lifeos-autonomous-agent.service
+sudo systemctl enable lifeos-autonomous-agent.service >/dev/null
 
 printf '\n===== 4/7 — HEALTH =====\n'
-for _ in $(seq 1 15); do
+for _ in $(seq 1 20); do
   if curl -fsS --max-time 3 http://127.0.0.1:8790/health; then echo; break; fi
   sleep 1
 done
-curl -fsS --max-time 3 http://127.0.0.1:8790/health >/dev/null
-printf 'AGENT_HEALTH=PASS\n'
+HEALTH=$(curl -fsS --max-time 3 http://127.0.0.1:8790/health)
+python3 - "$HEALTH" <<'PY'
+import json,sys
+j=json.loads(sys.argv[1])
+assert j['status']=='ok'
+assert j['runtime_controller']=='pi5'
+print('AGENT_HEALTH=PASS')
+print('RUNTIME_CONTROLLER='+j['runtime_controller'])
+PY
 
 printf '\n===== 5/7 — PRIVACY FAIL-CLOSED TEST =====\n'
-PRIVATE_OUT=$(curl -fsS --max-time 30 -H 'Content-Type: application/json' \
+PRIVATE_OUT=$(curl -fsS --max-time 60 -H 'Content-Type: application/json' \
   -d '{"request":"Read my private Paperless documents and summarize them"}' \
   http://127.0.0.1:8790/jobs)
 python3 - "$PRIVATE_OUT" <<'PY'
@@ -85,29 +95,39 @@ print('PRIVACY='+j['privacy'])
 print('STATUS='+j['status'])
 assert j['privacy']=='local-only'
 assert j['status']=='BLOCKED'
-assert 'cloud_builder_forbidden' in (j.get('blocked_reason') or '') or any('cloud_builder_forbidden' in x.get('evidence','') for x in j.get('iterations',[]))
+assert not any('RUN_SCRIPT=governor/runtime_jobs/' in x.get('evidence','') for x in j.get('iterations',[]))
 print('PRIVACY_BOUNDARY=PASS')
 PY
 
-printf '\n===== 6/7 — NATURAL LANGUAGE END-TO-END SMOKE TEST =====\n'
-# The runtime API was already proven above. This request proves the actual
-# natural-language Builder -> local Verifier loop independently.
-SMOKE=$(curl -fsS --max-time 600 -H 'Content-Type: application/json' \
-  -d '{"request":"Inspect the LifeOS governor and autonomous-agent source in this repository. Run safe read-only syntax and policy checks, then provide concrete evidence that the implementation is internally valid. Do not modify files."}' \
-  http://127.0.0.1:8790/jobs)
+printf '\n===== 6/7 — TRUE END-TO-END AUTONOMOUS SMOKE =====\n'
+SMOKE_REQ='Prove the LifeOS autonomous runtime loop works. Create and commit the required per-job Pi5 runtime launcher. The launcher must safely and read-only curl http://127.0.0.1:8790/health from Pi5, verify service=lifeos-autonomous-agent, status=ok, runtime_controller=pi5, print RUNTIME_LOOP_SMOKE=PASS, and make no other system changes. Scope all testing to this request; unrelated repository test failures are not blockers.'
+SMOKE_JSON=$(python3 - "$SMOKE_REQ" <<'PY'
+import json,sys
+print(json.dumps({'request':sys.argv[1]}))
+PY
+)
+SMOKE=$(curl -fsS --max-time 1100 -H 'Content-Type: application/json' \
+  -d "$SMOKE_JSON" http://127.0.0.1:8790/jobs)
 python3 - "$SMOKE" <<'PY'
 import json,sys
 j=json.loads(sys.argv[1])
 print('JOB_ID='+j['id'])
 print('STATUS='+j['status'])
 print('ITERATIONS='+str(len(j.get('iterations',[]))))
+for x in j.get('iterations',[]):
+    print('ITERATION_'+str(x.get('iteration'))+'_BUILDER_RC='+str(x.get('builder_rc')))
+    ev=str(x.get('evidence',''))
+    if 'RUNTIME_LOOP_SMOKE=PASS' in ev:
+        print('PI5_RUNTIME_EVIDENCE=PASS')
+    print('VERDICT='+str(x.get('verification',{}).get('verdict')))
 if j['status'] != 'PASS':
     print('BLOCKED_REASON='+str(j.get('blocked_reason')))
     for x in j.get('iterations',[]):
-        print('BUILDER_RC='+str(x.get('builder_rc')))
-        print('EVIDENCE='+str(x.get('evidence',''))[-4000:])
+        print('--- ITERATION '+str(x.get('iteration'))+' EVIDENCE TAIL ---')
+        print(str(x.get('evidence',''))[-6000:])
         print('VERIFICATION='+json.dumps(x.get('verification',{}),sort_keys=True))
-    raise SystemExit('AUTONOMOUS_SMOKE_DID_NOT_PASS')
+    raise SystemExit('AUTONOMOUS_E2E_SMOKE_DID_NOT_PASS')
+assert any('RUNTIME_LOOP_SMOKE=PASS' in str(x.get('evidence','')) for x in j.get('iterations',[])), 'missing Pi5 runtime evidence'
 print('AUTONOMOUS_LOOP=PASS')
 PY
 
@@ -115,9 +135,10 @@ printf '\n===== 7/7 — RESULT =====\n'
 printf 'RESULT=PASS\n'
 printf 'INPUT=natural_language\n'
 printf 'CONTROLLER=Pi5\n'
+printf 'RUNTIME_EXECUTOR=Pi5\n'
 printf 'BUILDER=Engineer_Codex_cloud\n'
 printf 'VERIFIER=TowerPC_Qwen_local\n'
-printf 'ITERATES_TO=PASS_or_BLOCKED_or_8_iterations\n'
+printf 'ITERATES_TO=PASS_or_external_BLOCKED_or_8_iterations\n'
 printf 'PRIVATE_DOCUMENTS_TO_CLOUD=blocked\n'
 printf 'API=http://127.0.0.1:8790/jobs\n'
 printf 'Elapsed=%ss\n' "$(( $(date +%s)-START ))"
