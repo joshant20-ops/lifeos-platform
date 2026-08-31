@@ -22,7 +22,6 @@ REPO="$HOME_DIR/lifeos-platform"
 LIVE="$REPO/homelab/live"
 RETIRED="$REPO/homelab/retired"
 MANIFEST="$REPO/homelab/.managed-files.txt"
-PROTECTED_MANIFEST="$REPO/homelab/.snapshot-protected.txt"
 
 MAX_BYTES=$((25*1024*1024))
 
@@ -78,23 +77,6 @@ ROOTS=(
     "/usr/local/bin"
     "/usr/local/sbin"
 )
-
-protected_rel() {
-    local rel="$1"
-
-    [ -f "$PROTECTED_MANIFEST" ] || return 1
-
-    awk '
-        /^[[:space:]]*#/ { next }
-        /^[[:space:]]*$/ { next }
-        { print }
-    ' "$PROTECTED_MANIFEST" | grep -Fxq -- "$rel"
-}
-
-protected_live_file() {
-    local f="$1"
-    protected_rel "${f#/}"
-}
 
 excluded() {
     local f="$1"
@@ -314,7 +296,6 @@ echo "============================================================"
 stage "A/8 — VERIFY/UPDATE GITHUB"
 
 [ -d "$REPO/.git" ] || fail "Repository missing"
-[ -f "$PROTECTED_MANIFEST" ] || fail "Snapshot protection policy missing"
 
 if ! g diff --quiet || ! g diff --cached --quiet; then
     g status --short
@@ -353,32 +334,6 @@ FOUND=0
 SKIP_RUNTIME=0
 SKIP_TYPE=0
 SKIP_LARGE=0
-SKIP_PROTECTED=0
-PROTECTED_COUNT=0
-
-# Seed protected files from the just-pulled canonical repository snapshot.
-# The live runtime copies are deliberately ignored later in discovery. This
-# prevents stale control-plane binaries from overwriting desired state while
-# still keeping them in the managed manifest so they cannot be retired.
-while IFS= read -r rel; do
-    case "$rel" in
-        ''|'#'*) continue ;;
-    esac
-
-    case "$rel" in
-        /*|*'..'*) fail "Invalid protected snapshot path: $rel" ;;
-    esac
-
-    src="$LIVE/$rel"
-    [ -f "$src" ] || fail "Protected canonical source missing: homelab/live/$rel"
-
-    dst="$TMP/live/$rel"
-    mkdir -p "$(dirname "$dst")"
-    cp -a "$src" "$dst"
-    printf '%s\n' "$rel" >>"$NEW_MANIFEST"
-    FOUND=$((FOUND+1))
-    PROTECTED_COUNT=$((PROTECTED_COUNT+1))
-done <"$PROTECTED_MANIFEST"
 
 for root in "${ROOTS[@]}"; do
     if [ ! -e "$root" ]; then
@@ -389,11 +344,6 @@ for root in "${ROOTS[@]}"; do
     echo "Scanning: $root"
 
     while IFS= read -r -d '' f; do
-        if protected_live_file "$f"; then
-            SKIP_PROTECTED=$((SKIP_PROTECTED+1))
-            continue
-        fi
-
         if excluded "$f"; then
             SKIP_RUNTIME=$((SKIP_RUNTIME+1))
             continue
@@ -432,8 +382,6 @@ sort -u "$NEW_MANIFEST" -o "$NEW_MANIFEST"
 
 echo
 echo "Managed source/config : $FOUND"
-echo "Protected canonical   : $PROTECTED_COUNT"
-echo "Live protected skipped: $SKIP_PROTECTED"
 echo "Runtime/state skipped : $SKIP_RUNTIME"
 echo "Other files skipped   : $SKIP_TYPE"
 echo "Oversized skipped     : $SKIP_LARGE"
@@ -541,6 +489,7 @@ while IFS= read -r -d '' f; do
         echo "BLOCKED credential signature: $f"
         BAD=1
     fi
+
 done < <(find "$LIVE" -type f -print0)
 
 [ "$BAD" -eq 0 ] || fail "Security gate rejected snapshot"
