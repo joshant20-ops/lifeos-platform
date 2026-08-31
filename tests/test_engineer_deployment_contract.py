@@ -141,7 +141,7 @@ def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
     assert os.access(JOB_RUNTIME, os.X_OK)
     launcher = JOB_RUNTIME.read_text()
     assert launcher.startswith("#!/usr/bin/env bash\n")
-    assert 'readonly OUTER_TIMEOUT_SECONDS=2400' in launcher
+    assert 'readonly OUTER_TIMEOUT_SECONDS=2700' in launcher
     assert 'readonly ROLLBACK_GRACE_SECONDS=360' in launcher
     assert 'timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s"' in launcher
     assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
@@ -162,3 +162,28 @@ def test_job_timeout_has_headroom_above_nested_runtime_budgets():
     # checks + 120s restart + 180s post-restart readiness + 15s route probe.
     ha_timeout_budget = 180 + 30 + 180 + 120 + 180 + 180 + 15
     assert outer_timeout >= deployment_timeout + ha_timeout_budget + 300
+
+
+def test_deployment_timeout_covers_all_slow_ui_phases():
+    deploy = DEPLOY.read_text()
+    runtime = RUNTIME.read_text()
+    deployment_timeout = int(
+        runtime.split("TIMEOUT_SECONDS=", 1)[1].splitlines()[0]
+    )
+    existing_readiness = 300
+    image_pull = 300
+    replacement_readiness = 300
+    conversation_smoke = 120
+    # Leave a minute for backend readiness and ordinary command overhead.
+    minimum_budget = (
+        existing_readiness
+        + image_pull
+        + replacement_readiness
+        + conversation_smoke
+        + 60
+    )
+    assert 'wait_for_health OPEN_WEBUI_EXISTING "$UI_HEALTH_URL" 300' in deploy
+    assert 'timeout 300 docker pull "$OWUI_IMAGE"' in deploy
+    assert 'wait_for_health OPEN_WEBUI "$UI_HEALTH_URL" 300' in deploy
+    assert 'curl -fsS --max-time 120' in deploy
+    assert deployment_timeout >= minimum_budget

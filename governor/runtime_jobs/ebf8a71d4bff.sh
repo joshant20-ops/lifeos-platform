@@ -6,7 +6,12 @@ REPO=/home/joshan/lifeos-platform
 DEPLOY="$REPO/governor/scripts/deploy-engineer-ai.sh"
 UI_HEALTH=http://127.0.0.1:8792/health
 BACKEND_HEALTH=http://127.0.0.1:8793/health
-TIMEOUT_SECONDS=900
+# deploy-engineer-ai.sh can legitimately spend 300s waiting for an existing
+# container, 300s pulling the pinned image, 300s waiting for the replacement's
+# first database migration, and 120s on its conversational smoke test. Keep
+# this deadline above those nested bounds so `timeout` does not turn a slow but
+# healthy first deployment into a false failure.
+TIMEOUT_SECONDS=1200
 HA_CONFIG_DIR=/opt/stacks/homeassistant/config
 HA_CONFIG="$HA_CONFIG_DIR/configuration.yaml"
 HA_PANEL="$HA_CONFIG_DIR/lifeos_assistant_panel.yaml"

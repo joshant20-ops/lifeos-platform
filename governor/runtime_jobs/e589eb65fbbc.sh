@@ -6,13 +6,13 @@ set -euo pipefail
 readonly JOB_ID=e589eb65fbbc
 readonly REPO=/home/joshan/lifeos-platform
 readonly RUNTIME="$REPO/governor/runtime_jobs/ebf8a71d4bff.sh"
-# The delegated runtime can legitimately consume 900s deploying Open WebUI,
+# The delegated runtime can legitimately consume 1200s deploying Open WebUI,
 # then about 885s across its bounded Home Assistant checks, restart, and
 # readiness waits. Leave meaningful scheduling/network overhead above that
 # nested worst case; a nearly equal outer deadline can otherwise terminate a
 # healthy but slow first deployment just before it emits verification evidence.
 # The separate kill grace lets a signal-triggered HA rollback finish.
-readonly OUTER_TIMEOUT_SECONDS=2400
+readonly OUTER_TIMEOUT_SECONDS=2700
 readonly ROLLBACK_GRACE_SECONDS=360
 
 if [[ "$(hostname)" != Docker ]]; then
