@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LifeOS Agent Jobs</title>
+<style>
+:root{font-family:Inter,system-ui,sans-serif;color-scheme:dark;background:#0b1020;color:#e8ecf4}body{margin:0;background:#0b1020}.wrap{max-width:1100px;margin:auto;padding:24px}.card{background:#121a2c;border:1px solid #27324a;border-radius:14px;padding:18px;margin-bottom:16px}h1,h2{margin:0 0 12px}textarea{width:100%;box-sizing:border-box;min-height:170px;border-radius:10px;border:1px solid #33415f;background:#0d1424;color:#fff;padding:12px;font:inherit;resize:vertical}button{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;background:#6ea8fe;color:#08111f}button.secondary{background:#243149;color:#e8ecf4}button:disabled{opacity:.55;cursor:not-allowed}.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.muted{color:#9aa8bf}.jobs{display:grid;gap:10px}.job{border:1px solid #2b3854;border-radius:10px;padding:12px;background:#0e1627;cursor:pointer}.job:hover{border-color:#5d79aa}.job-head{display:flex;justify-content:space-between;gap:12px}.badge{font-size:.78rem;border-radius:999px;padding:3px 8px;background:#243149}.PASS{background:#154c34}.RUNNING{background:#594710}.QUEUED{background:#304163}.BLOCKED,.FAIL{background:#692d35}pre{white-space:pre-wrap;word-break:break-word;background:#090f1b;padding:12px;border-radius:9px;max-height:440px;overflow:auto}.small{font-size:.88rem}.split{display:grid;grid-template-columns:1fr 1fr;gap:16px}@media(max-width:800px){.split{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <h1>LifeOS Autonomous Agent</h1>
+    <p class="muted">Submit natural-language jobs to the Pi5-controlled engineering loop.</p>
+    <textarea id="request" placeholder="Describe the job you want LifeOS to complete..."></textarea>
+    <div class="row" style="margin-top:10px">
+      <button id="run">Run Job</button>
+      <span id="submitState" class="muted small"></span>
+    </div>
+  </div>
+  <div class="split">
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>Jobs</h2><button class="secondary" id="refresh">Refresh</button></div>
+      <div id="jobs" class="jobs"><span class="muted">Loading…</span></div>
+    </div>
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>Job Detail</h2><button class="secondary" id="retry" disabled>Retry</button></div>
+      <div id="detail" class="muted">Select a job.</div>
+    </div>
+  </div>
+</div>
+<script>
+let selected=null;
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+async function api(path,opts){const r=await fetch(path,opts);const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j}
+function summary(j){return `<div class="job" onclick="selectJob('${j.id}')"><div class="job-head"><b>${esc(j.id)}</b><span class="badge ${esc(j.status)}">${esc(j.status)}</span></div><div class="small muted">${esc(j.created_at)} · ${esc(j.privacy)}</div><div style="margin-top:6px">${esc(j.request).slice(0,180)}</div></div>`}
+async function loadJobs(){try{const d=await api('/jobs');document.getElementById('jobs').innerHTML=d.jobs.length?d.jobs.map(summary).join(''):'<span class="muted">No jobs yet.</span>'}catch(e){document.getElementById('jobs').textContent='Failed to load jobs: '+e.message}}
+async function selectJob(id){selected=id;const j=await api('/jobs/'+id);document.getElementById('retry').disabled=!(j.status==='PASS'||j.status==='BLOCKED'||j.status==='FAIL');let iter=(j.iterations||[]).map(x=>`Iteration ${x.iteration}\nBuilder rc: ${x.builder_rc}\nVerifier: ${JSON.stringify(x.verification||{},null,2)}\n\n${x.evidence||''}`).join('\n\n----------------\n\n');document.getElementById('detail').innerHTML=`<div class="row"><b>${esc(j.id)}</b><span class="badge ${esc(j.status)}">${esc(j.status)}</span></div><p>${esc(j.request)}</p><div class="small muted">Created: ${esc(j.created_at)}<br>Privacy: ${esc(j.privacy)}<br>Iterations: ${(j.iterations||[]).length}</div>${j.blocked_reason?`<p><b>Blocked:</b> ${esc(j.blocked_reason)}</p>`:''}<pre>${esc(iter||'Waiting for execution evidence…')}</pre>`}
+async function run(){const el=document.getElementById('request'),state=document.getElementById('submitState'),btn=document.getElementById('run');const request=el.value.trim();if(!request)return;btn.disabled=true;state.textContent='Submitting…';try{const j=await api('/jobs?async=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({request})});state.textContent='Queued '+j.id;el.value='';await loadJobs();await selectJob(j.id)}catch(e){state.textContent='Error: '+e.message}finally{btn.disabled=false}}
+async function retry(){if(!selected)return;const state=document.getElementById('submitState');try{const j=await api('/jobs/'+selected+'/retry',{method:'POST'});state.textContent='Retry queued as '+j.id;await loadJobs();await selectJob(j.id)}catch(e){state.textContent='Retry failed: '+e.message}}
+document.getElementById('run').onclick=run;document.getElementById('refresh').onclick=loadJobs;document.getElementById('retry').onclick=retry;window.selectJob=selectJob;loadJobs();setInterval(async()=>{await loadJobs();if(selected)try{await selectJob(selected)}catch(e){}},5000);
+</script>
+</body>
+</html>
