@@ -99,6 +99,31 @@ wait_url() {
   done
 }
 
+discover_lan_ip() {
+  local candidate
+  # Ask the kernel which source address reaches the LAN model host. This avoids
+  # accidentally embedding a Docker, Tailscale, or other first-listed address
+  # in Home Assistant's iframe URL.
+  candidate=$(ip -4 route get 192.168.0.201 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')
+  if [[ -z "$candidate" ]]; then
+    candidate=$(hostname -I 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i ~ /^192\.168\./) {print $i; exit}}')
+  fi
+  [[ -n "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+discover_ha_container() {
+  local candidate
+  candidate=$(docker ps --format '{{.Names}}' | awk '/^(homeassistant|home-assistant)$/ {print; exit}')
+  if [[ -z "$candidate" ]]; then
+    # Compose project/container names are not stable across installations. The
+    # published HA port is the runtime contract that matters here.
+    candidate=$(docker ps --format '{{.Names}}|{{.Ports}}' | awk -F'|' '$2 ~ /(^|:)8123->8123\/tcp/ {print $1; exit}')
+  fi
+  [[ -n "$candidate" ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
 [[ "$(hostname)" == Docker ]] || fail must_run_on_pi5_Docker
 [[ -x "$DEPLOY" ]] || fail deploy_script_missing
 
@@ -120,11 +145,9 @@ print("OPEN_WEBUI_HEALTH=PASS")
 PY
 
 # Home Assistant must be able to reach the same LAN endpoint used by its iframe.
-LAN_IP=$(hostname -I | awk '{print $1}')
-HA_CONTAINER=$(docker ps --format '{{.Names}}' | awk '/^(homeassistant|home-assistant)$/ {print; exit}')
-if [[ -z "$HA_CONTAINER" ]]; then
-  fail home_assistant_container_not_running
-fi
+LAN_IP=$(discover_lan_ip) || fail pi5_lan_address_not_found
+HA_CONTAINER=$(discover_ha_container) || fail home_assistant_container_not_running
+printf 'PI5_LAN_IP=%s\n' "$LAN_IP"
 printf 'HA_CONTAINER=%s\n' "$HA_CONTAINER"
 # Do not confuse a still-starting Home Assistant with a broken integration.
 # Its compose healthcheck also uses this endpoint, but waiting here provides a
