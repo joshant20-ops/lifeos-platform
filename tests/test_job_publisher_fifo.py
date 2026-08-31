@@ -103,6 +103,34 @@ class PublisherFifoTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(promoted, ['0030-oldest'])
 
+    def test_script_traversal_cannot_escape_allowed_job_root(self):
+        manifest = self.add_job('0030-oldest')
+        outside = self.m.REPO / 'jobs/root-scripts/escaped.sh'
+        outside.write_text('#!/usr/bin/env bash\nexit 0\n')
+        data = json.loads(manifest.read_text())
+        data['script'] = 'jobs/scripts/../root-scripts/escaped.sh'
+        data['script_sha256'] = self.m.sha256(outside)
+        manifest.write_text(json.dumps(data))
+
+        with mock.patch.object(self.m, 'gitleaks', return_value=True):
+            with self.assertRaises(SystemExit):
+                self.m.validate_manifest(manifest)
+
+    def test_script_symlink_cannot_escape_allowed_job_root(self):
+        manifest = self.add_job('0030-oldest')
+        outside = self.m.REPO / 'outside.sh'
+        outside.write_text('#!/usr/bin/env bash\nexit 0\n')
+        script = self.m.REPO / 'jobs/scripts/0030-oldest.sh'
+        script.unlink()
+        script.symlink_to(outside)
+        data = json.loads(manifest.read_text())
+        data['script_sha256'] = self.m.sha256(outside)
+        manifest.write_text(json.dumps(data))
+
+        with mock.patch.object(self.m, 'gitleaks', return_value=True):
+            with self.assertRaises(SystemExit):
+                self.m.validate_manifest(manifest)
+
 
 if __name__ == '__main__':
     unittest.main()
