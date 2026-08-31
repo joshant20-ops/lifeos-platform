@@ -141,6 +141,11 @@ if [[ "$RECREATE_UI" == true ]]; then
   docker run -d \
   --name "$UI_NAME" \
   --restart unless-stopped \
+  --health-cmd='python3 -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8080/health\", timeout=5).read()"' \
+  --health-interval=15s \
+  --health-timeout=10s \
+  --health-start-period=300s \
+  --health-retries=3 \
   -p ${OWUI_PORT}:8080 \
   --add-host=host.docker.internal:host-gateway \
   -v lifeos-engineer-openwebui:/app/backend/data \

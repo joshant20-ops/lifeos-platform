@@ -33,4 +33,14 @@ def test_failure_diagnostics_and_safe_ha_rollback_are_present():
     assert "rollback_ha || true" in runtime
     assert "HA_ROLLBACK=PASS" in runtime
     assert "home_assistant_cannot_reach_engineer" in runtime
+    assert 'docker logs --tail 200 --timestamps "$HA_CONTAINER"' in runtime
+    assert "python3 -m homeassistant --script check_config -c /config || true" in runtime
     assert "(( delay < 16 )) &&" not in runtime
+
+
+def test_new_ui_exposes_docker_health_from_health_endpoint():
+    script = DEPLOY.read_text()
+    assert '--health-cmd=' in script
+    assert "http://127.0.0.1:8080/health" in script
+    assert "--health-start-period=300s" in script
+    assert "--health-retries=3" in script

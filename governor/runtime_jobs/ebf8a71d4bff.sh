@@ -12,6 +12,7 @@ HA_CONFIG="$HA_CONFIG_DIR/configuration.yaml"
 HA_PANEL="$HA_CONFIG_DIR/lifeos_assistant_panel.yaml"
 BACKUP_DIR=
 HA_CHANGED=false
+HA_CONTAINER=
 
 rollback_ha() {
   [[ "$HA_CHANGED" == true && -n "$BACKUP_DIR" ]] || return 0
@@ -34,6 +35,13 @@ fail() {
   docker logs --tail 200 --timestamps lifeos-engineer-ui || true
   systemctl --no-pager --full status lifeos-engineer.service || true
   journalctl -u lifeos-engineer.service -n 200 --no-pager || true
+  if [[ -n "$HA_CONTAINER" ]]; then
+    printf '\n===== HOME ASSISTANT DIAGNOSTICS =====\n'
+    docker ps -a --filter "name=^/${HA_CONTAINER}$" --no-trunc || true
+    docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' "$HA_CONTAINER" || true
+    docker logs --tail 200 --timestamps "$HA_CONTAINER" || true
+    docker exec "$HA_CONTAINER" python3 -m homeassistant --script check_config -c /config || true
+  fi
   exit 1
 }
 trap 'fail unexpected_error_at_line_$LINENO' ERR
