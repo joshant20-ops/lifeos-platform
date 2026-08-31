@@ -20,7 +20,12 @@ printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 
 printf '\n===== 2/7 — PREFLIGHT =====\n'
 python3 -m py_compile "$AGENT"
-ssh -o BatchMode=yes -o ConnectTimeout=5 Engineer 'command -v codex; codex --version' | head -3
+ssh -o BatchMode=yes -o ConnectTimeout=5 Engineer '
+CODEX="$HOME/.local/bin/codex"
+test -x "$CODEX"
+echo "$CODEX"
+"$CODEX" --version
+' | head -3
 curl -fsS --max-time 5 http://192.168.0.201:11434/api/tags >/dev/null
 printf 'PREFLIGHT=PASS\n'
 
