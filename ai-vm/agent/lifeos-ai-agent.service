@@ -1,0 +1,23 @@
+[Unit]
+Description=LifeOS Autonomous AI Agent
+After=network-online.target ollama.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=joshan
+WorkingDirectory=/home/joshan/workspace/lifeos-platform
+Environment=LIFEOS_AI_AGENT_HOST=0.0.0.0
+Environment=LIFEOS_AI_AGENT_PORT=38125
+Environment=LIFEOS_AI_WORKSPACE=/home/joshan/workspace/lifeos-platform
+Environment=OLLAMA_BASE_URL=http://127.0.0.1:11434
+Environment=OLLAMA_MODEL=qwen2.5-coder:7b-instruct
+EnvironmentFile=-/etc/lifeos-ai-agent.env
+ExecStart=/usr/bin/python3 /home/joshan/workspace/lifeos-platform/ai-vm/agent/lifeos_ai_agent.py
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
