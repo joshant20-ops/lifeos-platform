@@ -1,0 +1,22 @@
+[Unit]
+Description=LifeOS AI governor queued OpenHands worker (template only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=REPLACE_WITH_SERVICE_USER
+WorkingDirectory=REPLACE_WITH_LIFEOS_PLATFORM_CHECKOUT
+EnvironmentFile=REPLACE_WITH_EXTERNAL_MODE_0600_ENV_FILE
+ExecStart=/usr/bin/python3 REPLACE_WITH_LIFEOS_PLATFORM_CHECKOUT/engineer/ai-governor/queue_worker.py --execute --repo REPLACE_WITH_LIFEOS_PLATFORM_CHECKOUT
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=REPLACE_WITH_EXTERNAL_STATE_DIRECTORY
+ReadWritePaths=REPLACE_WITH_LIFEOS_PLATFORM_PARENT_FOR_GIT_WORKTREES
+TimeoutStartSec=35min
+Nice=10
+
+# The worker may create only an isolated Engineer worktree. It never pushes,
+# merges or deploys to the Pi. TEMPLATE ONLY: validate with route-only mode first.

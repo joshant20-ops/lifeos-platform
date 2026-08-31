@@ -1,0 +1,18 @@
+[Unit]
+Description=LifeOS Engineer GitHub issue intake (template only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=REPLACE_WITH_SERVICE_USER
+WorkingDirectory=REPLACE_WITH_LIFEOS_PLATFORM_CHECKOUT
+EnvironmentFile=REPLACE_WITH_EXTERNAL_MODE_0600_ENV_FILE
+ExecStart=/usr/bin/python3 REPLACE_WITH_LIFEOS_PLATFORM_CHECKOUT/engineer/ai-governor/github_issue_intake.py
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=REPLACE_WITH_EXTERNAL_STATE_DIRECTORY
+
+# TEMPLATE ONLY: validate paths, token scope, service user and state ownership before enabling.
