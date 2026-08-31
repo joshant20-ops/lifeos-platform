@@ -10,8 +10,24 @@ TIMEOUT_SECONDS=900
 HA_CONFIG_DIR=/opt/stacks/homeassistant/config
 HA_CONFIG="$HA_CONFIG_DIR/configuration.yaml"
 HA_PANEL="$HA_CONFIG_DIR/lifeos_assistant_panel.yaml"
+BACKUP_DIR=
+HA_CHANGED=false
+
+rollback_ha() {
+  [[ "$HA_CHANGED" == true && -n "$BACKUP_DIR" ]] || return 0
+  printf 'HA_ROLLBACK=START backup=%s\n' "$BACKUP_DIR"
+  cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"
+  if [[ -f "$BACKUP_DIR/lifeos_assistant_panel.yaml" ]]; then
+    cp -a "$BACKUP_DIR/lifeos_assistant_panel.yaml" "$HA_PANEL"
+  else
+    rm -f "$HA_PANEL"
+  fi
+  printf 'HA_ROLLBACK=PASS\n'
+  HA_CHANGED=false
+}
 
 fail() {
+  rollback_ha || true
   printf 'RESULT=FAIL job=%s reason=%s\n' "$JOB_ID" "$1"
   docker ps -a --filter 'name=^/lifeos-engineer-ui$' --no-trunc || true
   docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' lifeos-engineer-ui || true
@@ -28,7 +44,9 @@ wait_url() {
   until curl -fsS --max-time 5 "$url" >/dev/null 2>&1; do
     (( $(date +%s) - started < limit )) || return 1
     sleep "$delay"
-    (( delay < 16 )) && delay=$((delay * 2))
+    if (( delay < 16 )); then
+      delay=$((delay * 2))
+    fi
   done
 }
 
@@ -77,6 +95,7 @@ cp -a "$HA_CONFIG" "$BACKUP_DIR/configuration.yaml"
 PANEL_ROOTS=$(grep -Ec '^panel_iframe:' "$HA_CONFIG" || true)
 if [[ "$PANEL_ROOTS" -eq 0 ]]; then
   printf '\npanel_iframe: !include lifeos_assistant_panel.yaml\n' >>"$HA_CONFIG"
+  HA_CHANGED=true
 elif [[ "$PANEL_ROOTS" -ne 1 ]] || ! grep -Eq '^panel_iframe:[[:space:]]*!include[[:space:]]+lifeos_assistant_panel\.yaml[[:space:]]*$' "$HA_CONFIG"; then
   fail unsupported_existing_panel_iframe_configuration
 fi
@@ -95,6 +114,7 @@ if [[ -f "$HA_PANEL" ]] && cmp -s "$PANEL_TMP" "$HA_PANEL"; then
 else
   install -m 0644 "$PANEL_TMP" "$HA_PANEL"
   rm -f "$PANEL_TMP"
+  HA_CHANGED=true
   timeout 180 docker exec "$HA_CONTAINER" python3 -m homeassistant --script check_config -c /config >/dev/null || fail home_assistant_config_invalid
   timeout 120 docker restart "$HA_CONTAINER" >/dev/null || fail home_assistant_restart_failed
   wait_url http://127.0.0.1:8123/ 180 || fail home_assistant_startup_timeout
@@ -106,6 +126,7 @@ grep -q "url: http://${LAN_IP}:8792/" "$HA_PANEL" || fail home_assistant_enginee
 printf 'HA_CONFIG_CHECK=PASS\n'
 printf 'HA_NAVIGATION=Home_Assistant_sidebar_>_LifeOS_Engineer\n'
 printf 'HA_BACKUP=%s\n' "$BACKUP_DIR"
+HA_CHANGED=false
 
 printf 'RESULT=PASS job=%s\n' "$JOB_ID"
 printf 'CHECKS=backend_/health,openwebui_/health,home_assistant_reachability\n'
