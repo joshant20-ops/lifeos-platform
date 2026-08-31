@@ -151,7 +151,14 @@ else
   printf 'OPEN_WEBUI_REUSE_GUARD=SKIP reason=no_healthy_running_container\n'
 fi
 
-timeout "$TIMEOUT_SECONDS" "$DEPLOY" || fail deployment_failed
+if [[ "${LIFEOS_ENGINEER_VERIFY_ONLY:-false}" == true ]]; then
+  # Sidebar repair only needs a healthy existing target. Deployment includes
+  # host-authorised bootstrap/version work and is intentionally outside the
+  # scope of an HA-only runtime job.
+  printf 'ENGINEER_DEPLOY=SKIP reason=verify_existing_service\n'
+else
+  timeout "$TIMEOUT_SECONDS" "$DEPLOY" || fail deployment_failed
+fi
 
 if [[ -n "$HEALTHY_UI_ID_BEFORE" ]]; then
   HEALTHY_UI_ID_AFTER=$(docker inspect --format '{{.Id}}' lifeos-engineer-ui 2>/dev/null) \

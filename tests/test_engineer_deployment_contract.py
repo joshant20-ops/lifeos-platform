@@ -257,3 +257,11 @@ def test_runtime_job_honors_a_pinned_engineer_lan_address():
     assert 'if [[ -n "${LIFEOS_ENGINEER_LAN_IP:-}" ]]' in runtime
     assert 'LAN_IP=$LIFEOS_ENGINEER_LAN_IP' in runtime
     assert 'PI5_LAN_IP_SOURCE=pinned' in runtime
+
+
+def test_runtime_job_can_verify_existing_service_without_redeployment():
+    runtime = RUNTIME.read_text()
+
+    assert 'LIFEOS_ENGINEER_VERIFY_ONLY:-false' in runtime
+    assert 'ENGINEER_DEPLOY=SKIP reason=verify_existing_service' in runtime
+    assert 'timeout "$TIMEOUT_SECONDS" "$DEPLOY"' in runtime
