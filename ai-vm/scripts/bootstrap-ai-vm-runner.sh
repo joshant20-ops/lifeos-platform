@@ -30,6 +30,12 @@ fi
 
 git -C "$CONTROL" fetch origin main
 git -C "$CONTROL" reset --hard origin/main
+# Remove untracked leftovers from any failed diagnostic publish attempt.
+git -C "$CONTROL" clean -fd results >/dev/null 2>&1 || true
+
+# Ensure unattended result commits have an identity local to this control repo.
+git -C "$CONTROL" config user.name "LifeOS AI VM"
+git -C "$CONTROL" config user.email "lifeos-ai-vm@localhost"
 
 sudo install -d -m 0755 /etc/lifeos-control
 printf '%s\n' '{"target_id":"ai-vm","aliases":["Engineer","z97"]}' | sudo tee /etc/lifeos-control/identity.json >/dev/null
@@ -47,10 +53,10 @@ After=network-online.target
 [Service]
 Type=oneshot
 Environment=HOME=/home/joshan
+Environment=PATH=/home/joshan/.local/bin:/usr/local/bin:/usr/bin:/bin
 Environment=LIFEOS_CONTROL_REPO=/home/joshan/lifeos-pi-control
 ExecStart=/home/joshan/.local/bin/lifeos-ai-vm-runner
 NoNewPrivileges=true
-PrivateTmp=true
 UNIT
 
 cat >"$HOME/.config/systemd/user/lifeos-ai-vm-runner.timer" <<'UNIT'
