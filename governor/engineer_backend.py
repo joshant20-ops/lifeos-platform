@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-import base64
 import json
 import os
 import re
+import statistics
 import time
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PORT = int(os.environ.get("LIFEOS_ENGINEER_PORT", "8793"))
@@ -14,17 +15,22 @@ AGENT_URL = os.environ.get("LIFEOS_AGENT_URL", "http://127.0.0.1:8790")
 OLLAMA_URL = os.environ.get("LIFEOS_ENGINEER_MODEL_URL", "http://192.168.0.201:11434/api/generate")
 OLLAMA_MODEL = os.environ.get("LIFEOS_ENGINEER_MODEL", "qwen2.5-coder:7b-instruct")
 MODEL_ID = "lifeos-engineer"
-PROPOSAL_RE = re.compile(r"<!--LIFEOS_PROPOSAL:([A-Za-z0-9+/=]+)-->")
-JOB_RE = re.compile(r"<!--LIFEOS_JOB:([a-f0-9]{12})-->")
 APPROVALS = {"run it", "go ahead", "do it", "yes run it", "yes, run it", "approved", "approve", "proceed"}
-STATUS_WORDS = {"status", "progress", "how is it going", "how's it going", "what's the status"}
+PROPOSAL_REF_RE = re.compile(r"proposal ref\s*:?\s*`?([a-f0-9]{10})`?", re.I)
+JOB_TEXT_RE = re.compile(r"(?:engineering\s+job|job)\s+`?([a-f0-9]{12})`?", re.I)
+PROPOSALS = {}
+MAX_PROPOSALS = 128
 
-SYSTEM = """You are LifeOS Engineer, the technical engineering AI for Joshan's homelab and LifeOS platform.
-You are a collaborative senior engineer, not a command parser.
+SYSTEM = """You are LifeOS Engineer, the local technical engineering manager for Joshan's homelab and LifeOS platform.
+You are a collaborative senior engineer, not a command parser and not the cloud coding builder.
 
-Your job is to understand the desired outcome before execution, challenge weak assumptions when useful, propose better engineering approaches, and prepare a precise execution brief for the autonomous Pi5 engineering agent.
+Your job is to understand the desired outcome, inspect the supplied LOCAL read-only context, challenge weak assumptions when useful, and prepare a precise natural-language execution brief for the autonomous Pi5 engineering agent and Codex builder.
 
 Rules:
+- Use LOCAL CONTEXT as evidence. Never claim you inspected something that is not present there.
+- If a previous job failed, explain the concrete failure evidence before proposing another job.
+- Never invent CLI commands, service flags, API endpoints, file paths, or capabilities. The Codex builder discovers implementation details after approval.
+- proposed_job must be a natural-language engineering brief containing goals, constraints, acceptance criteria, safety/privacy requirements and known evidence. Do not return a command plan or JSON object as proposed_job.
 - Listen for the outcome the user actually wants.
 - Restate your understanding when ambiguity exists or the task is substantial.
 - Ask a clarifying question only when the answer materially changes implementation, safety, cost, privacy or reversibility.
@@ -32,8 +38,8 @@ Rules:
 - Prefer robust, observable, reversible changes and reuse existing LifeOS architecture.
 - Never say work has been executed unless runtime evidence says so.
 - Do not expose secrets, credentials, private documents, emails, financial/medical data or Home Assistant private history to cloud Codex.
-- Private runtime discovery should happen locally and only a redacted technical brief should be sent to the engineering builder.
-- When intent is sufficiently clear, produce a self-contained engineering brief. Execution will require a separate explicit user approval.
+- Private runtime discovery happens locally; only a redacted technical brief may be sent to the cloud builder.
+- Execution always requires a separate explicit user approval.
 
 Return JSON only with keys:
 reply: concise natural conversational reply.
@@ -42,7 +48,7 @@ needs_clarification: boolean.
 clarifying_question: string or empty.
 improvements: array of maximum four short strings.
 ready_to_run: boolean.
-proposed_job: complete self-contained engineering brief, or empty when not ready.
+proposed_job: complete natural-language engineering brief string, or empty when not ready.
 """
 
 
@@ -56,33 +62,8 @@ def request_json(url, payload=None, timeout=180):
         return json.load(response)
 
 
-def strip_markers(text):
-    return PROPOSAL_RE.sub("", JOB_RE.sub("", text or "")).strip()
-
-
-def encode_proposal(text):
-    return base64.b64encode(text.encode()).decode()
-
-
-def decode_last_proposal(messages):
-    for item in reversed(messages[:-1]):
-        if item.get("role") != "assistant":
-            continue
-        m = PROPOSAL_RE.search(str(item.get("content", "")))
-        if m:
-            try:
-                return base64.b64decode(m.group(1), validate=True).decode()
-            except Exception:
-                return None
-    return None
-
-
-def last_job_id(messages):
-    for item in reversed(messages):
-        m = JOB_RE.search(str(item.get("content", "")))
-        if m:
-            return m.group(1)
-    return None
+def clean_text(text):
+    return str(text or "").strip()
 
 
 def explicit_approval(text):
@@ -90,51 +71,216 @@ def explicit_approval(text):
     return clean in APPROVALS
 
 
+def proposal_ref(messages):
+    for item in reversed(messages[:-1]):
+        if item.get("role") != "assistant":
+            continue
+        m = PROPOSAL_REF_RE.search(clean_text(item.get("content")))
+        if m:
+            return m.group(1)
+    return None
+
+
+def last_job_id(messages):
+    for item in reversed(messages):
+        m = JOB_TEXT_RE.search(clean_text(item.get("content")))
+        if m:
+            return m.group(1)
+    return None
+
+
 def asks_status(text):
     clean = re.sub(r"[^a-z0-9' ]+", " ", text.lower()).strip()
-    return clean in STATUS_WORDS or clean.startswith("status ") or "job status" in clean
+    phrases = (
+        "status", "progress", "eta", "how long", "what's it doing", "what is it doing",
+        "what is it actually doing", "what's it actually doing", "is it stuck", "stuck",
+        "current stage", "progress report", "job report", "how is it going", "how's it going",
+    )
+    return any(p in clean for p in phrases)
+
+
+def parse_time(value):
+    if not value:
+        return None
+    try:
+        return datetime.strptime(str(value), "%Y-%m-%dT%H:%M:%S%z")
+    except Exception:
+        try:
+            return datetime.fromisoformat(str(value))
+        except Exception:
+            return None
+
+
+def human_duration(seconds):
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, sec = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m" if sec < 15 else f"{minutes}m {sec}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m"
+
+
+def history_durations():
+    try:
+        jobs = request_json(AGENT_URL + "/jobs", timeout=5).get("jobs", [])
+    except Exception:
+        return []
+    durations = []
+    for job in jobs:
+        if job.get("status") not in ("PASS", "BLOCKED"):
+            continue
+        start = parse_time(job.get("started_at") or job.get("created_at"))
+        end = parse_time(job.get("completed_at"))
+        if start and end and end >= start:
+            durations.append((end - start).total_seconds())
+    return durations[:20]
+
+
+def evidence_summary(job):
+    iterations = job.get("iterations", []) or []
+    if not iterations:
+        return ""
+    last = iterations[-1]
+    evidence = clean_text(last.get("evidence"))
+    verification = last.get("verification") or {}
+    signals = []
+    for pattern in (
+        r"(?m)^RUNTIME_RC=.*$",
+        r"(?m)^RESULT=FAIL.*$",
+        r"(?m)^DEPLOYMENT_FAILURE=.*$",
+        r"(?m)^PRIVILEGED_BOOTSTRAP_REQUIRED.*$",
+        r"(?m)^PI5_PATCH=RETRY.*$",
+        r"(?m)^HANDOFF_ERROR=.*$",
+    ):
+        matches = re.findall(pattern, evidence)
+        if matches:
+            signals.append(matches[-1])
+    reason = clean_text(verification.get("reason"))
+    if reason:
+        signals.append("Verifier: " + reason[:700])
+    return " | ".join(signals[:4])
 
 
 def status_reply(job):
-    status = str(job.get("status", "UNKNOWN"))
+    status = clean_text(job.get("status") or "UNKNOWN")
+    job_id = clean_text(job.get("id"))
+    stage = clean_text(job.get("stage") or "unknown")
     iterations = job.get("iterations", []) or []
-    parts = [f"Job `{job.get('id')}` is **{status}**."]
+    start = parse_time(job.get("started_at") or job.get("created_at"))
+    end = parse_time(job.get("completed_at")) or datetime.now().astimezone()
+    elapsed = human_duration((end - start).total_seconds()) if start else "unknown"
+    parts = [f"Job `{job_id}` is **{status}**. Stage: **{stage}**. Elapsed: **{elapsed}**. Iterations completed: **{len(iterations)}**."]
+
+    signal = evidence_summary(job)
+    if signal:
+        parts.append("Latest evidence: " + signal)
+
     if status == "QUEUED":
         parts.append("It is waiting for the engineering execution slot.")
     elif status == "RUNNING":
-        parts.append(f"It has completed {len(iterations)} verification iteration(s) so far.")
+        durations = history_durations()
+        if durations and start:
+            median = statistics.median(durations)
+            elapsed_seconds = max(0, (datetime.now().astimezone() - start).total_seconds())
+            remaining = max(0, median - elapsed_seconds)
+            low = max(0, min(durations) - elapsed_seconds)
+            high = max(0, max(durations) - elapsed_seconds)
+            parts.append(f"ETA estimate from recent completed jobs: about **{human_duration(remaining)} remaining**, rough range **{human_duration(low)}–{human_duration(high)}**. This is an estimate, not a guarantee.")
+        else:
+            parts.append("There is not enough completed-job history for a defensible ETA yet.")
     elif status == "PASS":
-        reason = ""
-        if iterations:
-            reason = str(iterations[-1].get("verification", {}).get("reason", "")).strip()
-        parts.append("The local verifier accepted the result." + (f" {reason}" if reason else ""))
+        parts.append("The local verifier accepted the result.")
     elif status == "BLOCKED":
-        parts.append(str(job.get("blocked_reason") or "The job is blocked and needs attention."))
-    return " ".join(parts) + f"\n\n<!--LIFEOS_JOB:{job.get('id')}-->"
+        reason = clean_text(job.get("blocked_reason") or "The job is blocked and needs attention.")
+        parts.append("Blocked reason: " + reason)
+        repeat = job.get("repeated_failure_count")
+        if repeat:
+            parts.append(f"The same deterministic failure signature was seen {repeat} times.")
+    return " ".join(parts)
+
+
+def local_context(messages):
+    context = {"repository": {}, "recent_job": None}
+    try:
+        context["repository"] = request_json(AGENT_URL + "/context", timeout=5)
+    except Exception as exc:
+        context["repository"] = {"status": "unavailable", "detail": type(exc).__name__}
+    job_id = last_job_id(messages)
+    if job_id:
+        try:
+            job = request_json(AGENT_URL + "/jobs/" + job_id, timeout=5)
+            iterations = job.get("iterations", []) or []
+            last = iterations[-1] if iterations else {}
+            context["recent_job"] = {
+                "id": job.get("id"),
+                "status": job.get("status"),
+                "stage": job.get("stage"),
+                "created_at": job.get("created_at"),
+                "started_at": job.get("started_at"),
+                "completed_at": job.get("completed_at"),
+                "blocked_reason": job.get("blocked_reason"),
+                "iteration_count": len(iterations),
+                "latest_verification": last.get("verification"),
+                "latest_evidence_summary": evidence_summary(job),
+                "repeated_failure_count": job.get("repeated_failure_count"),
+            }
+        except Exception as exc:
+            context["recent_job"] = {"id": job_id, "status": "unavailable", "detail": type(exc).__name__}
+    return context
+
+
+def normalise_proposal(value):
+    if not isinstance(value, str):
+        return ""
+    proposal = value.strip()
+    if not proposal:
+        return ""
+    forbidden = (
+        "lifeos-autonomous-agent --",
+        "sudo ",
+        "curl -",
+        "ssh ",
+    )
+    if any(token in proposal.lower() for token in forbidden):
+        return ""
+    return proposal
+
+
+def store_proposal(proposal):
+    ref = uuid.uuid4().hex[:10]
+    PROPOSALS[ref] = {"proposal": proposal, "created": time.time()}
+    if len(PROPOSALS) > MAX_PROPOSALS:
+        oldest = sorted(PROPOSALS.items(), key=lambda kv: kv[1]["created"])[: len(PROPOSALS) - MAX_PROPOSALS]
+        for key, _ in oldest:
+            PROPOSALS.pop(key, None)
+    return ref
 
 
 def analyse(messages):
     transcript = []
     for item in messages[-14:]:
-        role = str(item.get("role", "user"))[:16].upper()
-        content = strip_markers(str(item.get("content", "")))[:7000]
+        role = clean_text(item.get("role") or "user")[:16].upper()
+        content = clean_text(item.get("content"))[:7000]
         transcript.append(f"{role}: {content}")
-    prompt = SYSTEM + "\n\nConversation:\n" + "\n".join(transcript) + "\n\nReturn JSON now."
+    context = local_context(messages)
+    prompt = SYSTEM + "\n\nLOCAL READ-ONLY CONTEXT:\n" + json.dumps(context, indent=2)[:10000]
+    prompt += "\n\nConversation:\n" + "\n".join(transcript) + "\n\nReturn JSON now."
     result = request_json(OLLAMA_URL, {
         "model": OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
         "format": "json",
-        "options": {"temperature": 0.2, "num_ctx": 8192},
+        "options": {"temperature": 0.15, "num_ctx": 12288},
     })
-    raw = result.get("response", "{}")
-    parsed = json.loads(raw)
-    improvements = [str(x).strip() for x in parsed.get("improvements", []) if str(x).strip()][:4]
-    reply = str(parsed.get("reply", "")).strip()
-    question = str(parsed.get("clarifying_question", "")).strip()
-    understanding = str(parsed.get("understanding", "")).strip()
+    parsed = json.loads(result.get("response", "{}"))
+    improvements = [clean_text(x) for x in parsed.get("improvements", []) if clean_text(x)][:4]
+    reply = clean_text(parsed.get("reply"))
+    question = clean_text(parsed.get("clarifying_question"))
+    understanding = clean_text(parsed.get("understanding"))
     ready = bool(parsed.get("ready_to_run", False))
-    proposal = str(parsed.get("proposed_job", "")).strip()
+    proposal = normalise_proposal(parsed.get("proposed_job"))
 
     blocks = [reply] if reply else []
     if understanding and understanding.lower() not in reply.lower():
@@ -143,21 +289,25 @@ def analyse(messages):
         blocks.append("**Improvements I'd include:**\n" + "\n".join(f"- {x}" for x in improvements))
     if bool(parsed.get("needs_clarification", False)) and question:
         blocks.append(question)
-    if ready and proposal:
-        blocks.append("If that matches what you want, say **run it**. I won't execute it before explicit approval.")
-        blocks.append(f"<!--LIFEOS_PROPOSAL:{encode_proposal(proposal)}-->")
+    if ready:
+        if proposal:
+            ref = store_proposal(proposal)
+            blocks.append(f"If that matches what you want, say **run it**. Proposal ref: `{ref}`.")
+        else:
+            blocks.append("I have enough intent to continue, but the generated execution brief failed safety/schema validation. I won't queue it until I can produce a clean natural-language brief.")
     return "\n\n".join(blocks).strip()
 
 
 def engineer_reply(messages):
-    latest = str(messages[-1].get("content", "")).strip() if messages else ""
+    latest = clean_text(messages[-1].get("content")) if messages else ""
     if explicit_approval(latest):
-        proposal = decode_last_proposal(messages)
-        if not proposal:
-            return "I don't have an approved engineering brief in this conversation yet. Tell me what you want changed first."
-        job = request_json(AGENT_URL + "/jobs?async=1", {"request": proposal}, timeout=15)
-        return (f"Queued it as engineering job `{job['id']}`. I'll treat the Pi5 runtime and local verifier as the source of truth for completion. "
-                f"Ask me for **status** and I'll check it.\n\n<!--LIFEOS_JOB:{job['id']}-->")
+        ref = proposal_ref(messages)
+        record = PROPOSALS.get(ref) if ref else None
+        if not record:
+            return "The approved proposal is no longer available in server-side state, so I won't regenerate or change it silently. Please restate the task and I'll produce a fresh proposal for approval."
+        job = request_json(AGENT_URL + "/jobs?async=1", {"request": record["proposal"]}, timeout=15)
+        return (f"Queued it as engineering job `{job['id']}`. The Pi5 runtime and local verifier are the source of truth. "
+                f"Ask me for status, ETA, what it's doing, or whether it looks stuck.")
     if asks_status(latest):
         job_id = last_job_id(messages)
         if not job_id:
@@ -195,7 +345,7 @@ class Handler(BaseHTTPRequestHandler):
                 if agent.get("status") != "ok":
                     raise RuntimeError("agent_not_ready")
                 request_json(OLLAMA_URL.rsplit("/api/", 1)[0] + "/api/tags", timeout=5)
-                self.send_json(200, {"service": "lifeos-engineer", "status": "ok", "agent": agent.get("status"), "model": OLLAMA_MODEL})
+                self.send_json(200, {"service": "lifeos-engineer", "status": "ok", "agent": agent.get("status"), "model": OLLAMA_MODEL, "chat_state": "server_side"})
             except Exception as exc:
                 self.send_json(503, {"service": "lifeos-engineer", "status": "degraded", "detail": type(exc).__name__})
             return
