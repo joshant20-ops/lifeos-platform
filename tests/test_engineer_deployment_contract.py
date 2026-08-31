@@ -99,6 +99,14 @@ def test_ha_include_only_change_is_validated_and_activated():
     assert 'HA_CONFIGURATION=ACTIVATED' in activation_block
 
 
+def test_ha_rollback_snapshot_is_unique_for_rapid_retries():
+    runtime = RUNTIME.read_text()
+    assert 'BACKUP_ROOT="$HA_CONFIG_DIR/.lifeos-backups"' in runtime
+    assert 'BACKUP_DIR=$(mktemp -d "$BACKUP_ROOT/engineer-panel-' in runtime
+    assert "home_assistant_backup_creation_failed" in runtime
+    assert 'BACKUP_DIR="$HA_CONFIG_DIR/.lifeos-backups/engineer-panel-$(date' not in runtime
+
+
 def test_runtime_discovers_real_lan_address_and_nonstandard_ha_container():
     runtime = RUNTIME.read_text()
     assert "ip -4 route get 192.168.0.201" in runtime

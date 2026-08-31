@@ -171,8 +171,13 @@ PY
 # storage-mode dashboards. Preserve the existing include filename so upgrades
 # are idempotent, but replace the old engineering prototype panel itself.
 [[ -f "$HA_CONFIG" ]] || fail home_assistant_configuration_missing
-BACKUP_DIR="$HA_CONFIG_DIR/.lifeos-backups/engineer-panel-$(date -u +%Y%m%dT%H%M%SZ)"
-mkdir -p "$BACKUP_DIR"
+# A timestamp alone can collide when an automated retry begins in the same
+# second.  Never merge a new transaction with an older rollback snapshot:
+# mktemp creates the parent if needed and guarantees a fresh directory.
+BACKUP_ROOT="$HA_CONFIG_DIR/.lifeos-backups"
+mkdir -p "$BACKUP_ROOT"
+BACKUP_DIR=$(mktemp -d "$BACKUP_ROOT/engineer-panel-$(date -u +%Y%m%dT%H%M%SZ).XXXXXX") \
+  || fail home_assistant_backup_creation_failed
 cp -a "$HA_CONFIG" "$BACKUP_DIR/configuration.yaml"
 [[ ! -f "$HA_PANEL" ]] || cp -a "$HA_PANEL" "$BACKUP_DIR/lifeos_assistant_panel.yaml"
 PANEL_ROOTS=$(grep -Ec '^panel_iframe:' "$HA_CONFIG" || true)
