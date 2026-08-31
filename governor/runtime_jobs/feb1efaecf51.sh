@@ -206,10 +206,14 @@ BACKUP_DIR=$(mktemp -d "$BACKUP_ROOT/engineer-panel-$(date -u +%Y%m%dT%H%M%SZ).X
   || fail home_assistant_backup_creation_failed
 cp -a "$HA_CONFIG" "$BACKUP_DIR/configuration.yaml"
 [[ ! -f "$HA_PANEL" ]] || cp -a "$HA_PANEL" "$BACKUP_DIR/lifeos_assistant_panel.yaml"
+# Arm rollback before the first write. If appending the include or installing
+# the panel fails part-way (disk full, interrupted process, permissions), the
+# ERR/signal handler must restore the snapshot rather than mistake the failed
+# write for a no-change run.
+HA_CHANGED=true
 PANEL_ROOTS=$(grep -Ec '^panel_iframe:' "$HA_CONFIG" || true)
 if [[ "$PANEL_ROOTS" -eq 0 ]]; then
   printf '\npanel_iframe: !include lifeos_assistant_panel.yaml\n' >>"$HA_CONFIG"
-  HA_CHANGED=true
 elif [[ "$PANEL_ROOTS" -ne 1 ]] || ! grep -Eq '^panel_iframe:[[:space:]]*!include[[:space:]]+lifeos_assistant_panel\.yaml[[:space:]]*$' "$HA_CONFIG"; then
   fail unsupported_existing_panel_iframe_configuration
 fi
@@ -230,6 +234,16 @@ else
   rm -f "$PANEL_TMP"
   HA_CHANGED=true
   printf 'HA_PANEL=UPDATED file_written\n'
+fi
+
+# Disarm an unchanged transaction after both comparisons have completed. The
+# backup remains useful evidence, but an idempotent verification need not
+# restart Home Assistant.
+if cmp -s "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"; then
+  if { [[ -f "$BACKUP_DIR/lifeos_assistant_panel.yaml" ]] && cmp -s "$BACKUP_DIR/lifeos_assistant_panel.yaml" "$HA_PANEL"; } || \
+     { [[ ! -f "$BACKUP_DIR/lifeos_assistant_panel.yaml" && ! -f "$HA_PANEL" ]]; }; then
+    HA_CHANGED=false
+  fi
 fi
 
 # The include and the panel file form one configuration transaction. In

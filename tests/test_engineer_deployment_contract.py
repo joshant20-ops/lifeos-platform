@@ -139,6 +139,16 @@ def test_ha_rollback_snapshot_is_unique_for_rapid_retries():
     assert 'BACKUP_DIR="$HA_CONFIG_DIR/.lifeos-backups/engineer-panel-$(date' not in runtime
 
 
+def test_ha_rollback_is_armed_before_the_first_config_write():
+    runtime = RUNTIME.read_text()
+    backup = runtime.index('cp -a "$HA_CONFIG" "$BACKUP_DIR/configuration.yaml"')
+    armed = runtime.index("HA_CHANGED=true", backup)
+    config_write = runtime.index('>>"$HA_CONFIG"', armed)
+    panel_write = runtime.index('install -m 0644 "$PANEL_TMP" "$HA_PANEL"', armed)
+    assert backup < armed < config_write
+    assert armed < panel_write
+
+
 def test_runtime_discovers_real_lan_address_and_nonstandard_ha_container():
     runtime = RUNTIME.read_text()
     assert "ip -4 route get 192.168.0.201" in runtime
