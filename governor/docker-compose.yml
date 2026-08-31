@@ -1,0 +1,29 @@
+services:
+  lifeos-governor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lifeos-governor
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      GOVERNOR_PORT: "8787"
+      PROVIDER_POLICY: "cloud-primary-offline-fallback"
+      CLOUD_HEALTH_URL: "${CLOUD_HEALTH_URL:-https://api.openai.com/}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://z97:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5-coder:7b-instruct}"
+      PROVIDER_HEALTH_TIMEOUT: "${PROVIDER_HEALTH_TIMEOUT:-2.0}"
+    ports:
+      - "127.0.0.1:8787:8787"
+    networks:
+      - governor-egress
+
+networks:
+  governor-egress:
+    driver: bridge
