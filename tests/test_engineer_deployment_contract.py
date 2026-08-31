@@ -43,10 +43,22 @@ def test_failure_diagnostics_and_safe_ha_rollback_are_present():
 def test_ha_rollback_reactivates_restored_config_after_restart():
     runtime = RUNTIME.read_text()
     rollback = runtime[runtime.index("rollback_ha() {"):runtime.index("fail() {")]
-    assert '[[ "$ROLLING_BACK" == false ]] || return 1' in rollback
+    assert '[[ "$ROLLING_BACK" == false ]] || {' in rollback
     assert 'if [[ "$HA_RESTARTED" == true && -n "$HA_CONTAINER" ]]; then' in rollback
     assert 'timeout 120 docker restart "$HA_CONTAINER"' in rollback
     assert "wait_url http://127.0.0.1:8123/ 180" in rollback
+
+
+def test_failure_handler_cannot_recursively_trap_rollback_errors():
+    runtime = RUNTIME.read_text()
+    failure = runtime[runtime.index("fail() {"):runtime.index("wait_url() {")]
+    assert "FAILURE_ACTIVE=true" in failure
+    assert "trap - ERR" in failure
+    assert "rollback_ha || true" in failure
+    assert failure.index("trap - ERR") < failure.index("rollback_ha || true")
+    rollback = runtime[runtime.index("rollback_ha() {"):runtime.index("fail() {")]
+    assert "HA_ROLLBACK=FAIL reason=restored_config_restart_failed" in rollback
+    assert "HA_ROLLBACK=FAIL reason=restored_config_startup_timeout" in rollback
 
 
 def test_new_ui_exposes_docker_health_from_health_endpoint():

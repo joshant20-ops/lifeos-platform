@@ -15,24 +15,40 @@ HA_CHANGED=false
 HA_RESTARTED=false
 HA_CONTAINER=
 ROLLING_BACK=false
+FAILURE_ACTIVE=false
 
 rollback_ha() {
   [[ "$HA_CHANGED" == true && -n "$BACKUP_DIR" ]] || return 0
-  [[ "$ROLLING_BACK" == false ]] || return 1
+  [[ "$ROLLING_BACK" == false ]] || { printf 'HA_ROLLBACK=FAIL reason=recursive_attempt\n' >&2; return 1; }
   ROLLING_BACK=true
   printf 'HA_ROLLBACK=START backup=%s\n' "$BACKUP_DIR"
-  cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"
+  cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG" || {
+    printf 'HA_ROLLBACK=FAIL reason=configuration_restore_failed\n' >&2
+    return 1
+  }
   if [[ -f "$BACKUP_DIR/lifeos_assistant_panel.yaml" ]]; then
-    cp -a "$BACKUP_DIR/lifeos_assistant_panel.yaml" "$HA_PANEL"
+    cp -a "$BACKUP_DIR/lifeos_assistant_panel.yaml" "$HA_PANEL" || {
+      printf 'HA_ROLLBACK=FAIL reason=panel_restore_failed\n' >&2
+      return 1
+    }
   else
-    rm -f "$HA_PANEL"
+    rm -f "$HA_PANEL" || {
+      printf 'HA_ROLLBACK=FAIL reason=panel_remove_failed\n' >&2
+      return 1
+    }
   fi
   # If HA already loaded the candidate configuration, restoring files alone is
   # insufficient: restart it once more so the last-known-good config is active.
   if [[ "$HA_RESTARTED" == true && -n "$HA_CONTAINER" ]]; then
     printf 'HA_ROLLBACK_RESTART=START\n'
-    timeout 120 docker restart "$HA_CONTAINER" >/dev/null
-    wait_url http://127.0.0.1:8123/ 180
+    timeout 120 docker restart "$HA_CONTAINER" >/dev/null || {
+      printf 'HA_ROLLBACK=FAIL reason=restored_config_restart_failed\n' >&2
+      return 1
+    }
+    wait_url http://127.0.0.1:8123/ 180 || {
+      printf 'HA_ROLLBACK=FAIL reason=restored_config_startup_timeout\n' >&2
+      return 1
+    }
     printf 'HA_ROLLBACK_RESTART=PASS\n'
   fi
   printf 'HA_ROLLBACK=PASS\n'
@@ -42,8 +58,16 @@ rollback_ha() {
 }
 
 fail() {
+  local reason=${1:-unknown_failure}
+  if [[ "$FAILURE_ACTIVE" == true ]]; then
+    printf 'RESULT=FAIL job=%s reason=recursive_failure original=%s\n' "$JOB_ID" "$reason" >&2
+    exit 1
+  fi
+  FAILURE_ACTIVE=true
+  # Recovery and diagnostics must never re-enter this handler through ERR.
+  trap - ERR
   rollback_ha || true
-  printf 'RESULT=FAIL job=%s reason=%s\n' "$JOB_ID" "$1"
+  printf 'RESULT=FAIL job=%s reason=%s\n' "$JOB_ID" "$reason"
   docker ps -a --filter 'name=^/lifeos-engineer-ui$' --no-trunc || true
   docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}}' lifeos-engineer-ui || true
   docker logs --tail 200 --timestamps lifeos-engineer-ui || true
