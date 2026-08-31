@@ -2,6 +2,7 @@
 import json
 import os
 import pathlib
+import re
 import subprocess
 import time
 import urllib.request
@@ -15,6 +16,8 @@ MAX_ITERATIONS = int(os.environ.get("LIFEOS_AGENT_MAX_ITERATIONS", "8"))
 BUILDER = os.environ.get("LIFEOS_AGENT_BUILDER", "/usr/local/libexec/lifeos-cloud-builder")
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
+PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
+RUNTIME_PREFIX = "governor/runtime_jobs/"
 
 PRIVATE_TERMS = {
     "paperless", "document", "documents", "private data", "personal data",
@@ -47,14 +50,23 @@ def classify_privacy(text):
 
 def local_verify(job, iteration, evidence):
     prompt = f"""You are the independent LOCAL verifier for LifeOS.
-You must decide whether the user's goal is actually complete from supplied execution evidence.
+Decide whether the user's original goal is actually complete from supplied BUILD AND RUNTIME evidence.
 Return JSON only with keys: verdict, reason, next_instruction.
 verdict must be PASS, RETRY, or BLOCKED.
-Do not assume success merely because a script exited zero.
+
+Rules:
+- PASS only when evidence demonstrates the requested outcome works.
+- RETRY when there is any actionable engineering, deployment, configuration, testing, or repair step that the autonomous system can attempt itself.
+- BLOCKED is reserved for a genuinely external blocker the autonomous system cannot resolve itself, such as missing user-only credentials, unavailable required hardware, a required physical action, or a safety policy prohibition.
+- Unrelated pre-existing repository test failures are NOT a blocker for a scoped job; mention them if relevant but judge the user's requested outcome from scoped evidence.
+- A builder saying RESULT=BLOCKED does not force you to choose BLOCKED. If its reason is internally actionable, choose RETRY and specify the next action.
+- Do not ask the user to run diagnostic commands that the Pi5/Engineer/TowerPC automation can run itself.
+- Do not assume success merely because a script exited zero.
+
 User goal: {job['request']}
 Privacy class: {job['privacy']}
 Iteration: {iteration}
-Evidence:\n{evidence[-12000:]}
+Evidence:\n{evidence[-16000:]}
 """
     payload = json.dumps({
         "model": VERIFIER_MODEL,
@@ -70,7 +82,7 @@ Evidence:\n{evidence[-12000:]}
     try:
         return json.loads(raw)
     except Exception:
-        return {"verdict": "BLOCKED", "reason": "verifier returned invalid JSON", "next_instruction": None}
+        return {"verdict": "RETRY", "reason": "verifier returned invalid JSON", "next_instruction": "Re-run focused verification and return valid JSON evidence."}
 
 
 def run_builder(job, iteration, verifier_feedback=None):
@@ -85,6 +97,57 @@ def run_builder(job, iteration, verifier_feedback=None):
     return cp.returncode, evidence
 
 
+def runtime_path_from_evidence(job, evidence):
+    matches = re.findall(r"(?m)^RUN_SCRIPT=([^\s]+)\s*$", evidence)
+    if not matches:
+        return None
+    rel = matches[-1].strip()
+    expected = f"{RUNTIME_PREFIX}{job['id']}.sh"
+    if rel != expected:
+        raise RuntimeError(f"runtime path rejected: expected {expected}, got {rel}")
+    return rel
+
+
+def run_pi5_runtime(job, evidence):
+    rel = runtime_path_from_evidence(job, evidence)
+    if rel is None:
+        return "RUNTIME_ACTION=none_declared\n"
+    if job["privacy"] == "local-only":
+        return "RUNTIME_ACTION=blocked_for_cloud_authored_private_job\n"
+
+    subprocess.run(["git", "fetch", "origin", "main"], cwd=PLATFORM_REPO, check=True, text=True, capture_output=True, timeout=120)
+    show = subprocess.run(
+        ["git", "show", f"origin/main:{rel}"],
+        cwd=PLATFORM_REPO,
+        check=True,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+    script = show.stdout
+    if not script.startswith("#!/usr/bin/env bash") and not script.startswith("#!/bin/bash"):
+        raise RuntimeError("runtime script rejected: bash shebang required")
+    if len(script.encode()) > 65536:
+        raise RuntimeError("runtime script rejected: exceeds 64KiB")
+
+    runtime_dir = ROOT / "runtime"
+    runtime_dir.mkdir(mode=0o750, exist_ok=True)
+    target = runtime_dir / f"{job['id']}.sh"
+    target.write_text(script)
+    target.chmod(0o700)
+
+    cp = subprocess.run(
+        ["/usr/bin/timeout", "900s", "/bin/bash", str(target)],
+        cwd=PLATFORM_REPO,
+        text=True,
+        capture_output=True,
+        timeout=930,
+        env={**os.environ, "LIFEOS_JOB_ID": job["id"], "LIFEOS_JOB_REQUEST": job["request"]},
+    )
+    out = (cp.stdout or "") + "\n" + (cp.stderr or "")
+    return f"RUNTIME_SCRIPT={rel}\nRUNTIME_RC={cp.returncode}\nRUNTIME_EVIDENCE:\n{out[-16000:]}\n"
+
+
 def execute_job(job):
     job["status"] = "RUNNING"
     save(job)
@@ -92,20 +155,29 @@ def execute_job(job):
     for iteration in range(1, MAX_ITERATIONS + 1):
         rec = {"iteration": iteration, "started_at": now()}
         try:
-            rc, evidence = run_builder(job, iteration, feedback)
+            rc, build_evidence = run_builder(job, iteration, feedback)
             rec["builder_rc"] = rc
-            rec["evidence"] = evidence[-20000:]
         except Exception as exc:
-            rec["builder_rc"] = 255
-            rec["evidence"] = f"builder exception: {type(exc).__name__}: {exc}"
+            rc = 255
+            build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
+            rec["builder_rc"] = rc
+
+        try:
+            runtime_evidence = run_pi5_runtime(job, build_evidence)
+        except Exception as exc:
+            runtime_evidence = f"RUNTIME_EXCEPTION={type(exc).__name__}: {exc}\n"
+
+        evidence = f"BUILD_EVIDENCE:\n{build_evidence[-16000:]}\n\n{runtime_evidence}"
+        rec["evidence"] = evidence[-24000:]
+
         try:
             verdict = local_verify(job, iteration, rec["evidence"])
         except Exception as exc:
-            verdict = {"verdict": "BLOCKED", "reason": f"local verifier unavailable: {type(exc).__name__}", "next_instruction": None}
+            verdict = {"verdict": "RETRY", "reason": f"local verifier unavailable: {type(exc).__name__}", "next_instruction": "Retry local verifier and runtime verification."}
         rec["verification"] = verdict
         rec["finished_at"] = now()
         job.setdefault("iterations", []).append(rec)
-        v = str(verdict.get("verdict", "BLOCKED")).upper()
+        v = str(verdict.get("verdict", "RETRY")).upper()
         if v == "PASS":
             job["status"] = "PASS"
             job["completed_at"] = now()
@@ -148,7 +220,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.send_json(200, {"service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS})
+            self.send_json(200, {"service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS, "runtime_controller": "pi5"})
             return
         if self.path.startswith("/jobs/"):
             job_id = self.path.split("/", 2)[2]
