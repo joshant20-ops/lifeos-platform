@@ -9,6 +9,8 @@ OWUI_PORT=8792
 BACKEND_PORT=8793
 UI_NAME=lifeos-engineer-ui
 UI_HEALTH_URL="http://127.0.0.1:${OWUI_PORT}/health"
+DEPLOY_PHASE=preflight
+FAILURE_DIAGNOSTICS_ACTIVE=false
 
 wait_for_health() {
   local name=$1 url=$2 deadline=${3:-300} delay=1 started now
@@ -48,6 +50,23 @@ backend_diagnostics() {
   curl -v --max-time 5 "http://127.0.0.1:${BACKEND_PORT}/health" -o /dev/null >&2 || true
 }
 
+unexpected_failure() {
+  local status=$? line=${1:-unknown}
+  # Diagnostics contain best-effort commands that can themselves fail. Avoid
+  # recursively entering this handler and obscuring the original error.
+  [[ "$FAILURE_DIAGNOSTICS_ACTIVE" == false ]] || exit "$status"
+  FAILURE_DIAGNOSTICS_ACTIVE=true
+  trap - ERR
+  printf 'DEPLOYMENT_FAILURE=unexpected phase=%s line=%s exit=%s\n' \
+    "$DEPLOY_PHASE" "$line" "$status" >&2
+  case "$DEPLOY_PHASE" in
+    backend) backend_diagnostics ;;
+    open_webui|verification) ui_diagnostics; backend_diagnostics ;;
+  esac
+  exit "$status"
+}
+trap 'unexpected_failure "$LINENO"' ERR
+
 ui_container_health() {
   docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
     "$UI_NAME" 2>/dev/null || printf 'missing\n'
@@ -72,6 +91,7 @@ curl -fsS --max-time 5 http://192.168.0.201:11434/api/tags >/dev/null
 printf 'PREFLIGHT=PASS\n'
 
 printf '\n===== 3/8 — ENGINEER BACKEND =====\n'
+DEPLOY_PHASE=backend
 sudo install -m 0755 "$BACKEND" /usr/local/libexec/lifeos-engineer
 sudo tee /etc/systemd/system/lifeos-engineer.service >/dev/null <<'UNIT'
 [Unit]
@@ -109,6 +129,7 @@ fi
 printf 'ENGINEER_BACKEND=PASS\n'
 
 printf '\n===== 4/8 — OPEN WEBUI =====\n'
+DEPLOY_PHASE=open_webui
 sudo install -d -m 0750 -o joshan -g joshan /var/lib/lifeos-openwebui
 SECRET_FILE=/var/lib/lifeos-openwebui/webui-secret
 if [[ ! -s "$SECRET_FILE" ]]; then
@@ -145,7 +166,9 @@ if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
 fi
 
 if [[ "$RECREATE_UI" == true ]]; then
-  docker pull "$OWUI_IMAGE" >/dev/null
+  # Registry stalls must not consume the launcher's entire deadline without a
+  # clear phase-specific failure and local container/backend diagnostics.
+  timeout 300 docker pull "$OWUI_IMAGE" >/dev/null
   if docker ps -a --format '{{.Names}}' | grep -qx "$UI_NAME"; then
     printf 'OPEN_WEBUI_RECREATE=existing_container_failed_or_stopped\n'
     # A stopped container has not been diagnosed above.
@@ -182,6 +205,7 @@ fi
 printf 'OPEN_WEBUI=PASS\n'
 
 printf '\n===== 5/8 — OPENAI COMPATIBILITY TEST =====\n'
+DEPLOY_PHASE=verification
 MODELS=$(curl -fsS --max-time 5 http://127.0.0.1:${BACKEND_PORT}/v1/models)
 python3 - "$MODELS" <<'PY'
 import json,sys
@@ -222,6 +246,7 @@ printf 'HA_INTEGRATION=managed_by_runtime_job\n'
 printf 'HA_INTEGRATION_TARGET=sidebar_LifeOS_Engineer\n'
 
 printf '\n===== 8/8 — RESULT =====\n'
+DEPLOY_PHASE=complete
 printf 'RESULT=PASS\n'
 printf 'ROLE=engineering_only\n'
 printf 'PA_ROLE=separate_future_surface\n'

@@ -52,6 +52,16 @@ def test_failure_diagnostics_and_safe_ha_rollback_are_present():
     assert "(( delay < 16 )) &&" not in runtime
 
 
+def test_unexpected_deployment_failures_emit_phase_diagnostics():
+    deploy = DEPLOY.read_text()
+    assert "trap 'unexpected_failure \"$LINENO\"' ERR" in deploy
+    assert "DEPLOYMENT_FAILURE=unexpected phase=%s line=%s exit=%s" in deploy
+    handler = deploy[deploy.index("unexpected_failure() {"):deploy.index("ui_container_health() {")]
+    assert "trap - ERR" in handler
+    assert "open_webui|verification) ui_diagnostics; backend_diagnostics" in handler
+    assert 'timeout 300 docker pull "$OWUI_IMAGE"' in deploy
+
+
 def test_ha_rollback_reactivates_restored_config_after_restart():
     runtime = RUNTIME.read_text()
     rollback = runtime[runtime.index("rollback_ha() {"):runtime.index("fail() {")]
