@@ -67,3 +67,14 @@ def test_new_ui_exposes_docker_health_from_health_endpoint():
     assert "http://127.0.0.1:8080/health" in script
     assert "--health-start-period=300s" in script
     assert "--health-retries=3" in script
+
+
+def test_runtime_waits_for_ha_and_verifies_registered_panel_route():
+    runtime = RUNTIME.read_text()
+    reachability = runtime.index('timeout 30 docker exec "$HA_CONTAINER"')
+    assert runtime.index("wait_url http://127.0.0.1:8123/ 180") < reachability
+    assert "HA_ROUTE_CODE=$(curl" in runtime
+    assert "http://127.0.0.1:8123/lifeos_engineer" in runtime
+    assert 'HA_PANEL_ROUTE=PASS status=%s' in runtime
+    assert 'curl -sS -i --max-time 10 "$BACKEND_HEALTH"' in runtime
+    assert 'curl -sS -i --max-time 10 "$UI_HEALTH"' in runtime

@@ -73,6 +73,9 @@ fail() {
   docker logs --tail 200 --timestamps lifeos-engineer-ui || true
   systemctl --no-pager --full status lifeos-engineer.service || true
   journalctl -u lifeos-engineer.service -n 200 --no-pager || true
+  printf '\n===== ENDPOINT DIAGNOSTICS =====\n'
+  curl -sS -i --max-time 10 "$BACKEND_HEALTH" || true
+  curl -sS -i --max-time 10 "$UI_HEALTH" || true
   if [[ -n "$HA_CONTAINER" ]]; then
     printf '\n===== HOME ASSISTANT DIAGNOSTICS =====\n'
     docker ps -a --filter "name=^/${HA_CONTAINER}$" --no-trunc || true
@@ -122,7 +125,12 @@ HA_CONTAINER=$(docker ps --format '{{.Names}}' | awk '/^(homeassistant|home-assi
 if [[ -z "$HA_CONTAINER" ]]; then
   fail home_assistant_container_not_running
 fi
-docker exec "$HA_CONTAINER" python3 - "http://${LAN_IP}:8792/health" <<'PY' || fail home_assistant_cannot_reach_engineer
+printf 'HA_CONTAINER=%s\n' "$HA_CONTAINER"
+# Do not confuse a still-starting Home Assistant with a broken integration.
+# Its compose healthcheck also uses this endpoint, but waiting here provides a
+# deterministic budget and useful failure diagnostics for direct invocations.
+wait_url http://127.0.0.1:8123/ 180 || fail home_assistant_not_ready
+timeout 30 docker exec "$HA_CONTAINER" python3 - "http://${LAN_IP}:8792/health" <<'PY' || fail home_assistant_cannot_reach_engineer
 import json, sys, urllib.request
 with urllib.request.urlopen(sys.argv[1], timeout=10) as response:
     data = json.load(response)
@@ -172,7 +180,14 @@ fi
 timeout 180 docker exec "$HA_CONTAINER" python3 -m homeassistant --script check_config -c /config >/dev/null || fail home_assistant_config_invalid
 grep -q '^lifeos_engineer:$' "$HA_PANEL" || fail home_assistant_engineer_panel_missing
 grep -q "url: http://${LAN_IP}:8792/" "$HA_PANEL" || fail home_assistant_engineer_url_wrong
+# panel_iframe routes are served by the HA frontend. Follow authentication
+# redirects and accept the normal unauthenticated outcomes; a 404 proves that
+# the configured sidebar route was not registered.
+HA_ROUTE_CODE=$(curl -sS -L -o /dev/null -w '%{http_code}' --max-time 15 \
+  http://127.0.0.1:8123/lifeos_engineer) || fail home_assistant_engineer_route_unreachable
+[[ "$HA_ROUTE_CODE" == 200 || "$HA_ROUTE_CODE" == 401 ]] || fail "home_assistant_engineer_route_status_${HA_ROUTE_CODE}"
 printf 'HA_CONFIG_CHECK=PASS\n'
+printf 'HA_PANEL_ROUTE=PASS status=%s\n' "$HA_ROUTE_CODE"
 printf 'HA_NAVIGATION=Home_Assistant_sidebar_>_LifeOS_Engineer\n'
 printf 'HA_BACKUP=%s\n' "$BACKUP_DIR"
 HA_CHANGED=false
