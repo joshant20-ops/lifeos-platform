@@ -12,8 +12,6 @@ STAGING = REPO / 'jobs/staging'
 PENDING = REPO / 'jobs/pending'
 ARCHIVE = REPO / 'jobs/archive'
 RESULTS = REPO / 'results'
-STATE_DIR = REPO / 'state'
-LOCK = STATE_DIR / 'publisher.lock'
 SCRIPT_ROOTS = {
     'diagnostic': REPO / 'jobs/scripts',
     'control-state': REPO / 'jobs/change-scripts',
@@ -50,12 +48,6 @@ def git(*args, check=True, capture=False):
         stdout=subprocess.PIPE if capture else None,
         stderr=subprocess.STDOUT if capture else None,
     )
-
-
-def sync_repo():
-    """Synchronise with origin before inspecting the FIFO."""
-    git('fetch', 'origin', 'main')
-    git('pull', '--ff-only', 'origin', 'main')
 
 
 def validate_manifest(path):
@@ -118,14 +110,7 @@ def validate_manifest(path):
     script_rel = d['script']
     if not isinstance(script_rel, str) or not script_rel.startswith(expected_prefix):
         fail(f'{path.name}: script path outside allowed root')
-
-    try:
-        allowed_root = SCRIPT_ROOTS[scope].resolve(strict=True)
-        script = (REPO / script_rel).resolve(strict=True)
-        script.relative_to(allowed_root)
-    except (FileNotFoundError, RuntimeError, ValueError):
-        fail(f'{path.name}: script path escapes allowed root')
-
+    script = REPO / script_rel
     if not script.is_file():
         fail(f'{path.name}: referenced script missing: {script_rel}')
 
@@ -146,65 +131,52 @@ def validate_manifest(path):
 
 
 def stage_promotion(manifest, dest, script):
+    # Stage the promoted destination and its script first.
     git('add', '--', str(dest.relative_to(REPO)), str(script.relative_to(REPO)))
 
+    # If the staging manifest came from GitHub it is tracked and its deletion
+    # must be staged. If it was created locally for a self-test, it was never
+    # tracked, so there is no deletion to stage. Never pass a missing untracked
+    # path directly to `git add`, which caused the original pathspec failure.
     staging_rel = str(manifest.relative_to(REPO))
     tracked = git('ls-files', '--error-unmatch', '--', staging_rel, check=False, capture=True)
     if tracked.returncode == 0:
         git('add', '-u', '--', staging_rel)
 
 
-def pending_for_target(target):
-    for path in sorted(PENDING.glob('*.json')):
-        try:
-            data = json.loads(path.read_text())
-        except Exception:
-            fail(f'{path.name}: existing pending manifest is invalid JSON')
-        if data.get('target') == target:
-            return path
-    return None
-
-
-def promote_one(manifest, d, script):
-    dest = PENDING / manifest.name
-    shutil.move(str(manifest), str(dest))
-    stage_promotion(manifest, dest, script)
-    git('-c','user.name=LifeOS Job Publisher','-c','user.email=lifeos-job-publisher@localhost',
-        'commit','-m',f'publish: {d["target"]} {d["job_id"]}')
-    git('fetch','origin','main')
-    git('rebase','origin/main')
-    git('push','origin','main')
-    print(f'PUBLISHED: {d["job_id"]} target={d["target"]}')
-
-
 def main():
     STAGING.mkdir(parents=True, exist_ok=True)
     PENDING.mkdir(parents=True, exist_ok=True)
-    ARCHIVE.mkdir(parents=True, exist_ok=True)
-    RESULTS.mkdir(parents=True, exist_ok=True)
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-
-    sync_repo()
-
     manifests = sorted(STAGING.glob('*.json'))
     if not manifests:
         print('No staged manifests')
         return 0
 
-    # Strict FIFO: only the oldest staged manifest is considered per run.
-    # An invalid oldest item blocks later work rather than allowing queue bypass.
-    manifest = manifests[0]
-    d, script = validate_manifest(manifest)
+    promoted = 0
+    rejected = 0
+    for manifest in manifests:
+        try:
+            d, script = validate_manifest(manifest)
+        except SystemExit:
+            rejected += 1
+            continue
 
-    existing = pending_for_target(d['target'])
-    if existing is not None:
-        print(f'HOLD: target={d["target"]} already has pending job {existing.stem}')
-        print('Publisher summary: promoted=0 rejected=0 held=1')
-        return 0
+        # Only the manifest moves. The script is already in its non-executable
+        # repository location, while jobs/staging is never consumed by runners.
+        dest = PENDING / manifest.name
+        shutil.move(str(manifest), str(dest))
 
-    promote_one(manifest, d, script)
-    print('Publisher summary: promoted=1 rejected=0 held=0')
-    return 0
+        stage_promotion(manifest, dest, script)
+        git('-c','user.name=LifeOS Job Publisher','-c','user.email=lifeos-job-publisher@localhost',
+            'commit','-m',f'publish: {d["target"]} {d["job_id"]}')
+        git('fetch','origin','main')
+        git('rebase','origin/main')
+        git('push','origin','main')
+        print(f'PUBLISHED: {d["job_id"]} target={d["target"]}')
+        promoted += 1
+
+    print(f'Publisher summary: promoted={promoted} rejected={rejected}')
+    return 0 if rejected == 0 else 10
 
 
 if __name__ == '__main__':
