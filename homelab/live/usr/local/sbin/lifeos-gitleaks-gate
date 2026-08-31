@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO="/home/joshan/workspace/lifeos-platform"
+REPO="/home/joshan/lifeos-platform"
 
 exec /usr/local/bin/gitleaks dir "$REPO" \
     --redact \

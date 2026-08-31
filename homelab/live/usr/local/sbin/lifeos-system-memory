@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-OUT=/home/joshan/workspace/lifeos-platform/SYSTEM_STATE.md
+OUT=/home/joshan/lifeos-platform/SYSTEM_STATE.md
 TMP=$(mktemp)
 trap 'rm -f "$TMP"' EXIT
 
@@ -73,9 +73,9 @@ echo "- AdGuard, NPM and qBittorrent runtime state"
 echo "- Personal Privacy Guardian profiles/data"
 echo
 echo "## Snapshot Coverage"
-if [ -f /home/joshan/workspace/lifeos-platform/homelab/.managed-files.txt ]; then
+if [ -f /home/joshan/lifeos-platform/homelab/.managed-files.txt ]; then
     printf -- "- Managed files: %s\n" \
-        "$(wc -l </home/joshan/workspace/lifeos-platform/homelab/.managed-files.txt)"
+        "$(wc -l </home/joshan/lifeos-platform/homelab/.managed-files.txt)"
 else
     echo "- Managed files: snapshot not yet generated"
 fi
