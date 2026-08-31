@@ -87,6 +87,18 @@ def test_runtime_waits_for_ha_and_verifies_registered_panel_route():
     assert 'curl -sS -i --max-time 10 "$UI_HEALTH"' in runtime
 
 
+def test_ha_include_only_change_is_validated_and_activated():
+    runtime = RUNTIME.read_text()
+    panel_update = runtime.index('if [[ -f "$HA_PANEL" ]] && cmp -s')
+    activation = runtime.index('if [[ "$HA_CHANGED" == true ]]; then', panel_update)
+    route_check = runtime.index("HA_ROUTE_CODE=$(curl", activation)
+    activation_block = runtime[activation:route_check]
+    assert 'python3 -m homeassistant --script check_config' in activation_block
+    assert 'HA_RESTARTED=true' in activation_block
+    assert 'docker restart "$HA_CONTAINER"' in activation_block
+    assert 'HA_CONFIGURATION=ACTIVATED' in activation_block
+
+
 def test_runtime_discovers_real_lan_address_and_nonstandard_ha_container():
     runtime = RUNTIME.read_text()
     assert "ip -4 route get 192.168.0.201" in runtime
