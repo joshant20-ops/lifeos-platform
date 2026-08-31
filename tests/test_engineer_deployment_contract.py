@@ -11,7 +11,10 @@ JOB_RUNTIME = ROOT / "governor/runtime_jobs/feb1efaecf51.sh"
 
 def test_engineer_backend_exposes_health_readiness_endpoint():
     backend = BACKEND.read_text()
-    assert 'if self.path in ("/health", "/v1/health"):' in backend
+    assert 'path = urllib.parse.urlparse(self.path).path' in backend
+    assert 'if path in ("/health", "/v1/health"):' in backend
+    assert 'if agent.get("status") != "ok":' in backend
+    assert 'raise RuntimeError("agent_not_ready")' in backend
     assert 'self.send_json(200, {"service": "lifeos-engineer", "status": "ok"' in backend
     assert 'self.send_json(503, {"service": "lifeos-engineer", "status": "degraded"' in backend
 
