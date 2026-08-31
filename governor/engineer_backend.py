@@ -4,6 +4,7 @@ import json
 import os
 import re
 import time
+import urllib.parse
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -187,15 +188,18 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        if self.path in ("/health", "/v1/health"):
+        path = urllib.parse.urlparse(self.path).path
+        if path in ("/health", "/v1/health"):
             try:
                 agent = request_json(AGENT_URL + "/health", timeout=5)
+                if agent.get("status") != "ok":
+                    raise RuntimeError("agent_not_ready")
                 request_json(OLLAMA_URL.rsplit("/api/", 1)[0] + "/api/tags", timeout=5)
                 self.send_json(200, {"service": "lifeos-engineer", "status": "ok", "agent": agent.get("status"), "model": OLLAMA_MODEL})
             except Exception as exc:
                 self.send_json(503, {"service": "lifeos-engineer", "status": "degraded", "detail": type(exc).__name__})
             return
-        if self.path == "/v1/models":
+        if path == "/v1/models":
             self.send_json(200, {"object": "list", "data": [{"id": MODEL_ID, "object": "model", "created": 0, "owned_by": "lifeos"}]})
             return
         self.send_json(404, {"error": {"message": "not_found", "type": "not_found"}})
