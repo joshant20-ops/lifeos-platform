@@ -5,8 +5,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEPLOY = ROOT / "governor/scripts/deploy-engineer-ai.sh"
 BACKEND = ROOT / "governor/engineer_backend.py"
-RUNTIME = ROOT / "governor/runtime_jobs/ebf8a71d4bff.sh"
 JOB_RUNTIME = ROOT / "governor/runtime_jobs/feb1efaecf51.sh"
+RUNTIME = JOB_RUNTIME
 
 
 def test_engineer_backend_exposes_health_readiness_endpoint():
@@ -148,17 +148,16 @@ def test_runtime_discovers_real_lan_address_and_nonstandard_ha_container():
     assert "HA_CONTAINER=$(discover_ha_container)" in runtime
 
 
-def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
+def test_current_job_launcher_is_self_contained_timeout_aware_and_preserves_runtime_evidence():
     assert os.access(JOB_RUNTIME, os.X_OK)
     launcher = JOB_RUNTIME.read_text()
     assert launcher.startswith("#!/usr/bin/env bash\n")
-    assert 'readonly OUTER_TIMEOUT_SECONDS=3600' in launcher
-    assert 'readonly ROLLBACK_GRACE_SECONDS=360' in launcher
-    assert 'timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s"' in launcher
-    assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
-    assert "readonly JOB_ID=feb1efaecf51" in launcher
-    assert "RUNTIME_CHECK=PASS" in launcher
-    assert "runtime_timeout" in launcher
+    assert 'JOB_ID=${LIFEOS_RUNTIME_JOB_ID:-feb1efaecf51}' in launcher
+    assert "TIMEOUT_SECONDS=1200" in launcher
+    assert 'timeout "$TIMEOUT_SECONDS" "$DEPLOY"' in launcher
+    assert "rollback_ha || true" in launcher
+    assert "RESULT=PASS job=%s" in launcher
+    assert "ebf8a71d4bff.sh" not in launcher
 
 
 def test_runtime_proves_healthy_container_identity_is_preserved():
@@ -172,25 +171,19 @@ def test_runtime_proves_healthy_container_identity_is_preserved():
     assert "OPEN_WEBUI_REUSE=PASS" in runtime
 
 
-def test_job_timeout_has_safe_headroom_above_nested_runtime_budgets():
-    launcher = JOB_RUNTIME.read_text()
+def test_deployment_timeout_has_safe_headroom_above_nested_deploy_budgets():
     runtime = RUNTIME.read_text()
-    assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
     assert 'timeout "$TIMEOUT_SECONDS" "$DEPLOY"' in runtime
     assert 'timeout 30 docker exec "$HA_CONTAINER"' in runtime
     assert 'timeout 180 docker exec "$HA_CONTAINER"' in runtime
     assert 'timeout 120 docker restart "$HA_CONTAINER"' in runtime
     assert "wait_url http://127.0.0.1:8123/ 180" in runtime
-    outer_timeout = int(
-        launcher.split("readonly OUTER_TIMEOUT_SECONDS=", 1)[1].splitlines()[0]
-    )
     deployment_timeout = int(
         runtime.split("TIMEOUT_SECONDS=", 1)[1].splitlines()[0]
     )
-    # Allow every HA bound plus ten minutes for ordinary Docker/systemd work
-    # and for signal-triggered restoration of the last-known-good HA config.
-    ha_timeout_budget = 180 + 30 + 180 + 120 + 180 + 180 + 15
-    assert outer_timeout >= deployment_timeout + ha_timeout_budget + 600
+    # The deployment itself contains three 300-second UI phases, a 120-second
+    # conversation check, and backend/command overhead.
+    assert deployment_timeout >= 300 + 300 + 300 + 120 + 60
 
 
 def test_deployment_timeout_covers_all_slow_ui_phases():
