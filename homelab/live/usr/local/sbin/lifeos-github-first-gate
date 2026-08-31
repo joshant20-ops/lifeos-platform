@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO="${LIFEOS_REPO:-/home/joshan/workspace/lifeos-platform}"
+REPO="${LIFEOS_REPO:-/home/joshan/lifeos-platform}"
 EXPECTED_BRANCH="${LIFEOS_BRANCH:-main}"
 
 USER_NAME="${LIFEOS_GIT_USER:-joshan}"
