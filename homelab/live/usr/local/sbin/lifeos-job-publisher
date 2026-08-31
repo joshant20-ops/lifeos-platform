@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import fcntl
 import hashlib
 import json
 import pathlib
@@ -13,8 +12,6 @@ STAGING = REPO / 'jobs/staging'
 PENDING = REPO / 'jobs/pending'
 ARCHIVE = REPO / 'jobs/archive'
 RESULTS = REPO / 'results'
-STATE_DIR = pathlib.Path('/home/joshan/.local/state/lifeos-job-publisher')
-LOCK = STATE_DIR / 'publisher.lock'
 SCRIPT_ROOTS = {
     'diagnostic': REPO / 'jobs/scripts',
     'control-state': REPO / 'jobs/change-scripts',
@@ -53,30 +50,11 @@ def git(*args, check=True, capture=False):
     )
 
 
-def sync_repo():
-    git('fetch', 'origin', 'main')
-    local = git('rev-parse', 'HEAD', capture=True).stdout.strip()
-    remote = git('rev-parse', 'origin/main', capture=True).stdout.strip()
-    if local == remote:
-        return
-    ancestor = git(
-        'merge-base', '--is-ancestor', local, remote,
-        check=False, capture=True,
-    )
-    if ancestor.returncode != 0:
-        fail('local control repository is not a fast-forward ancestor of origin/main', 20)
-    git('merge', '--ff-only', 'origin/main')
-
-
-def read_json(path):
+def validate_manifest(path):
     try:
-        return json.loads(path.read_text())
+        d = json.loads(path.read_text())
     except Exception as exc:
         fail(f'{path.name}: invalid JSON: {exc}')
-
-
-def validate_manifest(path):
-    d = read_json(path)
 
     required = {
         'schema_version','job_id','target','job_type','script','script_sha256',
@@ -124,22 +102,17 @@ def validate_manifest(path):
     if 'resume_after' in d and (not isinstance(d['resume_after'], str) or not d['resume_after']):
         fail(f'{path.name}: invalid resume_after')
 
+    expected_prefix = {
+        'diagnostic': 'jobs/scripts/',
+        'control-state': 'jobs/change-scripts/',
+        'root-broker': 'jobs/root-scripts/',
+    }[scope]
     script_rel = d['script']
-    if not isinstance(script_rel, str) or not script_rel:
+    if not isinstance(script_rel, str) or not script_rel.startswith(expected_prefix):
         fail(f'{path.name}: script path outside allowed root')
-
-    allowed_root = SCRIPT_ROOTS[scope].resolve()
-    script_path = REPO / script_rel
-    try:
-        script = script_path.resolve(strict=True)
-    except (OSError, RuntimeError):
+    script = REPO / script_rel
+    if not script.is_file():
         fail(f'{path.name}: referenced script missing: {script_rel}')
-    try:
-        script.relative_to(allowed_root)
-    except ValueError:
-        fail(f'{path.name}: script path outside allowed root')
-    if script != script_path.absolute() or not script.is_file():
-        fail(f'{path.name}: script path must be a regular canonical file')
 
     actual = sha256(script)
     if actual != d['script_sha256']:
@@ -157,20 +130,6 @@ def validate_manifest(path):
     return d, script
 
 
-def pending_targets():
-    targets = set()
-    for path in sorted(PENDING.glob('*.json')):
-        try:
-            data = json.loads(path.read_text())
-        except Exception:
-            fail(f'pending queue contains invalid JSON: {path.name}', 21)
-        target = data.get('target')
-        if not isinstance(target, str) or not target:
-            fail(f'pending queue contains invalid target: {path.name}', 21)
-        targets.add(target)
-    return targets
-
-
 def stage_promotion(manifest, dest, script):
     # Stage the promoted destination and its script first.
     git('add', '--', str(dest.relative_to(REPO)), str(script.relative_to(REPO)))
@@ -185,67 +144,39 @@ def stage_promotion(manifest, dest, script):
         git('add', '-u', '--', staging_rel)
 
 
-def promote_one(manifest, d, script):
-    dest = PENDING / manifest.name
-    shutil.move(str(manifest), str(dest))
+def main():
+    STAGING.mkdir(parents=True, exist_ok=True)
+    PENDING.mkdir(parents=True, exist_ok=True)
+    manifests = sorted(STAGING.glob('*.json'))
+    if not manifests:
+        print('No staged manifests')
+        return 0
 
-    try:
+    promoted = 0
+    rejected = 0
+    for manifest in manifests:
+        try:
+            d, script = validate_manifest(manifest)
+        except SystemExit:
+            rejected += 1
+            continue
+
+        # Only the manifest moves. The script is already in its non-executable
+        # repository location, while jobs/staging is never consumed by runners.
+        dest = PENDING / manifest.name
+        shutil.move(str(manifest), str(dest))
+
         stage_promotion(manifest, dest, script)
         git('-c','user.name=LifeOS Job Publisher','-c','user.email=lifeos-job-publisher@localhost',
             'commit','-m',f'publish: {d["target"]} {d["job_id"]}')
         git('fetch','origin','main')
         git('rebase','origin/main')
         git('push','origin','main')
-    except Exception:
-        print(
-            f'PUBLISH ERROR: promotion failed for {d["job_id"]}; '
-            'leaving repository state intact for operator diagnosis',
-            file=sys.stderr,
-        )
-        raise
+        print(f'PUBLISHED: {d["job_id"]} target={d["target"]}')
+        promoted += 1
 
-    print(f'PUBLISHED: {d["job_id"]} target={d["target"]}')
-
-
-def main():
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    STAGING.mkdir(parents=True, exist_ok=True)
-    PENDING.mkdir(parents=True, exist_ok=True)
-
-    with LOCK.open('w') as lock_handle:
-        try:
-            fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print('Another job publisher instance is active')
-            return 0
-
-        sync_repo()
-
-        manifests = sorted(STAGING.glob('*.json'))
-        if not manifests:
-            print('No staged manifests')
-            return 0
-
-        blocked_targets = pending_targets()
-        oldest = manifests[0]
-
-        # FIFO invariant: the oldest staged manifest is authoritative. If it is
-        # malformed, no later manifest is allowed to overtake it.
-        d, script = validate_manifest(oldest)
-
-        # Single-flight invariant per target: do not publish another job for a
-        # target while one is already pending for that target. This prevents
-        # queue reordering and bounds recovery to one in-flight job at a time.
-        if d['target'] in blocked_targets:
-            print(
-                f'FIFO HOLD: oldest={d["job_id"]} target={d["target"]} '
-                'already has a pending job; no later staging jobs considered'
-            )
-            return 0
-
-        promote_one(oldest, d, script)
-        print('Publisher summary: promoted=1 rejected=0 fifo_blocked=0')
-        return 0
+    print(f'Publisher summary: promoted={promoted} rejected={rejected}')
+    return 0 if rejected == 0 else 10
 
 
 if __name__ == '__main__':
