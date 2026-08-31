@@ -75,7 +75,6 @@ curl -fsS --max-time 3 http://127.0.0.1:8790/health >/dev/null
 printf 'AGENT_HEALTH=PASS\n'
 
 printf '\n===== 5/7 — PRIVACY FAIL-CLOSED TEST =====\n'
-# This intentionally asks for a private-document job. The agent must refuse to use Codex.
 PRIVATE_OUT=$(curl -fsS --max-time 30 -H 'Content-Type: application/json' \
   -d '{"request":"Read my private Paperless documents and summarize them"}' \
   http://127.0.0.1:8790/jobs)
@@ -90,10 +89,11 @@ assert 'cloud_builder_forbidden' in (j.get('blocked_reason') or '') or any('clou
 print('PRIVACY_BOUNDARY=PASS')
 PY
 
-printf '\n===== 6/7 — NATURAL LANGUAGE SMOKE TEST =====\n'
-# Use a harmless request that can be verified locally and does not require a system change.
+printf '\n===== 6/7 — NATURAL LANGUAGE END-TO-END SMOKE TEST =====\n'
+# The runtime API was already proven above. This request proves the actual
+# natural-language Builder -> local Verifier loop independently.
 SMOKE=$(curl -fsS --max-time 600 -H 'Content-Type: application/json' \
-  -d '{"request":"Inspect the LifeOS governor implementation and verify it has a healthy local API. Do not make system changes unless needed to complete that verification."}' \
+  -d '{"request":"Inspect the LifeOS governor and autonomous-agent source in this repository. Run safe read-only syntax and policy checks, then provide concrete evidence that the implementation is internally valid. Do not modify files."}' \
   http://127.0.0.1:8790/jobs)
 python3 - "$SMOKE" <<'PY'
 import json,sys
@@ -101,8 +101,14 @@ j=json.loads(sys.argv[1])
 print('JOB_ID='+j['id'])
 print('STATUS='+j['status'])
 print('ITERATIONS='+str(len(j.get('iterations',[]))))
-if j['status'] not in ('PASS','BLOCKED'):
-    raise SystemExit('unexpected terminal state')
+if j['status'] != 'PASS':
+    print('BLOCKED_REASON='+str(j.get('blocked_reason')))
+    for x in j.get('iterations',[]):
+        print('BUILDER_RC='+str(x.get('builder_rc')))
+        print('EVIDENCE='+str(x.get('evidence',''))[-4000:])
+        print('VERIFICATION='+json.dumps(x.get('verification',{}),sort_keys=True))
+    raise SystemExit('AUTONOMOUS_SMOKE_DID_NOT_PASS')
+print('AUTONOMOUS_LOOP=PASS')
 PY
 
 printf '\n===== 7/7 — RESULT =====\n'
