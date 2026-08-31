@@ -65,6 +65,19 @@ def test_existing_ui_is_rechecked_at_destructive_boundary_after_image_pull():
     assert script.count('if [[ "$RECREATE_UI" == true ]]') >= 2
 
 
+def test_existing_ui_is_rechecked_inside_removal_block():
+    script = DEPLOY.read_text()
+    boundary = script.index(
+        "OPEN_WEBUI_REUSED=healthy_existing_container source=destructive_boundary"
+    )
+    removal = script.index('docker rm -f "$UI_NAME"', boundary)
+    guarded = script[script.rfind('if docker ps --format', 0, boundary):removal]
+    assert '[[ "$(ui_container_health)" == healthy ]]' in guarded
+    assert 'curl -fsS --max-time 5 "$UI_HEALTH_URL"' in guarded
+    assert "RECREATE_UI=false" in guarded
+    assert script.index('if [[ "$RECREATE_UI" == true ]]; then', removal) > removal
+
+
 def test_failure_diagnostics_and_safe_ha_rollback_are_present():
     deploy = DEPLOY.read_text()
     runtime = RUNTIME.read_text()

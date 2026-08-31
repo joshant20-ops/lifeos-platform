@@ -186,32 +186,45 @@ fi
 
 if [[ "$RECREATE_UI" == true ]]; then
   if docker ps -a --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-    printf 'OPEN_WEBUI_RECREATE=existing_container_failed_or_stopped\n'
-    # A stopped container has not been diagnosed above.
-    if ! docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-      ui_diagnostics
+    # Recheck inside the destructive block, immediately before removal. The
+    # container can cross from starting to ready after the image pull (or even
+    # after the earlier pre-removal check); never delete it on a stale result.
+    if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME" && {
+      [[ "$(ui_container_health)" == healthy ]] || \
+        curl -fsS --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1
+    }; then
+      printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=destructive_boundary\n'
+      RECREATE_UI=false
+    else
+      printf 'OPEN_WEBUI_RECREATE=existing_container_failed_or_stopped\n'
+      # A stopped container has not been diagnosed above.
+      if ! docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
+        ui_diagnostics
+      fi
+      docker rm -f "$UI_NAME" >/dev/null
     fi
-    docker rm -f "$UI_NAME" >/dev/null
   fi
 
-  docker run -d \
-  --name "$UI_NAME" \
-  --restart unless-stopped \
-  --health-cmd='python3 -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8080/health\", timeout=5).read()"' \
-  --health-interval=15s \
-  --health-timeout=10s \
-  --health-start-period=300s \
-  --health-retries=3 \
-  -p ${OWUI_PORT}:8080 \
-  --add-host=host.docker.internal:host-gateway \
-  -v lifeos-engineer-openwebui:/app/backend/data \
-  -e WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY" \
-  -e ENABLE_OLLAMA_API=false \
-  -e ENABLE_OPENAI_API=true \
-  -e OPENAI_API_BASE_URL="http://host.docker.internal:${BACKEND_PORT}/v1" \
-  -e OPENAI_API_KEY="lifeos-local" \
-  -e WEBUI_NAME="LifeOS Engineer" \
-  "$OWUI_IMAGE" >/dev/null
+  if [[ "$RECREATE_UI" == true ]]; then
+    docker run -d \
+      --name "$UI_NAME" \
+      --restart unless-stopped \
+      --health-cmd='python3 -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8080/health\", timeout=5).read()"' \
+      --health-interval=15s \
+      --health-timeout=10s \
+      --health-start-period=300s \
+      --health-retries=3 \
+      -p ${OWUI_PORT}:8080 \
+      --add-host=host.docker.internal:host-gateway \
+      -v lifeos-engineer-openwebui:/app/backend/data \
+      -e WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY" \
+      -e ENABLE_OLLAMA_API=false \
+      -e ENABLE_OPENAI_API=true \
+      -e OPENAI_API_BASE_URL="http://host.docker.internal:${BACKEND_PORT}/v1" \
+      -e OPENAI_API_KEY="lifeos-local" \
+      -e WEBUI_NAME="LifeOS Engineer" \
+      "$OWUI_IMAGE" >/dev/null
+  fi
 fi
 
 if ! wait_for_health OPEN_WEBUI "$UI_HEALTH_URL" 300; then
