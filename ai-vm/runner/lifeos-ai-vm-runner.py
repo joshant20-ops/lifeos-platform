@@ -8,7 +8,6 @@ import pathlib
 import shutil
 import socket
 import subprocess
-import sys
 from datetime import datetime, timezone
 
 REPO = pathlib.Path(os.environ.get("LIFEOS_CONTROL_REPO", "/home/joshan/lifeos-pi-control"))
@@ -48,6 +47,9 @@ with LOCK.open("w") as lock:
                 h.update(chunk)
         return h.hexdigest()
 
+    def completed(job_id):
+        return (REPO/"results"/f"{job_id}.json").is_file()
+
     def select_job():
         pending = REPO/"jobs/pending"
         for path in sorted(pending.glob("*.json")):
@@ -58,6 +60,10 @@ with LOCK.open("w") as lock:
             if data.get("target") not in accepted:
                 continue
             if data.get("job_type") != "diagnostic":
+                continue
+            job_id = data.get("job_id")
+            if isinstance(job_id, str) and completed(job_id):
+                print(f"Skipping stale completed manifest: {job_id}")
                 continue
             return path, data
         return None, None
@@ -76,8 +82,11 @@ with LOCK.open("w") as lock:
         (REPO/"results"/f"{job_id}.json").write_text(json.dumps(result, indent=2)+"\n")
         shutil.copy2(log_path, REPO/"results"/f"{job_id}.log")
         archive = REPO/"jobs/archive"/job_path.name
-        job_path.replace(archive)
-        run(["git", "add", "jobs/archive", "results"], check=True)
+        if archive.exists():
+            job_path.unlink()
+        else:
+            job_path.replace(archive)
+        run(["git", "add", "jobs/archive", "jobs/pending", "results"], check=True)
         run(["git", "commit", "-m", f"result: {target} {job_id} {'PASS' if rc == 0 else 'FAIL'}"], check=True)
         run(["git", "push", "origin", "main"], check=True)
 
