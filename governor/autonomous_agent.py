@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import base64
 import json
 import os
 import pathlib
@@ -18,6 +19,8 @@ VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
 RUNTIME_PREFIX = "governor/runtime_jobs/"
+MAX_PATCH_BYTES = 1048576
+MAX_RUNTIME_BYTES = 65536
 
 PRIVATE_TERMS = {
     "paperless", "document", "documents", "private data", "personal data",
@@ -50,23 +53,23 @@ def classify_privacy(text):
 
 def local_verify(job, iteration, evidence):
     prompt = f"""You are the independent LOCAL verifier for LifeOS.
-Decide whether the user's original goal is actually complete from supplied BUILD AND RUNTIME evidence.
+Decide whether the user's original goal is actually complete from supplied BUILD, PUBLICATION, AND RUNTIME evidence.
 Return JSON only with keys: verdict, reason, next_instruction.
 verdict must be PASS, RETRY, or BLOCKED.
 
 Rules:
 - PASS only when evidence demonstrates the requested outcome works.
-- RETRY when there is any actionable engineering, deployment, configuration, testing, or repair step that the autonomous system can attempt itself.
-- BLOCKED is reserved for a genuinely external blocker the autonomous system cannot resolve itself, such as missing user-only credentials, unavailable required hardware, a required physical action, or a safety policy prohibition.
-- Unrelated pre-existing repository test failures are NOT a blocker for a scoped job; mention them if relevant but judge the user's requested outcome from scoped evidence.
-- A builder saying RESULT=BLOCKED does not force you to choose BLOCKED. If its reason is internally actionable, choose RETRY and specify the next action.
-- Do not ask the user to run diagnostic commands that the Pi5/Engineer/TowerPC automation can run itself.
-- Do not assume success merely because a script exited zero.
+- RETRY when there is any actionable engineering, deployment, configuration, testing, or repair step the autonomous system can attempt itself.
+- BLOCKED is reserved for a genuinely external blocker the autonomous system cannot resolve itself, such as missing user-only credentials, unavailable required hardware, a required physical action, or a safety/privacy policy prohibition.
+- Unrelated pre-existing repository failures are not a blocker for a scoped job.
+- A builder saying BLOCKED does not force BLOCKED if the issue is internally actionable.
+- Do not ask the user to run diagnostics the automation can run itself.
+- Do not assume success merely because a process exited zero.
 
 User goal: {job['request']}
 Privacy class: {job['privacy']}
 Iteration: {iteration}
-Evidence:\n{evidence[-16000:]}
+Evidence:\n{evidence[-18000:]}
 """
     payload = json.dumps({
         "model": VERIFIER_MODEL,
@@ -82,7 +85,23 @@ Evidence:\n{evidence[-16000:]}
     try:
         return json.loads(raw)
     except Exception:
-        return {"verdict": "RETRY", "reason": "verifier returned invalid JSON", "next_instruction": "Re-run focused verification and return valid JSON evidence."}
+        return {"verdict": "RETRY", "reason": "verifier returned invalid JSON", "next_instruction": "Repeat focused local verification and return valid JSON."}
+
+
+def _marker(text, name):
+    m = re.findall(rf"(?m)^{re.escape(name)}=(.*)$", text)
+    return m[-1].strip() if m else None
+
+
+def parse_handoff(raw):
+    handoff = {
+        "base": _marker(raw, "HANDOFF_BASE"),
+        "patch_b64": _marker(raw, "HANDOFF_PATCH_B64"),
+        "runtime_b64": _marker(raw, "HANDOFF_RUNTIME_B64"),
+        "run_script": _marker(raw, "RUN_SCRIPT"),
+    }
+    sanitized = re.sub(r"(?m)^HANDOFF_(?:PATCH|RUNTIME)_B64=.*$", "HANDOFF_PAYLOAD=[redacted from verifier evidence]", raw)
+    return handoff, sanitized
 
 
 def run_builder(job, iteration, verifier_feedback=None):
@@ -93,49 +112,88 @@ def run_builder(job, iteration, verifier_feedback=None):
     if verifier_feedback:
         args.append(verifier_feedback)
     cp = subprocess.run(args, text=True, capture_output=True, timeout=1800, env=env)
-    evidence = (cp.stdout or "") + "\n" + (cp.stderr or "")
-    return cp.returncode, evidence
+    raw = (cp.stdout or "") + "\n" + (cp.stderr or "")
+    handoff, evidence = parse_handoff(raw)
+    return cp.returncode, evidence, handoff
 
 
-def runtime_path_from_evidence(job, evidence):
-    matches = re.findall(r"(?m)^RUN_SCRIPT=([^\s]+)\s*$", evidence)
-    if not matches:
-        return None
-    rel = matches[-1].strip()
+def git(*args, check=True, timeout=120):
+    return subprocess.run(["git", *args], cwd=PLATFORM_REPO, text=True, capture_output=True, check=check, timeout=timeout)
+
+
+def apply_and_publish_patch(job, iteration, handoff):
+    payload = handoff.get("patch_b64")
+    if not payload:
+        return "PI5_PATCH=none\n"
+    if job["privacy"] == "local-only":
+        return "PI5_PATCH=blocked_for_cloud_authored_private_job\n"
+
+    try:
+        patch = base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        return f"PI5_PATCH=invalid_base64 error={type(exc).__name__}\n"
+    if len(patch) > MAX_PATCH_BYTES:
+        return f"PI5_PATCH=rejected size={len(patch)} limit={MAX_PATCH_BYTES}\n"
+
+    status = git("status", "--porcelain").stdout.strip()
+    if status:
+        return "PI5_PATCH=retry canonical_checkout_dirty\n" + status[-4000:] + "\n"
+
+    try:
+        git("fetch", "origin", "main")
+        git("reset", "--hard", "origin/main")
+        patch_file = ROOT / f"{job['id']}-{iteration}.patch"
+        patch_file.write_bytes(patch)
+        subprocess.run(["git", "apply", "--check", str(patch_file)], cwd=PLATFORM_REPO, check=True, text=True, capture_output=True, timeout=30)
+        subprocess.run(["git", "apply", str(patch_file)], cwd=PLATFORM_REPO, check=True, text=True, capture_output=True, timeout=30)
+        patch_file.unlink(missing_ok=True)
+        git("add", "-A")
+        git("diff", "--cached", "--check")
+        staged = git("diff", "--cached", "--name-only").stdout.splitlines()
+        if not staged:
+            return "PI5_PATCH=no_effect\n"
+        commit = git("commit", "-m", f"agent: job {job['id']} iteration {iteration}", timeout=60).stdout
+        sha = git("rev-parse", "HEAD").stdout.strip()
+        push = git("push", "origin", "HEAD:main", timeout=180)
+        return "PI5_PATCH=APPLIED\nPI5_COMMIT=" + sha + "\nPI5_FILES=" + ",".join(staged[:50]) + "\nPI5_PUSH=PASS\n" + commit[-2000:] + push.stdout[-1000:] + push.stderr[-1000:] + "\n"
+    except subprocess.CalledProcessError as exc:
+        try:
+            git("reset", "--hard", "origin/main", check=False)
+        except Exception:
+            pass
+        detail = ((exc.stdout or "") + "\n" + (exc.stderr or ""))[-5000:]
+        return f"PI5_PATCH=RETRY error=command_failed rc={exc.returncode}\n{detail}\n"
+    except Exception as exc:
+        return f"PI5_PATCH=RETRY error={type(exc).__name__}:{exc}\n"
+
+
+def run_pi5_runtime(job, handoff):
+    rel = handoff.get("run_script")
+    payload = handoff.get("runtime_b64")
+    if not rel and not payload:
+        return "RUNTIME_ACTION=none_declared\n"
     expected = f"{RUNTIME_PREFIX}{job['id']}.sh"
     if rel != expected:
-        raise RuntimeError(f"runtime path rejected: expected {expected}, got {rel}")
-    return rel
-
-
-def run_pi5_runtime(job, evidence):
-    rel = runtime_path_from_evidence(job, evidence)
-    if rel is None:
-        return "RUNTIME_ACTION=none_declared\n"
+        return f"RUNTIME_ACTION=rejected_path expected={expected} got={rel}\n"
     if job["privacy"] == "local-only":
         return "RUNTIME_ACTION=blocked_for_cloud_authored_private_job\n"
-
-    subprocess.run(["git", "fetch", "origin", "main"], cwd=PLATFORM_REPO, check=True, text=True, capture_output=True, timeout=120)
-    show = subprocess.run(
-        ["git", "show", f"origin/main:{rel}"],
-        cwd=PLATFORM_REPO,
-        check=True,
-        text=True,
-        capture_output=True,
-        timeout=30,
-    )
-    script = show.stdout
-    if not script.startswith("#!/usr/bin/env bash") and not script.startswith("#!/bin/bash"):
-        raise RuntimeError("runtime script rejected: bash shebang required")
-    if len(script.encode()) > 65536:
-        raise RuntimeError("runtime script rejected: exceeds 64KiB")
+    if not payload:
+        return "RUNTIME_ACTION=missing_payload\n"
+    try:
+        script = base64.b64decode(payload, validate=True)
+    except Exception as exc:
+        return f"RUNTIME_ACTION=invalid_base64 error={type(exc).__name__}\n"
+    if len(script) > MAX_RUNTIME_BYTES:
+        return f"RUNTIME_ACTION=rejected_size size={len(script)}\n"
+    text = script.decode("utf-8", errors="strict")
+    if not (text.startswith("#!/usr/bin/env bash") or text.startswith("#!/bin/bash")):
+        return "RUNTIME_ACTION=rejected_shebang\n"
 
     runtime_dir = ROOT / "runtime"
     runtime_dir.mkdir(mode=0o750, exist_ok=True)
     target = runtime_dir / f"{job['id']}.sh"
-    target.write_text(script)
+    target.write_text(text)
     target.chmod(0o700)
-
     cp = subprocess.run(
         ["/usr/bin/timeout", "900s", "/bin/bash", str(target)],
         cwd=PLATFORM_REPO,
@@ -145,7 +203,7 @@ def run_pi5_runtime(job, evidence):
         env={**os.environ, "LIFEOS_JOB_ID": job["id"], "LIFEOS_JOB_REQUEST": job["request"]},
     )
     out = (cp.stdout or "") + "\n" + (cp.stderr or "")
-    return f"RUNTIME_SCRIPT={rel}\nRUNTIME_RC={cp.returncode}\nRUNTIME_EVIDENCE:\n{out[-16000:]}\n"
+    return f"RUNTIME_SCRIPT={rel}\nRUNTIME_RC={cp.returncode}\nPI5_RUNTIME_EVIDENCE:\n{out[-16000:]}\n"
 
 
 def execute_job(job):
@@ -155,20 +213,18 @@ def execute_job(job):
     for iteration in range(1, MAX_ITERATIONS + 1):
         rec = {"iteration": iteration, "started_at": now()}
         try:
-            rc, build_evidence = run_builder(job, iteration, feedback)
+            rc, build_evidence, handoff = run_builder(job, iteration, feedback)
             rec["builder_rc"] = rc
         except Exception as exc:
             rc = 255
             build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
+            handoff = {}
             rec["builder_rc"] = rc
 
-        try:
-            runtime_evidence = run_pi5_runtime(job, build_evidence)
-        except Exception as exc:
-            runtime_evidence = f"RUNTIME_EXCEPTION={type(exc).__name__}: {exc}\n"
-
-        evidence = f"BUILD_EVIDENCE:\n{build_evidence[-16000:]}\n\n{runtime_evidence}"
-        rec["evidence"] = evidence[-24000:]
+        publication = apply_and_publish_patch(job, iteration, handoff)
+        runtime = run_pi5_runtime(job, handoff)
+        evidence = f"BUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\nPUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
+        rec["evidence"] = evidence[-26000:]
 
         try:
             verdict = local_verify(job, iteration, rec["evidence"])
@@ -188,7 +244,7 @@ def execute_job(job):
             job["blocked_reason"] = verdict.get("reason")
             save(job)
             return
-        feedback = str(verdict.get("next_instruction") or verdict.get("reason") or "Verification failed; inspect evidence and continue toward the original goal.")
+        feedback = str(verdict.get("next_instruction") or verdict.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
         save(job)
     job["status"] = "BLOCKED"
     job["blocked_reason"] = "maximum iterations reached"
@@ -220,7 +276,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/health":
-            self.send_json(200, {"service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS, "runtime_controller": "pi5"})
+            self.send_json(200, {"service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS, "runtime_controller": "pi5", "git_controller": "pi5"})
             return
         if self.path.startswith("/jobs/"):
             job_id = self.path.split("/", 2)[2]
