@@ -3,12 +3,13 @@ set -euo pipefail
 
 # Attribute the maintained Engineer deployment and transactional Home Assistant
 # verification to this autonomous job. The implementation owns all mutation,
-# rollback, and failure diagnostics; this launcher only supplies a safe outer
-# deadline with enough grace for rollback after TERM.
+# bounded phase deadlines, rollback, and failure diagnostics. The outer guard
+# remains deliberately larger than all cumulative slow-start and HA budgets so
+# it bounds the job without racing a successful final readiness probe.
 readonly JOB_ID=feb1efaecf51
 readonly REPO=/home/joshan/lifeos-platform
 readonly RUNTIME="$REPO/governor/runtime_jobs/ebf8a71d4bff.sh"
-readonly OUTER_TIMEOUT_SECONDS=2700
+readonly OUTER_TIMEOUT_SECONDS=3600
 readonly ROLLBACK_GRACE_SECONDS=360
 
 if [[ "$(hostname)" != Docker ]]; then

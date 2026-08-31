@@ -149,7 +149,7 @@ def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
     assert os.access(JOB_RUNTIME, os.X_OK)
     launcher = JOB_RUNTIME.read_text()
     assert launcher.startswith("#!/usr/bin/env bash\n")
-    assert 'readonly OUTER_TIMEOUT_SECONDS=2700' in launcher
+    assert 'readonly OUTER_TIMEOUT_SECONDS=3600' in launcher
     assert 'readonly ROLLBACK_GRACE_SECONDS=360' in launcher
     assert 'timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s"' in launcher
     assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
@@ -158,19 +158,25 @@ def test_current_job_launcher_is_timeout_aware_and_preserves_runtime_evidence():
     assert "runtime_timeout" in launcher
 
 
-def test_job_timeout_has_headroom_above_nested_runtime_budgets():
+def test_job_timeout_has_safe_headroom_above_nested_runtime_budgets():
     launcher = JOB_RUNTIME.read_text()
     runtime = RUNTIME.read_text()
+    assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in launcher
+    assert 'timeout "$TIMEOUT_SECONDS" "$DEPLOY"' in runtime
+    assert 'timeout 30 docker exec "$HA_CONTAINER"' in runtime
+    assert 'timeout 180 docker exec "$HA_CONTAINER"' in runtime
+    assert 'timeout 120 docker restart "$HA_CONTAINER"' in runtime
+    assert "wait_url http://127.0.0.1:8123/ 180" in runtime
     outer_timeout = int(
         launcher.split("readonly OUTER_TIMEOUT_SECONDS=", 1)[1].splitlines()[0]
     )
     deployment_timeout = int(
         runtime.split("TIMEOUT_SECONDS=", 1)[1].splitlines()[0]
     )
-    # HA can use 180s initial readiness + 30s reachability + two 180s config
-    # checks + 120s restart + 180s post-restart readiness + 15s route probe.
+    # Allow every HA bound plus ten minutes for ordinary Docker/systemd work
+    # and for signal-triggered restoration of the last-known-good HA config.
     ha_timeout_budget = 180 + 30 + 180 + 120 + 180 + 180 + 15
-    assert outer_timeout >= deployment_timeout + ha_timeout_budget + 300
+    assert outer_timeout >= deployment_timeout + ha_timeout_budget + 600
 
 
 def test_deployment_timeout_covers_all_slow_ui_phases():
