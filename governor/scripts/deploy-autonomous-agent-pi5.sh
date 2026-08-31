@@ -5,6 +5,7 @@ START=$(date +%s)
 REPO=/home/joshan/lifeos-platform
 AGENT="$REPO/governor/autonomous_agent.py"
 BUILDER_SRC="$REPO/governor/scripts/lifeos-cloud-builder"
+UI="$REPO/governor/agent_ui.html"
 
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED"; echo "REASON=must_run_on_pi5_Docker"; exit 20; }
 
@@ -21,6 +22,8 @@ printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 printf '\n===== 2/7 — PREFLIGHT =====\n'
 python3 -m py_compile "$AGENT"
 bash -n "$BUILDER_SRC"
+test -s "$UI"
+grep -q 'LifeOS Autonomous Agent' "$UI"
 ssh -o BatchMode=yes -o ConnectTimeout=5 Engineer '
 CODEX="$HOME/.local/bin/codex"
 test -x "$CODEX"
@@ -69,7 +72,7 @@ sudo systemctl daemon-reload
 sudo systemctl restart lifeos-autonomous-agent.service
 sudo systemctl enable lifeos-autonomous-agent.service >/dev/null
 
-printf '\n===== 4/7 — HEALTH =====\n'
+printf '\n===== 4/7 — HEALTH + UI =====\n'
 for _ in $(seq 1 20); do
   if curl -fsS --max-time 3 http://127.0.0.1:8790/health; then echo; break; fi
   sleep 1
@@ -81,9 +84,19 @@ j=json.loads(sys.argv[1])
 assert j['status']=='ok'
 assert j['runtime_controller']=='pi5'
 assert j['git_controller']=='pi5'
+assert j['ui']=='/'
 print('AGENT_HEALTH=PASS')
 print('RUNTIME_CONTROLLER='+j['runtime_controller'])
 print('GIT_CONTROLLER='+j['git_controller'])
+PY
+curl -fsS --max-time 3 http://127.0.0.1:8790/ | grep -q 'LifeOS Autonomous Agent'
+JOBS=$(curl -fsS --max-time 3 http://127.0.0.1:8790/jobs)
+python3 - "$JOBS" <<'PY'
+import json,sys
+j=json.loads(sys.argv[1])
+assert isinstance(j.get('jobs'), list)
+print('AGENT_UI=PASS')
+print('JOB_LIST_API=PASS')
 PY
 
 printf '\n===== 5/7 — PRIVACY FAIL-CLOSED TEST =====\n'
@@ -142,7 +155,7 @@ PY
 
 printf '\n===== 7/7 — RESULT =====\n'
 printf 'RESULT=PASS\n'
-printf 'INPUT=natural_language\n'
+printf 'INPUT=natural_language_web_or_api\n'
 printf 'CONTROLLER=Pi5\n'
 printf 'GIT_PUBLISHER=Pi5\n'
 printf 'RUNTIME_EXECUTOR=Pi5\n'
@@ -151,4 +164,10 @@ printf 'VERIFIER=TowerPC_Qwen_local\n'
 printf 'ITERATES_TO=PASS_or_external_BLOCKED_or_8_iterations\n'
 printf 'PRIVATE_DOCUMENTS_TO_CLOUD=blocked\n'
 printf 'API=http://127.0.0.1:8790/jobs\n'
+LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+if [[ -n "${LAN_IP:-}" ]]; then
+  printf 'UI=http://%s:8790/\n' "$LAN_IP"
+else
+  printf 'UI=http://Docker:8790/\n'
+fi
 printf 'Elapsed=%ss\n' "$(( $(date +%s)-START ))"
