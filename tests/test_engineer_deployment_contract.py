@@ -249,3 +249,11 @@ def test_deployment_timeout_covers_all_slow_ui_phases():
     assert 'wait_for_health OPEN_WEBUI "$UI_HEALTH_URL" 300' in deploy
     assert 'curl -fsS --max-time 120' in deploy
     assert deployment_timeout >= minimum_budget
+
+
+def test_runtime_job_honors_a_pinned_engineer_lan_address():
+    runtime = RUNTIME.read_text()
+
+    assert 'if [[ -n "${LIFEOS_ENGINEER_LAN_IP:-}" ]]' in runtime
+    assert 'LAN_IP=$LIFEOS_ENGINEER_LAN_IP' in runtime
+    assert 'PI5_LAN_IP_SOURCE=pinned' in runtime
