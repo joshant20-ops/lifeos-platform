@@ -1,0 +1,73 @@
+# LifeOS AI Agent Home Assistant package contract.
+# Adapt the existing AI/Engineer dashboard to these entities rather than creating a duplicate page.
+# Endpoint is intentionally LAN-only AI VM service.
+
+input_text:
+  lifeos_ai_goal:
+    name: LifeOS AI Goal
+    max: 255
+
+input_button:
+  lifeos_ai_submit_goal:
+    name: Submit AI Goal
+  lifeos_ai_pause:
+    name: Pause AI
+  lifeos_ai_resume:
+    name: Resume AI
+  lifeos_ai_stop:
+    name: Stop AI
+
+rest_command:
+  lifeos_ai_submit:
+    url: "http://192.168.0.204:38125/goal"
+    method: POST
+    content_type: "application/json"
+    payload: '{"goal": {{ states("input_text.lifeos_ai_goal") | tojson }} }'
+  lifeos_ai_pause:
+    url: "http://192.168.0.204:38125/pause"
+    method: POST
+  lifeos_ai_resume:
+    url: "http://192.168.0.204:38125/resume"
+    method: POST
+  lifeos_ai_stop:
+    url: "http://192.168.0.204:38125/stop"
+    method: POST
+
+rest:
+  - resource: "http://192.168.0.204:38125/status"
+    scan_interval: 5
+    sensor:
+      - name: LifeOS AI Agent Status
+        value_template: "{{ value_json.status }}"
+        json_attributes:
+          - goal
+          - goal_id
+          - iteration
+          - provider
+          - last_message
+
+automation:
+  - alias: LifeOS AI Submit Goal
+    triggers:
+      - trigger: state
+        entity_id: input_button.lifeos_ai_submit_goal
+    actions:
+      - action: rest_command.lifeos_ai_submit
+  - alias: LifeOS AI Pause
+    triggers:
+      - trigger: state
+        entity_id: input_button.lifeos_ai_pause
+    actions:
+      - action: rest_command.lifeos_ai_pause
+  - alias: LifeOS AI Resume
+    triggers:
+      - trigger: state
+        entity_id: input_button.lifeos_ai_resume
+    actions:
+      - action: rest_command.lifeos_ai_resume
+  - alias: LifeOS AI Stop
+    triggers:
+      - trigger: state
+        entity_id: input_button.lifeos_ai_stop
+    actions:
+      - action: rest_command.lifeos_ai_stop
