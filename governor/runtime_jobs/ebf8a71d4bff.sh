@@ -12,10 +12,14 @@ HA_CONFIG="$HA_CONFIG_DIR/configuration.yaml"
 HA_PANEL="$HA_CONFIG_DIR/lifeos_assistant_panel.yaml"
 BACKUP_DIR=
 HA_CHANGED=false
+HA_RESTARTED=false
 HA_CONTAINER=
+ROLLING_BACK=false
 
 rollback_ha() {
   [[ "$HA_CHANGED" == true && -n "$BACKUP_DIR" ]] || return 0
+  [[ "$ROLLING_BACK" == false ]] || return 1
+  ROLLING_BACK=true
   printf 'HA_ROLLBACK=START backup=%s\n' "$BACKUP_DIR"
   cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"
   if [[ -f "$BACKUP_DIR/lifeos_assistant_panel.yaml" ]]; then
@@ -23,8 +27,18 @@ rollback_ha() {
   else
     rm -f "$HA_PANEL"
   fi
+  # If HA already loaded the candidate configuration, restoring files alone is
+  # insufficient: restart it once more so the last-known-good config is active.
+  if [[ "$HA_RESTARTED" == true && -n "$HA_CONTAINER" ]]; then
+    printf 'HA_ROLLBACK_RESTART=START\n'
+    timeout 120 docker restart "$HA_CONTAINER" >/dev/null
+    wait_url http://127.0.0.1:8123/ 180
+    printf 'HA_ROLLBACK_RESTART=PASS\n'
+  fi
   printf 'HA_ROLLBACK=PASS\n'
   HA_CHANGED=false
+  HA_RESTARTED=false
+  ROLLING_BACK=false
 }
 
 fail() {
@@ -124,6 +138,9 @@ else
   rm -f "$PANEL_TMP"
   HA_CHANGED=true
   timeout 180 docker exec "$HA_CONTAINER" python3 -m homeassistant --script check_config -c /config >/dev/null || fail home_assistant_config_invalid
+  # Mark the restart attempt before invoking Docker. Even an interrupted or
+  # timed-out restart may have loaded the candidate files and needs recovery.
+  HA_RESTARTED=true
   timeout 120 docker restart "$HA_CONTAINER" >/dev/null || fail home_assistant_restart_failed
   wait_url http://127.0.0.1:8123/ 180 || fail home_assistant_startup_timeout
   printf 'HA_PANEL=UPDATED old_engineering_prototype_replaced\n'
@@ -135,6 +152,7 @@ printf 'HA_CONFIG_CHECK=PASS\n'
 printf 'HA_NAVIGATION=Home_Assistant_sidebar_>_LifeOS_Engineer\n'
 printf 'HA_BACKUP=%s\n' "$BACKUP_DIR"
 HA_CHANGED=false
+HA_RESTARTED=false
 
 printf 'RESULT=PASS job=%s\n' "$JOB_ID"
 printf 'CHECKS=backend_/health,openwebui_/health,home_assistant_reachability\n'

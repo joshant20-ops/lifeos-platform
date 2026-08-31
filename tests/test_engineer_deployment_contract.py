@@ -32,10 +32,21 @@ def test_failure_diagnostics_and_safe_ha_rollback_are_present():
     assert "journalctl -u lifeos-engineer.service -n 200" in deploy
     assert "rollback_ha || true" in runtime
     assert "HA_ROLLBACK=PASS" in runtime
+    assert "HA_ROLLBACK_RESTART=PASS" in runtime
+    assert "HA_RESTARTED=true" in runtime
     assert "home_assistant_cannot_reach_engineer" in runtime
     assert 'docker logs --tail 200 --timestamps "$HA_CONTAINER"' in runtime
     assert "python3 -m homeassistant --script check_config -c /config || true" in runtime
     assert "(( delay < 16 )) &&" not in runtime
+
+
+def test_ha_rollback_reactivates_restored_config_after_restart():
+    runtime = RUNTIME.read_text()
+    rollback = runtime[runtime.index("rollback_ha() {"):runtime.index("fail() {")]
+    assert '[[ "$ROLLING_BACK" == false ]] || return 1' in rollback
+    assert 'if [[ "$HA_RESTARTED" == true && -n "$HA_CONTAINER" ]]; then' in rollback
+    assert 'timeout 120 docker restart "$HA_CONTAINER"' in rollback
+    assert "wait_url http://127.0.0.1:8123/ 180" in rollback
 
 
 def test_new_ui_exposes_docker_health_from_health_endpoint():
