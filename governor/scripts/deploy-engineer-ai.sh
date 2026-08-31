@@ -169,6 +169,22 @@ if [[ "$RECREATE_UI" == true ]]; then
   # Registry stalls must not consume the launcher's entire deadline without a
   # clear phase-specific failure and local container/backend diagnostics.
   timeout 300 docker pull "$OWUI_IMAGE" >/dev/null
+
+  # The old container remains running during the pull. It may finish a slow
+  # database migration in that interval, so make one last readiness check at
+  # the destructive boundary. Removing a container that has just become ready
+  # would cause avoidable downtime and throw away useful startup progress.
+  if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
+    UI_DOCKER_HEALTH=$(ui_container_health)
+    if [[ "$UI_DOCKER_HEALTH" == healthy ]] || \
+       curl -fsS --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1; then
+      printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=pre_removal_recheck\n'
+      RECREATE_UI=false
+    fi
+  fi
+fi
+
+if [[ "$RECREATE_UI" == true ]]; then
   if docker ps -a --format '{{.Names}}' | grep -qx "$UI_NAME"; then
     printf 'OPEN_WEBUI_RECREATE=existing_container_failed_or_stopped\n'
     # A stopped container has not been diagnosed above.
