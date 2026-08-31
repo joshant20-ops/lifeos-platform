@@ -92,45 +92,46 @@ printf 'PREFLIGHT=PASS\n'
 
 printf '\n===== 3/8 — ENGINEER BACKEND =====\n'
 DEPLOY_PHASE=backend
-sudo install -m 0755 "$BACKEND" /usr/local/libexec/lifeos-engineer
-sudo tee /etc/systemd/system/lifeos-engineer.service >/dev/null <<'UNIT'
-[Unit]
-Description=LifeOS Engineer OpenAI-compatible conversational backend
-After=network-online.target lifeos-autonomous-agent.service
-Wants=network-online.target
-Requires=lifeos-autonomous-agent.service
+LIVE_BACKEND=/usr/local/libexec/lifeos-engineer
+ENGINEER_UNIT=/etc/systemd/system/lifeos-engineer.service
 
-[Service]
-Type=simple
-User=joshan
-Group=joshan
-Environment=LIFEOS_ENGINEER_PORT=8793
-Environment=LIFEOS_AGENT_URL=http://127.0.0.1:8790
-Environment=LIFEOS_ENGINEER_MODEL_URL=http://192.168.0.201:11434/api/generate
-Environment=LIFEOS_ENGINEER_MODEL=qwen2.5-coder:7b-instruct
-ExecStart=/usr/local/libexec/lifeos-engineer
-Restart=on-failure
-RestartSec=5
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
+# Autonomous runtime is deliberately unprivileged.  Installing or replacing
+# control-plane binaries is a host-authorised bootstrap operation, never a
+# sudo attempt from lifeos-autonomous-agent.service.
+if [[ ! -f "$LIVE_BACKEND" || ! -f "$ENGINEER_UNIT" ]]; then
+  printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=engineer_backend reason=missing_installation\n'
+  exit 30
+fi
 
-[Install]
-WantedBy=multi-user.target
-UNIT
-sudo systemctl daemon-reload
-sudo systemctl restart lifeos-engineer.service
-sudo systemctl enable lifeos-engineer.service >/dev/null
+if ! cmp -s "$BACKEND" "$LIVE_BACKEND"; then
+  printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=engineer_backend reason=installed_binary_outdated\n'
+  printf 'SOURCE_SHA256=%s\n' "$(sha256sum "$BACKEND" | awk '{print $1}')"
+  printf 'LIVE_SHA256=%s\n' "$(sha256sum "$LIVE_BACKEND" | awk '{print $1}')"
+  exit 30
+fi
+
+if ! systemctl is-active --quiet lifeos-engineer.service; then
+  printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=engineer_backend reason=service_not_running\n'
+  backend_diagnostics
+  exit 30
+fi
+
 if ! wait_for_health ENGINEER_BACKEND "http://127.0.0.1:${BACKEND_PORT}/health" 60; then
   backend_diagnostics
   exit 1
 fi
-printf 'ENGINEER_BACKEND=PASS\n'
+printf 'ENGINEER_BACKEND=PASS mode=unprivileged_runtime\n'
 
 printf '\n===== 4/8 — OPEN WEBUI =====\n'
 DEPLOY_PHASE=open_webui
-sudo install -d -m 0750 -o joshan -g joshan /var/lib/lifeos-openwebui
+if [[ ! -d /var/lib/lifeos-openwebui ]]; then
+  printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=openwebui_state reason=state_directory_missing\n'
+  exit 30
+fi
+if [[ ! -w /var/lib/lifeos-openwebui ]]; then
+  printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=openwebui_state reason=state_directory_not_writable\n'
+  exit 30
+fi
 SECRET_FILE=/var/lib/lifeos-openwebui/webui-secret
 if [[ ! -s "$SECRET_FILE" ]]; then
   umask 077
