@@ -9,7 +9,7 @@ BUILDER_SRC="$REPO/governor/scripts/lifeos-cloud-builder"
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED"; echo "REASON=must_run_on_pi5_Docker"; exit 20; }
 
 printf '===== LIFEOS AUTONOMOUS AGENT DEPLOY =====\n'
-printf 'Controller/runtime: Pi5/Docker\n'
+printf 'Controller/Git/runtime: Pi5/Docker\n'
 printf 'Builder: cloud Codex on Engineer\n'
 printf 'Verifier: local Qwen on TowerPC\n\n'
 
@@ -80,8 +80,10 @@ import json,sys
 j=json.loads(sys.argv[1])
 assert j['status']=='ok'
 assert j['runtime_controller']=='pi5'
+assert j['git_controller']=='pi5'
 print('AGENT_HEALTH=PASS')
 print('RUNTIME_CONTROLLER='+j['runtime_controller'])
+print('GIT_CONTROLLER='+j['git_controller'])
 PY
 
 printf '\n===== 5/7 — PRIVACY FAIL-CLOSED TEST =====\n'
@@ -95,12 +97,12 @@ print('PRIVACY='+j['privacy'])
 print('STATUS='+j['status'])
 assert j['privacy']=='local-only'
 assert j['status']=='BLOCKED'
-assert not any('RUN_SCRIPT=governor/runtime_jobs/' in x.get('evidence','') for x in j.get('iterations',[]))
+assert not any('PI5_PATCH=APPLIED' in x.get('evidence','') for x in j.get('iterations',[]))
 print('PRIVACY_BOUNDARY=PASS')
 PY
 
 printf '\n===== 6/7 — TRUE END-TO-END AUTONOMOUS SMOKE =====\n'
-SMOKE_REQ='Prove the LifeOS autonomous runtime loop works. Create and commit the required per-job Pi5 runtime launcher. The launcher must safely and read-only curl http://127.0.0.1:8790/health from Pi5, verify service=lifeos-autonomous-agent, status=ok, runtime_controller=pi5, print RUNTIME_LOOP_SMOKE=PASS, and make no other system changes. Scope all testing to this request; unrelated repository test failures are not blockers.'
+SMOKE_REQ='Prove the LifeOS autonomous runtime loop works. In your disposable Engineer worktree, create the required per-job Pi5 runtime launcher but do not commit or push it yourself; Pi5 owns Git publication. The launcher must safely and read-only curl http://127.0.0.1:8790/health from Pi5, verify service=lifeos-autonomous-agent, status=ok, runtime_controller=pi5, git_controller=pi5, print RUNTIME_LOOP_SMOKE=PASS, and make no other system changes. Run focused tests and leave the launcher in the worktree for automatic handoff. Unrelated repository failures are not blockers.'
 SMOKE_JSON=$(python3 - "$SMOKE_REQ" <<'PY'
 import json,sys
 print(json.dumps({'request':sys.argv[1]}))
@@ -114,20 +116,27 @@ j=json.loads(sys.argv[1])
 print('JOB_ID='+j['id'])
 print('STATUS='+j['status'])
 print('ITERATIONS='+str(len(j.get('iterations',[]))))
+published=False
+runtime=False
 for x in j.get('iterations',[]):
     print('ITERATION_'+str(x.get('iteration'))+'_BUILDER_RC='+str(x.get('builder_rc')))
     ev=str(x.get('evidence',''))
-    if 'RUNTIME_LOOP_SMOKE=PASS' in ev:
+    if 'PI5_PATCH=APPLIED' in ev and 'PI5_PUSH=PASS' in ev:
+        published=True
+        print('PI5_GIT_PUBLICATION=PASS')
+    if 'RUNTIME_LOOP_SMOKE=PASS' in ev and 'RUNTIME_RC=0' in ev:
+        runtime=True
         print('PI5_RUNTIME_EVIDENCE=PASS')
     print('VERDICT='+str(x.get('verification',{}).get('verdict')))
 if j['status'] != 'PASS':
     print('BLOCKED_REASON='+str(j.get('blocked_reason')))
     for x in j.get('iterations',[]):
         print('--- ITERATION '+str(x.get('iteration'))+' EVIDENCE TAIL ---')
-        print(str(x.get('evidence',''))[-6000:])
+        print(str(x.get('evidence',''))[-7000:])
         print('VERIFICATION='+json.dumps(x.get('verification',{}),sort_keys=True))
     raise SystemExit('AUTONOMOUS_E2E_SMOKE_DID_NOT_PASS')
-assert any('RUNTIME_LOOP_SMOKE=PASS' in str(x.get('evidence','')) for x in j.get('iterations',[])), 'missing Pi5 runtime evidence'
+assert published, 'missing Pi5-owned Git publication evidence'
+assert runtime, 'missing Pi5 runtime evidence'
 print('AUTONOMOUS_LOOP=PASS')
 PY
 
@@ -135,6 +144,7 @@ printf '\n===== 7/7 — RESULT =====\n'
 printf 'RESULT=PASS\n'
 printf 'INPUT=natural_language\n'
 printf 'CONTROLLER=Pi5\n'
+printf 'GIT_PUBLISHER=Pi5\n'
 printf 'RUNTIME_EXECUTOR=Pi5\n'
 printf 'BUILDER=Engineer_Codex_cloud\n'
 printf 'VERIFIER=TowerPC_Qwen_local\n'
