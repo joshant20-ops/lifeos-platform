@@ -22,21 +22,21 @@ You are the cloud engineering builder for LifeOS autonomous job $JOB_ID.
 Work toward the user's original goal until this iteration has produced a concrete, testable improvement.
 
 ARCHITECTURE AND SAFETY:
-- Pi5/Docker is the central controller and runtime executor.
+- Pi5/Docker is the central controller, canonical Git writer, and runtime executor.
 - Do not require the user to run commands on secondary machines.
+- Do NOT commit, push, fetch, clone, or otherwise depend on GitHub/network access from inside Codex. Pi5 owns Git publication.
 - If runtime inspection/change is required on Pi5, Engineer, TowerPC, Home Assistant, or another LAN host, create exactly one Pi5 launcher at: $RUNTIME_PATH
 - That launcher must start with #!/usr/bin/env bash, be non-interactive, timeout-aware, and may SSH to secondary machines itself.
-- Never put secrets or private Paperless/document content in GitHub, prompts, logs, commits, or runtime launchers.
+- Never put secrets or private Paperless/document content in GitHub, prompts, logs, patches, or runtime launchers.
 - This cloud builder is forbidden from processing private document contents.
 - Scope tests to the user's requested outcome. Unrelated pre-existing repository failures may be reported but MUST NOT block a scoped job if the requested outcome can still be verified safely.
 - The local verifier, not you, decides final completion.
 
 REPOSITORY WORK:
-- You are working in a clean per-job worktree based on origin/main.
-- Make any repository changes needed for this iteration.
+- You are working in a clean disposable worktree based on origin/main.
+- Make any repository changes needed for this iteration and leave them in the worktree; the wrapper will package them for Pi5.
 - If you create $RUNTIME_PATH, make it safe and self-verifying: it should print clear PASS/FAIL evidence for the requested outcome.
 - Run focused tests for files you changed.
-- Commit and push ready changes to origin/main. If origin/main moved, fetch/rebase or otherwise resolve safely; never force-push.
 - Do not merely explain what should be done: perform all repository engineering work available to you.
 
 USER GOAL:
@@ -50,9 +50,7 @@ ${FEEDBACK:-none yet}
 FINAL OUTPUT CONTRACT:
 Print these lines at the end:
 RESULT=PASS|RETRY|BLOCKED
-COMMIT=<sha-or-none>
 TESTS=<concise result>
-RUN_SCRIPT=$RUNTIME_PATH   # only if that file was committed and should be executed by Pi5
 NEXT_RUNTIME_CHECK=<concise check or none>
 EOF
 )
@@ -60,12 +58,13 @@ EOF
 PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
 
 ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" \
-  bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" <<'REMOTE'
+  bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" <<'REMOTE'
 set -euo pipefail
 REPO=$1
 PROMPT_B64=$2
 JOB_ID=$3
 ITERATION=$4
+RUNTIME_PATH=$5
 PROMPT=$(printf '%s' "$PROMPT_B64" | base64 -d)
 
 CODEX="${LIFEOS_CODEX_BIN:-$HOME/.local/bin/codex}"
@@ -87,7 +86,6 @@ WORKROOT="$HOME/.local/share/lifeos-agent/worktrees"
 WORKTREE="$WORKROOT/${JOB_ID}-${ITERATION}"
 mkdir -p "$WORKROOT"
 
-# Remove only our own stale worktree path. The user's normal Engineer checkout is untouched.
 git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
 rm -rf "$WORKTREE"
 git worktree add --detach "$WORKTREE" origin/main >/dev/null
@@ -110,8 +108,33 @@ else
   "$CODEX" exec "$PROMPT" </dev/null
 fi
 
-# Give the control plane objective post-Codex repository state even if Codex's prose is imperfect.
-echo "WORKTREE_HEAD=$(git rev-parse HEAD)"
+# Codex may stage files, leave them unstaged, or even create local commits.
+# Export the complete resulting tree delta against the immutable starting point.
+PATCH_FILE=$(mktemp)
+git diff --binary "$BASE" -- . >"$PATCH_FILE"
+PATCH_BYTES=$(wc -c <"$PATCH_FILE")
+if (( PATCH_BYTES > 1048576 )); then
+  echo "HANDOFF_ERROR=patch_exceeds_1MiB"
+  exit 61
+fi
+
+echo "HANDOFF_BASE=$BASE"
+echo "HANDOFF_PATCH_BYTES=$PATCH_BYTES"
+if (( PATCH_BYTES > 0 )); then
+  echo "HANDOFF_PATCH_B64=$(base64 -w0 <"$PATCH_FILE")"
+fi
+rm -f "$PATCH_FILE"
+
+if [[ -f "$RUNTIME_PATH" ]]; then
+  RUNTIME_BYTES=$(wc -c <"$RUNTIME_PATH")
+  if (( RUNTIME_BYTES > 65536 )); then
+    echo "HANDOFF_ERROR=runtime_script_exceeds_64KiB"
+    exit 62
+  fi
+  echo "RUN_SCRIPT=$RUNTIME_PATH"
+  echo "HANDOFF_RUNTIME_B64=$(base64 -w0 <"$RUNTIME_PATH")"
+fi
+
 echo "WORKTREE_STATUS_BEGIN"
 git status --short
 echo "WORKTREE_STATUS_END"
