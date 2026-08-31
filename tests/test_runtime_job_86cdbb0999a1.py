@@ -12,7 +12,8 @@ def test_launcher_is_bounded_and_delegates_reversible_runtime() -> None:
     assert "set -euo pipefail" in text
     assert 'RUNTIME="$REPO/governor/runtime_jobs/feb1efaecf51.sh"' in text
     assert "timeout --signal=TERM" in text
-    assert 'env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"' in text
+    assert 'LIFEOS_RUNTIME_JOB_ID="$JOB_ID"' in text
+    assert 'LIFEOS_ENGINEER_LAN_IP="$ENGINEER_HOST"' in text
 
 
 def test_launcher_verifies_requested_url_and_reports_navigation() -> None:

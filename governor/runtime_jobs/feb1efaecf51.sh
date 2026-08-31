@@ -177,7 +177,18 @@ print("OPEN_WEBUI_HEALTH=PASS")
 PY
 
 # Home Assistant must be able to reach the same LAN endpoint used by its iframe.
-LAN_IP=$(discover_lan_ip) || fail pi5_lan_address_not_found
+# A goal-specific wrapper may pin the canonical address. This is important for
+# HA panels: merely finding some routable Pi5 address is insufficient when the
+# requested navigation contract names a stable address. Standalone runs retain
+# automatic discovery.
+if [[ -n "${LIFEOS_ENGINEER_LAN_IP:-}" ]]; then
+  LAN_IP=$LIFEOS_ENGINEER_LAN_IP
+  [[ "$LAN_IP" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]] || fail invalid_engineer_lan_address
+  printf 'PI5_LAN_IP_SOURCE=pinned\n'
+else
+  LAN_IP=$(discover_lan_ip) || fail pi5_lan_address_not_found
+  printf 'PI5_LAN_IP_SOURCE=discovered\n'
+fi
 HA_CONTAINER=$(discover_ha_container) || fail home_assistant_container_not_running
 printf 'PI5_LAN_IP=%s\n' "$LAN_IP"
 printf 'HA_CONTAINER=%s\n' "$HA_CONTAINER"

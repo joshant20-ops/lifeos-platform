@@ -8,6 +8,7 @@ set -euo pipefail
 readonly JOB_ID=86cdbb0999a1
 readonly REPO=/home/joshan/lifeos-platform
 readonly RUNTIME="$REPO/governor/runtime_jobs/feb1efaecf51.sh"
+readonly ENGINEER_HOST=192.168.0.203
 readonly ENGINEER_URL=http://192.168.0.203:8792/
 readonly OUTER_TIMEOUT_SECONDS=2700
 readonly ROLLBACK_GRACE_SECONDS=360
@@ -24,7 +25,10 @@ fail() {
 
 printf 'RUNTIME_CHECK=START job=%s scope=engineer_home_assistant_sidebar\n' "$JOB_ID"
 if timeout --signal=TERM --kill-after="${ROLLBACK_GRACE_SECONDS}s" \
-  "$OUTER_TIMEOUT_SECONDS" env LIFEOS_RUNTIME_JOB_ID="$JOB_ID" "$RUNTIME"; then
+  "$OUTER_TIMEOUT_SECONDS" env \
+    LIFEOS_RUNTIME_JOB_ID="$JOB_ID" \
+    LIFEOS_ENGINEER_LAN_IP="$ENGINEER_HOST" \
+    "$RUNTIME"; then
   :
 else
   status=$?
