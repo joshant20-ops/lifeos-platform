@@ -34,7 +34,14 @@ ui_diagnostics() {
   docker ps -a --filter "name=^/${UI_NAME}$" --no-trunc >&2 || true
   docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}} started={{.State.StartedAt}}' "$UI_NAME" >&2 || true
   docker logs --tail 200 --timestamps "$UI_NAME" >&2 || true
-  curl -v --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1 || true
+  curl -v --max-time 5 "$UI_HEALTH_URL" -o /dev/null >&2 || true
+}
+
+backend_diagnostics() {
+  printf '\n===== ENGINEER BACKEND FAILURE DIAGNOSTICS =====\n' >&2
+  systemctl --no-pager --full status lifeos-engineer.service >&2 || true
+  journalctl -u lifeos-engineer.service -n 200 --no-pager >&2 || true
+  curl -v --max-time 5 "http://127.0.0.1:${BACKEND_PORT}/health" -o /dev/null >&2 || true
 }
 
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED"; echo "REASON=must_run_on_pi5_Docker"; exit 20; }
@@ -86,7 +93,10 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl restart lifeos-engineer.service
 sudo systemctl enable lifeos-engineer.service >/dev/null
-wait_for_health ENGINEER_BACKEND "http://127.0.0.1:${BACKEND_PORT}/health" 60
+if ! wait_for_health ENGINEER_BACKEND "http://127.0.0.1:${BACKEND_PORT}/health" 60; then
+  backend_diagnostics
+  exit 1
+fi
 printf 'ENGINEER_BACKEND=PASS\n'
 
 printf '\n===== 4/8 — OPEN WEBUI =====\n'
@@ -98,14 +108,29 @@ if [[ ! -s "$SECRET_FILE" ]]; then
 fi
 WEBUI_SECRET_KEY=$(cat "$SECRET_FILE")
 
-if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME" && \
-   curl -fsS --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1; then
-  printf 'OPEN_WEBUI_REUSED=healthy_existing_container\n'
-else
+RECREATE_UI=true
+if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
+  printf 'OPEN_WEBUI_EXISTING=running_waiting_for_readiness\n'
+  # Open WebUI can take several minutes to migrate its database on the first
+  # start (or after an image upgrade).  Give the existing process the same
+  # readiness budget as a new one before deciding that it has failed.
+  if wait_for_health OPEN_WEBUI_EXISTING "$UI_HEALTH_URL" 300; then
+    printf 'OPEN_WEBUI_REUSED=healthy_existing_container\n'
+    RECREATE_UI=false
+  else
+    printf 'OPEN_WEBUI_EXISTING=failed_readiness_will_recreate\n' >&2
+    ui_diagnostics
+  fi
+fi
+
+if [[ "$RECREATE_UI" == true ]]; then
   docker pull "$OWUI_IMAGE" >/dev/null
   if docker ps -a --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-    printf 'OPEN_WEBUI_RECREATE=existing_container_not_healthy\n'
-    ui_diagnostics
+    printf 'OPEN_WEBUI_RECREATE=existing_container_failed_or_stopped\n'
+    # A stopped container has not been diagnosed above.
+    if ! docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
+      ui_diagnostics
+    fi
     docker rm -f "$UI_NAME" >/dev/null
   fi
 
