@@ -9,7 +9,7 @@ set -Eeuo pipefail
 START_EPOCH="$(date +%s)"
 REPO="/home/joshan/lifeos-platform"
 GIT_USER="joshan"
-EXPECTED_CONTROLLER_SHA256="3f1426b2d6074f5cbf33473832837081cbd9e5e5d948424fd7c84cb366fe4a55"
+EXPECTED_CONTROLLER_BLOB="c3dc4db17156dfdd1fdf5128c7100de447056ffd"
 SRC_EXEC="homelab/live/usr/local/sbin/lifeos-powerdown-assurance-active"
 SRC_OPT="homelab/live/opt/stacks/lifeos-energy/powerdown-assurance/lifeos-powerdown-assurance-active.py"
 LIVE_EXEC="/usr/local/sbin/lifeos-powerdown-assurance-active"
@@ -48,14 +48,18 @@ echo "ORIGIN_MAIN=$REMOTE_HEAD"
 sudo -u "$GIT_USER" git -C "$REPO" show "origin/main:$SRC_EXEC" >"$TMP_EXEC"
 sudo -u "$GIT_USER" git -C "$REPO" show "origin/main:$SRC_OPT" >"$TMP_OPT"
 
+BLOB_EXEC="$(git hash-object "$TMP_EXEC")"
+BLOB_OPT="$(git hash-object "$TMP_OPT")"
 SHA_EXEC="$(sha256sum "$TMP_EXEC" | awk '{print $1}')"
 SHA_OPT="$(sha256sum "$TMP_OPT" | awk '{print $1}')"
+echo "CANONICAL_EXEC_BLOB=$BLOB_EXEC"
+echo "CANONICAL_OPT_BLOB=$BLOB_OPT"
 echo "CANONICAL_EXEC_SHA256=$SHA_EXEC"
 echo "CANONICAL_OPT_SHA256=$SHA_OPT"
-[ "$SHA_EXEC" = "$SHA_OPT" ] || fail "canonical Power Down copies diverge"
-[ "$SHA_EXEC" = "$EXPECTED_CONTROLLER_SHA256" ] || fail "canonical controller hash is not the reviewed incident build"
+[ "$BLOB_EXEC" = "$BLOB_OPT" ] || fail "canonical Power Down copies diverge"
+[ "$BLOB_EXEC" = "$EXPECTED_CONTROLLER_BLOB" ] || fail "canonical controller is not the reviewed incident blob"
 python3 -m py_compile "$TMP_EXEC" || fail "canonical controller syntax failed"
-pass "canonical controller hash + syntax verified"
+pass "canonical controller exact Git blob + syntax verified"
 
 [ -f "$LIVE_EXEC" ] || fail "live executable missing"
 [ -f "$LIVE_OPT" ] || fail "live /opt controller missing"
@@ -65,10 +69,10 @@ cp -a "$LIVE_OPT" "$BACKUP_OPT"
 install -o root -g root -m 0755 "$TMP_EXEC" "$LIVE_EXEC"
 install -o root -g root -m 0755 "$TMP_OPT" "$LIVE_OPT"
 
-LIVE_EXEC_SHA="$(sha256sum "$LIVE_EXEC" | awk '{print $1}')"
-LIVE_OPT_SHA="$(sha256sum "$LIVE_OPT" | awk '{print $1}')"
-[ "$LIVE_EXEC_SHA" = "$EXPECTED_CONTROLLER_SHA256" ] || fail "live executable checksum mismatch after install"
-[ "$LIVE_OPT_SHA" = "$EXPECTED_CONTROLLER_SHA256" ] || fail "live /opt checksum mismatch after install"
+LIVE_EXEC_BLOB="$(git hash-object "$LIVE_EXEC")"
+LIVE_OPT_BLOB="$(git hash-object "$LIVE_OPT")"
+[ "$LIVE_EXEC_BLOB" = "$EXPECTED_CONTROLLER_BLOB" ] || fail "live executable blob mismatch after install"
+[ "$LIVE_OPT_BLOB" = "$EXPECTED_CONTROLLER_BLOB" ] || fail "live /opt blob mismatch after install"
 pass "protected runtime copies installed exactly from canonical GitHub bytes"
 
 systemctl start "$UNIT" || {
@@ -84,7 +88,6 @@ sleep 2
 
 python3 - "$STATUS" "$EVENT_ID" <<'PY'
 import json, sys
-from datetime import datetime
 
 path=sys.argv[1]
 event_id=int(sys.argv[2])
