@@ -1,0 +1,11 @@
+[Unit]
+Description=Record LifeOS Power Down assurance evidence every 30 seconds
+
+[Timer]
+OnBootSec=20
+OnUnitActiveSec=30
+AccuracySec=5
+Persistent=true
+
+[Install]
+WantedBy=timers.target
