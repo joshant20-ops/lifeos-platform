@@ -1,0 +1,39 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "local-only",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The local builder is unavailable, which prevents the execution of the privacy-classifier probe v1. This is an internal issue that the autonomous system cannot resolve itself."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Issue 14 fresh privacy-classifier probe v1: Perform a read-only Engineer audit of repository code and documentation for consistency. This is ordinary engineering work using only cloud-safe repository content. Do not inspect personal data, credentials, messages, or document contents. Report concrete findings and focused test evidence; do not change files unless the audit identifies a real defect.",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 1,
+  "job_id": "817075cb2bde",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": null,
+  "runtime_return_code": null,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-01T23:04:28+0100",
+    "created_at": "2026-09-01T23:04:06+0100",
+    "stage_changed_at": "2026-09-01T23:04:28+0100",
+    "started_at": "2026-09-01T23:04:25+0100"
+  }
+}
