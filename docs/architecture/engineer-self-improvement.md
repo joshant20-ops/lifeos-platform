@@ -14,6 +14,21 @@ The Engineer **must not self-modify** the root broker, privileged allow-list or 
 
 Changes to a protected surface require a separately authorised control-plane task and must never be justified solely by a failing Engineer self-test.
 
+## Bounded runtime deployment transaction
+
+An Engineer job may opt in to a post-verification `deploy-engineer-runtime` request. The request sent across the root-broker socket contains exactly the operation name, job ID, and canonical target identity. It cannot name a command, source, destination, service, checksum, or argument. A successful builder run or deployment is not approval.
+
+The protected control plane must first create a root-owned, non-group/world-writable approval record at `/var/lib/lifeos-control/engineer-deploy-approvals/<job-id>.json`. That record binds the job to the exact published `main` commit, both allow-listed source hashes, an independent-verifier PASS evidence ID, and a protected-policy PASS evidence ID. The Engineer cannot create this evidence. Missing, malformed, writable, refused, stale, or mismatched evidence fails closed.
+
+The broker independently requires a clean canonical `/home/joshan/lifeos-platform` checkout whose `HEAD` and local `main` are the approved commit. It rejects symlinked or unexpectedly owned sources and destinations, verifies both source hashes and Python syntax, and can only map:
+
+- `governor/autonomous_agent.py` to `/usr/local/libexec/lifeos-autonomous-agent`
+- `governor/engineer_backend.py` to `/usr/local/libexec/lifeos-engineer`
+
+The transaction takes a non-blocking exclusive lock, backs up both installed files, atomically replaces each file, restarts only `lifeos-autonomous-agent.service` and `lifeos-engineer.service`, and waits for the fixed ports 8790 and 8793 health endpoints. Any installation, restart, or health failure restores both backups, restarts both services, and verifies rollback health. A root-owned audit record preserves commit, hashes, backup location, deployment result, and rollback result.
+
+Because the root broker and its operation allow-list are protected surfaces, adding this transaction to the installed broker requires explicit control-plane approval. Repository tests and an independent review must pass before that bounded activation; the Engineer may not install or approve the broker change itself.
+
 ## Initial acceptance contracts
 
 1. Asking for all historical jobs returns the job history rather than silently substituting the latest job.
