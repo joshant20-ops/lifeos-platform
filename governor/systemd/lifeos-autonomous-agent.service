@@ -22,6 +22,10 @@ PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=read-only
 ReadWritePaths=/var/lib/lifeos-agent /home/joshan/lifeos-platform
+# autonomous_agent.py loads job_records.py as a sibling module. Until the
+# bounded deployment bundle installs that dependency directly, expose the
+# canonical published copy read-only at the expected runtime path.
+BindReadOnlyPaths=/home/joshan/lifeos-platform/governor/job_records.py:/usr/local/libexec/job_records.py
 
 [Install]
 WantedBy=multi-user.target
