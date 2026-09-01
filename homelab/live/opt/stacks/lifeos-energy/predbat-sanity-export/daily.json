@@ -459,5 +459,124 @@
       "export": "2026-09-01T23:00:00+01:00",
       "import": "2026-09-01T23:00:00+01:00"
     }
+  },
+  {
+    "anomaly_flags": [
+      "predbat_forecast_active_headline_stale",
+      "high_grid_charge_planned_on_provisional_tariff"
+    ],
+    "forecast_freshness": {
+      "active_headline_count": 7,
+      "checked_at": "2026-09-01T02:04:31.127414+01:00",
+      "fresh_active_headline_count": 6,
+      "fresh_headline_count": 7,
+      "headline_count": 8,
+      "headline_entities": {
+        "predbat.best_export_energy": {
+          "age_seconds": 269.916,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_import_energy": {
+          "age_seconds": 261.661,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_import_energy_battery": {
+          "age_seconds": 261.653,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_import_energy_house": {
+          "age_seconds": 269.886,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_load_energy": {
+          "age_seconds": 261.681,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_pv_energy": {
+          "age_seconds": 261.671,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.best_soc_min_kwh": {
+          "age_seconds": 6863.3,
+          "fresh_1h": false,
+          "source": "home_assistant_live_api"
+        },
+        "predbat.soc_kw_best": {
+          "age_seconds": 261.768,
+          "fresh_1h": true,
+          "source": "home_assistant_live_api"
+        }
+      },
+      "stale_active_headlines": [
+        "predbat.best_soc_min_kwh"
+      ]
+    },
+    "forecast_provenance": {
+      "forecast_entity_count": 6,
+      "live_api": {
+        "queried_at": "2026-09-01T02:04:30.749066+01:00",
+        "request_seconds": 0.0378,
+        "source": "home_assistant_live_api",
+        "state_count": 817,
+        "status": "live_api_ok"
+      },
+      "live_overlay_count": 13,
+      "source": "home_assistant_live_api"
+    },
+    "forecast_summary": {
+      "grid_points": 355,
+      "high_import_points_beyond_live_tariff_horizon": 19,
+      "soc_max_kwh": 10.0,
+      "soc_max_time": "2026-09-01T15:05:00+0100",
+      "soc_min_kwh": 1.0,
+      "soc_min_time": "2026-09-01T08:00:00+0100",
+      "soc_points": 378
+    },
+    "generated_at": "2026-09-01T02:04:31.127395+01:00",
+    "sanity_assessment": {
+      "fail_flags": [
+        "predbat_forecast_active_headline_stale"
+      ],
+      "level": "FAIL",
+      "other_flags": [],
+      "reason": "forecast_or_provenance_not_safe_to_trust",
+      "requires_operator_attention": true,
+      "watch_flags": [
+        "high_grid_charge_planned_on_provisional_tariff"
+      ]
+    },
+    "states": {
+      "predbat.battery_cycle_best": 12.692,
+      "predbat.best_charge_end": "02:30:00",
+      "predbat.best_charge_limit": 10,
+      "predbat.best_charge_start": "00:00:00",
+      "predbat.best_export_end": "",
+      "predbat.best_export_energy": 3.138,
+      "predbat.best_export_start": "",
+      "predbat.best_import_energy": 4.734,
+      "predbat.best_import_energy_battery": 3.994,
+      "predbat.best_load_energy": 24.267,
+      "predbat.best_pv_energy": 19.416,
+      "predbat.best_soc_min_kwh": 1,
+      "predbat.rates": 24.11,
+      "predbat.rates_export": 13.14,
+      "predbat.status": "Demand",
+      "sensor.predbat_enphase_5731818_battery_power": 573,
+      "sensor.predbat_enphase_5731818_battery_reserve": 10,
+      "sensor.predbat_enphase_5731818_grid_power": -7.3,
+      "sensor.predbat_enphase_5731818_load_power": 580.4,
+      "sensor.predbat_enphase_5731818_pv_power": 0,
+      "sensor.predbat_enphase_5731818_soc_percent": 51.5
+    },
+    "tariff_horizon": {
+      "export": "2026-09-01T23:00:00+01:00",
+      "import": "2026-09-01T23:00:00+01:00"
+    }
   }
 ]
