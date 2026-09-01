@@ -1,5 +1,14 @@
 # LifeOS OTS Migration
 
+## Standing daily review
+
+The daily OTS review remains a permanent control-plane backlog task. It checks
+installed LifeOS applications for materially better mature alternatives,
+custom functionality that can be replaced by OTS software, planned work that
+already has a mature OTS solution, and meaningful changes in available
+alternatives. Findings are deduplicated against open issues and only useful,
+actionable findings are linked into the central build list.
+
 ## Engineer control plane
 
 Status: DESIGN DECIDED; COMPATIBILITY SAFETY WORK IN PROGRESS

@@ -15,6 +15,7 @@ fail() { printf 'RESULT=FAIL\nREASON=%s\n' "$1" >&2; exit 1; }
 [[ $(hostname) == Docker ]] || fail must_run_on_pi5_Docker
 [[ -d "$REPO/.git" ]] || fail canonical_repo_missing
 command -v python3 >/dev/null || fail python3_missing
+[[ -f "$REPO/governor/backlog_runner.py" ]] || fail backlog_runner_source_missing
 
 # The dispatcher needs authenticated GitHub Issues API access for reading,
 # commenting, closing and creating issues. Git-over-SSH authentication alone
@@ -326,6 +327,9 @@ if __name__ == "__main__":
         log(f"RESULT=FAIL TYPE={type(exc).__name__} REASON={str(exc)[:1000]}")
         raise
 PY
+# The heredoc above is retained as a rollback snapshot for older checkouts. The
+# canonical, unit-tested source always wins for installation.
+install -m 0755 "$REPO/governor/backlog_runner.py" "$WORKER"
 chmod 0755 "$WORKER"
 chown root:root "$WORKER"
 python3 -m py_compile "$WORKER"
