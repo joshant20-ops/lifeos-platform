@@ -5,13 +5,13 @@ import hashlib
 import json
 import os
 import pathlib
-import py_compile
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 IDENTITY = pathlib.Path('/etc/lifeos-control/identity.json')
 STATE_DIR = pathlib.Path('/var/lib/lifeos-control')
@@ -27,6 +27,7 @@ DEPLOY_FILES = (
 )
 DEPLOY_UNITS = ('lifeos-autonomous-agent.service', 'lifeos-engineer.service')
 DEPLOY_HEALTH = ('http://127.0.0.1:8790/health', 'http://127.0.0.1:8793/health')
+DEPLOY_APPROVAL_MAX_AGE = timedelta(hours=24)
 
 APPROVED_RESTART_UNITS = {
     'lifeos-export-powerdown-state.service',
@@ -273,6 +274,7 @@ def require_safe_directory(path, owner_uid):
 
 
 def load_deploy_approval(job_id, canonical):
+    require_safe_directory(DEPLOY_APPROVALS, 0)
     approval_path = DEPLOY_APPROVALS / f'{job_id}.json'
     require_safe_regular(approval_path, 0)
     try:
@@ -292,6 +294,13 @@ def load_deploy_approval(job_id, canonical):
         reject('deployment approval identity mismatch', 65)
     if approval.get('publication_verified') is not True:
         reject('publication approval missing', 65)
+    try:
+        approved_at = datetime.fromisoformat(approval['approved_at'].replace('Z', '+00:00'))
+        age = datetime.now(timezone.utc) - approved_at.astimezone(timezone.utc)
+    except (AttributeError, TypeError, ValueError):
+        reject('deployment approval timestamp invalid', 65)
+    if age < timedelta(0) or age > DEPLOY_APPROVAL_MAX_AGE:
+        reject('deployment approval is stale', 65)
     verifier = approval.get('independent_verifier')
     policy = approval.get('protected_policy')
     if not isinstance(verifier, dict) or set(verifier) != {'verdict', 'evidence_id'}:
@@ -334,20 +343,32 @@ def verify_deploy_source(approval):
     repo_root = PLATFORM_REPO.resolve(strict=True)
     for relative, _destination in DEPLOY_FILES:
         source = PLATFORM_REPO / relative
-        require_safe_regular(source, repo_owner)
         try:
             source.resolve(strict=True).relative_to(repo_root)
         except (OSError, ValueError):
             reject('source path escaped repository', 65)
-        actual = sha256(source)
+        # Pin the verified content in memory.  The repository is owned by the
+        # unprivileged publisher account, so reopening the pathname later
+        # would introduce a checksum-to-install TOCTOU window.
+        try:
+            fd = os.open(source, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+            with os.fdopen(fd, 'rb') as handle:
+                source_stat = os.fstat(handle.fileno())
+                if (not stat.S_ISREG(source_stat.st_mode)
+                        or source_stat.st_uid != repo_owner
+                        or source_stat.st_mode & 0o022):
+                    reject(f'unsafe source file: {relative}', 65)
+                content = handle.read()
+        except OSError as exc:
+            reject(f'source file unavailable: {relative}: {exc}', 65)
+        actual = hashlib.sha256(content).hexdigest()
         if actual != approval['source_hashes'][relative]:
             reject(f'source checksum mismatch: {relative}', 65)
         try:
-            with tempfile.NamedTemporaryFile(suffix='.pyc') as compiled:
-                py_compile.compile(str(source), cfile=compiled.name, doraise=True)
-        except py_compile.PyCompileError:
+            compile(content, str(source), 'exec')
+        except (SyntaxError, ValueError, TypeError):
             reject(f'python syntax invalid: {relative}', 65)
-        sources.append((relative, source))
+        sources.append((relative, content))
     return sources
 
 
@@ -370,15 +391,45 @@ def restart_and_health():
 
 def write_audit(job_id, payload):
     DEPLOY_AUDIT.mkdir(mode=0o750, parents=True, exist_ok=True)
+    require_safe_directory(DEPLOY_AUDIT, 0)
     path = DEPLOY_AUDIT / f'{job_id}.json'
-    if path.exists():
-        reject('deployment audit already exists', 65)
     fd, tmp = tempfile.mkstemp(prefix='.deploy-audit-', dir=DEPLOY_AUDIT, text=True)
-    with os.fdopen(fd, 'w') as handle:
-        json.dump(payload, handle, indent=2, sort_keys=True)
-        handle.write('\n')
-    os.chmod(tmp, 0o640)
-    os.replace(tmp, path)
+    try:
+        with os.fdopen(fd, 'w') as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write('\n')
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.chmod(tmp, 0o640)
+        # link() is an atomic create-if-absent operation.  Unlike replace(),
+        # it can never overwrite evidence created by a concurrent/replayed job.
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            reject('deployment audit already exists', 65)
+        directory_fd = os.open(DEPLOY_AUDIT, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    finally:
+        try: os.unlink(tmp)
+        except FileNotFoundError: pass
+
+
+def atomic_restore(saved, destination):
+    fd, tmp = tempfile.mkstemp(prefix='.lifeos-rollback-', dir=destination.parent)
+    os.close(fd)
+    try:
+        shutil.copyfile(saved, tmp, follow_symlinks=False)
+        os.chown(tmp, 0, 0)
+        os.chmod(tmp, 0o755)
+        if sha256(pathlib.Path(tmp)) != sha256(saved):
+            raise RuntimeError('rollback temporary checksum mismatch')
+        os.replace(tmp, destination)
+    finally:
+        try: os.unlink(tmp)
+        except FileNotFoundError: pass
 
 
 def deploy_engineer_runtime(request, canonical):
@@ -387,14 +438,21 @@ def deploy_engineer_runtime(request, canonical):
     if not all(c.isalnum() or c in '._-' for c in job_id) or len(job_id) > 100:
         reject('invalid deployment job_id')
     STATE_DIR.mkdir(mode=0o750, parents=True, exist_ok=True)
+    require_safe_directory(STATE_DIR, 0)
+    DEPLOY_AUDIT.mkdir(mode=0o750, parents=True, exist_ok=True)
+    require_safe_directory(DEPLOY_AUDIT, 0)
     lock = DEPLOY_LOCK.open('w')
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         reject('deployment already active', 75)
+    # Reject replays before inspecting or changing deployment state.
+    if (DEPLOY_AUDIT / f'{job_id}.json').exists():
+        reject('deployment audit already exists', 65)
     approval, approval_path = load_deploy_approval(job_id, canonical)
     sources = verify_deploy_source(approval)
     DEPLOY_BACKUPS.mkdir(mode=0o750, parents=True, exist_ok=True)
+    require_safe_directory(DEPLOY_BACKUPS, 0)
     backup = DEPLOY_BACKUPS / f'{job_id}-{approval["source_commit"][:12]}'
     backup.mkdir(mode=0o700)
     previous = []
@@ -408,11 +466,14 @@ def deploy_engineer_runtime(request, canonical):
     failure = None
     rollback = 'not-required'
     try:
-        for (relative, source), (_fixed_relative, destination) in zip(sources, DEPLOY_FILES):
+        for (relative, content), (_fixed_relative, destination) in zip(sources, DEPLOY_FILES):
             fd, tmp = tempfile.mkstemp(prefix='.lifeos-engineer-', dir=destination.parent)
             os.close(fd)
             try:
-                shutil.copyfile(source, tmp, follow_symlinks=False)
+                with open(tmp, 'wb') as handle:
+                    handle.write(content)
+                    handle.flush()
+                    os.fsync(handle.fileno())
                 os.chown(tmp, 0, 0)
                 os.chmod(tmp, 0o755)
                 if sha256(pathlib.Path(tmp)) != approval['source_hashes'][relative]:
@@ -430,9 +491,7 @@ def deploy_engineer_runtime(request, canonical):
         try:
             for relative, destination in DEPLOY_FILES:
                 saved = backup / pathlib.Path(relative).name
-                shutil.copy2(saved, destination, follow_symlinks=False)
-                os.chown(destination, 0, 0)
-                os.chmod(destination, 0o755)
+                atomic_restore(saved, destination)
             restored, detail = restart_and_health()
             rollback = 'PASS' if restored else f'FAIL: {detail}'
         except Exception as rollback_exc:
@@ -442,6 +501,10 @@ def deploy_engineer_runtime(request, canonical):
         'schema_version': 1, 'operation': 'deploy-engineer-runtime', 'job_id': job_id,
         'target': canonical, 'source_commit': approval['source_commit'],
         'source_hashes': approval['source_hashes'], 'approval_file': str(approval_path),
+        'approval_sha256': sha256(approval_path), 'approved_at': approval['approved_at'],
+        'publication_verified': approval['publication_verified'],
+        'independent_verifier': approval['independent_verifier'],
+        'protected_policy': approval['protected_policy'],
         'backup_location': str(backup), 'previous_files': previous, 'deployed_files': deployed,
         'deployment_result': 'PASS' if failure is None else 'FAIL', 'failure': failure,
         'rollback_result': rollback, 'finished_at': datetime.now(timezone.utc).isoformat(),
