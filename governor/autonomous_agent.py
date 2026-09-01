@@ -5,6 +5,7 @@ import json
 import os
 import pathlib
 import re
+import socket
 import statistics
 import subprocess
 import threading
@@ -32,6 +33,29 @@ STUCK_JOB_MULTIPLIER = float(os.environ.get("LIFEOS_STUCK_JOB_MULTIPLIER", "3.0"
 STUCK_JOB_MIN_SECONDS = int(os.environ.get("LIFEOS_STUCK_JOB_MIN_SECONDS", "300"))
 CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"))
 EXECUTION_LOCK = threading.Lock()
+
+
+def request_engineer_runtime_deployment(job_id):
+    """Request one fixed broker operation; no command, path, unit, or argument is delegated."""
+    request = {"operation": "deploy-engineer-runtime", "job_id": str(job_id), "target": "pi5"}
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(180)
+            client.connect("/run/lifeos-root-broker.sock")
+            client.sendall((json.dumps(request, sort_keys=True) + "\n").encode())
+            client.shutdown(socket.SHUT_WR)
+            response = b""
+            while len(response) < 65536:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+        payload = json.loads(response.decode())
+        if not isinstance(payload, dict):
+            raise ValueError("broker response was not an object")
+        return payload
+    except Exception as exc:
+        return {"status": "REJECTED", "reason": f"root broker unavailable: {type(exc).__name__}"}
 
 PRIVATE_PATTERNS = (
     r"\bpaperless\b",
@@ -405,6 +429,15 @@ def _execute_job_locked(job):
         v = str(verdict.get("verdict", "RETRY")).upper()
 
         if v == "PASS":
+            if bool(job.get("deploy_engineer_runtime")):
+                set_stage(job, "deployment", "requesting approved bounded Engineer runtime deployment")
+                job["deployment"] = request_engineer_runtime_deployment(job["id"])
+                if job["deployment"].get("status") != "PASS":
+                    job["status"] = "BLOCKED"
+                    job["blocked_reason"] = "bounded runtime deployment was not approved or failed"
+                    job["completed_at"] = now()
+                    set_stage(job, "blocked", job["blocked_reason"])
+                    return job
             job["status"] = "PASS"
             job["completed_at"] = now()
             set_stage(job, "complete", "local verifier accepted result")
@@ -486,7 +519,8 @@ def execute_job(job):
 
 
 def new_job(request, retry_of=None, continuation_enabled=False, continuation_parent=None,
-            continuation_depth=0, continuation_reason=None, continuation_request=None):
+            continuation_depth=0, continuation_reason=None, continuation_request=None,
+            deploy_engineer_runtime=False):
     job = {
         "id": uuid.uuid4().hex[:12],
         "created_at": now(),
@@ -499,6 +533,7 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
         "repeated_failure_count": 0,
         "continuation_enabled": bool(continuation_enabled),
         "continuation_depth": int(continuation_depth or 0),
+        "deploy_engineer_runtime": bool(deploy_engineer_runtime),
     }
     if retry_of:
         job["retry_of"] = retry_of
@@ -612,6 +647,7 @@ class Handler(BaseHTTPRequestHandler):
             "continuation_depth": int(body.get("continuation_depth", 0) or 0),
             "continuation_reason": body.get("continuation_reason"),
             "continuation_request": body.get("continuation_request"),
+            "deploy_engineer_runtime": bool(body.get("deploy_engineer_runtime", False)),
         }
         job = create_job(request, async_mode=async_mode, **continuation)
         self.send_json(202 if async_mode else 200, job)
