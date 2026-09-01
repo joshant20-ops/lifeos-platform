@@ -4,6 +4,7 @@ set -Eeuo pipefail
 REPO=/home/joshan/lifeos-platform
 WORKER=/usr/local/libexec/lifeos-backlog-runner
 STATE_DIR=/var/lib/lifeos-backlog-runner
+DISPATCH_TOKEN=/etc/lifeos/backlog-dispatcher.token
 SERVICE=/etc/systemd/system/lifeos-backlog-runner.service
 TIMER=/etc/systemd/system/lifeos-backlog-runner.timer
 GOVERNOR=http://127.0.0.1:8790
@@ -27,14 +28,10 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 command -v gh >/dev/null || fail gh_install_failed
 
-# Reuse an existing joshan GitHub CLI session when present. On a fresh Pi5,
-# perform the one-time official device/web login interactively in this same
-# activation. No token is written into this repository or service unit.
+# Reuse an existing joshan GitHub CLI session. Activation remains non-interactive;
+# an absent user-owned GitHub session is reported as a fail-closed prerequisite.
 if ! runuser -u joshan -- gh auth status --hostname github.com >/dev/null 2>&1; then
-    printf '\n===== ONE-TIME GITHUB AUTHENTICATION =====\n'
-    printf 'GitHub CLI is installed but the joshan account is not authenticated.\n'
-    printf 'Complete the GitHub device/web login shown below; installation will then continue automatically.\n\n'
-    runuser -u joshan -- gh auth login --hostname github.com --git-protocol ssh --web || fail gh_auth_login_failed
+    fail gh_auth_unavailable_for_joshan
 fi
 runuser -u joshan -- gh auth status --hostname github.com >/dev/null 2>&1 || fail gh_auth_unavailable_for_joshan
 runuser -u joshan -- gh api "repos/$GITHUB_REPO" >/dev/null 2>&1 || fail gh_repo_api_unavailable
@@ -42,6 +39,13 @@ curl -fsS --max-time 5 "$GOVERNOR/health" >/dev/null || fail governor_unhealthy
 
 install -d -m 0755 /usr/local/libexec
 install -d -o joshan -g joshan -m 0750 "$STATE_DIR"
+install -d -m 0755 /etc/lifeos
+if [[ ! -s "$DISPATCH_TOKEN" ]]; then
+    umask 077
+    python3 -c 'import secrets; print(secrets.token_urlsafe(48))' >"$DISPATCH_TOKEN"
+fi
+chown root:root "$DISPATCH_TOKEN"
+chmod 0600 "$DISPATCH_TOKEN"
 
 cat >"$WORKER" <<'PY'
 #!/usr/bin/env python3
@@ -83,6 +87,10 @@ def api(path, method="GET", body=None):
     req = urllib.request.Request(url, data=data, method=method)
     if data is not None:
         req.add_header("Content-Type", "application/json")
+    if method == "POST" and isinstance(body, dict) and "dispatch_builder" in body:
+        credential_dir = os.environ.get("CREDENTIALS_DIRECTORY", "")
+        token = (Path(credential_dir) / "backlog-dispatcher.token").read_text().strip()
+        req.add_header("Authorization", f"Bearer {token}")
     with urllib.request.urlopen(req, timeout=45) as r:
         return json.load(r)
 
@@ -277,9 +285,7 @@ DISCOVERED_ISSUES_JSON_B64=<base64 JSON list of objects with title, body, privac
 
 Also ensure the normal redacted governor/job_records/<job_id>.json mechanism captures the run. Do not close or modify GitHub issues directly; the local backlog dispatcher will write the authoritative issue checkpoint after the run.
 """
-    payload = {"request": prompt}
-    if is_private:
-        payload["privacy"] = "local-only"
+    payload = {"request": prompt, "dispatch_builder": "local" if is_private else "normal"}
     job = api("/jobs", "POST", payload)
     job_id = str(job.get("id") or "")
     if not job_id:
@@ -348,6 +354,13 @@ PrivateTmp=true
 ProtectSystem=strict
 ReadWritePaths=$STATE_DIR $REPO
 ProtectHome=read-only
+LoadCredential=backlog-dispatcher.token:$DISPATCH_TOKEN
+EOF
+
+install -d -m 0755 /etc/systemd/system/lifeos-autonomous-agent.service.d
+cat >/etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf <<EOF
+[Service]
+LoadCredential=backlog-dispatcher.token:$DISPATCH_TOKEN
 EOF
 
 cat >"$TIMER" <<'EOF'
@@ -366,6 +379,12 @@ WantedBy=timers.target
 EOF
 
 systemctl daemon-reload
+systemctl restart lifeos-autonomous-agent.service
+for _ in $(seq 1 15); do
+    curl -fsS --max-time 3 "$GOVERNOR/health" >/dev/null 2>&1 && break
+    sleep 1
+done
+curl -fsS --max-time 3 "$GOVERNOR/health" >/dev/null || fail governor_restart_unhealthy
 systemctl enable --now lifeos-backlog-runner.timer
 systemctl start lifeos-backlog-runner.service
 sleep 3
