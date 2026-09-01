@@ -1,0 +1,40 @@
+#!/usr/bin/env python3
+
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("Europe/London")
+ROOT = Path("/opt/lifeos-watch/octopus-powerdown-assurance")
+STATUS = ROOT / "active-status.json"
+EVIDENCE = ROOT / "event-evidence-v52.jsonl"
+
+if not STATUS.is_file():
+    raise SystemExit("active status missing")
+
+with STATUS.open() as f:
+    status = json.load(f)
+
+record = {
+    "recorded_at": datetime.now(TZ).isoformat(),
+    "generated_at": status.get("generated_at"),
+    "event": status.get("event"),
+    "readiness": status.get("readiness"),
+    "telemetry": {
+        "crosscheck_pass": (status.get("telemetry") or {}).get("crosscheck_pass"),
+        "crosscheck": (status.get("telemetry") or {}).get("crosscheck"),
+    },
+    "reserve": status.get("reserve"),
+    "control": status.get("control"),
+    "anomaly_flags": status.get("anomaly_flags"),
+}
+
+ROOT.mkdir(parents=True, exist_ok=True)
+with EVIDENCE.open("a") as f:
+    f.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+os.chmod(EVIDENCE, 0o600)
+
+print("EVIDENCE_RECORDED=PASS")
+print("EVIDENCE_FILE=" + str(EVIDENCE))
