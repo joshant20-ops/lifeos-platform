@@ -1,0 +1,39 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The evidence shows that the build process has been initiated and a reference pipeline script has been created. However, the publication evidence indicates that there are issues with the patch and the documentation and governance files have been added, but there is no indication of a successful build or deployment. The runtime action is also not declared, which suggests that the system is waiting for further instructions. Therefore, the system is blocked and requires further action to resolve the issues and complete the build process."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #17 in joshant20-ops/lifeos-platform: Build LifeOS Finance: personal, rental and business accounting This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Goal Build a self-hosted LifeOS finance/accounting capability that combines the useful money-management experience of Monzo with the bookkeeping/tax-preparation functions of QuickBooks, while kee",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 1,
+  "job_id": "70baa6846449",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": null,
+  "runtime_return_code": null,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-01T23:32:20+0100",
+    "created_at": "2026-09-01T23:29:00+0100",
+    "stage_changed_at": "2026-09-01T23:32:20+0100",
+    "started_at": "2026-09-01T23:29:00+0100"
+  }
+}
