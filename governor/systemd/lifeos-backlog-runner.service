@@ -1,0 +1,24 @@
+[Unit]
+Description=LifeOS autonomous GitHub backlog dispatcher
+After=network-online.target lifeos-autonomous-agent.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=joshan
+Group=joshan
+WorkingDirectory=/home/joshan/lifeos-platform
+Environment=HOME=/home/joshan
+Environment=LIFEOS_BACKLOG_GITHUB_REPO=joshant20-ops/lifeos-platform
+Environment=LIFEOS_BACKLOG_GOVERNOR=http://127.0.0.1:8790
+Environment=LIFEOS_BACKLOG_STATE=/var/lib/lifeos-backlog-runner
+Environment=LIFEOS_BACKLOG_CENTRAL_ISSUE=24
+ExecStart=/usr/local/libexec/lifeos-backlog-runner
+TimeoutStartSec=300
+Nice=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lifeos-backlog-runner /home/joshan/lifeos-platform
+ProtectHome=read-only
+LoadCredential=backlog-dispatcher.token:/etc/lifeos/backlog-dispatcher.token

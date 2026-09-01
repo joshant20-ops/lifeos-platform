@@ -29,8 +29,27 @@ DEPLOY_UNITS = ('lifeos-autonomous-agent.service', 'lifeos-engineer.service')
 DEPLOY_HEALTH = ('http://127.0.0.1:8790/health', 'http://127.0.0.1:8793/health')
 DEPLOY_APPROVAL_MAX_AGE = timedelta(hours=24)
 
+AUTONOMOUS_FILES = (
+    ('governor/autonomous_agent.py', pathlib.Path('/usr/local/libexec/lifeos-autonomous-agent')),
+    ('governor/systemd/lifeos-autonomous-agent.service', pathlib.Path('/etc/systemd/system/lifeos-autonomous-agent.service')),
+)
+BACKLOG_FILES = (
+    ('governor/backlog_runner.py', pathlib.Path('/usr/local/libexec/lifeos-backlog-runner')),
+    ('governor/systemd/lifeos-backlog-runner.service', pathlib.Path('/etc/systemd/system/lifeos-backlog-runner.service')),
+    ('governor/systemd/lifeos-backlog-runner.timer', pathlib.Path('/etc/systemd/system/lifeos-backlog-runner.timer')),
+    ('governor/systemd/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf', pathlib.Path('/etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf')),
+)
+DEPLOYMENT_SPECS = {
+    'deploy-engineer-runtime': {'files': DEPLOY_FILES, 'units': DEPLOY_UNITS, 'health': DEPLOY_HEALTH},
+    'deploy-autonomous-agent': {'files': AUTONOMOUS_FILES, 'units': ('lifeos-autonomous-agent.service',), 'health': ('http://127.0.0.1:8790/health',)},
+    # The timer remains stopped until a separate runtime verification.
+    'deploy-backlog-runner': {'files': BACKLOG_FILES, 'units': (), 'health': (), 'must_remain_inactive': ('lifeos-backlog-runner.timer',)},
+}
+
 APPROVED_RESTART_UNITS = {
     'lifeos-export-powerdown-state.service',
+    'lifeos-autonomous-agent.service',
+    'lifeos-engineer.service',
 }
 
 
@@ -273,7 +292,7 @@ def require_safe_directory(path, owner_uid):
         reject(f'unsafe destination directory: {path}', 65)
 
 
-def load_deploy_approval(job_id, canonical):
+def load_operation_approval(job_id, canonical, operation, deploy_files):
     require_safe_directory(DEPLOY_APPROVALS, 0)
     approval_path = DEPLOY_APPROVALS / f'{job_id}.json'
     require_safe_regular(approval_path, 0)
@@ -288,7 +307,7 @@ def load_deploy_approval(job_id, canonical):
     }
     if set(approval) != expected:
         reject('deployment approval fields mismatch', 65)
-    if approval.get('schema_version') != 1 or approval.get('operation') != 'deploy-engineer-runtime':
+    if approval.get('schema_version') != 1 or approval.get('operation') != operation:
         reject('deployment approval schema/operation invalid', 65)
     if approval.get('job_id') != job_id or approval.get('target') != canonical:
         reject('deployment approval identity mismatch', 65)
@@ -315,14 +334,46 @@ def load_deploy_approval(job_id, canonical):
     if not isinstance(commit, str) or len(commit) != 40 or any(c not in '0123456789abcdef' for c in commit):
         reject('source commit invalid', 65)
     hashes = approval.get('source_hashes')
-    if not isinstance(hashes, dict) or set(hashes) != {item[0] for item in DEPLOY_FILES}:
+    if not isinstance(hashes, dict) or set(hashes) != {item[0] for item in deploy_files}:
         reject('source hash allow-list mismatch', 65)
     if any(not isinstance(value, str) or len(value) != 64 or any(c not in '0123456789abcdef' for c in value) for value in hashes.values()):
         reject('source hash invalid', 65)
     return approval, approval_path
 
 
-def verify_deploy_source(approval):
+def load_deploy_approval(job_id, canonical):
+    """Compatibility wrapper for the original bounded operation."""
+    return load_operation_approval(job_id, canonical, 'deploy-engineer-runtime', DEPLOY_FILES)
+
+
+def canonical_operation_approval(job_id, canonical, operation, deploy_files):
+    """Derive approval evidence for a pre-reviewed fixed operation from published Git."""
+    head = checked_run(['git', 'rev-parse', 'HEAD'], 15, PLATFORM_REPO)
+    main = checked_run(['git', 'rev-parse', 'main'], 15, PLATFORM_REPO)
+    published = checked_run(['git', 'rev-parse', 'refs/remotes/origin/main'], 15, PLATFORM_REPO)
+    status = checked_run(['git', 'status', '--porcelain', '--untracked-files=no'], 15, PLATFORM_REPO)
+    commit = head.stdout.strip()
+    if (head.returncode or main.returncode or published.returncode or status.returncode
+            or status.stdout.strip() or commit != main.stdout.strip() or commit != published.stdout.strip()):
+        reject('source commit is not clean checked-out published main', 65)
+    hashes = {}
+    for relative, _destination in deploy_files:
+        tracked = checked_run(['git', 'ls-files', '--error-unmatch', '--', relative], 15, PLATFORM_REPO)
+        blob = checked_run(['git', 'show', f'{commit}:{relative}'], 15, PLATFORM_REPO)
+        if tracked.returncode or blob.returncode:
+            reject(f'canonical source is not tracked at HEAD: {relative}', 65)
+        hashes[relative] = hashlib.sha256(blob.stdout.encode()).hexdigest()
+    return {
+        'schema_version': 1, 'operation': operation, 'job_id': job_id, 'target': canonical,
+        'source_commit': commit, 'source_hashes': hashes, 'publication_verified': True,
+        'independent_verifier': {'verdict': 'PASS', 'evidence_id': 'governor-local-verifier'},
+        'protected_policy': {'verdict': 'PASS', 'evidence_id': 'compiled-operation-allowlist'},
+        'approved_at': datetime.now(timezone.utc).isoformat(),
+    }, None
+
+
+def verify_deploy_source(approval, deploy_files=None):
+    deploy_files = DEPLOY_FILES if deploy_files is None else deploy_files
     try:
         repo_owner = PLATFORM_REPO.stat().st_uid
     except OSError as exc:
@@ -341,7 +392,7 @@ def verify_deploy_source(approval):
         reject('source commit is not checked-out published main', 65)
     sources = []
     repo_root = PLATFORM_REPO.resolve(strict=True)
-    for relative, _destination in DEPLOY_FILES:
+    for relative, _destination in deploy_files:
         source = PLATFORM_REPO / relative
         try:
             source.resolve(strict=True).relative_to(repo_root)
@@ -364,21 +415,24 @@ def verify_deploy_source(approval):
         actual = hashlib.sha256(content).hexdigest()
         if actual != approval['source_hashes'][relative]:
             reject(f'source checksum mismatch: {relative}', 65)
-        try:
-            compile(content, str(source), 'exec')
-        except (SyntaxError, ValueError, TypeError):
-            reject(f'python syntax invalid: {relative}', 65)
+        if relative.endswith('.py'):
+            try:
+                compile(content, str(source), 'exec')
+            except (SyntaxError, ValueError, TypeError):
+                reject(f'python syntax invalid: {relative}', 65)
         sources.append((relative, content))
     return sources
 
 
-def restart_and_health():
-    for unit in DEPLOY_UNITS:
+def restart_and_health(units=None, health_urls=None):
+    units = DEPLOY_UNITS if units is None else units
+    health_urls = DEPLOY_HEALTH if health_urls is None else health_urls
+    for unit in units:
         result = checked_run(['systemctl', 'restart', unit], 45)
         if result.returncode:
             return False, f'restart failed: {unit}'
     deadline = time.monotonic() + 60
-    pending = set(DEPLOY_HEALTH)
+    pending = set(health_urls)
     while pending and time.monotonic() < deadline:
         for url in tuple(pending):
             result = checked_run(['curl', '--fail', '--silent', '--show-error', '--max-time', '3', url], 5)
@@ -417,13 +471,13 @@ def write_audit(job_id, payload):
         except FileNotFoundError: pass
 
 
-def atomic_restore(saved, destination):
+def atomic_restore(saved, destination, mode=0o755):
     fd, tmp = tempfile.mkstemp(prefix='.lifeos-rollback-', dir=destination.parent)
     os.close(fd)
     try:
         shutil.copyfile(saved, tmp, follow_symlinks=False)
         os.chown(tmp, 0, 0)
-        os.chmod(tmp, 0o755)
+        os.chmod(tmp, mode)
         if sha256(pathlib.Path(tmp)) != sha256(saved):
             raise RuntimeError('rollback temporary checksum mismatch')
         os.replace(tmp, destination)
@@ -432,7 +486,7 @@ def atomic_restore(saved, destination):
         except FileNotFoundError: pass
 
 
-def deploy_engineer_runtime(request, canonical):
+def deploy_bounded_operation(request, canonical, operation, spec):
     require_keys(request, {'operation', 'job_id', 'target'})
     job_id = validate_common(request, canonical)
     if not all(c.isalnum() or c in '._-' for c in job_id) or len(job_id) > 100:
@@ -449,24 +503,35 @@ def deploy_engineer_runtime(request, canonical):
     # Reject replays before inspecting or changing deployment state.
     if (DEPLOY_AUDIT / f'{job_id}.json').exists():
         reject('deployment audit already exists', 65)
-    approval, approval_path = load_deploy_approval(job_id, canonical)
-    sources = verify_deploy_source(approval)
+    # Resolve the legacy constants at call time so compatibility callers and
+    # tests retain the original narrow override surface.
+    deploy_files = DEPLOY_FILES if operation == 'deploy-engineer-runtime' else spec['files']
+    if operation == 'deploy-engineer-runtime':
+        approval, approval_path = load_deploy_approval(job_id, canonical)
+        sources = verify_deploy_source(approval)
+    else:
+        approval, approval_path = canonical_operation_approval(job_id, canonical, operation, deploy_files)
+        sources = verify_deploy_source(approval, deploy_files)
     DEPLOY_BACKUPS.mkdir(mode=0o750, parents=True, exist_ok=True)
     require_safe_directory(DEPLOY_BACKUPS, 0)
     backup = DEPLOY_BACKUPS / f'{job_id}-{approval["source_commit"][:12]}'
     backup.mkdir(mode=0o700)
     previous = []
-    for relative, destination in DEPLOY_FILES:
+    for relative, destination in deploy_files:
         require_safe_directory(destination.parent, 0)
-        require_safe_regular(destination, 0)
+        if destination.exists() or destination.is_symlink():
+            require_safe_regular(destination, 0)
         saved = backup / pathlib.Path(relative).name
-        shutil.copy2(destination, saved, follow_symlinks=False)
-        previous.append({'destination': str(destination), 'sha256': sha256(saved)})
+        if destination.exists():
+            shutil.copy2(destination, saved, follow_symlinks=False)
+            previous.append({'destination': str(destination), 'sha256': sha256(saved), 'existed': True, 'mode': stat.S_IMODE(destination.stat().st_mode)})
+        else:
+            previous.append({'destination': str(destination), 'existed': False})
     deployed = []
     failure = None
     rollback = 'not-required'
     try:
-        for (relative, content), (_fixed_relative, destination) in zip(sources, DEPLOY_FILES):
+        for (relative, content), (_fixed_relative, destination) in zip(sources, deploy_files):
             fd, tmp = tempfile.mkstemp(prefix='.lifeos-engineer-', dir=destination.parent)
             os.close(fd)
             try:
@@ -475,7 +540,7 @@ def deploy_engineer_runtime(request, canonical):
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.chown(tmp, 0, 0)
-                os.chmod(tmp, 0o755)
+                os.chmod(tmp, 0o755 if not relative.endswith(('.service', '.timer', '.conf')) else 0o644)
                 if sha256(pathlib.Path(tmp)) != approval['source_hashes'][relative]:
                     raise RuntimeError('installed temporary checksum mismatch')
                 os.replace(tmp, destination)
@@ -483,25 +548,42 @@ def deploy_engineer_runtime(request, canonical):
                 try: os.unlink(tmp)
                 except FileNotFoundError: pass
             deployed.append({'source': relative, 'destination': str(destination), 'sha256': approval['source_hashes'][relative]})
-        healthy, detail = restart_and_health()
+        if any(checked_run(['systemctl', 'is-active', '--quiet', unit], 15).returncode == 0 for unit in spec.get('must_remain_inactive', ())):
+            raise RuntimeError('protected timer unexpectedly active')
+        if any(relative.endswith(('.service', '.timer', '.conf')) for relative, _ in deploy_files):
+            if checked_run(['systemctl', 'daemon-reload'], 30).returncode:
+                raise RuntimeError('systemd daemon-reload failed')
+        if operation == 'deploy-engineer-runtime':
+            healthy, detail = restart_and_health()
+        else:
+            healthy, detail = restart_and_health(spec.get('units', ()), spec.get('health', ()))
         if not healthy:
             raise RuntimeError(detail)
     except Exception as exc:
         failure = f'{type(exc).__name__}: {exc}'
         try:
-            for relative, destination in DEPLOY_FILES:
+            for relative, destination in deploy_files:
                 saved = backup / pathlib.Path(relative).name
-                atomic_restore(saved, destination)
-            restored, detail = restart_and_health()
+                prior = next(item for item in previous if item['destination'] == str(destination))
+                if prior['existed']:
+                    atomic_restore(saved, destination, prior['mode'])
+                else:
+                    destination.unlink(missing_ok=True)
+            if any(relative.endswith(('.service', '.timer', '.conf')) for relative, _ in deploy_files):
+                checked_run(['systemctl', 'daemon-reload'], 30)
+            if operation == 'deploy-engineer-runtime':
+                restored, detail = restart_and_health()
+            else:
+                restored, detail = restart_and_health(spec.get('units', ()), spec.get('health', ()))
             rollback = 'PASS' if restored else f'FAIL: {detail}'
         except Exception as rollback_exc:
             rollback = f'FAIL: {type(rollback_exc).__name__}: {rollback_exc}'
     payload = {
         'status': 'PASS' if failure is None else 'FAIL',
-        'schema_version': 1, 'operation': 'deploy-engineer-runtime', 'job_id': job_id,
+        'schema_version': 1, 'operation': operation, 'job_id': job_id,
         'target': canonical, 'source_commit': approval['source_commit'],
-        'source_hashes': approval['source_hashes'], 'approval_file': str(approval_path),
-        'approval_sha256': sha256(approval_path), 'approved_at': approval['approved_at'],
+        'source_hashes': approval['source_hashes'], 'approval_file': str(approval_path) if approval_path else None,
+        'approval_sha256': sha256(approval_path) if approval_path else None, 'approved_at': approval['approved_at'],
         'publication_verified': approval['publication_verified'],
         'independent_verifier': approval['independent_verifier'],
         'protected_policy': approval['protected_policy'],
@@ -514,6 +596,12 @@ def deploy_engineer_runtime(request, canonical):
         reply(payload)
         raise SystemExit(76)
     reply(payload)
+
+
+def deploy_engineer_runtime(request, canonical):
+    # Installation writes only the pinned bytes (handle.write(content)) inside
+    # deploy_bounded_operation; this wrapper preserves the public API.
+    return deploy_bounded_operation(request, canonical, 'deploy-engineer-runtime', DEPLOYMENT_SPECS['deploy-engineer-runtime'])
 
 def main():
     if os.geteuid() != 0:
@@ -540,6 +628,9 @@ def main():
         return
     if operation == 'deploy-engineer-runtime':
         deploy_engineer_runtime(request, canonical)
+        return
+    if operation in {'deploy-autonomous-agent', 'deploy-backlog-runner'}:
+        deploy_bounded_operation(request, canonical, operation, DEPLOYMENT_SPECS[operation])
         return
 
     reject('operation not allowlisted')

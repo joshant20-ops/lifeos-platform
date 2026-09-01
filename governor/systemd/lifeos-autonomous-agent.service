@@ -1,0 +1,27 @@
+[Unit]
+Description=LifeOS autonomous natural-language job agent
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=joshan
+Group=joshan
+Environment=LIFEOS_AGENT_PORT=8790
+Environment=LIFEOS_AGENT_STATE=/var/lib/lifeos-agent
+Environment=LIFEOS_AGENT_MAX_ITERATIONS=8
+Environment=LIFEOS_AGENT_BUILDER=/usr/local/libexec/lifeos-cloud-builder
+Environment=LIFEOS_LOCAL_VERIFIER_URL=http://192.168.0.201:11434/api/generate
+Environment=LIFEOS_LOCAL_VERIFIER_MODEL=qwen2.5-coder:7b-instruct
+Environment=LIFEOS_PLATFORM_REPO=/home/joshan/lifeos-platform
+ExecStart=/usr/local/libexec/lifeos-autonomous-agent
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/lifeos-agent /home/joshan/lifeos-platform
+
+[Install]
+WantedBy=multi-user.target

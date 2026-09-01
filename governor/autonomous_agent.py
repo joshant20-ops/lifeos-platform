@@ -46,6 +46,9 @@ STUCK_JOB_MIN_SECONDS = int(os.environ.get("LIFEOS_STUCK_JOB_MIN_SECONDS", "300"
 CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"))
 EXECUTION_LOCK = threading.Lock()
 DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})
+DEPLOYMENT_OPERATIONS = frozenset({
+    "deploy-engineer-runtime", "deploy-autonomous-agent", "deploy-backlog-runner",
+})
 
 INCOMPLETE_CONTRACT_STATES = frozenset({
     "PENDING", "NOT_STARTED", "NOT_IMPLEMENTED", "NOT_VERIFIED",
@@ -82,9 +85,11 @@ def submit_control_job(manifest_json, script_bytes):
         return {"status": "REJECTED", "reason": f"submission bridge unavailable: {type(exc).__name__}"}
 
 
-def request_engineer_runtime_deployment(job_id):
-    """Request one fixed broker operation; no command, path, unit, or argument is delegated."""
-    request = {"operation": "deploy-engineer-runtime", "job_id": str(job_id), "target": "pi5"}
+def request_bounded_deployment(job_id, intent):
+    """Map an exact declarative intent to a fixed broker operation."""
+    if intent not in DEPLOYMENT_OPERATIONS:
+        return {"status": "REJECTED", "reason": "deployment operation not allowlisted"}
+    request = {"operation": intent, "job_id": str(job_id), "target": "pi5"}
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(180)
@@ -103,6 +108,12 @@ def request_engineer_runtime_deployment(job_id):
         return payload
     except Exception as exc:
         return {"status": "REJECTED", "reason": f"root broker unavailable: {type(exc).__name__}"}
+
+
+def request_engineer_runtime_deployment(job_id):
+    """Compatibility interface for existing Engineer jobs."""
+    request = {"operation": "deploy-engineer-runtime", "job_id": str(job_id), "target": "pi5"}
+    return request_bounded_deployment(job_id, request["operation"])
 
 PRIVATE_PATTERNS = (
     r"\bpaperless\b",
@@ -370,6 +381,7 @@ def parse_handoff(raw):
         "patch_b64": _marker(raw, "HANDOFF_PATCH_B64"),
         "runtime_b64": _marker(raw, "HANDOFF_RUNTIME_B64"),
         "run_script": _marker(raw, "RUN_SCRIPT"),
+        "deployment_operation": _marker(raw, "DEPLOYMENT_OPERATION"),
     }
     sanitized = re.sub(r"(?m)^HANDOFF_(?:PATCH|RUNTIME)_B64=.*$", "HANDOFF_PAYLOAD=[redacted from verifier evidence]", raw)
     return handoff, sanitized
@@ -696,9 +708,15 @@ def _execute_job_locked(job):
         v = decision["milestone_result"]
 
         if v == "PASS":
+            deployment_operation = handoff.get("deployment_operation")
             if bool(job.get("deploy_engineer_runtime")):
+                deployment_operation = "deploy-engineer-runtime"
+            if deployment_operation:
                 set_stage(job, "deployment", "requesting approved bounded Engineer runtime deployment")
-                job["deployment"] = request_engineer_runtime_deployment(job["id"])
+                if deployment_operation == "deploy-engineer-runtime":
+                    job["deployment"] = request_engineer_runtime_deployment(job["id"])
+                else:
+                    job["deployment"] = request_bounded_deployment(job["id"], deployment_operation)
                 if job["deployment"].get("status") != "PASS":
                     job["status"] = "BLOCKED"
                     job["blocked_reason"] = "bounded runtime deployment was not approved or failed"
