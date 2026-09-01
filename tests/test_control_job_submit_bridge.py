@@ -26,6 +26,8 @@ def bridge(tmp_path):
     m = load(SOURCE, "submit_bridge")
     m.REPO = tmp_path
     m.LOCK = tmp_path / "run/submit.lock"
+    m.os.environ["LIFEOS_SUBMIT_PUBLISHER_UID"] = str(m.os.getuid())
+    m.subprocess.run = mock.Mock()
     for rel in (*m.ROOTS.values(), "jobs/staging", "jobs/pending", "jobs/archive", "results"):
         (tmp_path / rel).mkdir(parents=True)
     return m
@@ -52,6 +54,11 @@ def test_accepts_only_canonical_root_and_staging(bridge):
     assert json.loads((bridge.REPO / "jobs/staging/approved-001.json").read_text()) == d
     assert not list((bridge.REPO / "jobs/pending").iterdir())
     assert not list((bridge.REPO / "results").iterdir())
+    assert (bridge.REPO / d["script"]).stat().st_mode & 0o777 == 0o750
+    assert (bridge.REPO / "jobs/staging/approved-001.json").stat().st_mode & 0o777 == 0o640
+    acl_calls = bridge.subprocess.run.call_args_list
+    assert [call.args[0][2] for call in acl_calls] == [f"u:{bridge.os.getuid()}:r-x", f"u:{bridge.os.getuid()}:r--"]
+    assert all(call.kwargs["pass_fds"] for call in acl_calls)
 
 
 @pytest.mark.parametrize("mutation,reason", [
@@ -61,6 +68,7 @@ def test_accepts_only_canonical_root_and_staging(bridge):
     (lambda d: d.update(requires_root=False), "requires_root"),
     (lambda d: d.update(destination="/tmp/pwn"), "unexpected"),
     (lambda d: d.update(command="id", args=["-u"]), "unexpected"),
+    (lambda d: d.update(owner="joshan", group="root", mode="0777", acl="u:joshan:rwx"), "unexpected"),
 ])
 def test_adversarial_manifest_rejected(bridge, mutation, reason):
     d, script = package(); mutation(d)
@@ -103,6 +111,15 @@ def test_concurrent_submit_has_exactly_one_winner(bridge):
     for t in threads: t.start()
     for t in threads: t.join()
     assert sorted(outcomes) == ["accepted", "rejected"]
+
+
+def test_missing_trusted_publisher_uid_fails_closed_and_cleans_up(bridge):
+    bridge.os.environ.pop("LIFEOS_SUBMIT_PUBLISHER_UID")
+    d, script = package()
+    with pytest.raises(bridge.Rejected, match="publisher uid"):
+        send(bridge, d, script)
+    assert not (bridge.REPO / d["script"]).exists()
+    assert not list((bridge.REPO / "jobs/staging").iterdir())
 
 
 def test_publisher_promotes_bridge_job_in_existing_fifo_order(bridge):
