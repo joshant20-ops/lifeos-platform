@@ -157,6 +157,44 @@ class PublisherFifoTests(unittest.TestCase):
             'HOME': '/home/joshan', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'
         })
 
+    def test_joshan_git_discards_caller_git_and_ssh_environment(self):
+        completed = mock.Mock(returncode=0)
+        poisoned = {
+            'HOME': '/tmp/attacker',
+            'PATH': '/tmp/attacker-bin',
+            'GIT_DIR': '/tmp/attacker-repo',
+            'GIT_WORK_TREE': '/tmp/attacker-tree',
+            'GIT_SSH': '/tmp/attacker-ssh',
+            'GIT_SSH_COMMAND': 'ssh -o StrictHostKeyChecking=no',
+            'SSH_AUTH_SOCK': '/tmp/attacker-agent',
+        }
+        with mock.patch.dict(self.m.os.environ, poisoned, clear=False), \
+             mock.patch.object(self.m.os, 'geteuid', return_value=1000), \
+             mock.patch.object(self.m.pwd, 'getpwuid', return_value=mock.Mock(pw_name='joshan')), \
+             mock.patch.object(self.m.subprocess, 'run', return_value=completed) as run:
+            self.m.git('ls-remote', 'origin', 'refs/heads/main')
+        self.assertEqual(run.call_args.kwargs['cwd'], self.m.REPO)
+        self.assertEqual(run.call_args.kwargs['env'], {
+            'HOME': '/home/joshan', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'
+        })
+        self.assertFalse(
+            {'GIT_DIR', 'GIT_WORK_TREE', 'GIT_SSH', 'GIT_SSH_COMMAND', 'SSH_AUTH_SOCK'}
+            & set(run.call_args.kwargs['env'])
+        )
+
+    def test_root_git_discards_caller_environment_and_pins_git_binary(self):
+        completed = mock.Mock(returncode=0)
+        with mock.patch.dict(self.m.os.environ, {'GIT_SSH_COMMAND': 'false', 'HOME': '/tmp/bad'}), \
+             mock.patch.object(self.m.os, 'geteuid', return_value=0), \
+             mock.patch.object(self.m.pwd, 'getpwuid', return_value=mock.Mock(pw_name='root')), \
+             mock.patch.object(self.m.subprocess, 'run', return_value=completed) as run:
+            self.m.git('fetch', 'origin', 'main')
+        command = run.call_args.args[0]
+        self.assertIn('/usr/bin/env', command)
+        self.assertIn('-i', command)
+        self.assertEqual(command[-4:], ['/usr/bin/git', 'fetch', 'origin', 'main'])
+        self.assertNotIn('GIT_SSH_COMMAND=false', command)
+
     def test_unexpected_nonroot_identity_fails_closed(self):
         with mock.patch.object(self.m.os, 'geteuid', return_value=2000), \
              mock.patch.object(self.m.pwd, 'getpwuid', return_value=mock.Mock(pw_name='other')), \
