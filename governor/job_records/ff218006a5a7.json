@@ -1,0 +1,39 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The publication evidence indicates that the canonical checkout is dirty, which means there are uncommitted changes that need to be addressed before the artifact can be published."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #15 in joshant20-ops/lifeos-platform: Design and build LifeOS Personal Assistant UI in Home Assistant This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Goal Design and build the LifeOS Personal Assistant (PA) experience in Home Assistant as a separate role/surface from LifeOS Engineer. ## Desired workflow Before implementation, LifeOS Engineer ",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 2,
+  "job_id": "ff218006a5a7",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": null,
+  "runtime_return_code": null,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-01T23:15:31+0100",
+    "created_at": "2026-09-01T23:09:00+0100",
+    "stage_changed_at": "2026-09-01T23:15:31+0100",
+    "started_at": "2026-09-01T23:09:00+0100"
+  }
+}
