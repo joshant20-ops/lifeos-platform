@@ -48,8 +48,8 @@ normalized_origin=${origin_url%.git}
 normalized_origin=${normalized_origin/github.com:/github.com/}
 [[ "$normalized_origin" == *"github.com/${PLATFORM_REPOSITORY}" ]] || fail pi_canonical_platform_origin_mismatch
 run 120s git -C "$PLATFORM" fetch --prune origin main || fail pi_canonical_platform_fetch_failed
-local_head=$(run 15s git -C "$PLATFORM" rev-parse HEAD)
-remote_head=$(run 15s git -C "$PLATFORM" rev-parse refs/remotes/origin/main)
+local_head=$(run 15s git -C "$PLATFORM" rev-parse HEAD) || fail pi_canonical_platform_head_unreadable
+remote_head=$(run 15s git -C "$PLATFORM" rev-parse refs/remotes/origin/main) || fail pi_canonical_platform_remote_head_unreadable
 run 15s git -C "$PLATFORM" merge-base --is-ancestor "$local_head" "$remote_head" || fail pi_canonical_platform_non_fast_forward
 if [[ "$local_head" != "$remote_head" ]]; then
   run 30s git -C "$PLATFORM" merge --ff-only "$remote_head" || fail pi_canonical_platform_fast_forward_failed
@@ -59,7 +59,7 @@ printf 'PI_CANONICAL_CHECKOUT=PASS commit=%s\n' "$remote_head"
 # Prove the imported bytes still have the exact object identity recorded at the
 # canonical migration commit. This reads Git objects only and emits no content.
 run 15s git -C "$PLATFORM" cat-file -e "${MIGRATION_COMMIT}^{commit}" || fail migration_commit_missing
-migration_tree=$(run 15s git -C "$PLATFORM" rev-parse "$MIGRATION_COMMIT:energy")
+migration_tree=$(run 15s git -C "$PLATFORM" rev-parse "$MIGRATION_COMMIT:energy") || fail migration_energy_tree_unreadable
 [[ "$migration_tree" == "$ENERGY_TREE" ]] || fail migration_energy_tree_identity_mismatch
 run 15s git -C "$PLATFORM" merge-base --is-ancestor "$MIGRATION_COMMIT" HEAD || fail migration_commit_not_in_canonical_history
 printf 'ENERGY_OBJECT_IDENTITY=PASS commit=%s tree=%s\n' "$MIGRATION_COMMIT" "$ENERGY_TREE"
@@ -98,8 +98,22 @@ def pairs(value):
         for child in value:
             yield from pairs(child)
 
-source = next((d[key] for key in ("canonical_source", "immutable_source", "source")
-               if isinstance(d.get(key), dict)), None)
+source_keys = {"canonical_source", "immutable_source", "source"}
+
+def source_objects(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if str(key).lower() in source_keys and isinstance(child, dict):
+                yield child
+            yield from source_objects(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from source_objects(child)
+
+sources = list(source_objects(d))
+if len(sources) > 1:
+    raise SystemExit("ambiguous immutable source objects")
+source = sources[0] if sources else None
 
 if source is not None:
     # The relay protocol's compact source object uses repo/commit/path/sha256.
@@ -136,7 +150,7 @@ source_path=${identity[2]}
 source_sha=${identity[3]}
 run 15s git -C "$PLATFORM" cat-file -e "${source_commit}^{commit}" || fail manifest_source_commit_missing
 [[ $(run 15s git -C "$PLATFORM" rev-parse "$source_commit:energy") == "$ENERGY_TREE" ]] || fail manifest_source_lacks_imported_energy_identity
-actual_sha=$(run 15s git -C "$PLATFORM" show "$source_commit:$source_path" | sha256sum | awk '{print $1}')
+actual_sha=$(run 15s git -C "$PLATFORM" show "$source_commit:$source_path" | sha256sum | awk '{print $1}') || fail manifest_canonical_script_unreadable
 [[ "$actual_sha" == "$source_sha" ]] || fail manifest_canonical_script_hash_mismatch
 printf 'IMMUTABLE_SOURCE_MANIFEST=PASS commit=%s path=%s sha256=%s\n' "$source_commit" "$source_path" "$source_sha"
 

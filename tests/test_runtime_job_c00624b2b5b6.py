@@ -16,10 +16,20 @@ def test_migration_gate_is_bounded_and_repairs_checkout_safely():
 
 def test_migration_gate_accepts_compact_immutable_source_contract():
     text = SCRIPT.read_text()
-    assert '("canonical_source", "immutable_source", "source")' in text
+    assert 'source_keys = {"canonical_source", "immutable_source", "source"}' in text
+    assert "yield from source_objects(child)" in text
+    assert 'raise SystemExit("ambiguous immutable source objects")' in text
     assert '"source_path", "path"' in text
     assert '"source_sha256", "sha256"' in text
     assert "identity_output=$(python3" in text
+
+
+def test_migration_gate_reports_git_read_failures_through_contract():
+    text = SCRIPT.read_text()
+    assert ") || fail pi_canonical_platform_head_unreadable" in text
+    assert ") || fail pi_canonical_platform_remote_head_unreadable" in text
+    assert ") || fail migration_energy_tree_unreadable" in text
+    assert ") || fail manifest_canonical_script_unreadable" in text
 
 
 def test_migration_gate_checks_import_object_without_freezing_energy_forever():
