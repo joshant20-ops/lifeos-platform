@@ -132,3 +132,13 @@ def test_engineer_client_surface_has_no_destination_or_command():
     assert '"operation": "submit-control-job"' in function
     assert '"manifest": manifest_json' in function and '"script_base64"' in function
     assert "destination" not in function and '"command"' not in function and '"args"' not in function
+
+
+def test_job_specific_activation_launcher_is_bounded_and_human_gated():
+    path = pathlib.Path("governor/runtime_jobs/cb5fdbe62b15.sh")
+    text = path.read_text()
+    assert text.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert "HUMAN_ACTION_REQUIRED=" in text
+    assert "timeout --signal=TERM --kill-after=30s 2100s" in text
+    assert "governor/runtime_jobs/d2dd520ff95b.sh" in text
+    assert "RESULT=BLOCKED" in text

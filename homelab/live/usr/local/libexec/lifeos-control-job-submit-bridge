@@ -125,6 +125,16 @@ def _create(path, data, mode):
         out.write(data); out.flush(); os.fsync(out.fileno())
 
 
+def _fsync_dir(path):
+    """Make create/unlink directory entries durable before reporting a result."""
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(path, flags)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def submit(manifest_bytes, script_bytes, peer_uid):
     if len(manifest_bytes) > MAX_MANIFEST or len(script_bytes) > MAX_SCRIPT:
         raise Rejected("payload exceeds size limit")
@@ -149,9 +159,16 @@ def submit(manifest_bytes, script_bytes, peer_uid):
                 raise Rejected("checksum mismatch after staging")
             canonical_json = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
             _create(manifest_path, canonical_json, 0o640)
+            # The staging manifest is the commit marker. Persist the script
+            # directory first, then the staging directory, before accepting.
+            _fsync_dir(script_dir)
+            _fsync_dir(staging)
         except Exception:
             # No manifest was published, so cleanup cannot expose a partial job.
+            manifest_path.unlink(missing_ok=True)
             script_path.unlink(missing_ok=True)
+            _fsync_dir(script_dir)
+            _fsync_dir(staging)
             raise
     return manifest
 
