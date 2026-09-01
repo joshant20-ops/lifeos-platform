@@ -36,6 +36,11 @@ STUCK_JOB_MIN_SECONDS = int(os.environ.get("LIFEOS_STUCK_JOB_MIN_SECONDS", "300"
 CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"))
 EXECUTION_LOCK = threading.Lock()
 
+INCOMPLETE_CONTRACT_STATES = frozenset({
+    "PENDING", "NOT_STARTED", "NOT_IMPLEMENTED", "NOT_VERIFIED",
+    "NOT_ATTEMPTED", "UNKNOWN", "INCOMPLETE",
+})
+
 
 def submit_control_job(manifest_json, script_bytes):
     """Submit only an exact manifest and script to the local fixed-purpose bridge."""
@@ -212,6 +217,59 @@ def stuck_jobs(jobs=None, at=None):
 def classify_privacy(text):
     lower = str(text or "").lower()
     return "local-only" if any(re.search(pattern, lower) for pattern in PRIVATE_PATTERNS) else "normal"
+
+
+def extract_mandatory_final_fields(request):
+    """Return reusable KEY= final-contract fields explicitly declared by a job."""
+    fields = []
+    in_contract = False
+    for raw_line in str(request or "").splitlines():
+        line = raw_line.strip()
+        lowered = line.lower()
+        if ("final status must explicitly report" in lowered
+                or "final output contract" in lowered):
+            in_contract = True
+            continue
+        match = re.fullmatch(r"([A-Z][A-Z0-9_]*)\s*=.*", line)
+        if in_contract and match and match.group(1) not in fields:
+            fields.append(match.group(1))
+    return fields
+
+
+def _contract_value(evidence, field):
+    values = re.findall(rf"(?m)^{re.escape(field)}\s*=\s*(.*?)\s*$", str(evidence or ""))
+    return values[-1] if values else None
+
+
+def milestone_decision(job, iteration_verdict, evidence):
+    """Separate an independent iteration verdict from milestone completion."""
+    verdict = str((iteration_verdict or {}).get("verdict") or "RETRY").upper()
+    if verdict not in {"PASS", "RETRY", "BLOCKED"}:
+        verdict = "RETRY"
+    result = {
+        "iteration_result": verdict,
+        "milestone_result": verdict,
+        "reason": str((iteration_verdict or {}).get("reason") or ""),
+        "next_instruction": str((iteration_verdict or {}).get("next_instruction") or ""),
+    }
+    # BLOCKED remains an independent verifier decision for an external dependency.
+    if verdict != "PASS":
+        return result
+    fields = list(job.get("mandatory_final_fields") or [])
+    incomplete = []
+    for field in fields:
+        value = _contract_value(evidence, field)
+        normalized = re.sub(r"[\s-]+", "_", str(value or "").strip().upper())
+        if value is None or normalized in INCOMPLETE_CONTRACT_STATES:
+            incomplete.append(field)
+    if incomplete:
+        result["milestone_result"] = "RETRY"
+        result["reason"] = "mandatory milestone contract is incomplete: " + ", ".join(incomplete)
+        result["next_instruction"] = (
+            "Continue with the next useful phase and provide completed evidence for: "
+            + ", ".join(incomplete)
+        )
+    return result
 
 
 def local_verify(job, iteration, evidence):
@@ -575,12 +633,15 @@ def _execute_job_locked(job):
         except Exception as exc:
             verdict = {"verdict": "RETRY", "reason": f"local verifier unavailable: {type(exc).__name__}", "next_instruction": "Retry local verifier and runtime verification."}
         rec["verification"] = verdict
+        decision = milestone_decision(job, verdict, rec["evidence"])
+        rec["iteration_result"] = decision["iteration_result"]
+        rec["milestone_result"] = decision["milestone_result"]
         rec["finished_at"] = now()
         signature = failure_signature(rec["evidence"], verdict)
         if signature:
             rec["failure_signature"] = signature
         job.setdefault("iterations", []).append(rec)
-        v = str(verdict.get("verdict", "RETRY")).upper()
+        v = decision["milestone_result"]
 
         if v == "PASS":
             if bool(job.get("deploy_engineer_runtime")):
@@ -598,7 +659,7 @@ def _execute_job_locked(job):
             return job
         if v == "BLOCKED":
             job["status"] = "BLOCKED"
-            job["blocked_reason"] = verdict.get("reason")
+            job["blocked_reason"] = decision.get("reason")
             job["completed_at"] = now()
             set_stage(job, "blocked", job["blocked_reason"])
             return job
@@ -614,7 +675,7 @@ def _execute_job_locked(job):
             set_stage(job, "blocked_repeated_failure", job["blocked_reason"])
             return job
 
-        base_feedback = str(verdict.get("next_instruction") or verdict.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
+        base_feedback = str(decision.get("next_instruction") or decision.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
         if repeat_count >= 2:
             feedback = (
                 f"REPLAN REQUIRED: failure signature {signature} repeated {repeat_count} times. "
@@ -688,6 +749,7 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
         "continuation_enabled": bool(continuation_enabled),
         "continuation_depth": int(continuation_depth or 0),
         "deploy_engineer_runtime": bool(deploy_engineer_runtime),
+        "mandatory_final_fields": extract_mandatory_final_fields(request),
     }
     if retry_of:
         job["retry_of"] = retry_of
