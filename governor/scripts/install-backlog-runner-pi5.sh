@@ -13,9 +13,31 @@ fail() { printf 'RESULT=FAIL\nREASON=%s\n' "$1" >&2; exit 1; }
 [[ $(id -u) -eq 0 ]] || fail must_run_via_sudo
 [[ $(hostname) == Docker ]] || fail must_run_on_pi5_Docker
 [[ -d "$REPO/.git" ]] || fail canonical_repo_missing
-command -v gh >/dev/null || fail gh_missing
 command -v python3 >/dev/null || fail python3_missing
-runuser -u joshan -- gh auth status >/dev/null 2>&1 || fail gh_auth_unavailable_for_joshan
+
+# The dispatcher needs authenticated GitHub Issues API access for reading,
+# commenting, closing and creating issues. Git-over-SSH authentication alone
+# cannot provide those API operations, so bootstrap the official GitHub CLI as
+# the smallest mature OTS client rather than embedding a custom token client.
+if ! command -v gh >/dev/null 2>&1; then
+    command -v apt-get >/dev/null || fail apt_get_missing_for_gh_install
+    printf 'GITHUB_CLI=INSTALLING\n'
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y gh
+fi
+command -v gh >/dev/null || fail gh_install_failed
+
+# Reuse an existing joshan GitHub CLI session when present. On a fresh Pi5,
+# perform the one-time official device/web login interactively in this same
+# activation. No token is written into this repository or service unit.
+if ! runuser -u joshan -- gh auth status --hostname github.com >/dev/null 2>&1; then
+    printf '\n===== ONE-TIME GITHUB AUTHENTICATION =====\n'
+    printf 'GitHub CLI is installed but the joshan account is not authenticated.\n'
+    printf 'Complete the GitHub device/web login shown below; installation will then continue automatically.\n\n'
+    runuser -u joshan -- gh auth login --hostname github.com --git-protocol ssh --web || fail gh_auth_login_failed
+fi
+runuser -u joshan -- gh auth status --hostname github.com >/dev/null 2>&1 || fail gh_auth_unavailable_for_joshan
+runuser -u joshan -- gh api "repos/$GITHUB_REPO" >/dev/null 2>&1 || fail gh_repo_api_unavailable
 curl -fsS --max-time 5 "$GOVERNOR/health" >/dev/null || fail governor_unhealthy
 
 install -d -m 0755 /usr/local/libexec
