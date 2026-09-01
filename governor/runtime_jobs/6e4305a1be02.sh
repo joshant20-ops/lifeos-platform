@@ -22,6 +22,7 @@ fail() {
 }
 command -v ssh >/dev/null || fail ssh_missing
 command -v base64 >/dev/null || fail base64_missing
+command -v timeout >/dev/null || fail timeout_missing
 
 tmp=$(mktemp -d)
 trap 'rm -rf -- "$tmp"' EXIT
@@ -37,12 +38,36 @@ run() { local limit=$1; shift; timeout --signal=TERM --kill-after=10s "$limit" "
 [[ $(. /etc/os-release; printf %s "$ID:$VERSION_ID") == debian:12 ]] || fail host_identity
 kernel=$(uname -r)
 [[ "$kernel" == 6.8.12-23-pve ]] || fail kernel_relevance
-driver=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -n1)
-gpu=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n1)
+command -v nvidia-smi >/dev/null || fail nvidia_smi_missing
+mapfile -t gpu_rows < <(run 15s nvidia-smi \
+  --query-gpu=name,driver_version,memory.total,pci.bus_id \
+  --format=csv,noheader,nounits 2>/dev/null)
+[[ ${#gpu_rows[@]} -eq 1 ]] || fail gpu_count_or_health
+IFS=',' read -r gpu driver gpu_memory gpu_bus <<<"${gpu_rows[0]}"
+gpu=${gpu## }; driver=${driver## }; gpu_memory=${gpu_memory## }; gpu_bus=${gpu_bus## }
 [[ "$driver" == 535.261.03 && "$gpu" == *P106-100* ]] || fail gpu_relevance
+[[ "$gpu_memory" =~ ^[0-9]+$ && "$gpu_memory" -ge 5900 && "$gpu_memory" -le 6200 ]] || fail gpu_memory
+module_version=$(cat /sys/module/nvidia/version 2>/dev/null || true)
+[[ "$module_version" == "$driver" ]] || fail nvidia_userspace_kernel_mismatch
+module_vermagic=$(modinfo -F vermagic nvidia 2>/dev/null | head -n1)
+module_license=$(modinfo -F license nvidia 2>/dev/null | head -n1)
+[[ "$module_vermagic" == "$kernel "* ]] || fail nvidia_module_kernel_mismatch
+[[ "$module_license" == *NVIDIA* ]] || fail nvidia_module_not_proprietary
+[[ ! -d /sys/module/nouveau ]] || fail nouveau_loaded
+nvidia_pci=0
+for device in /sys/bus/pci/devices/*; do
+  [[ $(cat "$device/vendor" 2>/dev/null || true) == 0x10de ]] || continue
+  class=$(cat "$device/class" 2>/dev/null || true)
+  [[ "$class" == 0x03* ]] || continue
+  [[ -L "$device/driver" && $(basename "$(readlink -f "$device/driver")") == nvidia ]] || fail gpu_not_bound_to_nvidia
+  nvidia_pci=$((nvidia_pci + 1))
+done
+[[ $nvidia_pci -eq 1 ]] || fail gpu_pci_identity
+run 15s nvidia-smi -q -d COMPUTE >/dev/null 2>&1 || fail gpu_compute_query
 ollama_listen=$(ss -H -ltnp 2>/dev/null | awk '$4 ~ /:11434$/ {print $4}' | paste -sd, -)
 [[ "$ollama_listen" != *0.0.0.0:* && "$ollama_listen" != *'[::]:'* && "$ollama_listen" != \*:* ]] || fail ollama_not_localhost
-printf 'STAGE=relevance PASS kernel=%s gpu=%s driver=%s ollama=%s\n' "$kernel" "$gpu" "$driver" "${ollama_listen:-not-listening}"
+printf 'STAGE=gpu_driver PASS kernel=%s gpu=%s memory_mib=%s pci=%s binding=nvidia module=%s flavor=proprietary nouveau=absent health=responsive ollama=%s\n' \
+  "$kernel" "$gpu" "$gpu_memory" "$gpu_bus" "$module_version" "${ollama_listen:-not-listening}"
 
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
@@ -90,8 +115,36 @@ sim="$work/simulation.txt"
 run 180s apt-get "${aptopt[@]}" -s --no-install-recommends install \
   "nvidia-driver-580=$candidate" >"$sim" 2>&1 || { cat "$sim"; fail dependency_resolution; }
 grep -q '^Conf nvidia-driver-580 ' "$sim" || { cat "$sim"; fail r580_not_configured; }
+grep -q '^Inst nvidia-dkms-580 ' "$sim" || { cat "$sim"; fail proprietary_r580_dkms_not_selected; }
+grep -q '^Inst nvidia-kernel-source-580 ' "$sim" || { cat "$sim"; fail proprietary_r580_source_not_selected; }
+if awk '$1=="Inst" && tolower($2) ~ /(nvidia|cuda)/ && tolower($2) ~ /open/ {print}' "$sim" | grep -q .; then
+  cat "$sim"; fail open_kernel_module_selected_for_pascal
+fi
 if grep -Eq '^Inst .*-(590|595|600|610)([^0-9]|$)|\((590|595|600|610)\.' "$sim"; then
   cat "$sim"; fail newer_branch_leak
+fi
+# Package names are not uniformly branch-suffixed. Audit versions as well so
+# unversioned libnvidia/cuda dependencies cannot silently come from R590+.
+if awk '$1=="Inst" && tolower($2) ~ /(nvidia|cuda|libnv)/ {
+  version=$3; gsub(/[()]/, "", version)
+  if (version ~ /(^|[.+~:-])(590|595|600|610)([.+~:-]|$)/) print
+}' "$sim" | grep -q .; then
+  cat "$sim"; fail newer_branch_version_leak
+fi
+nvidia_versions=$(awk '$1=="Inst" && tolower($2) ~ /(nvidia|cuda|libnv)/ {
+  version=$3; gsub(/[()]/, "", version); print $2"="version
+}' "$sim")
+[[ -n "$nvidia_versions" ]] || { cat "$sim"; fail missing_nvidia_dependency_graph; }
+# Generic support libraries can legitimately use their own 1.x/202x versions.
+# Any NVIDIA/CUDA dependency whose version declares a 5xx/6xx driver branch,
+# however, must declare 580.
+if printf '%s\n' "$nvidia_versions" | awk -F= '
+  {
+    version=$2; gsub(/[^0-9]+/, " ", version); count=split(version, part, " ")
+    for (i=1; i<=count; i++) if (part[i] >= 500 && part[i] <= 699 && part[i] != 580) {print; next}
+  }
+' | grep -q .; then
+  printf '%s\n' "$nvidia_versions"; cat "$sim"; fail incoherent_nvidia_dependency_graph
 fi
 critical='(^| )(proxmox-ve|proxmox-default-kernel|pve-manager|pve-kernel-[^ ]+|linux-image-[^ ]+|openssh-server|systemd|systemd-sysv|ifupdown2|network-manager|zfsutils-linux|zfs-zed|zfs-dkms|grub[^ ]*|shim[^ ]*|initramfs-tools|apt|dpkg)( |$)'
 removals=$(awk '$1=="Remv" {print $2}' "$sim" | paste -sd' ' -)
@@ -101,6 +154,7 @@ installed=$(awk '$1=="Inst" {print $2"="$3}' "$sim" | tr -d '()' | paste -sd' ' 
 printf 'STAGE=transaction PASS install_count=%s removals=%s\n' \
   "$(awk '$1=="Inst" {n++} END {print n+0}' "$sim")" "${removals:-none}"
 printf 'TRANSACTION_PACKAGES=%s\n' "$installed"
+printf 'R580_DEPENDENCY_GRAPH=%s\n' "$(printf '%s\n' "$nvidia_versions" | paste -sd' ' -)"
 
 [[ -d "/usr/src/linux-headers-$kernel" ]] || fail matching_headers
 command -v dkms >/dev/null || fail dkms_missing
@@ -138,6 +192,9 @@ Pin-Priority: -1
 PINS
 apt-get update
 apt-get -s --no-install-recommends install nvidia-driver-580=$candidate | tee /root/lifeos-r580-final-simulation.txt
+grep -q '^Inst nvidia-dkms-580 ' /root/lifeos-r580-final-simulation.txt
+grep -q '^Inst nvidia-kernel-source-580 ' /root/lifeos-r580-final-simulation.txt
+! awk '\$1=="Inst" && tolower(\$2) ~ /(nvidia|cuda)/ && tolower(\$2) ~ /open/ {print}' /root/lifeos-r580-final-simulation.txt | grep -q .
 ! grep -Eq '^Inst .*-(590|595|600|610)([^0-9]|$)|\((590|595|600|610)\.' /root/lifeos-r580-final-simulation.txt
 ! awk '\$1=="Remv" {print \$2}' /root/lifeos-r580-final-simulation.txt | grep -Eq '$critical'
 apt-get --no-install-recommends install nvidia-driver-580=$candidate
