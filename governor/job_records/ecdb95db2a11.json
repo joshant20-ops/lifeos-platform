@@ -1,0 +1,39 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The current evidence indicates that the canonical checkout is still dirty, which is a blocker for proceeding with the migration. The PI5_PATCH action is set to 'retry canonical_checkout_dirty', which means the system cannot proceed until the checkout is clean."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #23 in joshant20-ops/lifeos-platform: Complete OTS Semaphore/Ansible Engineer orchestration migration This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Goal Finish the in-progress migration away from bespoke filesystem-queue orchestration toward an OTS-first Engineer control plane using Ansible Semaphore + version-controlled Ansible, while reta",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 1,
+  "job_id": "ecdb95db2a11",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": null,
+  "runtime_return_code": null,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T00:34:15+0100",
+    "created_at": "2026-09-02T00:29:37+0100",
+    "stage_changed_at": "2026-09-02T00:34:15+0100",
+    "started_at": "2026-09-02T00:29:37+0100"
+  }
+}
