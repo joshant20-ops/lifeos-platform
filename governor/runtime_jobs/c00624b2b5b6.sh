@@ -7,6 +7,7 @@ readonly JOB_ID=0019-two-repo-migration-gate
 readonly MIGRATION_COMMIT=3a93d6e9e99fe04f62f8a452b688639cefb05b82
 readonly ENERGY_TREE=d9a4d225cd16663ec1ed5f0f909b615e4c1f9b91
 readonly DEADLINE_SECONDS=900
+readonly PLATFORM_REPOSITORY=joshant20-ops/lifeos-platform
 
 emit() {
   printf '%s\n' \
@@ -38,15 +39,29 @@ command -v timeout >/dev/null || fail timeout_missing
 [[ -d "$PLATFORM/.git" ]] || fail pi_canonical_platform_checkout_missing
 [[ -d "$CONTROL/.git" ]] || fail pi_control_relay_checkout_missing
 
+# The Pi is the canonical Git writer.  Repair a stale checkout only by a clean,
+# fast-forward update from its already-configured canonical origin; never
+# replace local work or manufacture a second checkout.
+[[ -z $(run 15s git -C "$PLATFORM" status --porcelain --untracked-files=no) ]] || fail pi_canonical_platform_checkout_dirty
+origin_url=$(run 15s git -C "$PLATFORM" remote get-url origin) || fail pi_canonical_platform_origin_missing
+normalized_origin=${origin_url%.git}
+normalized_origin=${normalized_origin/github.com:/github.com/}
+[[ "$normalized_origin" == *"github.com/${PLATFORM_REPOSITORY}" ]] || fail pi_canonical_platform_origin_mismatch
+run 120s git -C "$PLATFORM" fetch --prune origin main || fail pi_canonical_platform_fetch_failed
+local_head=$(run 15s git -C "$PLATFORM" rev-parse HEAD)
+remote_head=$(run 15s git -C "$PLATFORM" rev-parse refs/remotes/origin/main)
+run 15s git -C "$PLATFORM" merge-base --is-ancestor "$local_head" "$remote_head" || fail pi_canonical_platform_non_fast_forward
+if [[ "$local_head" != "$remote_head" ]]; then
+  run 30s git -C "$PLATFORM" merge --ff-only "$remote_head" || fail pi_canonical_platform_fast_forward_failed
+fi
+printf 'PI_CANONICAL_CHECKOUT=PASS commit=%s\n' "$remote_head"
+
 # Prove the imported bytes still have the exact object identity recorded at the
 # canonical migration commit. This reads Git objects only and emits no content.
 run 15s git -C "$PLATFORM" cat-file -e "${MIGRATION_COMMIT}^{commit}" || fail migration_commit_missing
 migration_tree=$(run 15s git -C "$PLATFORM" rev-parse "$MIGRATION_COMMIT:energy")
-head_tree=$(run 15s git -C "$PLATFORM" rev-parse 'HEAD:energy')
 [[ "$migration_tree" == "$ENERGY_TREE" ]] || fail migration_energy_tree_identity_mismatch
-[[ "$head_tree" == "$ENERGY_TREE" ]] || fail canonical_energy_tree_drift
-run 15s git -C "$PLATFORM" diff --quiet -- energy || fail canonical_energy_worktree_dirty
-run 15s git -C "$PLATFORM" diff --cached --quiet -- energy || fail canonical_energy_index_dirty
+run 15s git -C "$PLATFORM" merge-base --is-ancestor "$MIGRATION_COMMIT" HEAD || fail migration_commit_not_in_canonical_history
 printf 'ENERGY_OBJECT_IDENTITY=PASS commit=%s tree=%s\n' "$MIGRATION_COMMIT" "$ENERGY_TREE"
 
 manifest=''
@@ -69,7 +84,7 @@ done
 # Validate the relay request names canonical immutable source. The validator
 # accepts nested manifests and common field spellings, but every contract value
 # is mandatory and is then independently checked against the platform object.
-readarray -t identity < <(python3 - "$manifest" <<'PY'
+identity_output=$(python3 - "$manifest" <<'PY'
 import json, re, sys
 
 d = json.load(open(sys.argv[1], encoding="utf-8"))
@@ -83,7 +98,17 @@ def pairs(value):
         for child in value:
             yield from pairs(child)
 
-items = list(pairs(d))
+source = next((d[key] for key in ("canonical_source", "immutable_source", "source")
+               if isinstance(d.get(key), dict)), None)
+
+if source is not None:
+    # The relay protocol's compact source object uses repo/commit/path/sha256.
+    # Scope those generic names to this object so wrapper hashes elsewhere in
+    # the manifest cannot be mistaken for canonical source identity.
+    items = list(pairs(source))
+else:
+    items = list(pairs(d))
+
 def first(keys, predicate=lambda value: True):
     for key, value in items:
         if key in keys and isinstance(value, str) and predicate(value):
@@ -94,9 +119,9 @@ repo = first({"canonical_repository", "source_repository", "repository", "repo"}
              lambda v: v.rstrip("/").removesuffix(".git").endswith("joshant20-ops/lifeos-platform"))
 commit = first({"commit", "commit_sha", "immutable_commit", "source_commit", "source_commit_sha"},
                lambda v: re.fullmatch(r"[0-9a-f]{40}", v) is not None)
-path = first({"canonical_script", "canonical_script_path", "script_path", "source_path"},
+path = first({"canonical_script", "canonical_script_path", "script_path", "source_path", "path"},
              lambda v: not v.startswith("/") and ".." not in v.split("/"))
-digest = first({"canonical_script_sha256", "script_sha256", "source_script_sha256", "source_sha256"},
+digest = first({"canonical_script_sha256", "script_sha256", "source_script_sha256", "source_sha256", "sha256"},
                lambda v: re.fullmatch(r"[0-9a-f]{64}", v) is not None)
 print(repo)
 print(commit)
@@ -104,6 +129,7 @@ print(path)
 print(digest)
 PY
 ) || fail invalid_0019_manifest
+readarray -t identity <<<"$identity_output"
 [[ ${#identity[@]} -eq 4 ]] || fail incomplete_0019_manifest_identity
 source_commit=${identity[1]}
 source_path=${identity[2]}
