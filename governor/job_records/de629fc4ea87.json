@@ -1,0 +1,41 @@
+{
+  "canonical_commits": [
+    "398eb4650c09db0834015120090b11b9b1603a37"
+  ],
+  "changed_files": [
+    "governor/autonomous_agent.py",
+    "governor/job_records.py",
+    "governor/job_records/de629fc4ea87.json",
+    "tests/test_engineer_job_records.py"
+  ],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "publication_retry_implemented",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": null
+  },
+  "final_status": "RUNNING",
+  "goal_summary": "Continue the LifeOS OTS orchestration migration without prematurely completing the multi-stage milestone.",
+  "human_action_state": "NONE",
+  "implementation_summary": "Added deterministic sanitised Engineer job records with truthful, retryable Git publication state and terminal-job integration.",
+  "iteration_count": 3,
+  "job_id": "de629fc4ea87",
+  "next_runtime_check": "Deploy the updated autonomous agent, complete a synthetic job, and confirm its governor/job_records record reaches origin/main.",
+  "record_publication": {
+    "state": "UNPUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": null,
+  "runtime_return_code": null,
+  "stage": "job_record_implementation",
+  "tests": {
+    "count": 31,
+    "summary": "Focused milestone, builder-routing, job-record, and observability tests passed."
+  },
+  "timestamps": {}
+}
