@@ -9,6 +9,7 @@ import os
 import pathlib
 import re
 import socket
+import subprocess
 import sys
 from datetime import datetime, timezone
 
@@ -19,6 +20,7 @@ MAX_SCRIPT = 256 * 1024
 MAX_REQUEST = 384 * 1024
 JOB_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+SETFACL = "/usr/bin/setfacl"
 ROOTS = {
     "diagnostic": "jobs/scripts",
     "control-state": "jobs/change-scripts",
@@ -119,10 +121,32 @@ def _conflicts(job_id, script_path, manifest_path):
     return archive.exists() and any(archive.glob(f"{job_id}.*"))
 
 
-def _create(path, data, mode):
+def _publisher_uid():
+    value = os.environ.get("LIFEOS_SUBMIT_PUBLISHER_UID")
+    if value is None or not value.isdigit():
+        raise Rejected("trusted publisher uid is not configured")
+    return int(value)
+
+
+def _create(path, data, mode, reader_perms):
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode)
-    with os.fdopen(fd, "wb") as out:
-        out.write(data); out.flush(); os.fsync(out.fileno())
+    try:
+        # The UID, ACL and mode are fixed by root-owned configuration and code;
+        # the caller controls none of them.  Apply the ACL to the just-created
+        # inode through its open fd, never through a request-derived pathname.
+        os.fchmod(fd, mode)
+        subprocess.run(
+            [SETFACL, "-m", f"u:{_publisher_uid()}:{reader_perms}", f"/proc/self/fd/{fd}"],
+            pass_fds=(fd,), check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        with os.fdopen(fd, "wb", closefd=False) as out:
+            out.write(data); out.flush(); os.fsync(out.fileno())
+    except Exception:
+        # This function owns the create-only inode until it returns.
+        path.unlink(missing_ok=True)
+        raise
+    finally:
+        os.close(fd)
 
 
 def _fsync_dir(path):
@@ -152,13 +176,13 @@ def submit(manifest_bytes, script_bytes, peer_uid):
         fcntl.flock(lock, fcntl.LOCK_EX)
         if _conflicts(manifest["job_id"], script_path, manifest_path):
             raise Rejected("duplicate/replay conflict")
-        _create(script_path, script_bytes, 0o750)
+        _create(script_path, script_bytes, 0o750, "r-x")
         try:
             # Verify the actual final inode bytes, not merely the request buffer.
             if hashlib.sha256(script_path.read_bytes()).hexdigest() != manifest["script_sha256"]:
                 raise Rejected("checksum mismatch after staging")
             canonical_json = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
-            _create(manifest_path, canonical_json, 0o640)
+            _create(manifest_path, canonical_json, 0o640, "r--")
             # The staging manifest is the commit marker. Persist the script
             # directory first, then the staging directory, before accepting.
             _fsync_dir(script_dir)

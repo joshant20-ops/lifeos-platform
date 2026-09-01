@@ -36,7 +36,7 @@ install -o root -g root -m 0644 "$PLATFORM/homelab/live/etc/systemd/system/lifeo
 install -d -o root -g root -m 0755 /etc/lifeos-control
 ALLOWED_UID=$(id -u "$ALLOWED_USER")
 tmp=$(mktemp /etc/lifeos-control/.control-job-submit.conf.XXXXXX)
-printf 'LIFEOS_SUBMIT_ALLOWED_UID=%s\n' "$ALLOWED_UID" >"$tmp"
+printf 'LIFEOS_SUBMIT_ALLOWED_UID=%s\nLIFEOS_SUBMIT_PUBLISHER_UID=%s\n' "$ALLOWED_UID" "$ALLOWED_UID" >"$tmp"
 chown root:root "$tmp"; chmod 0644 "$tmp"
 mv -f "$tmp" /etc/lifeos-control/control-job-submit.conf
 for rel in jobs/staging jobs/scripts jobs/change-scripts jobs/root-scripts; do
