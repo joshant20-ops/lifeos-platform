@@ -384,6 +384,11 @@ def parse_handoff(raw):
         "deployment_operation": _marker(raw, "DEPLOYMENT_OPERATION"),
     }
     sanitized = re.sub(r"(?m)^HANDOFF_(?:PATCH|RUNTIME)_B64=.*$", "HANDOFF_PAYLOAD=[redacted from verifier evidence]", raw)
+    sanitized = re.sub(
+        r"(?m)^RUNTIME_ARTIFACT_(?:PATH|SHA256|COMMIT|PUBLISHED)=.*$",
+        "UNTRUSTED_BUILDER_PUBLICATION_CLAIM=[removed]",
+        sanitized,
+    )
     return handoff, sanitized
 
 
@@ -559,7 +564,7 @@ def suppress_unpublished_runtime_instructions(evidence):
     return "\n".join(filtered) + ("\n" if evidence.endswith("\n") else "")
 
 
-def verify_runtime_artifact(job_id):
+def verify_runtime_artifact(job_id, expected_sha256=None):
     """Prove canonical, executable, tracked bytes are exactly on origin/main."""
     if not JOB_ID_PATTERN.fullmatch(str(job_id)):
         return False, _artifact_evidence(
@@ -574,18 +579,27 @@ def verify_runtime_artifact(job_id):
         if not os.access(target, os.X_OK):
             return False, _artifact_evidence(rel, None, None, False, "canonical_file_not_executable")
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        if expected_sha256 is not None and not hmac.compare_digest(digest, str(expected_sha256)):
+            return False, _artifact_evidence(rel, digest, None, False, "sha256_mismatch")
         tracked = git("ls-files", "--error-unmatch", "--", rel, check=False)
         if tracked.returncode:
             return False, _artifact_evidence(rel, digest, None, False, "canonical_file_untracked")
+        index = git("ls-files", "-s", "--", rel, check=False).stdout.split()
+        if not index or index[0] != "100755":
+            return False, _artifact_evidence(rel, digest, None, False, "canonical_git_mode_not_executable")
+        working_blob = git("hash-object", "--", rel, check=False).stdout.strip()
+        head_blob = git("rev-parse", f"HEAD:{rel}", check=False).stdout.strip()
+        if not working_blob or head_blob != working_blob:
+            return False, _artifact_evidence(rel, digest, None, False, "head_blob_mismatch")
         commit = git("log", "-1", "--format=%H", "--", rel, check=False).stdout.strip()
         if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
             return False, _artifact_evidence(rel, digest, None, False, "canonical_commit_missing")
-        blob = git("show", f"{commit}:{rel}", check=False)
-        if blob.returncode or hashlib.sha256(blob.stdout.encode()).hexdigest() != digest:
+        commit_blob = git("rev-parse", f"{commit}:{rel}", check=False).stdout.strip()
+        if commit_blob != working_blob:
             return False, _artifact_evidence(rel, digest, commit, False, "canonical_commit_blob_mismatch")
         origin = git("merge-base", "--is-ancestor", commit, "origin/main", check=False)
-        origin_blob = git("show", f"origin/main:{rel}", check=False)
-        if origin.returncode or origin_blob.returncode or hashlib.sha256(origin_blob.stdout.encode()).hexdigest() != digest:
+        origin_blob = git("rev-parse", f"origin/main:{rel}", check=False)
+        if origin.returncode or origin_blob.returncode or origin_blob.stdout.strip() != working_blob:
             return False, _artifact_evidence(rel, digest, commit, False, "origin_main_mismatch")
         return True, _artifact_evidence(rel, digest, commit, True)
     except Exception as exc:
@@ -620,7 +634,7 @@ def publish_runtime_artifact(job, handoff):
     candidate.write_bytes(script)
     candidate.chmod(0o700)
     digest = hashlib.sha256(script).hexdigest()
-    already, evidence = verify_runtime_artifact(job["id"])
+    already, evidence = verify_runtime_artifact(job["id"], digest)
     if already:
         return True, evidence
     if git("status", "--porcelain", check=False).stdout.strip():
@@ -639,7 +653,7 @@ def publish_runtime_artifact(job, handoff):
         if git("diff", "--cached", "--quiet", check=False).returncode:
             git("commit", "-m", f"agent: publish runtime artifact {job['id']}", timeout=60)
         git("push", "origin", "HEAD:main", timeout=180)
-        return verify_runtime_artifact(job["id"])
+        return verify_runtime_artifact(job["id"], digest)
     except Exception as exc:
         return False, _artifact_evidence(expected, digest, None, False, f"publication_error_{type(exc).__name__}")
 
@@ -665,6 +679,33 @@ def run_pi5_runtime(job, handoff):
     return publication + f"RUNTIME_SCRIPT={rel}\nRUNTIME_RC={cp.returncode}\nPI5_RUNTIME_EVIDENCE:\n{out[-16000:]}\n"
 
 
+def retain_runtime_publication(job, runtime_evidence):
+    """Persist only validator-produced publication facts across later boundaries."""
+    if "RUNTIME_ARTIFACT_PUBLISHED=PASS" in runtime_evidence:
+        verified, publication = verify_runtime_artifact(job["id"])
+    elif job.get("runtime_artifact"):
+        expected = job["runtime_artifact"].get("sha256")
+        verified, publication = verify_runtime_artifact(job["id"], expected)
+        runtime_evidence = publication + runtime_evidence
+    else:
+        return runtime_evidence
+    if not verified:
+        job.pop("runtime_artifact", None)
+        return runtime_evidence if publication in runtime_evidence else publication + runtime_evidence
+    facts = {
+        "path": _marker(publication, "RUNTIME_ARTIFACT_PATH"),
+        "sha256": _marker(publication, "RUNTIME_ARTIFACT_SHA256"),
+        "commit": _marker(publication, "RUNTIME_ARTIFACT_COMMIT"),
+        "published": "PASS",
+    }
+    job["runtime_artifact"] = facts
+    # Replace the original publication block with freshly validated facts when
+    # possible; otherwise prepend them to an execution-only state.
+    if "RUNTIME_ARTIFACT_PUBLISHED=PASS" not in runtime_evidence:
+        runtime_evidence = publication + runtime_evidence
+    return runtime_evidence
+
+
 def _execute_job_locked(job):
     job = load(job["id"])
     job["status"] = "RUNNING"
@@ -686,6 +727,7 @@ def _execute_job_locked(job):
         publication = apply_and_publish_patch(job, iteration, handoff)
         set_stage(job, "runtime", f"iteration {iteration}: Pi5 runtime verification")
         runtime = run_pi5_runtime(job, handoff)
+        runtime = retain_runtime_publication(job, runtime)
         if "RUNTIME_ARTIFACT_PUBLISHED=FAIL" in runtime:
             build_evidence = suppress_unpublished_runtime_instructions(build_evidence)
         evidence = f"BUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\nPUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
