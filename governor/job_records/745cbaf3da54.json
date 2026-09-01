@@ -1,0 +1,39 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The publication evidence indicates that there are new files and changes in the repository, but there is no evidence of a successful build or runtime action. The user has not provided any evidence of a successful build or runtime action, and the publication evidence does not indicate that the build or runtime action has been completed successfully."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #20 in joshant20-ops/lifeos-platform: Integrate heat pump, expanded battery storage and tariff optimisation into LifeOS Energy This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Goal Extend LifeOS Energy/Home Assistant to cover the planned heat-pump installation, larger battery storage and tariff-aware whole-home optimisation. ## Known planning ",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 1,
+  "job_id": "745cbaf3da54",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": null,
+  "runtime_return_code": null,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T00:03:13+0100",
+    "created_at": "2026-09-01T23:59:20+0100",
+    "stage_changed_at": "2026-09-02T00:03:13+0100",
+    "started_at": "2026-09-01T23:59:20+0100"
+  }
+}
