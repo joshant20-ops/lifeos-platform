@@ -28,10 +28,21 @@ MAX_RUNTIME_BYTES = 65536
 REPEATED_FAILURE_LIMIT = int(os.environ.get("LIFEOS_REPEATED_FAILURE_LIMIT", "3"))
 EXECUTION_LOCK = threading.Lock()
 
-PRIVATE_TERMS = {
-    "paperless", "document", "documents", "private data", "personal data",
-    "email", "emails", "medical", "bank", "statement", "invoice", "passport",
-}
+# Match actual sensitive-data intent rather than ordinary engineering words.
+# In particular, "document the code" must never become local-only merely
+# because it contains the substring "document".
+PRIVATE_PATTERNS = (
+    r"\bpaperless\b",
+    r"\bprivate (?:data|documents?|files?|records?|information)\b",
+    r"\bpersonal (?:data|documents?|files?|records?|information)\b",
+    r"\bmedical (?:data|records?|documents?|information)\b",
+    r"\bhealth (?:data|records?|documents?|information)\b",
+    r"\bpassport(?:s)?\b",
+    r"\bbank (?:accounts?|statements?|details|records?|documents?)\b",
+    r"\bfinancial (?:statements?|records?|data|documents?)\b",
+    r"\bpersonal (?:invoice|invoices|email|emails|mailbox|inbox)\b",
+    r"\b(?:email|emails|mailbox|inbox)\b.{0,40}\b(?:private|personal|messages?|content)\b",
+)
 
 
 def now():
@@ -73,8 +84,10 @@ def set_stage(job, stage, detail=None):
 
 
 def classify_privacy(text):
-    lower = text.lower()
-    return "local-only" if any(term in lower for term in PRIVATE_TERMS) else "normal"
+    lower = str(text or "").lower()
+    return "local-only" if any(
+        re.search(pattern, lower) for pattern in PRIVATE_PATTERNS
+    ) else "normal"
 
 
 def local_verify(job, iteration, evidence):
