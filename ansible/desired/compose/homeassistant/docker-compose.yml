@@ -1,5 +1,7 @@
 services:
   homeassistant:
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
     container_name: homeassistant
     image: ghcr.io/home-assistant/home-assistant:stable
     restart: unless-stopped

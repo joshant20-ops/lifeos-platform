@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "mode": "shadow",
+  "targets": {
+    "predbat": {
+      "enabled": true,
+      "coalesce_hours": 24,
+      "auto_update": false,
+      "source": "github-release",
+      "risk_terms": ["breaking", "migration", "entity", "control", "enphase", "battery", "tariff", "saving session"]
+    },
+    "home-assistant-core": {
+      "enabled": true,
+      "coalesce_hours": 24,
+      "auto_update": false,
+      "source": "github-release",
+      "risk_terms": ["breaking", "migration", "database", "schema", "authentication", "networking"]
+    }
+  }
+}

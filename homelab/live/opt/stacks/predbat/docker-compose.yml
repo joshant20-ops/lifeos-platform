@@ -3,6 +3,8 @@ services:
     image: nipar44/predbat_addon:latest
     container_name: predbat
     restart: unless-stopped
+    labels:
+      - "com.centurylinklabs.watchtower.enable=false"
 
     extra_hosts:
       - "host.docker.internal:host-gateway"

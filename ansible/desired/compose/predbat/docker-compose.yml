@@ -3,6 +3,10 @@ services:
     image: nipar44/predbat_addon:latest
     container_name: predbat
     restart: unless-stopped
+    labels:
+      # Managed by the LifeOS component-update workflow. Generic image
+      # updaters must never bypass its review/regression/rollback gates.
+      - "com.centurylinklabs.watchtower.enable=false"
 
     extra_hosts:
       - "host.docker.internal:host-gateway"
