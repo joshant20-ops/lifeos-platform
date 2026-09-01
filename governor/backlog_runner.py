@@ -198,7 +198,11 @@ def submit_issue(issue, state):
     number = int(issue["number"]); is_private = private_issue(issue); body = str(issue.get("body") or "")[:14000]
     privacy_note = "This issue is local-only; never transmit its contents outside the LAN." if is_private else "This is ordinary engineering work; unrelated private data remains out of scope."
     prompt = f"""Process GitHub issue #{number} in {REPO_FULL}: {issue.get('title','')}\n\n{privacy_note}\n\nFirst revalidate current relevance and dependencies, then implement and test safe work.\n\nISSUE BODY:\n{body}\n\nEvery final iteration MUST emit:\nISSUE_VALIDITY=VALID|ALREADY_COMPLETE|SUPERSEDED|BLOCKED\nLIFEOS_WORK_STATE=PASS|BLOCKED|WAITING_HUMAN|WAITING_DEPENDENCY|SUPERSEDED\nBARRIER=<exact barrier or none>\nNEXT_AUTONOMOUS_ACTION=<next action>\nDISCOVERED_ISSUES_JSON_B64=<base64 JSON list or none>\n"""
-    job = api("/jobs", "POST", {"request": prompt, "dispatch_builder": "local" if is_private else "normal"})
+    # Backlog dispatch is intentionally asynchronous. The dispatcher records the
+    # returned job ID immediately and exits; the Governor owns the long-running
+    # engineering execution. This prevents the oneshot runner's HTTP timeout from
+    # being mistaken for a failed dispatch while the job continues successfully.
+    job = api("/jobs?async=1", "POST", {"request": prompt, "dispatch_builder": "local" if is_private else "normal"})
     job_id = str(job.get("id") or "")
     if not job_id: raise RuntimeError("governor returned no job id")
     state["active"] = {"issue": number, "job_id": job_id, "started": now()}; save_state(state)
