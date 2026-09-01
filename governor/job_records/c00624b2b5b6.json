@@ -1,0 +1,44 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The migration gate failed closed due to a missing manifest field: canonical_repository/repo/repository/source_repository. This is an external blocker that the autonomous system cannot resolve itself."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #2 in joshant20-ops/lifeos-platform: Repository consolidation: lifeos-platform source of truth + pi-control relay This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Final target Reduce LifeOS to two active repositories: 1. **lifeos-platform** \u2014 single canonical source of truth for all implementation: Homelab infrastructure, Home Assistant, LifeO",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 3,
+  "job_id": "c00624b2b5b6",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": {
+    "commit": "f7437c31d7e1d814681da1f07507ad80ba3b7ad5",
+    "path": "governor/runtime_jobs/c00624b2b5b6.sh",
+    "published": "PASS",
+    "sha256": "6d9a1c408bb81dc09a771360820e76f5ed9cdcb4137df56e5151ee7a64f1a31e"
+  },
+  "runtime_return_code": 1,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-01T22:08:40+0100",
+    "created_at": "2026-09-01T21:58:40+0100",
+    "stage_changed_at": "2026-09-01T22:08:40+0100",
+    "started_at": "2026-09-01T21:58:40+0100"
+  }
+}
