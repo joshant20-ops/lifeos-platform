@@ -122,9 +122,11 @@ def numeric(entity):
 
 
 def updated_epoch(obj):
+    """Return telemetry report time, falling back for older HA versions."""
     try:
+        stamp = obj.get("last_reported") or obj["last_updated"]
         return datetime.fromisoformat(
-            obj["last_updated"].replace("Z", "+00:00")
+            stamp.replace("Z", "+00:00")
         ).timestamp()
     except Exception:
         return 0.0
