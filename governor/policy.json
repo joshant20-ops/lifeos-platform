@@ -1,18 +1,20 @@
 {
-  "schema_version": 1,
-  "policy": "cloud-primary-offline-fallback",
-  "primary": {
-    "provider": "codex-cloud",
-    "role": "engineering-primary"
-  },
-  "fallback": {
-    "provider": "ollama-z97",
-    "role": "offline-engineering-fallback",
-    "model": "qwen2.5-coder:7b-instruct"
-  },
+  "schema_version": 2,
+  "policy": "zero-spend-engineering",
+  "providers": [
+    {"id": "deterministic", "role": "tooling", "credential": null, "cost": "free", "task_classes": ["deterministic"]},
+    {"id": "gemini", "role": "everyday-engineer", "credential": "GEMINI_API_KEY", "cost": "free-tier", "task_classes": ["normal", "substantial"]},
+    {"id": "groq", "role": "everyday-engineer", "credential": "GROQ_API_KEY", "cost": "free-tier", "task_classes": ["normal", "substantial"]},
+    {"id": "openrouter", "role": "everyday-engineer", "credential": "OPENROUTER_API_KEY", "cost": "free-models-only", "task_classes": ["normal", "substantial"]},
+    {"id": "cloudflare", "role": "everyday-engineer", "credential": "CLOUDFLARE_API_TOKEN", "cost": "free-tier", "task_classes": ["normal", "substantial"]},
+    {"id": "ollama", "role": "tiny-offline", "credential": null, "cost": "local", "task_classes": ["tiny", "offline"]},
+    {"id": "codex", "role": "senior-review", "credential": null, "cost": "scarce", "task_classes": ["review", "escalation"]}
+  ],
+  "routing": {"max_attempts_per_provider": 2, "cooldown_seconds": 900, "allow_paid_fallback": false, "continue_on_credential_required": true},
   "execution": {
-    "privileged_changes": "gated-control-plane-only",
-    "fallback_does_not_relax_policy": true,
+    "source_changes": "github-branch-pr-only",
+    "pi_execution": "lifeos-pi-control-relay-only",
+    "direct_production_ssh_mutation": false,
     "fail_closed": true
   }
 }
