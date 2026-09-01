@@ -35,6 +35,35 @@ CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"
 EXECUTION_LOCK = threading.Lock()
 
 
+def submit_control_job(manifest_json, script_bytes):
+    """Submit only an exact manifest and script to the local fixed-purpose bridge."""
+    if not isinstance(manifest_json, str) or not isinstance(script_bytes, (bytes, bytearray)):
+        return {"status": "REJECTED", "reason": "manifest_json and script bytes required"}
+    if len(manifest_json.encode()) > 32768 or len(script_bytes) > 262144:
+        return {"status": "REJECTED", "reason": "control-job package exceeds size limit"}
+    request = {
+        "operation": "submit-control-job",
+        "manifest": manifest_json,
+        "script_base64": base64.b64encode(bytes(script_bytes)).decode("ascii"),
+    }
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(15)
+            client.connect("/run/lifeos-control-job-submit.sock")
+            client.sendall(json.dumps(request, separators=(",", ":")).encode())
+            client.shutdown(socket.SHUT_WR)
+            response = b""
+            while len(response) <= 65536:
+                chunk = client.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+        result = json.loads(response)
+        return result if isinstance(result, dict) else {"status": "REJECTED", "reason": "invalid bridge response"}
+    except Exception as exc:
+        return {"status": "REJECTED", "reason": f"submission bridge unavailable: {type(exc).__name__}"}
+
+
 def request_engineer_runtime_deployment(job_id):
     """Request one fixed broker operation; no command, path, unit, or argument is delegated."""
     request = {"operation": "deploy-engineer-runtime", "job_id": str(job_id), "target": "pi5"}

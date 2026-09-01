@@ -1,0 +1,13 @@
+[Unit]
+Description=LifeOS bounded control-job submission socket
+
+[Socket]
+ListenStream=/run/lifeos-control-job-submit.sock
+SocketUser=root
+SocketGroup=lifeos-engineer
+SocketMode=0660
+Accept=yes
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
