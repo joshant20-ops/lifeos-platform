@@ -1,5 +1,13 @@
 # LifeOS OTS Migration
 
+## Engineer control plane
+
+Status: DESIGN DECIDED; COMPATIBILITY SAFETY WORK IN PROGRESS
+
+Target: Ansible Semaphore and version-controlled Ansible automation, with the LifeOS policy/client and existing submission bridge/root broker retained as the privileged boundary.
+
+The ownership model, component disposition, shadow gates, and rollback plan are defined in [ots-engineer-orchestration.md](ots-engineer-orchestration.md). No destructive cutover is authorised until shadow equivalence passes. Git-owned runtime queue directories remain temporary compatibility state, not the target design.
+
 ## lifeos-system-health
 
 Status: SHADOW RETIRED
