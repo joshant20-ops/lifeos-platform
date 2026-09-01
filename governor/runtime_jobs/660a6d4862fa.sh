@@ -47,12 +47,14 @@ run 300s python3 -m pytest -q \
   "$PLATFORM/tests/test_snapshot_protected_drift.py" || fail focused_regressions
 echo "PRE_ACTIVATION_TESTS=PASS"
 
-# Never jump an existing queue item or overwrite prior evidence.
+# Never overwrite prior evidence. Existing unrelated queue items are left in
+# place: the protected publisher/control runner owns FIFO serialization, so
+# staging this job does not jump them.
 if [[ -f "$CONTROL/results/$JOB_ID.json" ]]; then
   python3 - "$CONTROL/results/$JOB_ID.json" <<'PY' || fail prior_result_not_pass
 import json, sys
 d=json.load(open(sys.argv[1]))
-  assert d.get("classification") == "PASS", d
+assert d.get("classification") == "PASS", d
 print("CONTROL_RESULT=PASS(existing)")
 PY
   echo "RESULT=PASS"
@@ -60,8 +62,6 @@ PY
   echo "NEXT_RUNTIME_CHECK=none"
   exit 0
 fi
-competing=$(find "$CONTROL/jobs/pending" "$CONTROL/jobs/staging" -maxdepth 1 -type f -name '*.json' ! -name "$JOB_ID.json" -print -quit 2>/dev/null || true)
-[[ -z "$competing" ]] || fail control_queue_not_empty
 
 mkdir -p "$CONTROL/jobs/root-scripts" "$CONTROL/jobs/staging"
 [[ ! -e "$CONTROL/$SCRIPT_REL" && ! -e "$MANIFEST" ]] || fail activation_job_already_staged
@@ -242,13 +242,23 @@ d={"schema_version":1,"job_id":job,"target":"pi5","job_type":"change","script":s
 with open(path,'x') as f: json.dump(d,f,indent=2,sort_keys=True); f.write('\n')
 PY
 
-# Publisher and runner retain their normal checksum, Gitleaks, Git and health gates.
-run 180s /usr/local/sbin/lifeos-job-publisher || fail publisher_rejected
-[[ -f "$CONTROL/jobs/pending/$JOB_ID.json" ]] || fail activation_not_published
-# Ask the installed runner service to process the published item when the unit
-# exists. Otherwise its existing scheduler remains authoritative and the poll
-# below waits for the same immutable result record.
+# Publisher and runner retain their normal checksum, Gitleaks, Git and health
+# gates. Let earlier FIFO work clear rather than rejecting or jumping it.
+runner_unit=false
 if systemctl list-unit-files lifeos-pi-control-runner.service --no-legend 2>/dev/null | grep -q '^lifeos-pi-control-runner.service'; then
+  runner_unit=true
+fi
+publish_deadline=$((SECONDS + 900))
+while [[ ! -f "$CONTROL/jobs/pending/$JOB_ID.json" && $SECONDS -lt $publish_deadline ]]; do
+  run 180s /usr/local/sbin/lifeos-job-publisher || fail publisher_rejected
+  [[ -f "$CONTROL/jobs/pending/$JOB_ID.json" ]] && break
+  if [[ "$runner_unit" == true ]]; then
+    run 30s systemctl start --no-block lifeos-pi-control-runner.service || fail control_runner_start
+  fi
+  sleep 2
+done
+[[ -f "$CONTROL/jobs/pending/$JOB_ID.json" ]] || fail activation_not_published_fifo_timeout
+if [[ "$runner_unit" == true ]]; then
   run 30s systemctl start --no-block lifeos-pi-control-runner.service || fail control_runner_start
 fi
 deadline=$((SECONDS + 930))
