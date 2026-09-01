@@ -131,6 +131,48 @@ class PublisherFifoTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 self.m.validate_manifest(manifest)
 
+    def test_root_git_is_pinned_to_repository_owner_and_clean_environment(self):
+        completed = mock.Mock(returncode=0)
+        with mock.patch.object(self.m.os, 'geteuid', return_value=0), \
+             mock.patch.object(self.m.pwd, 'getpwuid', return_value=mock.Mock(pw_name='root')), \
+             mock.patch.object(self.m.subprocess, 'run', return_value=completed) as run:
+            self.m.git('fetch', 'origin', 'main')
+        command = run.call_args.args[0]
+        self.assertEqual(command[:7], [
+            '/usr/sbin/runuser', '-u', 'joshan', '--', '/usr/bin/env', '-i', 'HOME=/home/joshan'
+        ])
+        self.assertIn('PATH=/usr/bin:/bin', command)
+        self.assertIn('LANG=C.UTF-8', command)
+        self.assertEqual(command[-4:], ['/usr/bin/git', 'fetch', 'origin', 'main'])
+        self.assertIsNone(run.call_args.kwargs['env'])
+
+    def test_joshan_git_uses_fixed_home_and_path(self):
+        completed = mock.Mock(returncode=0)
+        with mock.patch.object(self.m.os, 'geteuid', return_value=1000), \
+             mock.patch.object(self.m.pwd, 'getpwuid', return_value=mock.Mock(pw_name='joshan')), \
+             mock.patch.object(self.m.subprocess, 'run', return_value=completed) as run:
+            self.m.git('pull', '--ff-only', 'origin', 'main')
+        self.assertEqual(run.call_args.args[0], ['/usr/bin/git', 'pull', '--ff-only', 'origin', 'main'])
+        self.assertEqual(run.call_args.kwargs['env'], {
+            'HOME': '/home/joshan', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'
+        })
+
+    def test_unexpected_nonroot_identity_fails_closed(self):
+        with mock.patch.object(self.m.os, 'geteuid', return_value=2000), \
+             mock.patch.object(self.m.pwd, 'getpwuid', return_value=mock.Mock(pw_name='other')), \
+             mock.patch.object(self.m.subprocess, 'run') as run:
+            with self.assertRaises(SystemExit):
+                self.m.git('fetch', 'origin', 'main')
+        run.assert_not_called()
+
+    def test_sync_repo_keeps_mandatory_fixed_origin_main_fetch_and_ff_pull(self):
+        with mock.patch.object(self.m, 'git') as git:
+            self.m.sync_repo()
+        self.assertEqual(git.call_args_list, [
+            mock.call('fetch', 'origin', 'main'),
+            mock.call('pull', '--ff-only', 'origin', 'main'),
+        ])
+
 
 if __name__ == '__main__':
     unittest.main()
