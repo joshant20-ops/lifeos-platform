@@ -89,8 +89,33 @@ def last_job_id(messages):
     return None
 
 
+def _intent_text(text):
+    return re.sub(r"[^a-z0-9' ]+", " ", clean_text(text).lower()).strip()
+
+
+def asks_history(text):
+    clean = _intent_text(text)
+    return any(phrase in clean for phrase in ("historical jobs", "all jobs", "job history"))
+
+
+def asks_queue(text):
+    clean = _intent_text(text)
+    return any(phrase in clean for phrase in (
+        "what jobs are currently running", "what is queued", "queue status",
+        "running queued", "failed blocked", "jobs currently running",
+    ))
+
+
+def asks_stuck_jobs(text):
+    clean = _intent_text(text)
+    return any(phrase in clean for phrase in (
+        "is anything stuck", "any job stuck", "any jobs stuck", "stuck jobs",
+        "what is stuck", "what's stuck",
+    ))
+
+
 def asks_status(text):
-    clean = re.sub(r"[^a-z0-9' ]+", " ", text.lower()).strip()
+    clean = _intent_text(text)
     phrases = (
         "status", "progress", "eta", "how long", "what's it doing", "what is it doing",
         "what is it actually doing", "what's it actually doing", "is it stuck", "stuck",
@@ -201,6 +226,59 @@ def status_reply(job):
     return " ".join(parts)
 
 
+def _job_line(job):
+    fields = ("id", "status", "stage", "created_at", "started_at", "completed_at", "request")
+    values = []
+    for field in fields:
+        value = job.get(field)
+        if value is not None and value != "":
+            values.append(f"{field}={clean_text(value)}")
+    return " | ".join(values)
+
+
+def jobs_history_reply():
+    jobs = request_json(AGENT_URL + "/jobs", timeout=10).get("jobs", [])
+    if not jobs:
+        return "No LifeOS Engineer jobs are present in the agent job database."
+    return "Historical LifeOS Engineer jobs (newest first):\n" + "\n".join(f"- {_job_line(job)}" for job in jobs)
+
+
+def jobs_queue_reply():
+    jobs = request_json(AGENT_URL + "/jobs", timeout=10).get("jobs", [])
+    groups = {"RUNNING": [], "QUEUED": [], "BLOCKED/FAILED": [], "COMPLETE": []}
+    for job in jobs:
+        status = clean_text(job.get("status")).upper()
+        if status == "RUNNING":
+            group = "RUNNING"
+        elif status in ("QUEUED", "PENDING", "STAGING"):
+            group = "QUEUED"
+        elif status in ("BLOCKED", "FAIL", "FAILED", "ERROR"):
+            group = "BLOCKED/FAILED"
+        elif status in ("PASS", "COMPLETE", "COMPLETED"):
+            group = "COMPLETE"
+        else:
+            group = "BLOCKED/FAILED"
+        groups[group].append(job)
+    lines = ["LifeOS Engineer queue from the agent job database:"]
+    for name in ("RUNNING", "QUEUED", "BLOCKED/FAILED", "COMPLETE"):
+        items = groups[name]
+        lines.append(f"{name} ({len(items)}):")
+        lines.extend(f"- {_job_line(job)}" for job in items) if items else lines.append("- none")
+    return "\n".join(lines)
+
+
+def jobs_stuck_reply():
+    payload = request_json(AGENT_URL + "/jobs/stuck", timeout=10)
+    stuck = payload.get("stuck_jobs", []) or []
+    if not stuck:
+        return "No jobs are deterministically classified as stuck by the LifeOS agent right now."
+    lines = [f"Deterministically stuck LifeOS Engineer jobs ({len(stuck)}):"]
+    for job in stuck:
+        reason = clean_text(job.get("stuck_reason") or "stuck threshold exceeded")
+        lines.append(f"- {_job_line(job)} | stuck_reason={reason}")
+    return "\n".join(lines)
+
+
 def local_context(messages):
     context = {"repository": {}, "recent_job": None}
     try:
@@ -308,6 +386,12 @@ def engineer_reply(messages):
         job = request_json(AGENT_URL + "/jobs?async=1", {"request": record["proposal"]}, timeout=15)
         return (f"Queued it as engineering job `{job['id']}`. The Pi5 runtime and local verifier are the source of truth. "
                 f"Ask me for status, ETA, what it's doing, or whether it looks stuck.")
+    if asks_history(latest):
+        return jobs_history_reply()
+    if asks_queue(latest):
+        return jobs_queue_reply()
+    if asks_stuck_jobs(latest):
+        return jobs_stuck_reply()
     if asks_status(latest):
         job_id = last_job_id(messages)
         if not job_id:
