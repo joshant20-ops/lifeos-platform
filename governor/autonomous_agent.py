@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import base64
 import hashlib
+import importlib.util
 import json
 import os
 import pathlib
@@ -15,6 +16,13 @@ import urllib.request
 import uuid
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+_JOB_RECORDS_SPEC = importlib.util.spec_from_file_location(
+    "lifeos_job_records", pathlib.Path(__file__).with_name("job_records.py")
+)
+_JOB_RECORDS = importlib.util.module_from_spec(_JOB_RECORDS_SPEC)
+_JOB_RECORDS_SPEC.loader.exec_module(_JOB_RECORDS)
+publish_record = _JOB_RECORDS.publish_record
 
 ROOT = pathlib.Path(os.environ.get("LIFEOS_AGENT_STATE", "/var/lib/lifeos-agent"))
 ROOT.mkdir(parents=True, exist_ok=True)
@@ -163,6 +171,14 @@ def set_stage(job, stage, detail=None):
     else:
         job.pop("stage_detail", None)
     save(job)
+
+
+def finish_job(job, stage, detail=None):
+    """Persist terminal runtime state and attempt its sanitised Git record."""
+    set_stage(job, stage, detail)
+    job["record_publication"] = publish_record(PLATFORM_REPO, job)
+    save(job)
+    return job
 
 
 def completed_job_durations(jobs=None):
@@ -651,18 +667,15 @@ def _execute_job_locked(job):
                     job["status"] = "BLOCKED"
                     job["blocked_reason"] = "bounded runtime deployment was not approved or failed"
                     job["completed_at"] = now()
-                    set_stage(job, "blocked", job["blocked_reason"])
-                    return job
+                    return finish_job(job, "blocked", job["blocked_reason"])
             job["status"] = "PASS"
             job["completed_at"] = now()
-            set_stage(job, "complete", "local verifier accepted result")
-            return job
+            return finish_job(job, "complete", "local verifier accepted result")
         if v == "BLOCKED":
             job["status"] = "BLOCKED"
             job["blocked_reason"] = decision.get("reason")
             job["completed_at"] = now()
-            set_stage(job, "blocked", job["blocked_reason"])
-            return job
+            return finish_job(job, "blocked", job["blocked_reason"])
 
         repeat_count = update_failure_history(job, signature)
         if repeat_count >= REPEATED_FAILURE_LIMIT:
@@ -672,8 +685,7 @@ def _execute_job_locked(job):
                 "stopped before exhausting the full iteration budget"
             )
             job["completed_at"] = now()
-            set_stage(job, "blocked_repeated_failure", job["blocked_reason"])
-            return job
+            return finish_job(job, "blocked_repeated_failure", job["blocked_reason"])
 
         base_feedback = str(decision.get("next_instruction") or decision.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
         if repeat_count >= 2:
@@ -690,8 +702,7 @@ def _execute_job_locked(job):
     job["status"] = "BLOCKED"
     job["blocked_reason"] = "maximum iterations reached"
     job["completed_at"] = now()
-    set_stage(job, "blocked", job["blocked_reason"])
-    return job
+    return finish_job(job, "blocked", job["blocked_reason"])
 
 
 def continuation_allowed(job):
