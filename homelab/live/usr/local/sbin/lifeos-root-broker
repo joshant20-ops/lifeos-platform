@@ -23,6 +23,7 @@ DEPLOY_LOCK = STATE_DIR / 'engineer-deploy.lock'
 PLATFORM_REPO = pathlib.Path('/home/joshan/lifeos-platform')
 DEPLOY_FILES = (
     ('governor/autonomous_agent.py', pathlib.Path('/usr/local/libexec/lifeos-autonomous-agent')),
+    ('governor/target_identity.py', pathlib.Path('/usr/local/libexec/target_identity.py')),
     ('governor/engineer_backend.py', pathlib.Path('/usr/local/libexec/lifeos-engineer')),
 )
 DEPLOY_UNITS = ('lifeos-autonomous-agent.service', 'lifeos-engineer.service')
@@ -31,6 +32,7 @@ DEPLOY_APPROVAL_MAX_AGE = timedelta(hours=24)
 
 AUTONOMOUS_FILES = (
     ('governor/autonomous_agent.py', pathlib.Path('/usr/local/libexec/lifeos-autonomous-agent')),
+    ('governor/target_identity.py', pathlib.Path('/usr/local/libexec/target_identity.py')),
     ('governor/systemd/lifeos-autonomous-agent.service', pathlib.Path('/etc/systemd/system/lifeos-autonomous-agent.service')),
 )
 BACKLOG_FILES = (

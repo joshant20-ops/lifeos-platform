@@ -25,6 +25,13 @@ _JOB_RECORDS = importlib.util.module_from_spec(_JOB_RECORDS_SPEC)
 _JOB_RECORDS_SPEC.loader.exec_module(_JOB_RECORDS)
 publish_record = _JOB_RECORDS.publish_record
 
+_TARGET_IDENTITY_SPEC = importlib.util.spec_from_file_location(
+    "lifeos_target_identity", pathlib.Path(__file__).with_name("target_identity.py")
+)
+_TARGET_IDENTITY = importlib.util.module_from_spec(_TARGET_IDENTITY_SPEC)
+_TARGET_IDENTITY_SPEC.loader.exec_module(_TARGET_IDENTITY)
+load_target_id = _TARGET_IDENTITY.load_target_id
+
 ROOT = pathlib.Path(os.environ.get("LIFEOS_AGENT_STATE", "/var/lib/lifeos-agent"))
 ROOT.mkdir(parents=True, exist_ok=True)
 PORT = int(os.environ.get("LIFEOS_AGENT_PORT", "8790"))
@@ -89,8 +96,8 @@ def request_bounded_deployment(job_id, intent):
     """Map an exact declarative intent to a fixed broker operation."""
     if intent not in DEPLOYMENT_OPERATIONS:
         return {"status": "REJECTED", "reason": "deployment operation not allowlisted"}
-    request = {"operation": intent, "job_id": str(job_id), "target": "pi5"}
     try:
+        request = {"operation": intent, "job_id": str(job_id), "target": load_target_id()}
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(180)
             client.connect("/run/lifeos-root-broker.sock")
@@ -112,8 +119,7 @@ def request_bounded_deployment(job_id, intent):
 
 def request_engineer_runtime_deployment(job_id):
     """Compatibility interface for existing Engineer jobs."""
-    request = {"operation": "deploy-engineer-runtime", "job_id": str(job_id), "target": "pi5"}
-    return request_bounded_deployment(job_id, request["operation"])
+    return request_bounded_deployment(job_id, "deploy-engineer-runtime")
 
 PRIVATE_PATTERNS = (
     r"\bpaperless\b",

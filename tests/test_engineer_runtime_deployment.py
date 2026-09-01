@@ -28,7 +28,11 @@ def approval(job="job-1"):
         "job_id": job,
         "target": "pi5",
         "source_commit": "a" * 40,
-        "source_hashes": {"governor/autonomous_agent.py": "b" * 64, "governor/engineer_backend.py": "c" * 64},
+        "source_hashes": {
+            "governor/autonomous_agent.py": "b" * 64,
+            "governor/target_identity.py": "d" * 64,
+            "governor/engineer_backend.py": "c" * 64,
+        },
         "publication_verified": True,
         "independent_verifier": {"verdict": "PASS", "evidence_id": "verifier-1"},
         "protected_policy": {"verdict": "PASS", "evidence_id": "policy-1"},
@@ -46,10 +50,11 @@ def test_request_cannot_supply_command_path_destination_unit_or_hash():
             )
 
 
-def test_privileged_surface_is_exactly_two_files_two_units_and_two_health_ports():
+def test_privileged_surface_is_fixed_governor_files_units_and_health_ports():
     broker = load_broker()
     assert broker.DEPLOY_FILES == (
         ("governor/autonomous_agent.py", pathlib.Path("/usr/local/libexec/lifeos-autonomous-agent")),
+        ("governor/target_identity.py", pathlib.Path("/usr/local/libexec/target_identity.py")),
         ("governor/engineer_backend.py", pathlib.Path("/usr/local/libexec/lifeos-engineer")),
     )
     assert broker.DEPLOY_UNITS == ("lifeos-autonomous-agent.service", "lifeos-engineer.service")
@@ -68,7 +73,7 @@ def test_verified_source_is_pinned_as_bytes_not_reopened_path():
 def test_agent_request_is_bounded_and_only_runs_after_verifier_pass():
     text = AGENT_PATH.read_text()
     function = text[text.index("def request_engineer_runtime_deployment"):text.index("def now()")]
-    assert '"operation": "deploy-engineer-runtime"' in function
+    assert 'request_bounded_deployment(job_id, "deploy-engineer-runtime")' in function
     for forbidden in ("command", "destination", "unit", "source_hashes", "args"):
         assert f'"{forbidden}"' not in function
     pass_branch = text[text.index('if v == "PASS":'):text.index('if v == "BLOCKED":')]
