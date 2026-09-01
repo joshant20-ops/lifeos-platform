@@ -1,0 +1,17 @@
+{
+  "title": "Power Down V52 post-event assurance",
+  "priority": "P0",
+  "state": "WAITING_EVENT_END",
+  "not_before": "2026-09-01T19:00:00+01:00",
+  "source_issue": 25,
+  "instructions": [
+    "After event 5833 (2026-09-01 18:00-19:00 Europe/London) has ended, inspect the 30-second Power Down evidence recorder output and canonical V52 runtime state.",
+    "Run the canonical post-event verifier already committed in lifeos-platform.",
+    "Prove from recorded evidence that the event became active, live-event safety gates remained satisfied, the pre-event Enphase reserve was captured, LifeOS took reserve ownership only during the event, reserve was released to the native minimum when permitted, and the original pre-event reserve was restored after the event with ownership cleared.",
+    "Do not infer success from source code or pre-event readiness. Require actual recorded runtime evidence.",
+    "If all required evidence passes, update GitHub issue #25 with LIFEOS_WORK_STATE=PASS and RESULT=PASS_POWERDOWN_COMPLIANCE_ASSURED, including concise redacted evidence and canonical commit/job IDs.",
+    "If any evidence is missing or a safety gate blocked control, update issue #25 with LIFEOS_WORK_STATE=BLOCKED or IN_PROGRESS as appropriate, exact evidence, root cause, remaining work, and NEXT_AUTONOMOUS_ACTION. Continue safe autonomous diagnosis/remediation where possible.",
+    "Do not weaken safety thresholds, fabricate evidence, or perform unrelated battery writes."
+  ],
+  "acceptance": "Actual event evidence proves reserve capture/release/restoration and live closed-loop safety, ending with RESULT=PASS_POWERDOWN_COMPLIANCE_ASSURED."
+}
