@@ -14,6 +14,7 @@ from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Europe/London")
 HA = "http://127.0.0.1:8123"
+LIFEOS_ENERGY = "http://127.0.0.1:8110/api/energy/current"
 
 ROOT = Path("/opt/lifeos-watch/octopus-powerdown-assurance")
 STATUS = ROOT / "active-status.json"
@@ -45,7 +46,7 @@ MAX_SOURCE_AGE = 150
 MAX_SOURCE_TIMESTAMP_DELTA = 90
 MAX_GRID_DIFF_W = 100
 
-# Independent telemetry must agree repeatedly before an active-event
+# Redundant telemetry paths must agree repeatedly before an active-event
 # reserve release is permitted. Once trusted, one transient disagreement
 # does not immediately destroy confidence, but two consecutive failures do.
 CROSSCHECK_REQUIRED_GOOD_RUNS = 2
@@ -112,6 +113,12 @@ def get(entity):
     return api("/api/states/" + entity)
 
 
+def lifeos_energy_current():
+    req = urllib.request.Request(LIFEOS_ENERGY)
+    with urllib.request.urlopen(req, timeout=10) as r:
+        return json.loads(r.read())
+
+
 def numeric(entity):
     obj = get(entity)
     try:
@@ -153,7 +160,26 @@ def set_number(entity, value):
 event_obj = get(EVENT)
 
 baseline, baseline_obj = numeric(BASELINE)
-grid_import, import_obj = numeric(IMPORT)
+
+# Read authoritative LifeOS grid import directly from the live energy API.
+# This removes the HA REST polling hop which can stall after a timeout while
+# retaining the independent HA Envoy transport as a cross-check.
+try:
+    energy_current = lifeos_energy_current()
+    grid_import = float(energy_current["grid_import_w"])
+    report_epoch = float(
+        energy_current.get("retrieved_at")
+        or energy_current.get("reading_time")
+    )
+    import_obj = {
+        "last_reported": datetime.fromtimestamp(
+            report_epoch, TZ
+        ).isoformat()
+    }
+except Exception:
+    grid_import = None
+    import_obj = {}
+
 envoy_kw, envoy_obj = numeric(ENVOY)
 
 soc, soc_obj = numeric(SOC)
