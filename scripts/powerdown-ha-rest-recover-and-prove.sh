@@ -24,7 +24,7 @@ ha_post() {
   local endpoint="$1"
   "$SECRET" exec homeassistant.long_lived_access_token HA_TOKEN \
     python3 - "$endpoint" <<'PY'
-import json, os, sys, urllib.request
+import os, sys, urllib.request
 endpoint=sys.argv[1]
 req=urllib.request.Request(
     "http://127.0.0.1:8123"+endpoint,
@@ -66,7 +66,6 @@ for e in ("sensor.lifeos_energy_grid_import","sensor.lifeos_grid_import_power"):
     age=time.time()-datetime.fromisoformat(stamp.replace("Z","+00:00")).timestamp()
     if age > limit: raise SystemExit(1)
 PY
-}
 }
 
 wait_ha_healthy() {
