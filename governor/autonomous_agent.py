@@ -106,9 +106,12 @@ def load(job_id):
     return json.loads(job_path(job_id).read_text())
 
 
-def list_jobs(limit=100):
+def list_jobs(limit=None):
     jobs = []
-    for path in sorted(ROOT.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
+    paths = sorted(ROOT.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if limit is not None:
+        paths = paths[:limit]
+    for path in paths:
         try:
             jobs.append(json.loads(path.read_text()))
         except Exception:
@@ -584,6 +587,7 @@ class Handler(BaseHTTPRequestHandler):
                 "max_iterations": MAX_ITERATIONS,
                 "repeated_failure_limit": REPEATED_FAILURE_LIMIT,
                 "stuck_job_multiplier": STUCK_JOB_MULTIPLIER,
+                "max_continuation_depth": CONTINUATION_MAX_DEPTH,
                 "continuation_max_depth": CONTINUATION_MAX_DEPTH,
                 "runtime_controller": "pi5",
                 "git_controller": "pi5",
