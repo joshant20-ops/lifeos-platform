@@ -33,9 +33,6 @@ STUCK_JOB_MIN_SECONDS = int(os.environ.get("LIFEOS_STUCK_JOB_MIN_SECONDS", "300"
 CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"))
 EXECUTION_LOCK = threading.Lock()
 
-# Match actual sensitive-data intent rather than ordinary engineering words.
-# In particular, "document the code" must never become local-only merely
-# because it contains the substring "document".
 PRIVATE_PATTERNS = (
     r"\bpaperless\b",
     r"\bprivate (?:data|documents?|files?|records?|information)\b",
@@ -49,9 +46,6 @@ PRIVATE_PATTERNS = (
     r"\b(?:email|emails|mailbox|inbox)\b.{0,40}\b(?:private|personal|messages?|content)\b",
 )
 
-# Continuation remains outside protected control-plane authority. These terms
-# are a conservative fail-closed content gate, not a replacement for the
-# root broker, allow-list, verifier, job publisher, or job runner boundaries.
 PROTECTED_CONTINUATION_TERMS = (
     "root broker", "allow-list", "allowlist", "job publisher", "job runner",
     "checksum enforcement", "secret boundary", "protected deployment authority",
@@ -121,15 +115,15 @@ def completed_job_durations(jobs=None):
 
 
 def stuck_jobs(jobs=None, at=None):
-    """Return deterministic stuck classifications from persisted job state."""
     jobs = list(jobs if jobs is not None else list_jobs())
     at = at or datetime.now().astimezone()
     history = completed_job_durations(jobs)
     historical_limit = 0.0
     if history:
-        # Conservative: require materially longer than both the median and the
-        # slowest recent successful job before history alone can call it stuck.
-        historical_limit = max(statistics.median(history) * STUCK_JOB_MULTIPLIER, max(history) * 1.5)
+        historical_limit = max(
+            statistics.median(history) * STUCK_JOB_MULTIPLIER,
+            max(history) * 1.5,
+        )
     threshold = max(float(STUCK_JOB_MIN_SECONDS), historical_limit)
     result = []
     for job in jobs:
@@ -148,16 +142,11 @@ def stuck_jobs(jobs=None, at=None):
         ) if k in job}
         item["stage_age_seconds"] = int(age)
         item["stuck_threshold_seconds"] = int(threshold)
-        if historical_limit:
-            item["stuck_reason"] = (
-                f"stage has not advanced for {int(age)}s, exceeding conservative threshold "
-                f"{int(threshold)}s derived from persisted successful-job duration history"
-            )
-        else:
-            item["stuck_reason"] = (
-                f"stage has not advanced for {int(age)}s, exceeding minimum deterministic "
-                f"threshold {int(threshold)}s with insufficient successful-job history"
-            )
+        source = "persisted successful-job duration history" if historical_limit else "minimum deterministic threshold"
+        item["stuck_reason"] = (
+            f"stage has not advanced for {int(age)}s, exceeding conservative threshold "
+            f"{int(threshold)}s from {source}"
+        )
         result.append(item)
     return result
 
@@ -189,7 +178,10 @@ Iteration: {iteration}
 Evidence:\n{evidence[-18000:]}
 """
     payload = json.dumps({
-        "model": VERIFIER_MODEL, "prompt": prompt, "stream": False, "format": "json",
+        "model": VERIFIER_MODEL,
+        "prompt": prompt,
+        "stream": False,
+        "format": "json",
         "options": {"temperature": 0.0, "num_ctx": 8192},
     }).encode()
     req = urllib.request.Request(VERIFIER_URL, data=payload, headers={"Content-Type": "application/json"}, method="POST")
@@ -221,9 +213,13 @@ def parse_handoff(raw):
 def failure_signature(evidence, verdict):
     lines = []
     patterns = (
-        r"(?m)^RUNTIME_RC=.*$", r"(?m)^RESULT=FAIL.*$", r"(?m)^REASON=.*$",
-        r"(?m)^DEPLOYMENT_FAILURE=.*$", r"(?m)^PRIVILEGED_BOOTSTRAP_REQUIRED.*$",
-        r"(?m)^PI5_PATCH=RETRY.*$", r"(?m)^HANDOFF_ERROR=.*$",
+        r"(?m)^RUNTIME_RC=.*$",
+        r"(?m)^RESULT=FAIL.*$",
+        r"(?m)^REASON=.*$",
+        r"(?m)^DEPLOYMENT_FAILURE=.*$",
+        r"(?m)^PRIVILEGED_BOOTSTRAP_REQUIRED.*$",
+        r"(?m)^PI5_PATCH=RETRY.*$",
+        r"(?m)^HANDOFF_ERROR=.*$",
     )
     for pattern in patterns:
         matches = re.findall(pattern, evidence)
@@ -360,8 +356,11 @@ def run_pi5_runtime(job, handoff):
     target.write_text(text)
     target.chmod(0o700)
     cp = subprocess.run(
-        ["/usr/bin/timeout", "900s", "/bin/bash", str(target)], cwd=PLATFORM_REPO,
-        text=True, capture_output=True, timeout=930,
+        ["/usr/bin/timeout", "900s", "/bin/bash", str(target)],
+        cwd=PLATFORM_REPO,
+        text=True,
+        capture_output=True,
+        timeout=930,
         env={**os.environ, "LIFEOS_JOB_ID": job["id"], "LIFEOS_JOB_REQUEST": job["request"]},
     )
     out = (cp.stdout or "") + "\n" + (cp.stderr or "")
@@ -432,7 +431,8 @@ def _execute_job_locked(job):
         if repeat_count >= 2:
             feedback = (
                 f"REPLAN REQUIRED: failure signature {signature} repeated {repeat_count} times. "
-                "Do not repeat the previous implementation/runtime approach. Diagnose the deterministic cause and choose a materially different plan. " + base_feedback
+                "Do not repeat the previous implementation/runtime approach. Diagnose the deterministic cause and choose a materially different plan. "
+                + base_feedback
             )
         else:
             feedback = base_feedback
@@ -447,27 +447,22 @@ def _execute_job_locked(job):
 
 
 def continuation_allowed(job):
-    """Fail closed unless a successful job explicitly opted into a bounded next step."""
     if not bool(job.get("continuation_enabled")):
         return False
     if str(job.get("status") or "").upper() != "PASS":
         return False
-    depth = int(job.get("continuation_depth") or 0)
-    if depth >= CONTINUATION_MAX_DEPTH:
+    if int(job.get("continuation_depth") or 0) >= CONTINUATION_MAX_DEPTH:
         return False
     request = str(job.get("continuation_request") or "").strip()
     if not request:
         return False
-    lower = request.lower()
-    if any(term in lower for term in PROTECTED_CONTINUATION_TERMS):
+    if any(term in request.lower() for term in PROTECTED_CONTINUATION_TERMS):
         return False
-    # BLOCKED jobs and repeated deterministic failure never reach here because
-    # only PASS is eligible. The verifier therefore retains stop authority.
+    # BLOCKED and repeated deterministic failure stop before this point.
     return True
 
 
 def spawn_continuation(job):
-    """Create the child only after the parent has released EXECUTION_LOCK."""
     if not continuation_allowed(job):
         return None
     child = new_job(
@@ -477,9 +472,9 @@ def spawn_continuation(job):
         continuation_depth=int(job.get("continuation_depth") or 0) + 1,
         continuation_reason=str(job.get("continuation_reason") or "explicit bounded continuation"),
     )
-    job = load(job["id"])
-    job["continuation_child"] = child["id"]
-    save(job)
+    parent = load(job["id"])
+    parent["continuation_child"] = child["id"]
+    save(parent)
     threading.Thread(target=execute_job, args=(child,), daemon=True, name=f"job-{child['id']}").start()
     return child
 
@@ -487,17 +482,21 @@ def spawn_continuation(job):
 def execute_job(job):
     with EXECUTION_LOCK:
         final = _execute_job_locked(job)
-    # Event-driven continuation is deliberately outside the execution lock so
-    # the child can acquire it; there is no hourly polling dependency here.
     spawn_continuation(final)
 
 
 def new_job(request, retry_of=None, continuation_enabled=False, continuation_parent=None,
             continuation_depth=0, continuation_reason=None, continuation_request=None):
     job = {
-        "id": uuid.uuid4().hex[:12], "created_at": now(), "request": request.strip(),
-        "privacy": classify_privacy(request), "status": "QUEUED", "stage": "queued",
-        "stage_changed_at": now(), "iterations": [], "repeated_failure_count": 0,
+        "id": uuid.uuid4().hex[:12],
+        "created_at": now(),
+        "request": request.strip(),
+        "privacy": classify_privacy(request),
+        "status": "QUEUED",
+        "stage": "queued",
+        "stage_changed_at": now(),
+        "iterations": [],
+        "repeated_failure_count": 0,
         "continuation_enabled": bool(continuation_enabled),
         "continuation_depth": int(continuation_depth or 0),
     }
@@ -545,10 +544,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/health":
             self.send_json(200, {
-                "service": "lifeos-autonomous-agent", "status": "ok", "max_iterations": MAX_ITERATIONS,
-                "repeated_failure_limit": REPEATED_FAILURE_LIMIT, "stuck_job_multiplier": STUCK_JOB_MULTIPLIER,
-                "continuation_max_depth": CONTINUATION_MAX_DEPTH, "runtime_controller": "pi5",
-                "git_controller": "pi5", "ui": "/"
+                "service": "lifeos-autonomous-agent",
+                "status": "ok",
+                "max_iterations": MAX_ITERATIONS,
+                "repeated_failure_limit": REPEATED_FAILURE_LIMIT,
+                "stuck_job_multiplier": STUCK_JOB_MULTIPLIER,
+                "continuation_max_depth": CONTINUATION_MAX_DEPTH,
+                "runtime_controller": "pi5",
+                "git_controller": "pi5",
+                "ui": "/",
             })
             return
         if path == "/context":
@@ -562,8 +566,7 @@ class Handler(BaseHTTPRequestHandler):
                 "continuation_enabled", "continuation_parent", "continuation_child",
                 "continuation_depth", "continuation_reason",
             )
-            summaries = [{k: j.get(k) for k in keys if k in j} for j in jobs]
-            self.send_json(200, {"jobs": summaries})
+            self.send_json(200, {"jobs": [{k: j.get(k) for k in keys if k in j} for j in jobs]})
             return
         if path == "/jobs/stuck":
             self.send_json(200, {"stuck_jobs": stuck_jobs()})
