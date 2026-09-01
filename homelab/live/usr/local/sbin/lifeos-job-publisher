@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import hashlib
 import json
+import os
 import pathlib
+import pwd
 import re
 import shutil
 import subprocess
@@ -20,6 +22,16 @@ SCRIPT_ROOTS = {
     'root-broker': REPO / 'jobs/root-scripts',
 }
 JOB_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$')
+GIT_USER = 'joshan'
+GIT_HOME = '/home/joshan'
+GIT_BIN = '/usr/bin/git'
+RUNUSER_BIN = '/usr/sbin/runuser'
+ENV_BIN = '/usr/bin/env'
+GIT_ENV = (
+    f'HOME={GIT_HOME}',
+    'PATH=/usr/bin:/bin',
+    'LANG=C.UTF-8',
+)
 
 
 def fail(msg, code=1):
@@ -42,9 +54,34 @@ def gitleaks(path):
 
 
 def git(*args, check=True, capture=False):
+    """Run Git with a fixed repository-owner identity and deterministic environment."""
+    euid = os.geteuid()
+    try:
+        current_user = pwd.getpwuid(euid).pw_name
+    except KeyError:
+        fail(f'publisher git identity unresolved for uid={euid}')
+
+    if euid == 0:
+        command = [
+            RUNUSER_BIN, '-u', GIT_USER, '--',
+            ENV_BIN, '-i', *GIT_ENV,
+            GIT_BIN, *args,
+        ]
+        env = None
+    elif current_user == GIT_USER:
+        command = [GIT_BIN, *args]
+        env = {
+            'HOME': GIT_HOME,
+            'PATH': '/usr/bin:/bin',
+            'LANG': 'C.UTF-8',
+        }
+    else:
+        fail(f'publisher git identity must be root or {GIT_USER}, got {current_user}')
+
     return subprocess.run(
-        ['git', *args],
+        command,
         cwd=REPO,
+        env=env,
         text=True,
         check=check,
         stdout=subprocess.PIPE if capture else None,
