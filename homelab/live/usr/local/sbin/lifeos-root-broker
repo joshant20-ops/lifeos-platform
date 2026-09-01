@@ -269,7 +269,29 @@ def sha256(path):
 
 
 def checked_run(args, timeout, cwd=None):
-    return subprocess.run(args, cwd=cwd, text=True, capture_output=True, timeout=timeout)
+    command = list(args)
+
+    # The root broker runs inside a hardened systemd sandbox while the
+    # canonical LifeOS repository is owned by the unprivileged operator.
+    #
+    # Trust only this compiled canonical repository and prohibit Git's
+    # optional index-refresh writes. ProtectHome can therefore remain
+    # read-only and no generic root shell/repository trust is introduced.
+    if command and command[0] == 'git':
+        command = [
+            'git',
+            '-c', f'safe.directory={PLATFORM_REPO}',
+            '--no-optional-locks',
+            *command[1:],
+        ]
+
+    return subprocess.run(
+        command,
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
 
 
 def require_safe_regular(path, owner_uid, *, writable_forbidden=True):
