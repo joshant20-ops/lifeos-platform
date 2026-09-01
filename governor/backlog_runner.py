@@ -21,6 +21,7 @@ RETRY_SECONDS = max(86400, int(os.environ.get("LIFEOS_BACKLOG_RETRY_SECONDS", "8
 ISSUE_6_JOBS = ("000ed1030609", "bdb436220936", "2ed8008ab644", "b38c21b43b66", "eb616e077179", "482ade0c9757")
 TERMINAL = {"PASS", "FAIL", "BLOCKED", "CANCELLED", "ERROR", "COMPLETED"}
 INCOMPLETE = {"BLOCKED", "WAITING_HUMAN", "WAITING_DEPENDENCY", "RETRY", "FAIL", "ERROR"}
+MANUAL_HIGH_PRIORITY_LABEL = "lifeos-high-priority"
 
 
 def now(): return int(time.time())
@@ -52,7 +53,6 @@ def empty_state(): return {"version": 2, "active": None, "issues": {}, "attempts
 def load_state():
     try: value = json.loads(STATE.read_text())
     except (OSError, ValueError): value = empty_state()
-    # Migrate the old single-active-record format without losing the in-flight job.
     if "version" not in value:
         active = value if value.get("issue") and value.get("job_id") else None
         value = empty_state(); value["active"] = active
@@ -87,9 +87,12 @@ def private_issue(issue): return bool(labels(issue) & {"risk:local-only", "priva
 
 def priority(issue):
     title, ls = issue.get("title", ""), labels(issue)
+    manual_tier = 0 if MANUAL_HIGH_PRIORITY_LABEL in ls else 1
     rank = next((n for n in range(6) if re.match(rf"^P{n}\b", title, re.I) or f"priority:p{n}" in ls or f"p{n}" in ls), 6) * 100
     if "lifeos-engineer-ready" in ls: rank -= 25
-    return rank, issue.get("created_at", ""), int(issue["number"])
+    # Manual high-priority is a tier only. Within that tier LifeOS still uses
+    # the normal autonomous priority/dependency ordering.
+    return manual_tier, rank, issue.get("created_at", ""), int(issue["number"])
 
 
 def get_open_issues():
@@ -179,9 +182,6 @@ def finish_active(state, open_issues):
 def eligible(issue, state, timestamp=None):
     number = int(issue["number"]); ls = labels(issue)
     if number == CENTRAL_ISSUE or ls & {"lifeos-engineer-ignore", "do-not-automate"}: return False
-    # Labels are live barrier evidence. A human/dependency-blocked issue cannot
-    # become eligible merely because time elapsed; clearing the label is the
-    # concrete evidence which permits reconsideration after its cooldown.
     if ls & {"blocked", "waiting-human", "waiting-dependency"}: return False
     entry = state["issues"].get(str(number), {})
     if entry.get("work_state") == "PASS": return False
@@ -198,10 +198,6 @@ def submit_issue(issue, state):
     number = int(issue["number"]); is_private = private_issue(issue); body = str(issue.get("body") or "")[:14000]
     privacy_note = "This issue is local-only; never transmit its contents outside the LAN." if is_private else "This is ordinary engineering work; unrelated private data remains out of scope."
     prompt = f"""Process GitHub issue #{number} in {REPO_FULL}: {issue.get('title','')}\n\n{privacy_note}\n\nFirst revalidate current relevance and dependencies, then implement and test safe work.\n\nISSUE BODY:\n{body}\n\nEvery final iteration MUST emit:\nISSUE_VALIDITY=VALID|ALREADY_COMPLETE|SUPERSEDED|BLOCKED\nLIFEOS_WORK_STATE=PASS|BLOCKED|WAITING_HUMAN|WAITING_DEPENDENCY|SUPERSEDED\nBARRIER=<exact barrier or none>\nNEXT_AUTONOMOUS_ACTION=<next action>\nDISCOVERED_ISSUES_JSON_B64=<base64 JSON list or none>\n"""
-    # Backlog dispatch is intentionally asynchronous. The dispatcher records the
-    # returned job ID immediately and exits; the Governor owns the long-running
-    # engineering execution. This prevents the oneshot runner's HTTP timeout from
-    # being mistaken for a failed dispatch while the job continues successfully.
     job = api("/jobs?async=1", "POST", {"request": prompt, "dispatch_builder": "local" if is_private else "normal"})
     job_id = str(job.get("id") or "")
     if not job_id: raise RuntimeError("governor returned no job id")
@@ -212,9 +208,9 @@ def submit_issue(issue, state):
 
 def main():
     state = load_state(); save_state(state)
-    issues = get_open_issues()  # refresh before terminal processing and reprioritisation
+    issues = get_open_issues()
     if state.get("active") and finish_active(state, issues): return 0
-    issues = get_open_issues()  # terminal changes/discoveries may have changed the backlog
+    issues = get_open_issues()
     if active_governor_jobs(): log("DISPATCH=WAIT governor_has_active_job"); return 0
     issue = choose_issue(issues, state)
     if not issue: log("DISPATCH=IDLE no_eligible_open_issues"); return 0
