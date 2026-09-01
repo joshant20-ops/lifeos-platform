@@ -1,0 +1,28 @@
+[Unit]
+Description=LifeOS Home Assistant issue queue bridge
+After=network-online.target lifeos-autonomous-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=joshan
+Group=joshan
+WorkingDirectory=/home/joshan/lifeos-platform
+Environment=HOME=/home/joshan
+Environment=LIFEOS_BACKLOG_GITHUB_REPO=joshant20-ops/lifeos-platform
+Environment=LIFEOS_BACKLOG_GOVERNOR=http://127.0.0.1:8790
+Environment=LIFEOS_MQTT_HOST=127.0.0.1
+Environment=LIFEOS_ISSUE_QUEUE_REFRESH=30
+Environment=LIFEOS_BACKLOG_STATE_FILE=/var/lib/lifeos-backlog-runner/state.json
+Environment=LIFEOS_ISSUE_QUEUE_STATE=/var/lib/lifeos-ha-issue-queue/state.json
+ExecStart=/usr/local/libexec/lifeos-ha-issue-queue-bridge
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/var/lib/lifeos-ha-issue-queue
+
+[Install]
+WantedBy=multi-user.target
