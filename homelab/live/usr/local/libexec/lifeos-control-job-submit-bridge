@@ -1,0 +1,205 @@
+#!/usr/bin/env python3
+"""Create-only, fixed-destination pre-validation boundary for Pi-control jobs."""
+import base64
+import binascii
+import fcntl
+import hashlib
+import json
+import os
+import pathlib
+import re
+import socket
+import sys
+from datetime import datetime, timezone
+
+REPO = pathlib.Path(os.environ.get("LIFEOS_CONTROL_REPO", "/home/joshan/lifeos-pi-control"))
+LOCK = pathlib.Path(os.environ.get("LIFEOS_SUBMIT_LOCK", "/run/lifeos-control-submit/submit.lock"))
+MAX_MANIFEST = 32 * 1024
+MAX_SCRIPT = 256 * 1024
+MAX_REQUEST = 384 * 1024
+JOB_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+SHA_RE = re.compile(r"^[0-9a-f]{64}$")
+ROOTS = {
+    "diagnostic": "jobs/scripts",
+    "control-state": "jobs/change-scripts",
+    "root-broker": "jobs/root-scripts",
+}
+MANIFEST_FIELDS = {
+    "schema_version", "job_id", "target", "job_type", "script",
+    "script_sha256", "timeout_seconds", "created_by", "description",
+    "change_scope", "change_policy", "requires_root", "resume_after",
+}
+
+
+class Rejected(Exception):
+    pass
+
+
+def audit(status, reason, manifest=None, peer_uid=None):
+    d = manifest if isinstance(manifest, dict) else {}
+    record = {
+        "event": "control_job_submission", "status": status,
+        "reason": str(reason)[:300], "job_id": d.get("job_id"),
+        "target": d.get("target"), "job_type": d.get("job_type"),
+        "scope": d.get("change_scope", "diagnostic" if d.get("job_type") == "diagnostic" else None),
+        "script_sha256": d.get("script_sha256"), "submitter_uid": peer_uid,
+        "created_by": d.get("created_by"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    print(json.dumps(record, sort_keys=True), file=sys.stderr, flush=True)
+
+
+def validate_manifest(d):
+    if not isinstance(d, dict):
+        raise Rejected("manifest must be an object")
+    extra = set(d) - MANIFEST_FIELDS
+    if extra:
+        raise Rejected("unexpected manifest fields: " + ",".join(sorted(extra)))
+    required = {"schema_version", "job_id", "target", "job_type", "script", "script_sha256",
+                "timeout_seconds", "created_by", "description"}
+    missing = required - set(d)
+    if missing:
+        raise Rejected("missing manifest fields: " + ",".join(sorted(missing)))
+    if d["schema_version"] != 1:
+        raise Rejected("unsupported schema_version")
+    job_id = d["job_id"]
+    if not isinstance(job_id, str) or not JOB_RE.fullmatch(job_id):
+        raise Rejected("invalid job_id")
+    if not isinstance(d["target"], str) or not d["target"] or len(d["target"]) > 100:
+        raise Rejected("invalid target")
+    if not isinstance(d["timeout_seconds"], int) or isinstance(d["timeout_seconds"], bool) or not 1 <= d["timeout_seconds"] <= 900:
+        raise Rejected("timeout_seconds out of range")
+    for field, limit in (("created_by", 200), ("description", 1000)):
+        if not isinstance(d[field], str) or not d[field].strip() or len(d[field]) > limit:
+            raise Rejected(f"invalid {field}")
+    if d["job_type"] == "diagnostic":
+        if any(k in d for k in ("change_scope", "change_policy", "requires_root")):
+            raise Rejected("diagnostic contains change-only fields")
+        scope = "diagnostic"
+    elif d["job_type"] == "change":
+        if not all(k in d for k in ("change_scope", "change_policy", "requires_root")):
+            raise Rejected("missing change fields")
+        scope = d["change_scope"]
+        if scope not in ("control-state", "root-broker"):
+            raise Rejected("change scope not allowlisted")
+        if d["change_policy"] != "gated-v1":
+            raise Rejected("unsupported change policy")
+        if d["requires_root"] is not (scope == "root-broker"):
+            raise Rejected("requires_root mismatch")
+    else:
+        raise Rejected("invalid job_type")
+    if "resume_after" in d and (not isinstance(d["resume_after"], str) or not d["resume_after"] or len(d["resume_after"]) > 100):
+        raise Rejected("invalid resume_after")
+    canonical = f"{ROOTS[scope]}/{job_id}.sh"
+    script_rel = d["script"]
+    if not isinstance(script_rel, str) or script_rel != canonical:
+        raise Rejected("script must be the canonical scope-derived path")
+    if pathlib.PurePosixPath(script_rel).is_absolute() or ".." in pathlib.PurePosixPath(script_rel).parts:
+        raise Rejected("invalid script path")
+    if not isinstance(d["script_sha256"], str) or not SHA_RE.fullmatch(d["script_sha256"]):
+        raise Rejected("invalid script_sha256")
+    return scope, canonical
+
+
+def _safe_dir(relative):
+    repo = REPO.resolve(strict=True)
+    path = REPO / relative
+    resolved = path.resolve(strict=True)
+    if resolved != repo / relative or not resolved.is_dir() or path.is_symlink():
+        raise Rejected(f"unsafe or missing directory: {relative}")
+    return resolved
+
+
+def _conflicts(job_id, script_path, manifest_path):
+    checks = [script_path, manifest_path, REPO / "jobs/pending" / f"{job_id}.json",
+              REPO / "results" / f"{job_id}.json", REPO / "jobs/archive" / f"{job_id}.json"]
+    archive = REPO / "jobs/archive"
+    if any(p.exists() or p.is_symlink() for p in checks):
+        return True
+    return archive.exists() and any(archive.glob(f"{job_id}.*"))
+
+
+def _create(path, data, mode):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode)
+    with os.fdopen(fd, "wb") as out:
+        out.write(data); out.flush(); os.fsync(out.fileno())
+
+
+def submit(manifest_bytes, script_bytes, peer_uid):
+    if len(manifest_bytes) > MAX_MANIFEST or len(script_bytes) > MAX_SCRIPT:
+        raise Rejected("payload exceeds size limit")
+    try:
+        manifest = json.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise Rejected(f"malformed manifest JSON: {type(exc).__name__}")
+    scope, _ = validate_manifest(manifest)
+    script_dir = _safe_dir(ROOTS[scope])
+    staging = _safe_dir("jobs/staging")
+    script_path = script_dir / f'{manifest["job_id"]}.sh'
+    manifest_path = staging / f'{manifest["job_id"]}.json'
+    LOCK.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+    with LOCK.open("a+b") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if _conflicts(manifest["job_id"], script_path, manifest_path):
+            raise Rejected("duplicate/replay conflict")
+        _create(script_path, script_bytes, 0o750)
+        try:
+            # Verify the actual final inode bytes, not merely the request buffer.
+            if hashlib.sha256(script_path.read_bytes()).hexdigest() != manifest["script_sha256"]:
+                raise Rejected("checksum mismatch after staging")
+            canonical_json = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+            _create(manifest_path, canonical_json, 0o640)
+        except Exception:
+            # No manifest was published, so cleanup cannot expose a partial job.
+            script_path.unlink(missing_ok=True)
+            raise
+    return manifest
+
+
+def peer_uid(sock):
+    if not hasattr(socket, "SO_PEERCRED"):
+        raise Rejected("peer credentials unavailable")
+    pid, uid, gid = __import__("struct").unpack("3i", sock.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+    expected = os.environ.get("LIFEOS_SUBMIT_ALLOWED_UID")
+    if expected is None or not expected.isdigit() or uid != int(expected):
+        raise Rejected(f"unexpected peer uid {uid}")
+    return uid
+
+
+def main():
+    sock = socket.socket(fileno=0)
+    uid = None; manifest = None
+    try:
+        uid = peer_uid(sock)
+        raw = bytearray()
+        while len(raw) <= MAX_REQUEST:
+            chunk = sock.recv(min(65536, MAX_REQUEST + 1 - len(raw)))
+            if not chunk: break
+            raw.extend(chunk)
+        if len(raw) > MAX_REQUEST:
+            raise Rejected("request exceeds size limit")
+        request = json.loads(bytes(raw).decode("utf-8"))
+        if not isinstance(request, dict) or set(request) != {"operation", "manifest", "script_base64"}:
+            raise Rejected("request must contain only operation, manifest, script_base64")
+        if request["operation"] != "submit-control-job":
+            raise Rejected("unsupported operation")
+        if not isinstance(request["manifest"], str) or not isinstance(request["script_base64"], str):
+            raise Rejected("invalid payload types")
+        manifest_bytes = request["manifest"].encode()
+        manifest = json.loads(request["manifest"])
+        try:
+            script = base64.b64decode(request["script_base64"], validate=True)
+        except binascii.Error:
+            raise Rejected("invalid script encoding")
+        accepted = submit(manifest_bytes, script, uid)
+        audit("ACCEPTED", "staged for authoritative publisher", accepted, uid)
+        response = {"status": "ACCEPTED", "job_id": accepted["job_id"]}
+    except (Rejected, json.JSONDecodeError, UnicodeDecodeError) as exc:
+        audit("REJECTED", str(exc), manifest, uid)
+        response = {"status": "REJECTED", "reason": str(exc)[:300]}
+    sock.sendall((json.dumps(response, sort_keys=True) + "\n").encode())
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
