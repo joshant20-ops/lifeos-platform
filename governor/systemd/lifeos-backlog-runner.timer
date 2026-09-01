@@ -1,0 +1,12 @@
+[Unit]
+Description=Run LifeOS autonomous backlog dispatcher every 10 minutes
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=10min
+AccuracySec=30s
+Persistent=true
+Unit=lifeos-backlog-runner.service
+
+[Install]
+WantedBy=timers.target

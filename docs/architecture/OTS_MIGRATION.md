@@ -9,6 +9,10 @@ already has a mature OTS solution, and meaningful changes in available
 alternatives. Findings are deduplicated against open issues and only useful,
 actionable findings are linked into the central build list.
 
+The dispatcher is deployed through the [bounded deployment broker](bounded-deployment-broker.md).
+Its timer remains stopped while corrected routing, persistent cooldown, and
+single-flight behavior are deployed and runtime-verified.
+
 ## Engineer control plane
 
 Status: DESIGN DECIDED; COMPATIBILITY SAFETY WORK IN PROGRESS
