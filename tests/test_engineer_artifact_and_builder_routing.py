@@ -118,6 +118,30 @@ def test_path_containment_and_symlink_are_rejected(agent_repo):
     assert "symlink_rejected" in evidence or "canonical_checkout_dirty" in evidence
 
 
+def test_malicious_job_id_cannot_escape_candidate_or_canonical_directory(agent_repo):
+    module, repo, _, state = agent_repo
+    job = {"id": "../escape", "privacy": "normal"}
+    ok, evidence = module.publish_runtime_artifact(job, handoff(job["id"]))
+    assert not ok
+    assert "invalid_job_id" in evidence
+    assert not (state / "escape.sh").exists()
+    assert not (repo / "governor/escape.sh").exists()
+
+
+def test_unpublished_artifact_suppresses_builder_human_command(agent_repo):
+    module, _, _, _ = agent_repo
+    raw = (
+        "RESULT=BLOCKED\n"
+        "HUMAN_ACTION_REQUIRED=sudo /home/joshan/lifeos-platform/governor/runtime_jobs/826cbeaec0c9.sh\n"
+        "NEXT_RUNTIME_CHECK=sudo /home/joshan/lifeos-platform/governor/runtime_jobs/826cbeaec0c9.sh\n"
+        "Prose: run sudo /home/joshan/lifeos-platform/governor/runtime_jobs/826cbeaec0c9.sh now\n"
+    )
+    evidence = module.suppress_unpublished_runtime_instructions(raw)
+    assert "sudo " not in evidence
+    assert "826cbeaec0c9.sh" not in evidence
+    assert "HUMAN_ACTION_REQUIRED_ARTIFACT_NOT_PUBLISHED" in evidence
+
+
 def test_normal_and_local_builder_routing(agent_repo, tmp_path, monkeypatch):
     module, _, _, _ = agent_repo
     local = tmp_path / "local-builder"

@@ -27,6 +27,7 @@ VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
 UI_PATH = PLATFORM_REPO / "governor" / "agent_ui.html"
 RUNTIME_PREFIX = "governor/runtime_jobs/"
+JOB_ID_PATTERN = re.compile(r"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\Z")
 MAX_PATCH_BYTES = 1048576
 MAX_RUNTIME_BYTES = 65536
 REPEATED_FAILURE_LIMIT = int(os.environ.get("LIFEOS_REPEATED_FAILURE_LIMIT", "3"))
@@ -418,8 +419,30 @@ def _artifact_evidence(rel, digest, commit, published, reason=None):
     return "\n".join(lines) + "\n"
 
 
+def suppress_unpublished_runtime_instructions(evidence):
+    """Remove executable human instructions when their artifact was not published."""
+    filtered = []
+    for line in evidence.splitlines():
+        if line.startswith(("HUMAN_ACTION_REQUIRED=", "NEXT_RUNTIME_CHECK=")):
+            filtered.append("HUMAN_ACTION_REQUIRED_ARTIFACT_NOT_PUBLISHED")
+            continue
+        # Builder prose is untrusted evidence too. Never retain a copy/paste sudo
+        # command for a runtime_jobs artifact whose publication did not verify.
+        line = re.sub(
+            r"sudo\s+\S*governor/runtime_jobs/[A-Za-z0-9._/-]+\.sh",
+            "[unpublished runtime command suppressed]",
+            line,
+        )
+        filtered.append(line)
+    return "\n".join(filtered) + ("\n" if evidence.endswith("\n") else "")
+
+
 def verify_runtime_artifact(job_id):
     """Prove canonical, executable, tracked bytes are exactly on origin/main."""
+    if not JOB_ID_PATTERN.fullmatch(str(job_id)):
+        return False, _artifact_evidence(
+            f"{RUNTIME_PREFIX}[rejected].sh", None, None, False, "invalid_job_id"
+        )
     rel = f"{RUNTIME_PREFIX}{job_id}.sh"
     target = PLATFORM_REPO / rel
     try:
@@ -449,6 +472,10 @@ def verify_runtime_artifact(job_id):
 
 def publish_runtime_artifact(job, handoff):
     """Persist a candidate, then publish and prove it before it may be referenced."""
+    if not JOB_ID_PATTERN.fullmatch(str(job.get("id", ""))):
+        return False, _artifact_evidence(
+            f"{RUNTIME_PREFIX}[rejected].sh", None, None, False, "invalid_job_id"
+        )
     rel = handoff.get("run_script")
     payload = handoff.get("runtime_b64")
     expected = f"{RUNTIME_PREFIX}{job['id']}.sh"
@@ -537,6 +564,8 @@ def _execute_job_locked(job):
         publication = apply_and_publish_patch(job, iteration, handoff)
         set_stage(job, "runtime", f"iteration {iteration}: Pi5 runtime verification")
         runtime = run_pi5_runtime(job, handoff)
+        if "RUNTIME_ARTIFACT_PUBLISHED=FAIL" in runtime:
+            build_evidence = suppress_unpublished_runtime_instructions(build_evidence)
         evidence = f"BUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\nPUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
         rec["evidence"] = evidence[-26000:]
 
