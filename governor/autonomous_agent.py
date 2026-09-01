@@ -21,6 +21,7 @@ ROOT.mkdir(parents=True, exist_ok=True)
 PORT = int(os.environ.get("LIFEOS_AGENT_PORT", "8790"))
 MAX_ITERATIONS = int(os.environ.get("LIFEOS_AGENT_MAX_ITERATIONS", "8"))
 BUILDER = os.environ.get("LIFEOS_AGENT_BUILDER", "/usr/local/libexec/lifeos-cloud-builder")
+LOCAL_BUILDER = os.environ.get("LIFEOS_AGENT_LOCAL_BUILDER", "")
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
@@ -308,16 +309,31 @@ def update_failure_history(job, signature):
 
 
 def run_builder(job, iteration, verifier_feedback=None):
+    route, builder = builder_route(job)
+    if not builder:
+        return 78, "BUILDER_ROUTE=local\nLOCAL_BUILDER=UNAVAILABLE\n", {
+            "_builder_route": route,
+        }
     env = os.environ.copy()
     env["LIFEOS_JOB_ID"] = job["id"]
     env["LIFEOS_JOB_PRIVACY"] = job["privacy"]
-    args = [BUILDER, job["request"], str(iteration)]
+    args = [builder, job["request"], str(iteration)]
     if verifier_feedback:
         args.append(verifier_feedback)
     cp = subprocess.run(args, text=True, capture_output=True, timeout=1800, env=env)
     raw = (cp.stdout or "") + "\n" + (cp.stderr or "")
     handoff, evidence = parse_handoff(raw)
-    return cp.returncode, evidence, handoff
+    handoff["_builder_route"] = route
+    return cp.returncode, f"BUILDER_ROUTE={route}\n" + evidence, handoff
+
+
+def builder_route(job):
+    """Select a capable builder without weakening the job's privacy class."""
+    if job.get("privacy") != "local-only":
+        return "normal", BUILDER
+    if LOCAL_BUILDER and pathlib.Path(LOCAL_BUILDER).is_file() and os.access(LOCAL_BUILDER, os.X_OK):
+        return "local", LOCAL_BUILDER
+    return "local", None
 
 
 def git(*args, check=True, timeout=120):
@@ -346,7 +362,7 @@ def apply_and_publish_patch(job, iteration, handoff):
     payload = handoff.get("patch_b64")
     if not payload:
         return "PI5_PATCH=none\n"
-    if job["privacy"] == "local-only":
+    if job["privacy"] == "local-only" and handoff.get("_builder_route") != "local":
         return "PI5_PATCH=blocked_for_cloud_authored_private_job\n"
     try:
         patch = base64.b64decode(payload, validate=True)
@@ -359,7 +375,10 @@ def apply_and_publish_patch(job, iteration, handoff):
         return "PI5_PATCH=retry canonical_checkout_dirty\n" + status[-4000:] + "\n"
     try:
         git("fetch", "origin", "main")
-        git("reset", "--hard", "origin/main")
+        head = git("rev-parse", "HEAD").stdout.strip()
+        origin_main = git("rev-parse", "origin/main").stdout.strip()
+        if head != origin_main:
+            return f"PI5_PATCH=retry canonical_not_at_origin_main head={head} origin_main={origin_main}\n"
         patch_file = ROOT / f"{job['id']}-{iteration}.patch"
         patch_file.write_bytes(patch)
         subprocess.run(["git", "apply", "--check", str(patch_file)], cwd=PLATFORM_REPO, check=True, text=True, capture_output=True, timeout=30)
@@ -375,14 +394,105 @@ def apply_and_publish_patch(job, iteration, handoff):
         push = git("push", "origin", "HEAD:main", timeout=180)
         return "PI5_PATCH=APPLIED\nPI5_COMMIT=" + sha + "\nPI5_FILES=" + ",".join(staged[:50]) + "\nPI5_PUSH=PASS\n" + commit[-2000:] + push.stdout[-1000:] + push.stderr[-1000:] + "\n"
     except subprocess.CalledProcessError as exc:
-        try:
-            git("reset", "--hard", "origin/main", check=False)
-        except Exception:
-            pass
         detail = ((exc.stdout or "") + "\n" + (exc.stderr or ""))[-5000:]
         return f"PI5_PATCH=RETRY error=command_failed rc={exc.returncode}\n{detail}\n"
     except Exception as exc:
         return f"PI5_PATCH=RETRY error={type(exc).__name__}:{exc}\n"
+
+
+def _runtime_candidate_path(job_id):
+    candidate_dir = ROOT / "artifact_candidates"
+    candidate_dir.mkdir(mode=0o750, parents=True, exist_ok=True)
+    return candidate_dir / f"{job_id}.sh"
+
+
+def _artifact_evidence(rel, digest, commit, published, reason=None):
+    lines = [
+        f"RUNTIME_ARTIFACT_PATH={rel}",
+        f"RUNTIME_ARTIFACT_SHA256={digest or 'UNAVAILABLE'}",
+        f"RUNTIME_ARTIFACT_COMMIT={commit or 'UNAVAILABLE'}",
+        f"RUNTIME_ARTIFACT_PUBLISHED={'PASS' if published else 'FAIL'}",
+    ]
+    if reason:
+        lines.extend((f"RUNTIME_ARTIFACT_REASON={reason}", "HUMAN_ACTION_REQUIRED_ARTIFACT_NOT_PUBLISHED"))
+    return "\n".join(lines) + "\n"
+
+
+def verify_runtime_artifact(job_id):
+    """Prove canonical, executable, tracked bytes are exactly on origin/main."""
+    rel = f"{RUNTIME_PREFIX}{job_id}.sh"
+    target = PLATFORM_REPO / rel
+    try:
+        target.relative_to(PLATFORM_REPO)
+        if target.is_symlink() or not target.is_file():
+            return False, _artifact_evidence(rel, None, None, False, "canonical_file_missing_or_unsafe")
+        if not os.access(target, os.X_OK):
+            return False, _artifact_evidence(rel, None, None, False, "canonical_file_not_executable")
+        digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        tracked = git("ls-files", "--error-unmatch", "--", rel, check=False)
+        if tracked.returncode:
+            return False, _artifact_evidence(rel, digest, None, False, "canonical_file_untracked")
+        commit = git("log", "-1", "--format=%H", "--", rel, check=False).stdout.strip()
+        if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
+            return False, _artifact_evidence(rel, digest, None, False, "canonical_commit_missing")
+        blob = git("show", f"{commit}:{rel}", check=False)
+        if blob.returncode or hashlib.sha256(blob.stdout.encode()).hexdigest() != digest:
+            return False, _artifact_evidence(rel, digest, commit, False, "canonical_commit_blob_mismatch")
+        origin = git("merge-base", "--is-ancestor", commit, "origin/main", check=False)
+        origin_blob = git("show", f"origin/main:{rel}", check=False)
+        if origin.returncode or origin_blob.returncode or hashlib.sha256(origin_blob.stdout.encode()).hexdigest() != digest:
+            return False, _artifact_evidence(rel, digest, commit, False, "origin_main_mismatch")
+        return True, _artifact_evidence(rel, digest, commit, True)
+    except Exception as exc:
+        return False, _artifact_evidence(rel, None, None, False, f"verification_error_{type(exc).__name__}")
+
+
+def publish_runtime_artifact(job, handoff):
+    """Persist a candidate, then publish and prove it before it may be referenced."""
+    rel = handoff.get("run_script")
+    payload = handoff.get("runtime_b64")
+    expected = f"{RUNTIME_PREFIX}{job['id']}.sh"
+    if not rel and not payload:
+        return False, "RUNTIME_ACTION=none_declared\n"
+    if rel != expected:
+        return False, _artifact_evidence(expected, None, None, False, "rejected_path")
+    if job["privacy"] == "local-only" and handoff.get("_builder_route") != "local":
+        return False, _artifact_evidence(expected, None, None, False, "cloud_authored_private_job")
+    try:
+        script = base64.b64decode(payload or "", validate=True)
+        if len(script) > MAX_RUNTIME_BYTES:
+            raise ValueError("size_limit")
+        text = script.decode("utf-8", errors="strict")
+        if not text.startswith("#!/usr/bin/env bash"):
+            raise ValueError("invalid_shebang")
+    except Exception as exc:
+        return False, _artifact_evidence(expected, None, None, False, f"invalid_payload_{type(exc).__name__}")
+    candidate = _runtime_candidate_path(job["id"])
+    candidate.write_bytes(script)
+    candidate.chmod(0o700)
+    digest = hashlib.sha256(script).hexdigest()
+    already, evidence = verify_runtime_artifact(job["id"])
+    if already:
+        return True, evidence
+    if git("status", "--porcelain", check=False).stdout.strip():
+        return False, _artifact_evidence(expected, digest, None, False, "canonical_checkout_dirty")
+    target = PLATFORM_REPO / expected
+    try:
+        if target.is_symlink():
+            return False, _artifact_evidence(expected, digest, None, False, "symlink_rejected")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        temporary = target.with_name(f".{target.name}.{job['id']}.tmp")
+        temporary.write_bytes(script)
+        temporary.chmod(0o755)
+        os.replace(temporary, target)
+        git("add", "--", expected)
+        git("diff", "--cached", "--check")
+        if git("diff", "--cached", "--quiet", check=False).returncode:
+            git("commit", "-m", f"agent: publish runtime artifact {job['id']}", timeout=60)
+        git("push", "origin", "HEAD:main", timeout=180)
+        return verify_runtime_artifact(job["id"])
+    except Exception as exc:
+        return False, _artifact_evidence(expected, digest, None, False, f"publication_error_{type(exc).__name__}")
 
 
 def run_pi5_runtime(job, handoff):
@@ -390,29 +500,12 @@ def run_pi5_runtime(job, handoff):
     payload = handoff.get("runtime_b64")
     if not rel and not payload:
         return "RUNTIME_ACTION=none_declared\n"
-    expected = f"{RUNTIME_PREFIX}{job['id']}.sh"
-    if rel != expected:
-        return f"RUNTIME_ACTION=rejected_path expected={expected} got={rel}\n"
-    if job["privacy"] == "local-only":
-        return "RUNTIME_ACTION=blocked_for_cloud_authored_private_job\n"
-    if not payload:
-        return "RUNTIME_ACTION=missing_payload\n"
-    try:
-        script = base64.b64decode(payload, validate=True)
-    except Exception as exc:
-        return f"RUNTIME_ACTION=invalid_base64 error={type(exc).__name__}\n"
-    if len(script) > MAX_RUNTIME_BYTES:
-        return f"RUNTIME_ACTION=rejected_size size={len(script)}\n"
-    text = script.decode("utf-8", errors="strict")
-    if not (text.startswith("#!/usr/bin/env bash") or text.startswith("#!/bin/bash")):
-        return "RUNTIME_ACTION=rejected_shebang\n"
-    runtime_dir = ROOT / "runtime"
-    runtime_dir.mkdir(mode=0o750, exist_ok=True)
-    target = runtime_dir / f"{job['id']}.sh"
-    target.write_text(text)
-    target.chmod(0o700)
+    published, publication = publish_runtime_artifact(job, handoff)
+    if not published:
+        return publication
+    target = PLATFORM_REPO / rel
     cp = subprocess.run(
-        ["/usr/bin/timeout", "900s", "/bin/bash", str(target)],
+        ["/usr/bin/timeout", "900s", str(target)],
         cwd=PLATFORM_REPO,
         text=True,
         capture_output=True,
@@ -420,7 +513,7 @@ def run_pi5_runtime(job, handoff):
         env={**os.environ, "LIFEOS_JOB_ID": job["id"], "LIFEOS_JOB_REQUEST": job["request"]},
     )
     out = (cp.stdout or "") + "\n" + (cp.stderr or "")
-    return f"RUNTIME_SCRIPT={rel}\nRUNTIME_RC={cp.returncode}\nPI5_RUNTIME_EVIDENCE:\n{out[-16000:]}\n"
+    return publication + f"RUNTIME_SCRIPT={rel}\nRUNTIME_RC={cp.returncode}\nPI5_RUNTIME_EVIDENCE:\n{out[-16000:]}\n"
 
 
 def _execute_job_locked(job):
