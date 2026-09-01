@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import base64
 import hashlib
+import hmac
 import importlib.util
 import json
 import os
@@ -30,6 +31,7 @@ PORT = int(os.environ.get("LIFEOS_AGENT_PORT", "8790"))
 MAX_ITERATIONS = int(os.environ.get("LIFEOS_AGENT_MAX_ITERATIONS", "8"))
 BUILDER = os.environ.get("LIFEOS_AGENT_BUILDER", "/usr/local/libexec/lifeos-cloud-builder")
 LOCAL_BUILDER = os.environ.get("LIFEOS_AGENT_LOCAL_BUILDER", "")
+DISPATCH_TOKEN_FILE = os.environ.get("LIFEOS_BACKLOG_DISPATCH_TOKEN_FILE", "")
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
@@ -43,6 +45,7 @@ STUCK_JOB_MULTIPLIER = float(os.environ.get("LIFEOS_STUCK_JOB_MULTIPLIER", "3.0"
 STUCK_JOB_MIN_SECONDS = int(os.environ.get("LIFEOS_STUCK_JOB_MIN_SECONDS", "300"))
 CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"))
 EXECUTION_LOCK = threading.Lock()
+DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})
 
 INCOMPLETE_CONTRACT_STATES = frozenset({
     "PENDING", "NOT_STARTED", "NOT_IMPLEMENTED", "NOT_VERIFIED",
@@ -235,6 +238,36 @@ def classify_privacy(text):
     return "local-only" if any(re.search(pattern, lower) for pattern in PRIVATE_PATTERNS) else "normal"
 
 
+def _dispatcher_token():
+    path = DISPATCH_TOKEN_FILE
+    if not path:
+        credentials = os.environ.get("CREDENTIALS_DIRECTORY", "")
+        if credentials:
+            path = str(pathlib.Path(credentials) / "backlog-dispatcher.token")
+    if not path:
+        return ""
+    try:
+        return pathlib.Path(path).read_text().strip()
+    except OSError:
+        return ""
+
+
+def authenticated_dispatch_route(headers, body):
+    """Validate the backlog dispatcher's bounded, authenticated route assertion."""
+    if "dispatch_builder" not in body:
+        return None, None
+    route = body.get("dispatch_builder")
+    if not isinstance(route, str) or route not in DISPATCH_BUILDER_CLASSES:
+        return None, "invalid_dispatch_builder"
+    expected = _dispatcher_token()
+    supplied = str(headers.get("Authorization", ""))
+    if not expected or not supplied.startswith("Bearer "):
+        return None, "dispatcher_capability_required"
+    if not hmac.compare_digest(supplied[7:].encode(), expected.encode()):
+        return None, "dispatcher_capability_required"
+    return route, None
+
+
 def extract_mandatory_final_fields(request):
     """Return reusable KEY= final-contract fields explicitly declared by a job."""
     fields = []
@@ -404,7 +437,10 @@ def run_builder(job, iteration, verifier_feedback=None):
 
 def builder_route(job):
     """Select a capable builder without weakening the job's privacy class."""
-    if job.get("privacy") != "local-only":
+    route = job.get("dispatch_builder")
+    if route is None:
+        route = "local" if job.get("privacy") == "local-only" else "normal"
+    if route == "normal":
         return "normal", BUILDER
     if LOCAL_BUILDER and pathlib.Path(LOCAL_BUILDER).is_file() and os.access(LOCAL_BUILDER, os.X_OK):
         return "local", LOCAL_BUILDER
@@ -746,12 +782,17 @@ def execute_job(job):
 
 def new_job(request, retry_of=None, continuation_enabled=False, continuation_parent=None,
             continuation_depth=0, continuation_reason=None, continuation_request=None,
-            deploy_engineer_runtime=False):
+            deploy_engineer_runtime=False, dispatch_builder=None):
+    privacy = (
+        "local-only" if dispatch_builder == "local"
+        else "normal" if dispatch_builder == "normal"
+        else classify_privacy(request)
+    )
     job = {
         "id": uuid.uuid4().hex[:12],
         "created_at": now(),
         "request": request.strip(),
-        "privacy": classify_privacy(request),
+        "privacy": privacy,
         "status": "QUEUED",
         "stage": "queued",
         "stage_changed_at": now(),
@@ -764,6 +805,8 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
     }
     if retry_of:
         job["retry_of"] = retry_of
+    if dispatch_builder in DISPATCH_BUILDER_CLASSES:
+        job["dispatch_builder"] = dispatch_builder
     if continuation_parent:
         job["continuation_parent"] = continuation_parent
     if continuation_reason:
@@ -828,6 +871,7 @@ class Handler(BaseHTTPRequestHandler):
                 "stage", "stage_changed_at", "stage_detail", "retry_of", "repeated_failure_count",
                 "continuation_enabled", "continuation_parent", "continuation_child",
                 "continuation_depth", "continuation_reason",
+                "dispatch_builder",
             )
             self.send_json(200, {"jobs": [{k: j.get(k) for k in keys if k in j} for j in jobs]})
             return
@@ -853,7 +897,10 @@ class Handler(BaseHTTPRequestHandler):
             except Exception:
                 self.send_json(404, {"error": "not_found"})
                 return
-            job = create_job(old["request"], async_mode=True, retry_of=job_id)
+            job = create_job(
+                old["request"], async_mode=True, retry_of=job_id,
+                dispatch_builder=old.get("dispatch_builder"),
+            )
             self.send_json(202, job)
             return
         if path != "/jobs":
@@ -869,6 +916,11 @@ class Handler(BaseHTTPRequestHandler):
         if not request:
             self.send_json(400, {"error": "request_required"})
             return
+        dispatch_builder, dispatch_error = authenticated_dispatch_route(self.headers, body)
+        if dispatch_error:
+            code = 400 if dispatch_error == "invalid_dispatch_builder" else 403
+            self.send_json(code, {"error": dispatch_error})
+            return
         async_mode = urllib.parse.parse_qs(parsed.query).get("async", ["0"])[0].lower() in ("1", "true", "yes")
         continuation = {
             "continuation_enabled": bool(body.get("continuation_enabled", False)),
@@ -876,6 +928,7 @@ class Handler(BaseHTTPRequestHandler):
             "continuation_reason": body.get("continuation_reason"),
             "continuation_request": body.get("continuation_request"),
             "deploy_engineer_runtime": bool(body.get("deploy_engineer_runtime", False)),
+            "dispatch_builder": dispatch_builder,
         }
         job = create_job(request, async_mode=async_mode, **continuation)
         self.send_json(202 if async_mode else 200, job)
