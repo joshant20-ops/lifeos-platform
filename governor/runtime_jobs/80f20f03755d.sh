@@ -71,9 +71,28 @@ rundeck_id=$(compose ps -q rundeck 2>/dev/null || true)
 if [[ -z "$rundeck_id" ]]; then
   started_here=true
 fi
+# A failed cold start can leave a created/running-but-unhealthy container behind.
+# Docker restart policies react to process exits, not failed health checks, and a
+# plain `compose up` reuses that container. Recreate only the bounded shadow
+# services on retry; named database/application volumes remain intact.
+shadow_needs_recreate=false
+for service in rundeck-db rundeck; do
+  container_id=$(compose ps -aq "$service" 2>/dev/null || true)
+  if [[ -n "$container_id" ]]; then
+    container_state=$(docker inspect -f '{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id")
+    case "$container_state" in
+      running/healthy|created/none) ;;
+      *) shadow_needs_recreate=true ;;
+    esac
+  fi
+done
 # Rundeck performs first-start database migrations on the Pi5. Four minutes was
 # too short for a cold shadow start; retain a finite ten-minute acceptance bound.
-compose up -d --wait --wait-timeout 600 || fail shadow_start_or_health_failed
+if [[ "$shadow_needs_recreate" == true ]]; then
+  compose up -d --force-recreate --wait --wait-timeout 600 || fail shadow_recreate_or_health_failed
+else
+  compose up -d --wait --wait-timeout 600 || fail shadow_start_or_health_failed
+fi
 
 rundeck_id=$(compose ps -q rundeck)
 db_id=$(compose ps -q rundeck-db)
@@ -110,6 +129,9 @@ timeout 30s docker exec "$db_id" psql -U rundeck -d rundeck -v ON_ERROR_STOP=1 \
   -c "INSERT INTO lifeos_shadow_acceptance (id) VALUES ('$JOB_ID') ON CONFLICT (id) DO NOTHING;" \
   >/dev/null || fail persistence_canary_create_failed
 compose restart rundeck-db >/dev/null || fail database_restart_failed
+# Recreate neither service here: restarting Rundeck exercises recovery from the
+# database interruption while retaining both persistent volumes.
+compose restart rundeck >/dev/null || fail rundeck_recovery_restart_failed
 compose up -d --wait --wait-timeout 600 >/dev/null || fail post_restart_health_failed
 db_id=$(compose ps -q rundeck-db)
 canary=$(timeout 30s docker exec "$db_id" psql -U rundeck -d rundeck -At \
