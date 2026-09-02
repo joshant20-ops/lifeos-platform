@@ -4,6 +4,7 @@ set -Eeuo pipefail
 STAMP="$(date +%Y%m%d-%H%M%S)"
 PLATFORM="${LIFEOS_PLATFORM_REPO:-/home/joshan/lifeos-platform}"
 MANIFEST="$PLATFORM/ansible/vars/compose_projects.json"
+AUDIT="$PLATFORM/scripts/lifeos-running-image-digest-audit.py"
 BACKUP="${LIFEOS_BACKUP_ROOT:-/mnt/docker-data/automation/backups/pinned-compose-${STAMP}}"
 LOG="$BACKUP/run.log"
 
@@ -56,14 +57,20 @@ PY
 
 say "LifeOS pinned Compose sync"
 info "Platform: $PLATFORM"
+info "Platform HEAD: $(git -C "$PLATFORM" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 info "Backup:   $BACKUP"
 
 say "GATE 0 — Preflight"
 [[ "$(hostname)" == Docker ]] || die "Expected host Docker"
 [[ -d "$PLATFORM/.git" ]] || die "lifeos-platform missing"
 [[ -f "$MANIFEST" ]] || die "compose manifest missing"
+[[ -f "$AUDIT" ]] || die "digest audit missing"
 [[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform dirty"
 [[ "$(git -C "$PLATFORM" branch --show-current)" == main ]] || die "lifeos-platform must be on main"
+
+# Require the digest-aware audit implementation. Older revisions compared desired
+# tag text to Config.Image and incorrectly reported digest pins as drift.
+grep -q 'desired == digest' "$AUDIT" || die "digest audit is too old; fetch/reset origin/main before running"
 
 python3 "$PLATFORM/scripts/validate-compose-inventory.py"
 
@@ -106,10 +113,10 @@ for p in "${PROJECTS[@]}"; do
 done
 
 say "GATE 3 — Runtime invariants"
-python3 "$PLATFORM/scripts/lifeos-running-image-digest-audit.py" | tee "$BACKUP/running-digest-audit.txt"
+python3 "$AUDIT" | tee "$BACKUP/running-digest-audit.txt"
 
 grep -q '^RUNNING_IMAGE_DIGEST_AUDIT=PASS$' "$BACKUP/running-digest-audit.txt" || die "running digest audit did not pass"
-grep -q '^DRIFT=0$' "$BACKUP/running-digest-audit.txt" || die "runtime drift detected"
+grep -q '^DRIFT=0$' "$BACKUP/running-digest-audit.txt" || die "runtime digest drift detected"
 
 for p in "${PROJECTS[@]}"; do
   desired="$(desired_path_for "$p")"
@@ -128,6 +135,7 @@ SYNCED_COMPOSE_PROJECTS=10
 CONTAINERS_RECREATED=0
 RUNTIME_DRIFT=0
 LIVE_PATH_SOURCE=COMPOSE_MANIFEST
+DIGEST_COMPARISON=RESOLVED_IDENTITY
 AUTOHEAL_UNCHANGED=YES
 QBITTORRENT_UNCHANGED=YES
 LIFEOS_ENERGY_UNCHANGED=YES
