@@ -60,10 +60,11 @@ w=$(mktemp -d)
 trap 'rm -rf -- "$w"' EXIT
 mkdir -p "$w/etc/apt/sources.list.d" "$w/etc/apt/preferences.d" "$w/lists/partial" "$w/cache/archives/partial"
 # Seed the disposable lists with the host's current Debian/Proxmox metadata,
-# but do not update those sources.  The earlier diagnostic copied and updated
-# every configured source, so an unrelated protected or unavailable source
-# could block this otherwise read-only NVIDIA proof.
-cp -a /var/lib/apt/lists/. "$w/lists/"
+# but do not update those sources. Copy only readable, top-level index files:
+# an unprivileged diagnostic cannot traverse apt's protected partial directory
+# or preserve root ownership with `cp -a`.
+find /var/lib/apt/lists -maxdepth 1 -type f -readable \
+  -exec cp -- {} "$w/lists/" \;
 mkdir -p "$w/lists/partial"
 : >"$w/etc/apt/sources.list"
 printf '%s\n' 'deb [trusted=yes] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /' >"$w/etc/apt/sources.list.d/lifeos-r580.list"
