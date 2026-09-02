@@ -47,7 +47,9 @@ def test_launcher_emits_machine_contract_on_success_and_failure():
 
 def test_metadata_refresh_isolated_from_unrelated_host_sources():
     text = SCRIPT.read_text()
-    assert 'cp -a /var/lib/apt/lists/. "$w/lists/"' in text
+    assert "find /var/lib/apt/lists -maxdepth 1 -type f -readable" in text
+    assert '-exec cp -- {} "$w/lists/"' in text
+    assert 'cp -a /var/lib/apt/lists/.' not in text
     assert ': >"$w/etc/apt/sources.list"' in text
     assert 'APT::Sandbox::User=$(id -un)' in text
     assert 'cp -a /etc/apt/sources.list.d/.' not in text
