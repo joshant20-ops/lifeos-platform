@@ -48,9 +48,25 @@ def test_launcher_emits_machine_contract_on_success_and_failure():
 def test_metadata_refresh_isolated_from_unrelated_host_sources():
     text = SCRIPT.read_text()
     assert "find /var/lib/apt/lists -maxdepth 1 -type f -readable" in text
-    assert '-exec cp -- {} "$w/lists/"' in text
+    assert '-exec cp -- {} "$w/state/lists/"' in text
     assert 'cp -a /var/lib/apt/lists/.' not in text
     assert ': >"$w/etc/apt/sources.list"' in text
     assert "Debug::NoLocking=1" in text
     assert 'APT::Sandbox::User=$(id -un)' in text
     assert 'cp -a /etc/apt/sources.list.d/.' not in text
+
+
+def test_simulation_uses_only_disposable_writable_apt_state():
+    text = SCRIPT.read_text()
+    assert 'cp -- /var/lib/dpkg/status "$w/state/status"' in text
+    assert 'cp -- /var/lib/apt/extended_states "$w/state/extended_states"' in text
+    assert 'Dir::State::status=/var/lib/dpkg/status' not in text
+    for option in (
+        'Dir::State=$w/state',
+        'Dir::State::status=$w/state/status',
+        'Dir::State::extended_states=$w/state/extended_states',
+        'Dir::State::lists=$w/state/lists',
+        'Dir::Cache=$w/cache',
+        'Dir::Log=$w/log',
+    ):
+        assert option in text

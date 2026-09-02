@@ -58,14 +58,25 @@ printf 'STAGE=relevance PASS gpu=%s driver=%s kernel=%s headers=present module=p
 stage=repository_metadata
 w=$(mktemp -d)
 trap 'rm -rf -- "$w"' EXIT
-mkdir -p "$w/etc/apt/sources.list.d" "$w/etc/apt/preferences.d" "$w/lists/partial" "$w/cache/archives/partial"
+mkdir -p "$w/etc/apt/sources.list.d" "$w/etc/apt/preferences.d" \
+  "$w/state/lists/partial" "$w/cache/archives/partial" "$w/log"
+# Snapshot package state as ordinary files in the disposable tree.  Pointing a
+# non-root APT process at the live dpkg state still lets APT probe locks and
+# auxiliary state below read-only /var/lib paths on some hosts/Watchman units.
+# The copies preserve the exact installed and auto/manual package state needed
+# for a faithful simulation without giving the diagnostic a writable host path.
+cp -- /var/lib/dpkg/status "$w/state/status"
+if [[ -r /var/lib/apt/extended_states ]]; then
+  cp -- /var/lib/apt/extended_states "$w/state/extended_states"
+else
+  : >"$w/state/extended_states"
+fi
 # Seed the disposable lists with the host's current Debian/Proxmox metadata,
 # but do not update those sources. Copy only readable, top-level index files:
 # an unprivileged diagnostic cannot traverse apt's protected partial directory
 # or preserve root ownership with `cp -a`.
 find /var/lib/apt/lists -maxdepth 1 -type f -readable \
-  -exec cp -- {} "$w/lists/" \;
-mkdir -p "$w/lists/partial"
+  -exec cp -- {} "$w/state/lists/" \;
 : >"$w/etc/apt/sources.list"
 printf '%s\n' 'deb [trusted=yes] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /' >"$w/etc/apt/sources.list.d/lifeos-r580.list"
 cat >"$w/etc/apt/preferences.d/lifeos-r580" <<'PINS'
@@ -85,8 +96,10 @@ Package: nvidia-* libnvidia-* cuda-* libcuda* xserver-xorg-video-nvidia*
 Pin: version 6*
 Pin-Priority: -1
 PINS
-o=(-o "Dir::Etc=$w/etc/apt" -o "Dir::State::lists=$w/lists" -o "Dir::Cache=$w/cache" \
-   -o Dir::State::status=/var/lib/dpkg/status -o Acquire::Languages=none \
+o=(-o "Dir::Etc=$w/etc/apt" -o "Dir::State=$w/state" \
+   -o "Dir::State::status=$w/state/status" -o "Dir::State::extended_states=$w/state/extended_states" \
+   -o "Dir::State::lists=$w/state/lists" -o "Dir::Cache=$w/cache" -o "Dir::Log=$w/log" \
+   -o Acquire::Languages=none \
    -o APT::Get::List-Cleanup=0 -o Debug::NoLocking=1 \
    -o "APT::Sandbox::User=$(id -un)")
 run 300s apt-get "${o[@]}" update >/dev/null
