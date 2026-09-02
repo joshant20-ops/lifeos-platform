@@ -61,6 +61,19 @@ def test_retry_repairs_stale_unhealthy_shadow_without_removing_volumes():
     assert "compose down -v" not in text
 
 
+def test_restart_waits_for_database_and_runtime_probes_report_failures():
+    text = LAUNCHER.read_text(encoding="utf-8")
+    restart = text.index("compose restart rundeck-db")
+    database_healthy = text.index("database_unhealthy_after_restart")
+    rundeck_restart = text.index("compose restart rundeck >/dev/null")
+    assert restart < database_healthy < rundeck_restart
+    assert "rundeck_published_port_inspection_failed" in text
+    assert "database_persistence_canary_query_failed" in text
+    assert "rundeck_container_lookup_failed" in text
+    assert "rundeck_db_container_lookup_failed" in text
+    assert "_container_inspect_failed" in text
+
+
 def test_launcher_emits_governor_and_wrapper_contracts():
     text = LAUNCHER.read_text(encoding="utf-8")
     for field in (

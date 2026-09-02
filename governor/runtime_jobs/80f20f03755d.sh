@@ -12,6 +12,11 @@ compose() {
   timeout 12m docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
 }
 
+lookup_container_id() {
+  local service=$1
+  compose ps -q "$service" 2>/dev/null
+}
+
 result() {
   local state=$1 barrier=$2 next=$3 result_value=$4 tests=$5 runtime_check=$6
   printf 'ISSUE_VALIDITY=VALID\n'
@@ -82,7 +87,8 @@ shadow_needs_recreate=false
 for service in rundeck-db rundeck; do
   container_id=$(compose ps -aq "$service" 2>/dev/null || true)
   if [[ -n "$container_id" ]]; then
-    container_state=$(docker inspect -f '{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id")
+    container_state=$(docker inspect -f '{{.State.Status}}/{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container_id") \
+      || fail "${service}_container_inspect_failed"
     case "$container_state" in
       running/healthy|created/none) ;;
       *) shadow_needs_recreate=true ;;
@@ -97,8 +103,8 @@ else
   compose up -d --wait --wait-timeout 600 || fail shadow_start_or_health_failed
 fi
 
-rundeck_id=$(compose ps -q rundeck)
-db_id=$(compose ps -q rundeck-db)
+rundeck_id=$(lookup_container_id rundeck) || fail rundeck_container_lookup_failed
+db_id=$(lookup_container_id rundeck-db) || fail rundeck_db_container_lookup_failed
 [[ -n "$rundeck_id" && -n "$db_id" ]] || fail shadow_container_missing
 for container_id in "$rundeck_id" "$db_id"; do
   [[ "$(docker inspect -f '{{.State.Health.Status}}' "$container_id")" == healthy ]] \
@@ -121,7 +127,8 @@ done
 bind_ip=$(sed -n 's/^LIFEOS_RUNDECK_BIND_IP=//p' "$ENV_FILE")
 [[ -n "$bind_ip" && "$bind_ip" != 0.0.0.0 && "$bind_ip" != 127.0.0.1 ]] \
   || fail invalid_lan_bind_address
-published=$(docker inspect -f '{{(index (index .NetworkSettings.Ports "4440/tcp") 0).HostIp}}' "$rundeck_id")
+published=$(docker inspect -f '{{(index (index .NetworkSettings.Ports "4440/tcp") 0).HostIp}}' "$rundeck_id") \
+  || fail rundeck_published_port_inspection_failed
 [[ "$published" == "$bind_ip" ]] || fail rundeck_not_bound_to_configured_lan_address
 
 # Exercise durable DB storage without using or revealing credentials: the
@@ -132,13 +139,27 @@ timeout 30s docker exec "$db_id" psql -U rundeck -d rundeck -v ON_ERROR_STOP=1 \
   -c "INSERT INTO lifeos_shadow_acceptance (id) VALUES ('$JOB_ID') ON CONFLICT (id) DO NOTHING;" \
   >/dev/null || fail persistence_canary_create_failed
 compose restart rundeck-db >/dev/null || fail database_restart_failed
+# Wait for PostgreSQL before restarting Rundeck. `compose restart` does not
+# re-evaluate depends_on health conditions, so immediately restarting Rundeck
+# can race database recovery and leave an otherwise valid shadow stack unhealthy.
+db_id=$(lookup_container_id rundeck-db) || fail rundeck_db_container_lookup_failed_after_restart
+[[ -n "$db_id" ]] || fail rundeck_db_container_missing_after_restart
+for _ in $(seq 1 60); do
+  [[ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$db_id" 2>/dev/null || true)" == healthy ]] \
+    && break
+  sleep 2
+done
+[[ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$db_id" 2>/dev/null || true)" == healthy ]] \
+  || fail database_unhealthy_after_restart
 # Recreate neither service here: restarting Rundeck exercises recovery from the
 # database interruption while retaining both persistent volumes.
 compose restart rundeck >/dev/null || fail rundeck_recovery_restart_failed
 compose up -d --wait --wait-timeout 600 >/dev/null || fail post_restart_health_failed
-db_id=$(compose ps -q rundeck-db)
+db_id=$(lookup_container_id rundeck-db) || fail rundeck_db_container_lookup_failed_after_recovery
+[[ -n "$db_id" ]] || fail rundeck_db_container_missing_after_recovery
 canary=$(timeout 30s docker exec "$db_id" psql -U rundeck -d rundeck -At \
-  -c "SELECT count(*) FROM lifeos_shadow_acceptance WHERE id='$JOB_ID';")
+  -c "SELECT count(*) FROM lifeos_shadow_acceptance WHERE id='$JOB_ID';") \
+  || fail database_persistence_canary_query_failed
 [[ "$canary" == 1 ]] || fail database_persistence_canary_failed
 
 # Rehearse backup and restore entirely inside the isolated shadow database.
