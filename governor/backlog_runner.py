@@ -56,6 +56,28 @@ def _clean_id(value):
     return value
 
 
+def validate_dependencies(targets):
+    """Reject missing, self, and cyclic dependencies before persisting a plan."""
+    by_id = {target["id"]: target for target in targets}
+    visiting, visited = set(), set()
+
+    def visit(target_id):
+        if target_id in visiting:
+            raise ValueError(f"cyclic dependencies involving {target_id}")
+        if target_id in visited:
+            return
+        visiting.add(target_id)
+        for dependency in by_id[target_id]["depends_on"]:
+            if dependency not in by_id or dependency == target_id:
+                raise ValueError(f"invalid dependencies for {target_id}")
+            visit(dependency)
+        visiting.remove(target_id)
+        visited.add(target_id)
+
+    for target_id in by_id:
+        visit(target_id)
+
+
 def validate_plan(raw, issue_number):
     """Validate the builder-produced plan before it becomes scheduler authority."""
     if not isinstance(raw, dict) or not isinstance(raw.get("milestones"), list) or not raw["milestones"]:
@@ -85,10 +107,7 @@ def validate_plan(raw, issue_number):
                 "attempts": 0, "recovery_attempts": 0, "lineage_depth": 0,
                 "parent_target_id": None, "blocker_class": None, "evidence": []})
         plan["milestones"].append(milestone)
-    ids = {t["id"] for m in plan["milestones"] for t in m["targets"]}
-    for target in plan_targets(plan):
-        if set(target["depends_on"]) - ids or target["id"] in target["depends_on"]:
-            raise ValueError(f"invalid dependencies for {target['id']}")
+    validate_dependencies(plan_targets(plan))
     return plan
 
 
@@ -144,11 +163,16 @@ def apply_recovery(plan, failed, recovery, job_id):
             "attempts": 0, "recovery_attempts": 0, "lineage_depth": depth,
             "parent_target_id": failed["id"], "blocker_class": None, "evidence": []}
         replacements.append(replacement); existing.add(tid)
-    allowed = {t["id"] for t in plan_targets(plan)} | {t["id"] for t in replacements}
-    if any(set(t["depends_on"]) - allowed or t["id"] in t["depends_on"] for t in replacements):
-        raise ValueError("recovery target dependencies are invalid")
     terminal_ids = [t["id"] for t in replacements
                     if not any(t["id"] in other["depends_on"] for other in replacements)]
+    # Validate the final projected graph before mutating the durable plan.
+    candidate_targets = []
+    for target in plan_targets(plan):
+        projected = dict(target)
+        if target is not failed and failed["id"] in target["depends_on"]:
+            projected["depends_on"] = [x for x in target["depends_on"] if x != failed["id"]] + terminal_ids
+        candidate_targets.append(projected)
+    validate_dependencies(candidate_targets + replacements)
     for target in plan_targets(plan):
         if target is not failed and failed["id"] in target["depends_on"]:
             target["depends_on"] = [x for x in target["depends_on"] if x != failed["id"]] + terminal_ids
@@ -366,7 +390,7 @@ def submit_issue(issue, state):
     if not plan:
         phase = "planning"
         instruction = """Revalidate current repository/runtime relevance first. Decide whether a single target or dynamic decomposition is appropriate. Return PLAN_JSON_B64 containing a base64 JSON object with milestones[]. Each milestone requires id, title, mandatory, verification, and targets[]. Each target requires id, title, mandatory, depends_on, acceptance_criteria (non-empty list), and runtime_verification_required. Do not implement the objective in this job."""
-    elif target and target["state"] == "FAILED":
+    elif target and target["state"] in {"FAILED", "BLOCKED"}:
         phase = "recovery"
         prior = target.get("evidence", [])[-1].get("summary", "not reported") if target.get("evidence") else "not reported"
         instruction = f"""Diagnose only failed target {target['id']}: {target['title']}\nPrior evidence: {prior}\nReturn RECOVERY_PLAN_JSON_B64 containing a base64 JSON object with action retry, remediate, subdivide, or waiting_human; blocker_class; diagnosis; and, for remediate/subdivide, 1-5 small replacement targets using the normal target fields. Do not implement work in this diagnosis job. Recovery is bounded to three attempts and lineage depth three; never split work to evade governance or approval boundaries."""

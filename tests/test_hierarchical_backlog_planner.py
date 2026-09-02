@@ -70,6 +70,14 @@ def test_invalid_plan_without_acceptance_criteria_is_rejected(tmp_path, monkeypa
     else: raise AssertionError("invalid plan accepted")
 
 
+def test_cyclic_plan_is_rejected_before_it_can_deadlock_resume(tmp_path, monkeypatch):
+    module = load(tmp_path, monkeypatch); raw = sample_plan()
+    raw["milestones"][0]["targets"][0]["depends_on"] = ["prove.runtime"]
+    try: module.validate_plan(raw, 27)
+    except ValueError as exc: assert "cyclic dependencies" in str(exc)
+    else: raise AssertionError("cyclic plan accepted")
+
+
 def test_failed_target_is_subdivided_with_lineage_and_pass_checkpoint_preserved(tmp_path, monkeypatch):
     module = load(tmp_path, monkeypatch); plan = module.validate_plan(sample_plan(), 27)
     first, failed = module.plan_targets(plan)
@@ -90,6 +98,24 @@ def test_failed_target_is_subdivided_with_lineage_and_pass_checkpoint_preserved(
     assert module.next_target(plan)["parent_target_id"] == "prove.runtime"
     assert result == {"completed_targets": 1, "total_targets": 3,
                       "current_target": "prove.deploy", "state": "IN_PROGRESS"}
+
+
+def test_recovery_rejects_cycle_created_by_downstream_rewire_without_mutation(tmp_path, monkeypatch):
+    module = load(tmp_path, monkeypatch); raw = sample_plan()
+    raw["milestones"][1]["targets"].append({"id": "prove.final", "title": "Final",
+        "mandatory": True, "depends_on": ["prove.runtime"], "acceptance_criteria": ["final passes"],
+        "runtime_verification_required": False})
+    plan = module.validate_plan(raw, 27); failed = module.plan_targets(plan)[1]
+    failed["state"] = "FAILED"
+    recovery = {"action": "subdivide", "blocker_class": "bad-plan", "diagnosis": "cycle",
+        "targets": [{"id": "prove.replacement", "title": "Replacement", "depends_on": ["prove.final"],
+                     "acceptance_criteria": ["replacement passes"], "runtime_verification_required": False}]}
+    original_ids = [target["id"] for target in module.plan_targets(plan)]
+    try: module.apply_recovery(plan, failed, recovery, "recover")
+    except ValueError as exc: assert "cyclic dependencies" in str(exc)
+    else: raise AssertionError("cyclic recovery accepted")
+    assert [target["id"] for target in module.plan_targets(plan)] == original_ids
+    assert module.plan_targets(plan)[2]["depends_on"] == ["prove.runtime"]
 
 
 def test_independent_ready_target_precedes_failed_target_recovery(tmp_path, monkeypatch):
@@ -120,3 +146,18 @@ def test_reported_blocker_gets_bounded_diagnosis_instead_of_blocking_parent(tmp_
     target = module.plan_targets(plan)[0]; target["state"] = "BLOCKED"
     assert module.next_target(plan) is target
     assert plan["state"] == "IN_PROGRESS"
+
+
+def test_submit_routes_reported_blocker_to_recovery(tmp_path, monkeypatch):
+    module = load(tmp_path, monkeypatch); plan = module.validate_plan(sample_plan(), 27)
+    target = module.plan_targets(plan)[0]; target["state"] = "BLOCKED"
+    state = module.empty_state(); state["issues"]["27"] = {"plan": plan}
+    submitted = {}
+    monkeypatch.setattr(module, "api", lambda path, method="GET", body=None:
+        submitted.update(body=body) or {"id": "recover-job"})
+    monkeypatch.setattr(module, "issue_comment", lambda *args: None)
+    module.submit_issue({"number": 27, "title": "substantial objective", "body": "body", "labels": []}, state)
+    assert state["active"]["phase"] == "recovery"
+    assert state["active"]["target_id"] == target["id"]
+    assert "Diagnose only failed target" in submitted["body"]["request"]
+    assert target["attempts"] == 0
