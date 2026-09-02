@@ -2,9 +2,11 @@
 Description=LifeOS two-hour dead-man watchdog for transaction %i
 
 [Timer]
-OnActiveSec=2h
-AccuracySec=1s
-Persistent=true
+# Poll the durable wall-clock deadline. A monotonic two-hour timer would reset
+# its countdown after a reboot.
+OnBootSec=1min
+OnUnitActiveSec=1min
+AccuracySec=15s
 Unit=lifeos-rollback@%i.service
 
 [Install]

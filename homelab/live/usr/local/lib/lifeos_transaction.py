@@ -286,3 +286,16 @@ class Controller:
 
     def status(self, transaction_id):
         return self._load(transaction_id)
+
+    def expire(self, transaction_id):
+        """Rollback an unconfirmed transaction only after its durable deadline."""
+        manifest = self._load(transaction_id)
+        if manifest["state"] in TERMINAL:
+            return manifest
+        try:
+            deadline = datetime.fromisoformat(manifest["deadline"])
+        except (KeyError, TypeError, ValueError):
+            return self.rollback(transaction_id, "transaction deadline unavailable")
+        if self.now() < deadline:
+            return manifest
+        return self.rollback(transaction_id, "health deadline expired")

@@ -7,8 +7,10 @@ not provide the required two-hour dead-man guarantee.
 This increment adds a minimal protected recovery core for `LOW`/`MEDIUM` risk
 atomic file replacement. The root-owned controller creates durable state and a
 backup before it arms `lifeos-rollback@<transaction>.timer`; mutation is denied
-unless arming succeeds. The persistent systemd timer invokes the separate
-rollback executable and does not depend on Governor or Engineer being alive.
+unless arming succeeds. The systemd timer invokes the separate rollback
+executable every minute, including after boot, and checks the durable wall-clock
+deadline. This avoids extending probation after reboot, and does not depend on
+Governor or Engineer being alive.
 Only measured destination hashes and allowlisted service state checks can create
 verification evidence. A caller assertion is not accepted as evidence.
 
