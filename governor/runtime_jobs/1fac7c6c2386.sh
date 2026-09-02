@@ -125,11 +125,14 @@ if "BUILDER_ROUTE=normal" not in evidence:
     stop("cloud_builder_route", "normal route absent")
 if "cloud_builder_forbidden_for_local_only_job" in evidence:
     stop("cloud_builder_privacy_rejection", "forbidden marker present")
-for section in ("PUBLICATION_EVIDENCE:", "PI5_RUNTIME_EVIDENCE:"):
-    if section not in evidence:
-        stop("pipeline_stage_evidence", section + " absent")
-if verdict.get("verdict") not in {"PASS", "FAIL"} or not str(verdict.get("reason", "")).strip():
-    stop("local_verifier", "meaningful verdict absent")
+if "PUBLICATION_EVIDENCE:" not in evidence:
+    stop("pipeline_stage_evidence", "PUBLICATION_EVIDENCE: absent")
+runtime_executed = "PI5_RUNTIME_EVIDENCE:" in evidence
+runtime_not_required = "RUNTIME_ACTION=none_declared" in evidence
+if not (runtime_executed or runtime_not_required):
+    stop("pipeline_stage_evidence", "runtime disposition absent")
+if verdict.get("verdict") != "PASS" or not str(verdict.get("reason", "")).strip():
+    stop("local_verifier", "meaningful PASS verdict absent")
 if not job.get("started_at") or not job.get("completed_at"):
     stop("elapsed_reporting", "terminal timestamps absent")
 start = backend.parse_time(job["started_at"])
@@ -137,7 +140,8 @@ end = backend.parse_time(job["completed_at"])
 if not start or not end or end < start:
     stop("elapsed_reporting", "timestamps invalid")
 print("CLOUD_BUILDER_PATH=PASS route=normal privacy_rejection=absent")
-print("PI5_PUBLICATION_RUNTIME=PASS evidence_sections=present")
+runtime_disposition = "executed" if runtime_executed else "not_required"
+print(f"PI5_PUBLICATION_RUNTIME=PASS publication=traversed runtime={runtime_disposition}")
 print(f"LOCAL_VERIFIER=PASS verdict={verdict['verdict']} reason=present")
 print("PROBE_STATE=PASS")
 PY
