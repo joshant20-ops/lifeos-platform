@@ -3,11 +3,11 @@
   "policy": "zero-spend-engineering",
   "providers": [
     {"id": "deterministic", "role": "tooling", "credential": null, "cost": "free", "task_classes": ["deterministic"]},
-    {"id": "gemini", "role": "everyday-engineer", "credential": "GEMINI_API_KEY", "cost": "free-tier", "task_classes": ["normal", "substantial"]},
-    {"id": "groq", "role": "everyday-engineer", "credential": "GROQ_API_KEY", "cost": "free-tier", "task_classes": ["normal", "substantial"]},
-    {"id": "openrouter", "role": "everyday-engineer", "credential": "OPENROUTER_API_KEY", "cost": "free-models-only", "task_classes": ["normal", "substantial"]},
-    {"id": "cloudflare", "role": "everyday-engineer", "credential": "CLOUDFLARE_API_TOKEN", "cost": "free-tier", "task_classes": ["normal", "substantial"]},
-    {"id": "ollama", "role": "tiny-offline", "credential": null, "cost": "local", "task_classes": ["tiny", "offline"]},
+    {"id": "gemini", "role": "everyday-engineer", "credential": "GEMINI_API_KEY", "cost": "free-tier", "openhands_model": "gemini/gemini-2.5-flash", "task_classes": ["normal", "substantial"]},
+    {"id": "groq", "role": "everyday-engineer", "credential": "GROQ_API_KEY", "cost": "free-tier", "openhands_model": "groq/openai/gpt-oss-120b", "task_classes": ["normal", "substantial"]},
+    {"id": "openrouter", "role": "everyday-engineer", "credential": "OPENROUTER_API_KEY", "cost": "free-models-only", "openhands_model": "openrouter/openrouter/free", "task_classes": ["normal", "substantial"]},
+    {"id": "cloudflare", "role": "everyday-engineer", "credential": "CLOUDFLARE_API_TOKEN", "cost": "free-tier", "openhands_model": "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast", "task_classes": ["normal", "substantial"]},
+    {"id": "ollama", "role": "tiny-offline", "credential": null, "cost": "local", "openhands_model": "ollama/qwen2.5-coder:7b", "task_classes": ["tiny", "offline"]},
     {"id": "codex", "role": "senior-review", "credential": null, "cost": "scarce", "task_classes": ["review", "escalation"]}
   ],
   "routing": {"max_attempts_per_provider": 2, "cooldown_seconds": 900, "allow_paid_fallback": false, "continue_on_credential_required": true},

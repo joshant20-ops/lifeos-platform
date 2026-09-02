@@ -4,7 +4,7 @@ from __future__ import annotations
 import argparse, hashlib, json, os, subprocess, sys
 from datetime import datetime, timezone
 from pathlib import Path
-from provider_router import credential_environment, load_policy, load_secret_names, route
+from provider_router import eligible_providers, load_policy, load_secret_names, openhands_environment
 ROOT = Path(__file__).resolve().parents[1]
 
 def git(repo, *args):
@@ -26,20 +26,37 @@ def main():
         branch = git(a.repo, "branch", "--show-current")
         if not branch or branch in {"main", "master"}: raise RuntimeError("controlled non-main branch required")
         before = git(a.repo, "rev-parse", "refs/heads/main"); context = packet(a.task, a.repo)
-        policy = load_policy(ROOT / "governor/policy.json"); decision = route(policy, a.task_class, load_secret_names(a.secrets))
-        evidence.update(decision); evidence.update(branch=branch, main_before=before, context_sha256=hashlib.sha256(context.encode()).hexdigest())
-        if decision["fail_closed"]:
-            evidence["result"] = "CREDENTIAL_REQUIRED" if any(x["status"] == "CREDENTIAL_REQUIRED" for x in decision["considered"]) else "NO_PROVIDER"
+        policy = load_policy(ROOT / "governor/policy.json")
+        providers, considered = eligible_providers(policy, a.task_class, load_secret_names(a.secrets))
+        evidence.update(considered=considered, max_attempts=policy["routing"]["max_attempts_per_provider"],
+                        cooldown_seconds=policy["routing"]["cooldown_seconds"], branch=branch, main_before=before,
+                        context_sha256=hashlib.sha256(context.encode()).hexdigest(), attempts=[])
+        if not providers:
+            evidence["result"] = "CREDENTIAL_REQUIRED" if any(x["status"] == "CREDENTIAL_REQUIRED" for x in considered) else "NO_PROVIDER"
             print(json.dumps(evidence, sort_keys=True)); return 20
         if not a.execute:
-            evidence["result"] = "DRY_RUN_PASS"; print(json.dumps(evidence, sort_keys=True)); return 0
-        if decision["selected_role"] == "senior-review": raise RuntimeError("Codex is review-only")
-        allowed = {x["credential"] for x in policy["providers"] if x["id"] == decision["selected_provider"] and x.get("credential")}
-        env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""), "LIFEOS_PROVIDER": decision["selected_provider"], **credential_environment(a.secrets, allowed)}
-        done = subprocess.run([a.openhands_command, "--headless", "--task", context], cwd=a.repo, env=env, timeout=1800, check=False)
-        after = git(a.repo, "rev-parse", "refs/heads/main"); ok = done.returncode == 0 and before == after
-        evidence.update(openhands_exit_code=done.returncode, main_after=after, concurrent_main_unchanged=before == after, result="PASS" if ok else "FAIL")
-        print(json.dumps(evidence, sort_keys=True)); return 0 if ok else 1
+            evidence.update(selected_provider=providers[0]["id"], selected_role=providers[0]["role"], result="DRY_RUN_PASS")
+            print(json.dumps(evidence, sort_keys=True)); return 0
+        max_attempts = policy["routing"]["max_attempts_per_provider"]
+        for provider in providers:
+            if provider["role"] == "senior-review": raise RuntimeError("Codex is review-only")
+            env = {"PATH": os.environ.get("PATH", ""), "HOME": os.environ.get("HOME", ""),
+                   **openhands_environment(provider, a.secrets)}
+            for attempt in range(1, max_attempts + 1):
+                done = subprocess.run([a.openhands_command, "--headless", "--task", context], cwd=a.repo,
+                                      env=env, timeout=1800, check=False)
+                evidence["attempts"].append({"provider": provider["id"], "attempt": attempt, "exit_code": done.returncode})
+                after = git(a.repo, "rev-parse", "refs/heads/main")
+                if before != after:
+                    evidence.update(main_after=after, concurrent_main_unchanged=False, result="FAIL_CLOSED")
+                    print(json.dumps(evidence, sort_keys=True)); return 1
+                if done.returncode == 0:
+                    evidence.update(selected_provider=provider["id"], selected_role=provider["role"], main_after=after,
+                                    concurrent_main_unchanged=True, result="PASS")
+                    print(json.dumps(evidence, sort_keys=True)); return 0
+            evidence["attempts"][-1]["cooldown_seconds"] = policy["routing"]["cooldown_seconds"]
+        evidence.update(main_after=before, concurrent_main_unchanged=True, result="PROVIDERS_EXHAUSTED")
+        print(json.dumps(evidence, sort_keys=True)); return 21
     except Exception as exc:
         evidence.update(result="FAIL_CLOSED", error_class=type(exc).__name__, error=str(exc)[:300]); print(json.dumps(evidence, sort_keys=True)); return 1
 if __name__ == "__main__": sys.exit(main())
