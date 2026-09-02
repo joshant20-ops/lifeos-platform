@@ -1,22 +1,27 @@
-# LifeOS two-repository model
+# LifeOS repository authority model
 
-## End state
+## Current model
 
-LifeOS uses exactly two active GitHub repositories.
+LifeOS uses three repositories with distinct authority:
 
-### 1. `lifeos-platform` — source of truth
+1. `lifeos-platform` is the sole desired-state and deployment authority.
+2. `lifeos-jobs` is a sanitised, durable engineering audit trail.
+3. `lifeos-snapshots` is sanitised observed-state evidence.
 
-Authoritative implementation and documentation live here. This includes Homelab infrastructure, Home Assistant, LifeOS Energy, Predbat/Octopus integration, learning and financial tooling, deployment scripts, tests and assurance code.
+The complete data contract, visibility rules and trust flow are normative in
+[`docs/architecture/three-repo-model.md`](../docs/architecture/three-repo-model.md).
+The accepted transition from the older relay design is recorded in
+[`architecture/decisions/three-repository-authority.md`](decisions/three-repository-authority.md).
 
-### 2. `lifeos-pi-control` — execution relay
-
-This private repository is the middleman between ChatGPT/GitHub and the Raspberry Pi. It contains only control-plane material: pending manifests, thin execution wrappers, completed manifests, structured results, captured output and runner state.
-
-The relay must never become an independent implementation source.
+Pi5 remains the always-on control plane and canonical Git writer. Live queues,
+locks, rapidly changing job state and raw runtime output stay local. Repository
+exports are deliberately sanitised; none of the three repositories is a place
+for credentials, private documents, personal data, Home Assistant history or
+arbitrary logs.
 
 ## Execution identity
 
-Every post-migration execution request must identify:
+Every runtime execution request must identify:
 
 - canonical repository: `joshant20-ops/lifeos-platform`
 - immutable source commit SHA
@@ -26,30 +31,32 @@ Every post-migration execution request must identify:
 - job class
 - timeout
 
-A thin relay wrapper may fetch/verify/execute canonical content, but must not contain a divergent copy of business logic.
+A thin, Pi5-owned execution wrapper may verify and execute canonical content,
+but must not contain a divergent copy of business logic. Watchman remains the
+runtime policy gate.
 
 ## Feedback loop
 
-1. ChatGPT changes `lifeos-platform`.
-2. The resulting immutable commit SHA is captured.
-3. `lifeos-pi-control` queues a job referring to that SHA/path/hash.
-4. The Pi verifies and executes the requested canonical artifact.
-5. The Pi writes structured evidence to `lifeos-pi-control`.
-6. ChatGPT reads the evidence and makes the next canonical source change.
+1. An engineering actor proposes a change to `lifeos-platform`.
+2. Independent validation records evidence for the immutable revision.
+3. Pi5 publishes accepted canonical changes and controls runtime execution.
+4. Watchman permits or rejects the requested runtime action.
+5. Pi5 exports only sanitised job history to `lifeos-jobs` and sanitised
+   observed-state evidence to `lifeos-snapshots`.
+6. Evidence informs the next proposed canonical change; it never becomes
+   deployment authority itself.
 
 ## Migration gates
 
-Legacy repositories are not deleted or archived until all gates pass:
+Legacy repositories or relays are not retired until all applicable gates pass:
 
-1. Inventory legacy repository contents and outstanding work.
-2. Import authoritative `LifeOS-Energy` content into `lifeos-platform/energy/` without losing the queued financial-history/export-accounting job.
-3. Confirm the Pi has a clean/current checkout of both active repositories.
-4. Prove a relay job can reference and execute an immutable `lifeos-platform` artifact.
-5. Prove result feedback returns to `lifeos-pi-control`.
-6. Prove Home Assistant, Predbat, LifeOS Energy, forecast recording and shadow learning remain healthy.
-7. Reconcile all outstanding work as DONE / RUNNING / QUEUED / NOT_YET_QUEUED / BLOCKED.
-8. Only then retire `LifeOS-Energy` and the unused `lifeos-control` repository.
+1. Inventory their authoritative, generated, private and retired content.
+2. Import only authoritative, cloud-safe source and documentation.
+3. Confirm Pi5 has a clean, current canonical checkout.
+4. Prove Watchman-gated execution against immutable `lifeos-platform` content.
+5. Prove sanitised job and observed-state exports reach their repositories.
+6. Validate affected services and rollback expectations.
+7. Reconcile outstanding work before retiring a legacy path.
 
-## Fail-closed principle
-
-Migration stops at the first failed gate. No legacy repository is retired on partial success. Runtime service paths may remain unchanged while source ownership moves to `lifeos-platform`; source consolidation must not require an unnecessary production-path migration.
+Migration fails closed at the first failed gate. Runtime paths may remain in
+place during migration, but they do not gain source or deployment authority.
