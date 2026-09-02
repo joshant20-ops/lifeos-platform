@@ -82,6 +82,10 @@ jobs:
           )
           PY
 
+      - name: Validate Compose inventory consistency
+        run: |
+          python3 scripts/validate-compose-inventory.py
+
       - name: Ansible syntax
         run: |
           ansible-playbook \
