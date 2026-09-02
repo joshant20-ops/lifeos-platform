@@ -109,6 +109,28 @@ def issue_status(number, durable, active, jobs_by_id):
     return "READY", "eligible", ""
 
 
+def issue_plan_progress(number, durable):
+    plan = durable.get("issues", {}).get(str(number), {}).get("plan") or {}
+    milestones = plan.get("milestones") or []
+    targets = [target for milestone in milestones for target in milestone.get("targets", [])]
+    current = next((target for target in targets if target.get("state") == "IN_PROGRESS"), None)
+    if current is None:
+        passed = {target.get("id") for target in targets if target.get("state") == "PASS"}
+        current = next((target for target in targets if target.get("state") in {"PLANNED", "READY", "FAILED"}
+                        and set(target.get("depends_on", [])) <= passed), None)
+    current_milestone = next((milestone for milestone in milestones
+                              if current in milestone.get("targets", [])), None)
+    return {
+        "plan_state": plan.get("state"),
+        "completed_targets": sum(target.get("state") == "PASS" for target in targets),
+        "total_targets": len(targets),
+        "current_milestone": current_milestone.get("id") if current_milestone else None,
+        "current_target": current.get("id") if current else None,
+        "blocker": next((target.get("evidence", [{}])[-1].get("summary") for target in targets
+                         if target.get("state") in {"BLOCKED", "WAITING_HUMAN"} and target.get("evidence")), None),
+    }
+
+
 def ensure_label():
     gh("label", "create", HIGH_LABEL, "--repo", REPO, "--description", "Manual LifeOS high-priority scheduling pool", "--color", "B60205", "--force")
 
@@ -194,6 +216,7 @@ def refresh():
             "detail": detail[:500],
             "url": str(issue.get("html_url") or f"https://github.com/{REPO}/issues/{number}"),
             "created_at": str(issue.get("created_at") or ""),
+            **issue_plan_progress(number, durable),
         })
         topic = f"{DISCOVERY_ROOT}/switch/lifeos_issue_queue/issue_{number}_high_priority/config"
         mqtt_pub(topic, json.dumps(switch_discovery(number, issue.get("title", "")), separators=(",", ":")))
