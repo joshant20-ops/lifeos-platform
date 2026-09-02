@@ -24,6 +24,10 @@ def test_shadow_acceptance_preserves_the_real_compatibility_path():
     assert text.count("systemctl is-enabled lifeos-backlog-runner.timer") >= 2
     assert text.count("systemctl is-active lifeos-backlog-runner.timer") >= 2
     assert text.count("systemctl is-active lifeos-backlog-runner.service") >= 2
+    assert text.count("systemctl is-enabled lifeos-backlog-runner.service") >= 2
+    assert "compatibility_service_failed_before_shadow_test" in text
+    assert "compatibility_service_failed_after_shadow_test" in text
+    assert "compatibility_service_runtime_changed" not in text
     assert "SHADOW_EQUIVALENCE=PASS" in text
     assert "compatibility_path=unchanged" in text
 
