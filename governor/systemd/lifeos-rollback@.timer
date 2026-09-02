@@ -1,0 +1,11 @@
+[Unit]
+Description=LifeOS two-hour dead-man watchdog for transaction %i
+
+[Timer]
+OnActiveSec=2h
+AccuracySec=1s
+Persistent=true
+Unit=lifeos-rollback@%i.service
+
+[Install]
+WantedBy=timers.target

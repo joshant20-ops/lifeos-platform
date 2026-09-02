@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+import argparse, json, os, pathlib, sys
+sys.path.insert(0, "/usr/local/lib")
+from lifeos_transaction import Controller, TransactionError
+
+def main():
+    parser = argparse.ArgumentParser()
+    sub = parser.add_subparsers(dest="command", required=True)
+    begin = sub.add_parser("begin"); begin.add_argument("transaction_id"); begin.add_argument("proposal", type=pathlib.Path)
+    for name in ("apply", "verify", "commit", "status", "rollback"):
+        command = sub.add_parser(name); command.add_argument("transaction_id")
+    args = parser.parse_args()
+    if os.geteuid() != 0: raise TransactionError("controller must run as root")
+    controller = Controller()
+    if args.command == "begin": result = controller.begin(args.transaction_id, json.loads(args.proposal.read_text()))
+    else: result = getattr(controller, args.command)(args.transaction_id)
+    print(json.dumps(result, sort_keys=True))
+
+if __name__ == "__main__":
+    try: main()
+    except TransactionError as exc:
+        print(json.dumps({"status": "REJECTED", "reason": str(exc)})); raise SystemExit(64)
