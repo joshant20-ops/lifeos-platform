@@ -1,0 +1,44 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The current runtime evidence indicates that the shadow acceptance test failed due to a 'must_run_as_root_via_Watchman' error. This is a genuine external blocker that the autonomous system cannot resolve itself."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #23 in joshant20-ops/lifeos-platform: P0: Mesh LifeOS planner + Rundeck + Ansible + transactional root control This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Objective Replace the remaining bespoke privileged/runtime orchestration path with an OTS-first execution plane while preserving LifeOS planning, governance, privacy, evidence and the p",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 7,
+  "job_id": "80f20f03755d",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": {
+    "commit": "975775b1d22d14ec82419068baf742bfb52f7b45",
+    "path": "governor/runtime_jobs/80f20f03755d.sh",
+    "published": "PASS",
+    "sha256": "2537c072edcf0fb404dbaf9d1e4e2aa360c6d0cd1be943e0b1bc571b8cac0e61"
+  },
+  "runtime_return_code": 1,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T13:10:55+0100",
+    "created_at": "2026-09-02T12:44:59+0100",
+    "stage_changed_at": "2026-09-02T13:10:55+0100",
+    "started_at": "2026-09-02T12:44:59+0100"
+  }
+}
