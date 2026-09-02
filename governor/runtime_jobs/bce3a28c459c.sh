@@ -146,7 +146,9 @@ python3 - "$result" <<'PY' || fail pi_0019_result_not_pass
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as stream:
     result = json.load(stream)
-assert result.get("classification") == "PASS", result.get("classification", "missing")
+classification = result.get("classification")
+if classification != "PASS":
+    raise SystemExit("relay result classification is not PASS: " + str(classification or "missing"))
 print("PI_RELAY_RESULT=PASS")
 PY
 
