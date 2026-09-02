@@ -68,3 +68,55 @@ def test_invalid_plan_without_acceptance_criteria_is_rejected(tmp_path, monkeypa
     try: module.validate_plan(raw, 27)
     except ValueError as exc: assert "acceptance criteria" in str(exc)
     else: raise AssertionError("invalid plan accepted")
+
+
+def test_failed_target_is_subdivided_with_lineage_and_pass_checkpoint_preserved(tmp_path, monkeypatch):
+    module = load(tmp_path, monkeypatch); plan = module.validate_plan(sample_plan(), 27)
+    first, failed = module.plan_targets(plan)
+    first["state"] = "PASS"; failed["state"] = "FAILED"; failed["attempts"] = 1
+    recovery = {"action": "subdivide", "blocker_class": "runtime-proof", "diagnosis": "proof was too broad",
+        "targets": [
+            {"id": "prove.deploy", "title": "Deploy", "depends_on": ["design.contract"],
+             "acceptance_criteria": ["deployment passes"], "runtime_verification_required": False},
+            {"id": "prove.observe", "title": "Observe", "depends_on": ["prove.deploy"],
+             "acceptance_criteria": ["runtime proof recorded"], "runtime_verification_required": True}]}
+    encoded = base64.b64encode(json.dumps(recovery).encode()).decode()
+    result = module.apply_plan_result({"plan": plan},
+        {"phase": "recovery", "issue": 27, "job_id": "recover", "target_id": failed["id"]},
+        {"iterations": [{"evidence": evidence(RECOVERY_PLAN_JSON_B64=encoded)}]})
+    assert first["state"] == "PASS"
+    assert failed["state"] == "SUPERSEDED"
+    assert module.next_target(plan)["id"] == "prove.deploy"
+    assert module.next_target(plan)["parent_target_id"] == "prove.runtime"
+    assert result == {"completed_targets": 1, "total_targets": 3,
+                      "current_target": "prove.deploy", "state": "IN_PROGRESS"}
+
+
+def test_independent_ready_target_precedes_failed_target_recovery(tmp_path, monkeypatch):
+    module = load(tmp_path, monkeypatch); raw = sample_plan()
+    raw["milestones"][1]["targets"].append({"id": "prove.docs", "title": "Docs", "mandatory": True,
+        "depends_on": ["design.contract"], "acceptance_criteria": ["docs checked"],
+        "runtime_verification_required": False})
+    plan = module.validate_plan(raw, 27); targets = module.plan_targets(plan)
+    targets[0]["state"] = "PASS"; targets[1]["state"] = "FAILED"
+    assert module.next_target(plan)["id"] == "prove.docs"
+
+
+def test_recovery_retry_is_bounded_and_escalates_without_losing_evidence(tmp_path, monkeypatch):
+    module = load(tmp_path, monkeypatch); plan = module.validate_plan(sample_plan(), 27)
+    target = module.plan_targets(plan)[0]; target["state"] = "FAILED"
+    recovery = {"action": "retry", "blocker_class": "flaky-test", "diagnosis": "transient"}
+    for attempt in range(3):
+        target["state"] = "FAILED"
+        module.apply_recovery(plan, target, recovery, f"recovery-{attempt}")
+    assert target["state"] == "BLOCKED"
+    assert target["recovery_attempts"] == 3
+    assert len(target["evidence"]) == 3
+    assert module.next_target(plan) is None
+
+
+def test_reported_blocker_gets_bounded_diagnosis_instead_of_blocking_parent(tmp_path, monkeypatch):
+    module = load(tmp_path, monkeypatch); plan = module.validate_plan(sample_plan(), 27)
+    target = module.plan_targets(plan)[0]; target["state"] = "BLOCKED"
+    assert module.next_target(plan) is target
+    assert plan["state"] == "IN_PROGRESS"

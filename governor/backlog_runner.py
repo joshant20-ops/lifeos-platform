@@ -47,7 +47,7 @@ def api(path, method="GET", body=None):
         return json.load(response)
 
 
-def empty_state(): return {"version": 3, "active": None, "issues": {}, "attempts": []}
+def empty_state(): return {"version": 4, "active": None, "issues": {}, "attempts": []}
 
 
 def _clean_id(value):
@@ -82,7 +82,8 @@ def validate_plan(raw, issue_number):
                 "depends_on": [_clean_id(x) for x in source_t.get("depends_on", [])],
                 "acceptance_criteria": [str(x)[:1000] for x in acceptance],
                 "runtime_verification_required": bool(source_t.get("runtime_verification_required", False)),
-                "attempts": 0, "evidence": []})
+                "attempts": 0, "recovery_attempts": 0, "lineage_depth": 0,
+                "parent_target_id": None, "blocker_class": None, "evidence": []})
         plan["milestones"].append(milestone)
     ids = {t["id"] for m in plan["milestones"] for t in m["targets"]}
     for target in plan_targets(plan):
@@ -96,13 +97,69 @@ def plan_targets(plan): return [t for m in plan.get("milestones", []) for t in m
 
 def next_target(plan):
     targets = plan_targets(plan); passed = {t["id"] for t in targets if t["state"] == "PASS"}
-    return next((t for t in targets if t["state"] in {"PLANNED", "READY", "FAILED"}
-                 and set(t["depends_on"]) <= passed), None)
+    # Continue safe independent work before spending another job on diagnosis.
+    ready = (t for t in targets if t["state"] in {"PLANNED", "READY"}
+             and set(t["depends_on"]) <= passed)
+    return next(ready, None) or next((t for t in targets if t["state"] in {"FAILED", "BLOCKED"}
+                                     and int(t.get("recovery_attempts", 0)) < 3
+                                     and set(t["depends_on"]) <= passed), None)
+
+
+def apply_recovery(plan, failed, recovery, job_id):
+    """Apply a bounded builder diagnosis while retaining every durable PASS."""
+    if failed.get("state") not in {"FAILED", "BLOCKED"}: raise ValueError("recovery target is not failed or blocked")
+    attempts = int(failed.get("recovery_attempts", 0)) + 1
+    failed["recovery_attempts"] = attempts
+    action = str(recovery.get("action", "")).lower()
+    blocker_class = _clean_id(recovery.get("blocker_class") or "unknown")
+    failed["blocker_class"] = blocker_class
+    summary = str(recovery.get("diagnosis") or "no diagnosis supplied")[:2000]
+    failed["evidence"].append({"job_id": job_id, "finished_at": iso(now()),
+        "state": "DIAGNOSED", "summary": summary, "blocker_class": blocker_class})
+    if action == "waiting_human":
+        failed["state"] = "WAITING_HUMAN"; return
+    if action == "retry":
+        if attempts >= 3: failed["state"] = "BLOCKED"
+        else: failed["state"] = "READY"
+        return
+    if action not in {"remediate", "subdivide"}: raise ValueError("unsupported recovery action")
+    depth = int(failed.get("lineage_depth", 0)) + 1
+    additions = recovery.get("targets")
+    if depth > 3 or attempts > 3: failed["state"] = "BLOCKED"; return
+    if not isinstance(additions, list) or not 1 <= len(additions) <= 5:
+        raise ValueError("recovery requires 1-5 replacement targets")
+    milestone = next((m for m in plan["milestones"] if failed in m["targets"]), None)
+    if not milestone: raise ValueError("failed target has no milestone")
+    existing = {t["id"] for t in plan_targets(plan)}; replacements = []
+    for source in additions:
+        tid = _clean_id(source.get("id"))
+        acceptance = source.get("acceptance_criteria")
+        if tid in existing or not isinstance(acceptance, list) or not acceptance or not all(str(x).strip() for x in acceptance):
+            raise ValueError("recovery targets require unique ids and acceptance criteria")
+        dependencies = [_clean_id(x) for x in source.get("depends_on", failed["depends_on"])]
+        replacement = {"id": tid, "title": str(source.get("title") or tid)[:240], "state": "PLANNED",
+            "mandatory": bool(failed.get("mandatory", True)), "depends_on": dependencies,
+            "acceptance_criteria": [str(x)[:1000] for x in acceptance],
+            "runtime_verification_required": bool(source.get("runtime_verification_required", False)),
+            "attempts": 0, "recovery_attempts": 0, "lineage_depth": depth,
+            "parent_target_id": failed["id"], "blocker_class": None, "evidence": []}
+        replacements.append(replacement); existing.add(tid)
+    allowed = {t["id"] for t in plan_targets(plan)} | {t["id"] for t in replacements}
+    if any(set(t["depends_on"]) - allowed or t["id"] in t["depends_on"] for t in replacements):
+        raise ValueError("recovery target dependencies are invalid")
+    terminal_ids = [t["id"] for t in replacements
+                    if not any(t["id"] in other["depends_on"] for other in replacements)]
+    for target in plan_targets(plan):
+        if target is not failed and failed["id"] in target["depends_on"]:
+            target["depends_on"] = [x for x in target["depends_on"] if x != failed["id"]] + terminal_ids
+    offset = milestone["targets"].index(failed)
+    milestone["targets"][offset:offset] = replacements
+    failed["state"] = "SUPERSEDED"
 
 
 def refresh_plan(plan):
     for milestone in plan["milestones"]:
-        required = [t for t in milestone["targets"] if t["mandatory"]]
+        required = [t for t in milestone["targets"] if t["mandatory"] and t["state"] != "SUPERSEDED"]
         milestone["state"] = "PASS" if required and all(t["state"] == "PASS" for t in required) else "IN_PROGRESS"
     mandatory = [m for m in plan["milestones"] if m["mandatory"]]
     plan["state"] = "PASS" if mandatory and all(m["state"] == "PASS" for m in mandatory) else "IN_PROGRESS"
@@ -110,7 +167,7 @@ def refresh_plan(plan):
 
 
 def progress(plan):
-    targets = plan_targets(plan); current = next_target(plan)
+    targets = [t for t in plan_targets(plan) if t["state"] != "SUPERSEDED"]; current = next_target(plan)
     return {"completed_targets": sum(t["state"] == "PASS" for t in targets), "total_targets": len(targets),
             "current_target": current["id"] if current else None, "state": plan.get("state", "IN_PROGRESS")}
 
@@ -131,13 +188,18 @@ def apply_plan_result(entry, active, job):
     plan = entry["plan"]
     target = next((t for t in plan_targets(plan) if t["id"] == active.get("target_id")), None)
     if not target: raise ValueError("active target is absent from persisted plan")
+    if active.get("phase") == "recovery":
+        apply_recovery(plan, target, decode_field(evidence, "RECOVERY_PLAN_JSON_B64"), active["job_id"])
+        refresh_plan(plan); entry["work_state"] = plan["state"]
+        entry["barrier"] = target.get("blocker_class") or "none"
+        entry["retry_after"] = None if next_target(plan) else entry.get("retry_after")
+        return progress(plan)
     reported = (field(evidence, "TARGET_STATE") or "FAILED").upper()
     if reported == "PASS" and target["runtime_verification_required"] and field(evidence, "TARGET_RUNTIME_VERIFIED").upper() != "PASS":
         reported = "FAILED"
     target["state"] = reported if reported in {"PASS", "BLOCKED", "WAITING_HUMAN"} else "FAILED"
     target["evidence"].append({"job_id": active["job_id"], "finished_at": iso(now()),
         "state": target["state"], "summary": (field(evidence, "TARGET_EVIDENCE") or "not reported")[:2000]})
-    if target["state"] == "FAILED" and target["attempts"] >= 3: target["state"] = "BLOCKED"
     refresh_plan(plan); entry["work_state"] = plan["state"]
     entry["barrier"] = field(evidence, "BARRIER") or "none"
     entry["retry_after"] = None if next_target(plan) else entry.get("retry_after")
@@ -150,7 +212,7 @@ def load_state():
     if "version" not in value:
         active = value if value.get("issue") and value.get("job_id") else None
         value = empty_state(); value["active"] = active
-    value.setdefault("issues", {}); value.setdefault("attempts", []); value.setdefault("active", None); value["version"] = 3
+    value.setdefault("issues", {}); value.setdefault("attempts", []); value.setdefault("active", None); value["version"] = 4
     migrate_issue_6(value)
     return value
 
@@ -304,6 +366,10 @@ def submit_issue(issue, state):
     if not plan:
         phase = "planning"
         instruction = """Revalidate current repository/runtime relevance first. Decide whether a single target or dynamic decomposition is appropriate. Return PLAN_JSON_B64 containing a base64 JSON object with milestones[]. Each milestone requires id, title, mandatory, verification, and targets[]. Each target requires id, title, mandatory, depends_on, acceptance_criteria (non-empty list), and runtime_verification_required. Do not implement the objective in this job."""
+    elif target and target["state"] == "FAILED":
+        phase = "recovery"
+        prior = target.get("evidence", [])[-1].get("summary", "not reported") if target.get("evidence") else "not reported"
+        instruction = f"""Diagnose only failed target {target['id']}: {target['title']}\nPrior evidence: {prior}\nReturn RECOVERY_PLAN_JSON_B64 containing a base64 JSON object with action retry, remediate, subdivide, or waiting_human; blocker_class; diagnosis; and, for remediate/subdivide, 1-5 small replacement targets using the normal target fields. Do not implement work in this diagnosis job. Recovery is bounded to three attempts and lineage depth three; never split work to evade governance or approval boundaries."""
     elif target:
         phase = "target"; criteria = "\n".join(f"- {x}" for x in target["acceptance_criteria"])
         instruction = f"""Execute only target {target['id']}: {target['title']}\nAcceptance criteria:\n{criteria}\nDo not expand scope to the whole parent objective. Emit TARGET_STATE=PASS|FAILED|BLOCKED|WAITING_HUMAN and TARGET_EVIDENCE=<concise evidence>."""
@@ -312,7 +378,7 @@ def submit_issue(issue, state):
     job = api("/jobs?async=1", "POST", {"request": prompt, "dispatch_builder": "local" if is_private else "normal"})
     job_id = str(job.get("id") or "")
     if not job_id: raise RuntimeError("governor returned no job id")
-    if target: target["state"] = "IN_PROGRESS"; target["attempts"] += 1
+    if target and phase == "target": target["state"] = "IN_PROGRESS"; target["attempts"] += 1
     state["active"] = {"issue": number, "job_id": job_id, "started": now(), "phase": phase,
                        "target_id": target["id"] if target else None}; save_state(state)
     issue_comment(number, f"### LifeOS autonomous backlog start\n- Selected after a complete open-issue refresh and priority/dependency eligibility pass.\n- LifeOS job: `{job_id}`\n- Route: `{'local-only' if is_private else 'normal'}`\n- State: `IN_PROGRESS`")
