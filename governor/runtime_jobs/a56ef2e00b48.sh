@@ -34,7 +34,7 @@ timeout --signal=TERM --kill-after=15s 900s ssh -T -o BatchMode=yes \
 set -Eeuo pipefail
 export LC_ALL=C
 stage=initialization
-trap 'rc=$?; printf "STAGE=%s FAIL rc=%s line=%s command=%q\n" "$stage" "$rc" "$LINENO" "$BASH_COMMAND" >&2; exit "$rc"' ERR
+trap 'rc=$?; printf "STAGE=%s FAIL rc=%s line=%s command=%q\nBARRIER=%s\n" "$stage" "$rc" "$LINENO" "$BASH_COMMAND" "$stage" >&2; exit "$rc"' ERR
 run() { local duration=$1; shift; timeout --signal=TERM --kill-after=10s "$duration" "$@"; }
 
 stage=relevance
@@ -102,7 +102,11 @@ o=(-o "Dir::Etc=$w/etc/apt" -o "Dir::State=$w/state" \
    -o Acquire::Languages=none \
    -o APT::Get::List-Cleanup=0 -o Debug::NoLocking=1 \
    -o "APT::Sandbox::User=$(id -un)")
-run 300s apt-get "${o[@]}" update >/dev/null
+metadata_log="$w/metadata-update.txt"
+if ! run 300s apt-get "${o[@]}" update >"$metadata_log" 2>&1; then
+  cat "$metadata_log" >&2
+  false
+fi
 version=$(apt-cache "${o[@]}" policy nvidia-driver-580 | awk '/Candidate:/ {print $2;exit}')
 [[ $version == 580.* ]]
 for branch in 590 595 600 610; do
@@ -185,7 +189,14 @@ REMOTE
 rc=$?
 set -e
 grep -v '^PRODUCTION_SCRIPT_B64=' "$tmp/remote" || :
-[[ $rc -eq 0 ]] || fail "towerpc_remote_rc_$rc"
+if [[ $rc -ne 0 ]]; then
+  # The remote ERR trap emits the precise stage as a machine-readable final
+  # marker. Preserve that name in the outer contract so the next autonomous
+  # iteration can repair the actual diagnostic instead of an opaque SSH code.
+  barrier=$(sed -n 's/^BARRIER=//p' "$tmp/remote" | tail -1)
+  [[ $barrier =~ ^[a-z0-9_]+$ ]] || barrier="towerpc_remote_rc_$rc"
+  fail "$barrier"
+fi
 
 cp "$tmp/remote" "$EVIDENCE"
 payload=$(sed -n 's/^PRODUCTION_SCRIPT_B64=//p' "$tmp/remote")

@@ -43,6 +43,9 @@ def test_launcher_emits_machine_contract_on_success_and_failure():
     ):
         assert key in text
     assert 'command=%q' in text
+    assert 'printf "STAGE=%s FAIL rc=%s line=%s command=%q\\nBARRIER=%s\\n"' in text
+    assert "sed -n 's/^BARRIER=//p'" in text
+    assert 'fail "$barrier"' in text
 
 
 def test_metadata_refresh_isolated_from_unrelated_host_sources():
@@ -70,3 +73,10 @@ def test_simulation_uses_only_disposable_writable_apt_state():
         'Dir::Log=$w/log',
     ):
         assert option in text
+
+
+def test_metadata_failure_keeps_full_diagnostics_for_watchman():
+    text = SCRIPT.read_text()
+    assert 'metadata_log="$w/metadata-update.txt"' in text
+    assert 'apt-get "${o[@]}" update >"$metadata_log" 2>&1' in text
+    assert 'cat "$metadata_log" >&2' in text
