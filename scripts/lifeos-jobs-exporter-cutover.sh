@@ -10,6 +10,8 @@ UNIT="/etc/systemd/system/lifeos-jobs-export.service"
 PATH_UNIT="/etc/systemd/system/lifeos-jobs-export.path"
 BACKUP="${LIFEOS_BACKUP_ROOT:-/mnt/docker-data/automation/backups/jobs-exporter-$STAMP}"
 LOG="$BACKUP/run.log"
+RUNUSER="/usr/sbin/runuser"
+ENV="/usr/bin/env"
 
 say(){ printf '\n==> %s\n' "$*"; }
 info(){ printf '    %s\n' "$*"; }
@@ -19,6 +21,12 @@ trap 'rc=$?; printf "\nFAILED at line %s (exit %s)\n" "${BASH_LINENO[0]:-unknown
 
 if [[ $EUID -ne 0 ]]; then exec sudo -E bash "$0" "$@"; fi
 mkdir -p "$BACKUP"; touch "$LOG"; exec > >(tee -a "$LOG") 2>&1
+
+as_joshan(){
+  "$RUNUSER" -u joshan -- "$ENV" -i HOME=/home/joshan PATH=/usr/local/bin:/usr/bin:/bin LANG=C.UTF-8 "$@"
+}
+git_jobs(){ as_joshan /usr/bin/git -C "$JOBS" "$@"; }
+git_platform(){ as_joshan /usr/bin/git -C "$PLATFORM" "$@"; }
 
 say "LifeOS jobs exporter cutover"
 info "Platform: $PLATFORM"
@@ -32,14 +40,14 @@ say "GATE 0 — Preflight"
 [[ -d "$JOBS/.git" ]] || die "lifeos-jobs missing"
 [[ -d "$STATE" ]] || die "agent state missing"
 [[ -x "$EXPORTER" || -f "$EXPORTER" ]] || die "exporter missing"
-[[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform dirty"
-[[ -z "$(git -C "$JOBS" status --porcelain)" ]] || die "lifeos-jobs dirty"
+[[ -z "$(git_platform status --porcelain)" ]] || die "lifeos-platform dirty"
+[[ -z "$(git_jobs status --porcelain)" ]] || die "lifeos-jobs dirty"
 
-git -C "$JOBS" fetch origin main >/dev/null
-[[ "$(git -C "$JOBS" rev-parse HEAD)" == "$(git -C "$JOBS" rev-parse origin/main)" ]] || die "lifeos-jobs not aligned with origin/main"
+git_jobs fetch origin main >/dev/null
+[[ "$(git_jobs rev-parse HEAD)" == "$(git_jobs rev-parse origin/main)" ]] || die "lifeos-jobs not aligned with origin/main"
 
-git -C "$JOBS" push --dry-run origin HEAD:main >/dev/null
-info "PASS: lifeos-jobs write auth works"
+git_jobs push --dry-run origin HEAD:main >/dev/null
+info "PASS: lifeos-jobs write auth works as joshan"
 
 # Platform must already be protected from direct runtime mutation.
 WRITE_PATHS="$(systemctl show lifeos-autonomous-agent.service -p ReadWritePaths --value)"
@@ -52,8 +60,8 @@ say "GATE 1 — Backup"
 cp -a "$EXPORTER" "$BACKUP/export-lifeos-job-records.sh.before"
 [[ -f "$UNIT" ]] && cp -a "$UNIT" "$BACKUP/lifeos-jobs-export.service.before"
 [[ -f "$PATH_UNIT" ]] && cp -a "$PATH_UNIT" "$BACKUP/lifeos-jobs-export.path.before"
-git -C "$JOBS" status --short --branch > "$BACKUP/lifeos-jobs-status.before"
-git -C "$PLATFORM" status --short --branch > "$BACKUP/lifeos-platform-status.before"
+git_jobs status --short --branch > "$BACKUP/lifeos-jobs-status.before"
+git_platform status --short --branch > "$BACKUP/lifeos-platform-status.before"
 info "Backup complete"
 gate "Install event-driven exporter units?"
 
@@ -102,10 +110,9 @@ info "Systemd units validate"
 gate "Units validate. Run one manual export before enabling the path watcher?"
 
 say "GATE 3 — Manual export test"
-# Preserve exact baseline for later invariant checks.
-PLATFORM_HEAD="$(git -C "$PLATFORM" rev-parse HEAD)"
-PLATFORM_STATUS_BEFORE="$(git -C "$PLATFORM" status --porcelain)"
-JOBS_HEAD_BEFORE="$(git -C "$JOBS" rev-parse HEAD)"
+PLATFORM_HEAD="$(git_platform rev-parse HEAD)"
+PLATFORM_STATUS_BEFORE="$(git_platform status --porcelain)"
+JOBS_HEAD_BEFORE="$(git_jobs rev-parse HEAD)"
 
 systemctl start lifeos-jobs-export.service
 [[ "$(systemctl show lifeos-jobs-export.service -p Result --value)" == success ]] || {
@@ -113,13 +120,13 @@ systemctl start lifeos-jobs-export.service
   die "manual exporter service failed"
 }
 
-[[ "$(git -C "$PLATFORM" rev-parse HEAD)" == "$PLATFORM_HEAD" ]] || die "platform HEAD changed"
-[[ "$(git -C "$PLATFORM" status --porcelain)" == "$PLATFORM_STATUS_BEFORE" ]] || die "platform working tree changed"
-[[ -z "$(git -C "$JOBS" status --porcelain)" ]] || { git -C "$JOBS" status --short; die "lifeos-jobs left dirty after export"; }
+[[ "$(git_platform rev-parse HEAD)" == "$PLATFORM_HEAD" ]] || die "platform HEAD changed"
+[[ "$(git_platform status --porcelain)" == "$PLATFORM_STATUS_BEFORE" ]] || die "platform working tree changed"
+[[ -z "$(git_jobs status --porcelain)" ]] || { git_jobs status --short; die "lifeos-jobs left dirty after export"; }
 
-git -C "$JOBS" fetch origin main >/dev/null
-[[ "$(git -C "$JOBS" rev-parse HEAD)" == "$(git -C "$JOBS" rev-parse origin/main)" ]] || die "local lifeos-jobs not aligned after export"
-JOBS_HEAD_AFTER="$(git -C "$JOBS" rev-parse HEAD)"
+git_jobs fetch origin main >/dev/null
+[[ "$(git_jobs rev-parse HEAD)" == "$(git_jobs rev-parse origin/main)" ]] || die "local lifeos-jobs not aligned after export"
+JOBS_HEAD_AFTER="$(git_jobs rev-parse HEAD)"
 info "Jobs HEAD before: $JOBS_HEAD_BEFORE"
 info "Jobs HEAD after:  $JOBS_HEAD_AFTER"
 info "PASS: manual export completed and platform stayed untouched"
@@ -131,7 +138,6 @@ systemctl enable --now lifeos-jobs-export.path
 [[ "$(systemctl is-active lifeos-jobs-export.path)" == active ]] || die "path watcher not active"
 [[ "$(systemctl is-enabled lifeos-jobs-export.path)" == enabled ]] || die "path watcher not enabled"
 
-# Give path unit a moment to settle, then verify no failure loop.
 sleep 2
 if systemctl --failed --no-legend | grep -q 'lifeos-jobs-export'; then
   systemctl --no-pager --full status lifeos-jobs-export.path lifeos-jobs-export.service || true
@@ -139,8 +145,8 @@ if systemctl --failed --no-legend | grep -q 'lifeos-jobs-export'; then
 fi
 
 say "GATE 5 — Final invariants"
-[[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform dirty"
-[[ -z "$(git -C "$JOBS" status --porcelain)" ]] || die "lifeos-jobs dirty"
+[[ -z "$(git_platform status --porcelain)" ]] || die "lifeos-platform dirty"
+[[ -z "$(git_jobs status --porcelain)" ]] || die "lifeos-jobs dirty"
 [[ "$(systemctl is-active lifeos-autonomous-agent.service)" == active ]] || die "autonomous agent inactive"
 [[ "$(systemctl is-active lifeos-jobs-export.path)" == active ]] || die "export path inactive"
 
