@@ -109,6 +109,20 @@ def test_watchdog_rollback_restores_file_without_governor(world):
     assert result["rollback"] == {"result": "PASS", "reason": "health deadline expired", "at": "2026-01-01T00:00:00+00:00", "watchdog_disarmed": True}
 
 
+def test_reboot_watchdog_poll_does_not_extend_or_prematurely_expire(world):
+    controller, proposal, _, destination, _ = world
+    controller.begin("t1", proposal); controller.apply("t1")
+    controller.now = lambda: datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=1)
+    assert controller.expire("t1")["state"] == "VERIFYING"
+    assert destination.read_text() == "new\n"
+    restarted = tx.Controller(
+        controller.root, run=controller.run,
+        now=lambda: datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(hours=2),
+    )
+    assert restarted.expire("t1")["state"] == "ROLLED_BACK"
+    assert destination.read_text() == "old\n"
+
+
 def test_conflicting_transactions_are_rejected_and_state_is_durable(world):
     controller, proposal, _, _, _ = world
     controller.begin("t1", proposal)
@@ -143,6 +157,7 @@ def test_unrelated_good_check_cannot_authorize_changed_artifact(world):
 def test_timer_is_persistent_two_hour_independent_unit():
     timer = (ROOT / "governor/systemd/lifeos-rollback@.timer").read_text()
     service = (ROOT / "governor/systemd/lifeos-rollback@.service").read_text()
-    assert "OnActiveSec=2h" in timer and "Persistent=true" in timer
-    assert "ExecStart=/usr/local/sbin/lifeos-rollback %i" in service
+    assert "OnBootSec=1min" in timer and "OnUnitActiveSec=1min" in timer
+    assert "OnActiveSec=2h" not in timer
+    assert "ExecStart=/usr/local/sbin/lifeos-rollback --expired %i" in service
     assert "Governor" not in service
