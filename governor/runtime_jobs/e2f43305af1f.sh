@@ -68,7 +68,19 @@ o=(-o "Dir::Etc=$w/etc/apt" -o "Dir::State::lists=$w/lists" -o "Dir::Cache=$w/ca
 run 240s apt-get "${o[@]}" update >/dev/null || stage_fail repository_metadata
 version=$(apt-cache "${o[@]}" policy nvidia-driver-580 | awk '/Candidate:/ {print $2;exit}')
 [[ $version == 580.* ]] || stage_fail no_r580_candidate
-sim="$w/sim"; run 240s apt-get "${o[@]}" -s --no-install-recommends install "nvidia-driver-580=$version" >"$sim" 2>&1 || { cat "$sim"; stage_fail dependency_resolution; }
+# NVIDIA's Debian packages and Debian's native R535 packages use different
+# package-family names.  Model the migration as one atomic remove/install
+# request; asking APT to install the meta-package alone was the V39/V40-style
+# incoherent simulation which this job replaces.
+mapfile -t old_names < <(dpkg-query -W -f='${binary:Package}\t${Version}\n' 2>/dev/null |
+  awk 'tolower($0) ~ /(nvidia|cuda)/ {sub(/:amd64$/, "", $1); print $1}' | sort -u)
+[[ ${#old_names[@]} -gt 0 ]] || stage_fail r535_package_family_empty
+remove_args=(); for package in "${old_names[@]}"; do remove_args+=("$package-"); done
+sim="$w/sim"
+run 240s apt-get "${o[@]}" -s --no-install-recommends install \
+  "${remove_args[@]}" "nvidia-driver-580=$version" >"$sim" 2>&1 || {
+    cat "$sim"; stage_fail dependency_resolution;
+  }
 grep -q '^Inst nvidia-dkms-580 ' "$sim" || { cat "$sim"; stage_fail proprietary_dkms_missing; }
 grep -q '^Inst nvidia-kernel-source-580 ' "$sim" || { cat "$sim"; stage_fail proprietary_source_missing; }
 inst=$(awk '$1=="Inst" {v=$3;gsub(/[()]/,"",v);print $2"="v}' "$sim")
@@ -79,6 +91,9 @@ if awk '$1=="Inst" && tolower($2) ~ /(nvidia|cuda)/ && tolower($2) ~ /open/' "$s
 rem=$(awk '$1=="Remv" {print $2}' "$sim")
 critical='^(proxmox|pve-|linux-image|openssh-server$|systemd|ifupdown2$|network-manager$|zfs|grub|shim|initramfs-tools$|apt$|dpkg$)'
 if printf '%s\n' "$rem" | grep -Eq "$critical"; then cat "$sim"; stage_fail critical_removal; fi
+for package in "${old_names[@]}"; do
+  printf '%s\n' "$rem" | grep -Fqx "$package" || { cat "$sim"; stage_fail "r535_removal_missing_$package"; }
+done
 printf 'STAGE=metadata PASS candidate=%s rejected=R590+ source=NVIDIA_debian12\n' "$version"
 printf 'STAGE=transaction PASS installs=%s removals=%s open_modules=none newer_branch=none\n' "$(printf '%s\n' "$inst" | wc -l)" "$(printf '%s\n' "$rem" | paste -sd, - | sed 's/^$/none/')"
 printf 'R580_DEPENDENCY_GRAPH=%s\n' "$(printf '%s\n' "$nv" | paste -sd' ' -)"
@@ -94,23 +109,29 @@ set -Eeuo pipefail
 [[ \$(uname -r) == '$kernel' ]] || { echo 'REFUSED kernel drift'; exit 21; }
 [[ \$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -1) == '$driver' ]] || { echo 'REFUSED driver drift'; exit 22; }
 printf '%s\n' '$old' >/root/lifeos-r535-package-inventory.txt
+install -d -m0700 /root/lifeos-r580-source-backup
+cp -a /etc/apt/sources.list /etc/apt/sources.list.d /etc/apt/preferences.d /root/lifeos-r580-source-backup/
 install -d -m0755 /etc/apt/keyrings
 curl -fsSL --max-time 60 https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/3bf863cc.pub | gpg --dearmor --yes -o /etc/apt/keyrings/nvidia-cuda.gpg
+# Normalize pre-existing NVIDIA entries to prevent duplicate-URI/Signed-By
+# conflicts.  The complete original APT configuration is backed up above.
+sed -i '\|developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64|d' /etc/apt/sources.list 2>/dev/null || :
+find /etc/apt/sources.list.d -maxdepth 1 -type f ! -name lifeos-r580.list -exec sed -i '\|developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64|d' {} +
 printf '%s\n' 'deb [signed-by=/etc/apt/keyrings/nvidia-cuda.gpg] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /' >/etc/apt/sources.list.d/lifeos-r580.list
 cat >/etc/apt/preferences.d/lifeos-r580 <<'PINS'
 $(cat "$w/etc/apt/preferences.d/r580")
 PINS
 apt-get update
-apt-get -s --no-install-recommends install 'nvidia-driver-580=$version' | tee /root/lifeos-r580-final-simulation.txt
+apt-get -s --no-install-recommends install ${remove_args[*]} 'nvidia-driver-580=$version' | tee /root/lifeos-r580-final-simulation.txt
 grep -q '^Inst nvidia-dkms-580 ' /root/lifeos-r580-final-simulation.txt
 ! grep -Eiq '^Inst .*([-=(]59[0-9]|[-=(]6[0-9][0-9])' /root/lifeos-r580-final-simulation.txt
 ! awk '\$1=="Remv" {print \$2}' /root/lifeos-r580-final-simulation.txt | grep -Eq '$critical'
-apt-get --no-install-recommends install 'nvidia-driver-580=$version'
+apt-get --no-install-recommends install ${remove_args[*]} 'nvidia-driver-580=$version'
 update-initramfs -u -k '$kernel'
 echo 'INSTALL_COMPLETE reboot required; expected outage 5-15 minutes'
 EOF
 printf 'PRODUCTION_SCRIPT_B64=%s\n' "$(base64 -w0 "$w/candidate")"
-printf 'ROLLBACK_PLAN=GRUB boot %s; remove only installed R580 transaction packages; reinstall inventory /root/lifeos-r535-package-inventory.txt; retain %s\n' "$rollback" "$kernel"
+printf 'ROLLBACK_PLAN=GRUB boot %s; restore APT configuration from /root/lifeos-r580-source-backup; remove only installed R580 transaction packages; reinstall inventory /root/lifeos-r535-package-inventory.txt; retain %s\n' "$rollback" "$kernel"
 printf 'POST_REBOOT_PLAN=nvidia-smi=580.*, DKMS installed for %s, Ollama loopback-only, CUDA inference smoke, Proxmox/ZFS/network/SSH health\n' "$kernel"
 printf 'STAGE=candidate PASS outage=one_reboot_5_to_15_minutes production_change=NOT_RUN\n'
 REMOTE
