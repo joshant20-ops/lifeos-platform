@@ -82,10 +82,26 @@ def disposition(regression: dict[str, str], rollback_safe: bool) -> tuple[str, b
     if values - {"PASS", "WATCH", "FAIL"}:
         raise ContractError("regression results must be PASS, WATCH, or FAIL")
     if "FAIL" in values:
-        return ("ROLLED_BACK" if rollback_safe else "ESCALATE_ROLLBACK_UNPROVEN", rollback_safe)
+        return ("ROLLBACK_REQUIRED" if rollback_safe else "ESCALATE_ROLLBACK_UNPROVEN", False)
     if "WATCH" in values:
         return "WATCH", False
     return "ACCEPTED", False
+
+
+def prove_rollback(observation: dict[str, Any], installed_digest: str) -> None:
+    """Require deterministic evidence that the previous baseline was restored."""
+    proof = observation.get("rollback_proof")
+    if not isinstance(proof, dict):
+        raise ContractError("rollback proof is required before reporting ROLLED_BACK")
+    if proof.get("restored_digest") != installed_digest:
+        raise ContractError("rollback restored digest does not match pre-update digest")
+    regression = proof.get("regression")
+    if not isinstance(regression, dict):
+        raise ContractError("rollback regression evidence is required")
+    _required_checks(regression, REGRESSION_CHECKS, "rollback regression")
+    values = {str(regression[name]).upper() for name in REGRESSION_CHECKS}
+    if values != {"PASS"}:
+        raise ContractError("rollback regression must pass every mandatory check")
 
 
 def build_packet(policy: dict[str, Any], observation: dict[str, Any]) -> dict[str, Any]:
@@ -106,6 +122,11 @@ def build_packet(policy: dict[str, Any], observation: dict[str, Any]) -> dict[st
     final, rollback_executed = ("SHADOW_REVIEW", False)
     if regression is not None:
         final, rollback_executed = disposition(regression, bool(observation.get("rollback_safe", False)))
+    if observation.get("rollback_proof") is not None:
+        if final != "ROLLBACK_REQUIRED":
+            raise ContractError("rollback proof is only valid after a failed regression")
+        prove_rollback(observation, installed_digest)
+        final, rollback_executed = "ROLLED_BACK", True
     source = str(candidate.get("source", ""))
     if not source.startswith("https://"):
         raise ContractError("candidate source must be an HTTPS release URL")
@@ -127,6 +148,7 @@ def build_packet(policy: dict[str, Any], observation: dict[str, Any]) -> dict[st
         "one_component_only": True,
         "pre_update": pre,
         "regression": regression,
+        "rollback_proof": observation.get("rollback_proof"),
         "final_disposition": final,
         "rollback_executed": rollback_executed,
         "control_writes_permitted": False,

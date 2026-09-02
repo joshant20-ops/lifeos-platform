@@ -25,9 +25,13 @@ ambiguous evidence fails closed. Installed and candidate images must have valid
 WATCH, and unproven rollback all escalate. `automatic_deploy_allowed` and
 `control_writes_permitted` remain false in every packet.
 
-Rollback currently means a deterministic decision proven by tests, not live
-rollback authority. Before enabling deployment, an accepted architecture
-decision and independent review must define a Pi5-owned bounded transaction:
+Rollback currently means a deterministic, evidence-driven state transition,
+not live rollback authority. A failed regression with a proven-safe restore is
+labelled `ROLLBACK_REQUIRED`; it is only labelled `ROLLED_BACK` when the packet
+also records restoration of the exact pre-update digest and a second complete
+regression in which every mandatory check passes. Missing, mismatched, WATCH,
+or FAIL rollback evidence fails closed. Before enabling deployment, an accepted
+architecture decision and independent review must define a Pi5-owned bounded transaction:
 pinned before/after image digests, configuration/state backup, HA config check,
 one-component restart, the complete regression contract, digest-pinned restore,
 and a second regression proving the old baseline. Raw HA states, secrets, and
