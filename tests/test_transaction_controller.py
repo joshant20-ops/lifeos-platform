@@ -1,7 +1,7 @@
 import importlib.util
 import json
 import pathlib
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 import pytest
@@ -75,6 +75,18 @@ def test_model_assertion_cannot_commit(world):
     (controller.root / "t1/verification.json").write_text(json.dumps({"accepted": True, "derived_by": "model", "evidence": []}))
     with pytest.raises(tx.TransactionError, match="evidence rejected"):
         controller.commit("t1")
+
+
+def test_commit_at_deadline_fails_closed_and_rolls_back(world):
+    controller, proposal, _, destination, _ = world
+    controller.begin("t1", proposal); controller.apply("t1"); controller.verify("t1")
+    controller.now = lambda: datetime(2026, 1, 1, tzinfo=timezone.utc) + timedelta(seconds=tx.DEFAULT_DEADLINE)
+    with pytest.raises(tx.TransactionError, match="deadline expired; rolled back"):
+        controller.commit("t1")
+    assert destination.read_text() == "old\n"
+    manifest = controller.status("t1")
+    assert manifest["state"] == "ROLLED_BACK"
+    assert manifest["rollback"]["reason"] == "health deadline expired"
 
 
 def test_critical_failure_rolls_back_immediately(world):
