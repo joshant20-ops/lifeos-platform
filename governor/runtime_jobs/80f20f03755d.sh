@@ -9,7 +9,7 @@ readonly PROJECT=lifeos-rundeck-shadow
 started_here=false
 
 compose() {
-  timeout 10m docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
+  timeout 12m docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
 }
 
 result() {
@@ -26,6 +26,14 @@ result() {
 
 fail() {
   local reason=$1
+  # Keep failure evidence useful without printing Compose environment values or
+  # application logs, either of which may contain externally supplied secrets.
+  # Status and health-state fields are sufficient to distinguish pull, startup,
+  # and health-check failures on the next autonomous iteration.
+  if command -v docker >/dev/null 2>&1 && [[ -f "$ENV_FILE" ]]; then
+    compose ps --format 'FAIL_EVIDENCE service={{.Service}} state={{.State}} health={{.Health}}' \
+      2>/dev/null || true
+  fi
   if [[ "$started_here" == true ]]; then
     compose down --remove-orphans >/dev/null 2>&1 || true
   fi
@@ -63,7 +71,9 @@ rundeck_id=$(compose ps -q rundeck 2>/dev/null || true)
 if [[ -z "$rundeck_id" ]]; then
   started_here=true
 fi
-compose up -d --wait --wait-timeout 240 || fail shadow_start_or_health_failed
+# Rundeck performs first-start database migrations on the Pi5. Four minutes was
+# too short for a cold shadow start; retain a finite ten-minute acceptance bound.
+compose up -d --wait --wait-timeout 600 || fail shadow_start_or_health_failed
 
 rundeck_id=$(compose ps -q rundeck)
 db_id=$(compose ps -q rundeck-db)
@@ -100,7 +110,7 @@ timeout 30s docker exec "$db_id" psql -U rundeck -d rundeck -v ON_ERROR_STOP=1 \
   -c "INSERT INTO lifeos_shadow_acceptance (id) VALUES ('$JOB_ID') ON CONFLICT (id) DO NOTHING;" \
   >/dev/null || fail persistence_canary_create_failed
 compose restart rundeck-db >/dev/null || fail database_restart_failed
-compose up -d --wait --wait-timeout 240 >/dev/null || fail post_restart_health_failed
+compose up -d --wait --wait-timeout 600 >/dev/null || fail post_restart_health_failed
 db_id=$(compose ps -q rundeck-db)
 canary=$(timeout 30s docker exec "$db_id" psql -U rundeck -d rundeck -At \
   -c "SELECT count(*) FROM lifeos_shadow_acceptance WHERE id='$JOB_ID';")
