@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 PLATFORM="${LIFEOS_PLATFORM_REPO:-/home/joshan/lifeos-platform}"
+MANIFEST="$PLATFORM/ansible/vars/compose_projects.json"
 BACKUP="${LIFEOS_BACKUP_ROOT:-/mnt/docker-data/automation/backups/pinned-compose-${STAMP}}"
 LOG="$BACKUP/run.log"
 
@@ -28,6 +29,31 @@ trap 'rc=$?; printf "\nFAILED at line %s (exit %s)\n" "${BASH_LINENO[0]:-unknown
 if [[ $EUID -ne 0 ]]; then exec sudo -E bash "$0" "$@"; fi
 mkdir -p "$BACKUP"; touch "$LOG"; exec > >(tee -a "$LOG") 2>&1
 
+live_path_for(){
+  python3 - "$MANIFEST" "$1" <<'PY'
+import json, pathlib, sys
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+project = sys.argv[2]
+matches = [x for x in manifest.get("compose_files", []) if x.get("project") == project]
+if len(matches) != 1:
+    raise SystemExit(f"expected exactly one compose_files entry for {project}, found {len(matches)}")
+print(matches[0]["live_path"])
+PY
+}
+
+desired_path_for(){
+  python3 - "$MANIFEST" "$PLATFORM" "$1" <<'PY'
+import json, pathlib, sys
+manifest = json.loads(pathlib.Path(sys.argv[1]).read_text())
+platform = pathlib.Path(sys.argv[2])
+project = sys.argv[3]
+matches = [x for x in manifest.get("compose_files", []) if x.get("project") == project]
+if len(matches) != 1:
+    raise SystemExit(f"expected exactly one compose_files entry for {project}, found {len(matches)}")
+print(platform / "ansible" / matches[0]["desired_rel"])
+PY
+}
+
 say "LifeOS pinned Compose sync"
 info "Platform: $PLATFORM"
 info "Backup:   $BACKUP"
@@ -35,32 +61,34 @@ info "Backup:   $BACKUP"
 say "GATE 0 — Preflight"
 [[ "$(hostname)" == Docker ]] || die "Expected host Docker"
 [[ -d "$PLATFORM/.git" ]] || die "lifeos-platform missing"
+[[ -f "$MANIFEST" ]] || die "compose manifest missing"
 [[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform dirty"
 [[ "$(git -C "$PLATFORM" branch --show-current)" == main ]] || die "lifeos-platform must be on main"
 
 python3 "$PLATFORM/scripts/validate-compose-inventory.py"
 
 for p in "${PROJECTS[@]}"; do
-  desired="$PLATFORM/ansible/desired/compose/$p/docker-compose.yml"
-  live="/opt/stacks/$p/docker-compose.yml"
+  desired="$(desired_path_for "$p")"
+  live="$(live_path_for "$p")"
   [[ -f "$desired" ]] || die "missing desired compose: $desired"
   [[ -f "$live" ]] || die "missing live compose: $live"
   docker compose -f "$desired" config -q
-  info "PASS desired: $p"
+  info "PASS desired/live: $p -> $live"
 done
 
-# The three intentionally unpinned projects must remain untouched by this script.
 for p in autoheal qbittorrent lifeos-energy; do
-  [[ -f "$PLATFORM/ansible/desired/compose/$p/docker-compose.yml" ]] || die "expected preserved project missing: $p"
+  desired="$(desired_path_for "$p")"
+  [[ -f "$desired" ]] || die "expected preserved project missing: $p"
 done
 
-gate "Preflight passed. Back up the ten live Compose files before synchronising pinned desired state?"
+gate "Preflight passed. Back up the ten manifest-declared live Compose files before synchronising pinned desired state?"
 
 say "GATE 1 — Backup"
 mkdir -p "$BACKUP/live-compose"
 for p in "${PROJECTS[@]}"; do
+  live="$(live_path_for "$p")"
   mkdir -p "$BACKUP/live-compose/$p"
-  cp -a "/opt/stacks/$p/docker-compose.yml" "$BACKUP/live-compose/$p/docker-compose.yml.before"
+  cp -a "$live" "$BACKUP/live-compose/$p/docker-compose.yml.before"
 done
 
 docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$BACKUP/docker-ps.before.tsv"
@@ -69,25 +97,24 @@ gate "Backup complete. Replace only the live Compose definitions (NO container r
 
 say "GATE 2 — Synchronise definitions"
 for p in "${PROJECTS[@]}"; do
-  desired="$PLATFORM/ansible/desired/compose/$p/docker-compose.yml"
-  live="/opt/stacks/$p/docker-compose.yml"
+  desired="$(desired_path_for "$p")"
+  live="$(live_path_for "$p")"
   install -m "$(stat -c '%a' "$live")" -o "$(stat -c '%u' "$live")" -g "$(stat -c '%g' "$live")" "$desired" "$live"
   cmp -s "$desired" "$live" || die "live/desired mismatch after copy: $p"
   docker compose -f "$live" config -q
-  info "SYNCED: $p"
+  info "SYNCED: $p -> $live"
 done
 
 say "GATE 3 — Runtime invariants"
-# No docker compose up/down/restart is executed by this script. Prove the current
-# running images still exactly match the pinned desired images.
 python3 "$PLATFORM/scripts/lifeos-running-image-digest-audit.py" | tee "$BACKUP/running-digest-audit.txt"
 
 grep -q '^RUNNING_IMAGE_DIGEST_AUDIT=PASS$' "$BACKUP/running-digest-audit.txt" || die "running digest audit did not pass"
 grep -q '^DRIFT=0$' "$BACKUP/running-digest-audit.txt" || die "runtime drift detected"
 
-# Confirm all synchronised live files are byte-identical to desired state.
 for p in "${PROJECTS[@]}"; do
-  cmp -s "$PLATFORM/ansible/desired/compose/$p/docker-compose.yml" "/opt/stacks/$p/docker-compose.yml" || die "final live/desired mismatch: $p"
+  desired="$(desired_path_for "$p")"
+  live="$(live_path_for "$p")"
+  cmp -s "$desired" "$live" || die "final live/desired mismatch: $p"
 done
 
 [[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform became dirty"
@@ -100,6 +127,7 @@ PINNED_CORE_SERVICES=12
 SYNCED_COMPOSE_PROJECTS=10
 CONTAINERS_RECREATED=0
 RUNTIME_DRIFT=0
+LIVE_PATH_SOURCE=COMPOSE_MANIFEST
 AUTOHEAL_UNCHANGED=YES
 QBITTORRENT_UNCHANGED=YES
 LIFEOS_ENERGY_UNCHANGED=YES
