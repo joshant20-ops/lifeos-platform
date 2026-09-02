@@ -1,0 +1,44 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "maximum iterations reached"
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #7 in joshant20-ops/lifeos-platform: P1: Prove safe Z97 P106 shared-GPU R580 migration This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Goal Autonomously prove a safe NVIDIA R580 migration path for the Z97/TowerPC P106-100 shared GPU service plane, using the existing LifeOS Engineer/Governor workflow and Pi5 relay. Do not perform the productio",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 8,
+  "job_id": "a56ef2e00b48",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": {
+    "commit": "ca6a08c60949f3d036623c63408199af49b49e21",
+    "path": "governor/runtime_jobs/a56ef2e00b48.sh",
+    "published": "PASS",
+    "sha256": "5a771f45572269d9025478a33e600dea8990a82f7727cd8d522edfd9d2df690e"
+  },
+  "runtime_return_code": 1,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T16:07:52+0100",
+    "created_at": "2026-09-02T15:43:17+0100",
+    "stage_changed_at": "2026-09-02T16:07:52+0100",
+    "started_at": "2026-09-02T15:43:17+0100"
+  }
+}
