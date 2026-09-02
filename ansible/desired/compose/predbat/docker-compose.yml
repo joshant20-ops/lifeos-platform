@@ -1,6 +1,6 @@
 services:
   predbat:
-    image: nipar44/predbat_addon:latest
+    image: nipar44/predbat_addon@sha256:1513803d4111d5db7b22ca461bb52ff57af3d59244ecfe9daf0bf3a2cbc82a71
     container_name: predbat
     restart: unless-stopped
     labels:
