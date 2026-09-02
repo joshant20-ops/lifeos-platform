@@ -87,7 +87,8 @@ Pin-Priority: -1
 PINS
 o=(-o "Dir::Etc=$w/etc/apt" -o "Dir::State::lists=$w/lists" -o "Dir::Cache=$w/cache" \
    -o Dir::State::status=/var/lib/dpkg/status -o Acquire::Languages=none \
-   -o APT::Get::List-Cleanup=0 -o "APT::Sandbox::User=$(id -un)")
+   -o APT::Get::List-Cleanup=0 -o Debug::NoLocking=1 \
+   -o "APT::Sandbox::User=$(id -un)")
 run 300s apt-get "${o[@]}" update >/dev/null
 version=$(apt-cache "${o[@]}" policy nvidia-driver-580 | awk '/Candidate:/ {print $2;exit}')
 [[ $version == 580.* ]]

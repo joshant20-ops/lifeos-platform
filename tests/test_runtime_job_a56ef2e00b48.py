@@ -51,5 +51,6 @@ def test_metadata_refresh_isolated_from_unrelated_host_sources():
     assert '-exec cp -- {} "$w/lists/"' in text
     assert 'cp -a /var/lib/apt/lists/.' not in text
     assert ': >"$w/etc/apt/sources.list"' in text
+    assert "Debug::NoLocking=1" in text
     assert 'APT::Sandbox::User=$(id -un)' in text
     assert 'cp -a /etc/apt/sources.list.d/.' not in text
