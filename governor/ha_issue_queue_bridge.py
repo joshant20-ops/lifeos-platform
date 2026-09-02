@@ -112,7 +112,8 @@ def issue_status(number, durable, active, jobs_by_id):
 def issue_plan_progress(number, durable):
     plan = durable.get("issues", {}).get(str(number), {}).get("plan") or {}
     milestones = plan.get("milestones") or []
-    targets = [target for milestone in milestones for target in milestone.get("targets", [])]
+    targets = [target for milestone in milestones for target in milestone.get("targets", [])
+               if target.get("state") != "SUPERSEDED"]
     current = next((target for target in targets if target.get("state") == "IN_PROGRESS"), None)
     if current is None:
         passed = {target.get("id") for target in targets if target.get("state") == "PASS"}
