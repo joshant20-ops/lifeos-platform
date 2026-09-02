@@ -59,10 +59,13 @@ stage=repository_metadata
 w=$(mktemp -d)
 trap 'rm -rf -- "$w"' EXIT
 mkdir -p "$w/etc/apt/sources.list.d" "$w/etc/apt/preferences.d" "$w/lists/partial" "$w/cache/archives/partial"
-cp -a /etc/apt/sources.list "$w/etc/apt/" 2>/dev/null || :
-cp -a /etc/apt/sources.list.d/. "$w/etc/apt/sources.list.d/" 2>/dev/null || :
-sed -i '\|developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64|d' "$w/etc/apt/sources.list" 2>/dev/null || :
-find "$w/etc/apt/sources.list.d" -maxdepth 1 -type f -exec sed -i '\|developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64|d' {} +
+# Seed the disposable lists with the host's current Debian/Proxmox metadata,
+# but do not update those sources.  The earlier diagnostic copied and updated
+# every configured source, so an unrelated protected or unavailable source
+# could block this otherwise read-only NVIDIA proof.
+cp -a /var/lib/apt/lists/. "$w/lists/"
+mkdir -p "$w/lists/partial"
+: >"$w/etc/apt/sources.list"
 printf '%s\n' 'deb [trusted=yes] https://developer.download.nvidia.com/compute/cuda/repos/debian12/x86_64/ /' >"$w/etc/apt/sources.list.d/lifeos-r580.list"
 cat >"$w/etc/apt/preferences.d/lifeos-r580" <<'PINS'
 Package: nvidia-* libnvidia-* cuda-* libcuda* xserver-xorg-video-nvidia*
@@ -78,11 +81,12 @@ Pin: version 59[05]*
 Pin-Priority: -1
 
 Package: nvidia-* libnvidia-* cuda-* libcuda* xserver-xorg-video-nvidia*
-Pin: version 6[01]0*
+Pin: version 6*
 Pin-Priority: -1
 PINS
 o=(-o "Dir::Etc=$w/etc/apt" -o "Dir::State::lists=$w/lists" -o "Dir::Cache=$w/cache" \
-   -o Dir::State::status=/var/lib/dpkg/status -o Acquire::Languages=none -o APT::Get::List-Cleanup=0)
+   -o Dir::State::status=/var/lib/dpkg/status -o Acquire::Languages=none \
+   -o APT::Get::List-Cleanup=0 -o "APT::Sandbox::User=$(id -un)")
 run 300s apt-get "${o[@]}" update >/dev/null
 version=$(apt-cache "${o[@]}" policy nvidia-driver-580 | awk '/Candidate:/ {print $2;exit}')
 [[ $version == 580.* ]]
@@ -114,7 +118,7 @@ nv=$(printf '%s\n' "$inst" | grep -Ei '(nvidia|cuda|libnv)' || true)
 # Audit package names and all version tokens, including unversioned package names.
 ! printf '%s\n' "$nv" | grep -Ei '(^|[-=.+~:])(59[0-9]|6[0-9][0-9])([-.+~:]|$)'
 rem=$(awk '$1=="Remv" {print $2}' "$sim")
-critical='^(proxmox-ve$|proxmox-default-kernel$|pve-manager$|pve-kernel-|linux-image-|openssh-server$|systemd|ifupdown2$|network-manager$|zfs|grub|shim|initramfs-tools$|apt$|dpkg$)'
+critical='^(proxmox|pve-|linux-(image|headers)-|openssh-(server|client)$|systemd|ifupdown|ifupdown2$|network-manager$|zfs|grub|shim|initramfs-tools$|apt$|dpkg$)'
 ! printf '%s\n' "$rem" | grep -Eq "$critical"
 for package in "${old_names[@]}"; do printf '%s\n' "$rem" | grep -Fqx "$package"; done
 printf 'STAGE=transaction PASS installs=%s removals=%s critical_removals=none open_modules=none R590_plus=none\n' \
