@@ -24,6 +24,17 @@ trap 'rc=$?; (( rc == 0 )) || true' EXIT
 [[ "$(id -u)" -eq 0 ]] || fail must_run_as_root_via_Watchman
 [[ -d "$REPO/.git" ]] || fail canonical_pi5_checkout_missing
 [[ -f "$COMPOSE" ]] || fail semaphore_compose_missing
+# Runtime acceptance must describe published, immutable source rather than an
+# ad-hoc edit in the Pi5 checkout.  This also turns a missed publication into a
+# precise barrier before Docker state can change.
+git -C "$REPO" ls-files --error-unmatch \
+  "orchestration/semaphore/docker-compose.yml" \
+  "governor/runtime_jobs/$JOB_ID.sh" >/dev/null 2>&1 || fail shadow_source_not_tracked
+git -C "$REPO" diff --quiet HEAD -- \
+  "orchestration/semaphore/docker-compose.yml" \
+  "governor/runtime_jobs/$JOB_ID.sh" || fail shadow_source_not_published
+source_commit=$(git -C "$REPO" rev-parse --verify HEAD) || fail source_commit_unavailable
+[[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || fail invalid_source_commit
 [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || fail missing_root_owned_semaphore_env
 [[ "$(stat -c '%U:%G:%a' "$ENV_FILE")" == root:root:600 ]] || fail unsafe_semaphore_env_permissions
 
@@ -73,5 +84,5 @@ published=$(docker inspect -f '{{(index (index .NetworkSettings.Ports "3000/tcp"
 [[ "$published" == "$LIFEOS_SEMAPHORE_BIND_IP" ]] || fail semaphore_not_lan_bound
 [[ "$(systemctl is-active lifeos-backlog-runner.timer 2>/dev/null || true)" == "$compat_before" ]] || fail compatibility_path_disturbed
 
-printf 'SEMAPHORE_SHADOW=PASS job=%s version=v2.18.29 architecture=arm64 bind=%s compatibility_timer=%s\n' "$JOB_ID" "$LIFEOS_SEMAPHORE_BIND_IP" "$compat_before"
+printf 'SEMAPHORE_SHADOW=PASS job=%s source_commit=%s version=v2.18.29 architecture=arm64 bind=%s compatibility_timer=%s\n' "$JOB_ID" "$source_commit" "$LIFEOS_SEMAPHORE_BIND_IP" "$compat_before"
 finish PASS none 'add the allow-listed Ansible execution catalogue and structured Semaphore adapter' PASS 'compose contract, native ARM64 images, health, LAN and privilege boundaries PASS' 'verify persistence across Pi5 reboot and rehearse local backup/restore'
