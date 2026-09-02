@@ -44,3 +44,14 @@ def test_repository_model_keeps_raw_and_private_evidence_out_of_git():
         "arbitrary logs",
     ):
         assert prohibition in model
+
+
+def test_superseded_issue_and_relay_gate_have_an_explicit_disposition():
+    decision = DECISION.read_text()
+    prose = " ".join(decision.split())
+
+    assert "joshant20-ops/lifeos-platform#2" in decision
+    assert "0019-two-repo-migration-gate" in decision
+    assert "must not be used as acceptance gates" in prose
+    assert "Preserve any existing job and result records" in prose
+    assert "record the issue as superseded" in prose

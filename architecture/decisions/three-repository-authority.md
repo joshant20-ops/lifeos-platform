@@ -35,3 +35,17 @@ preserves the cloud-safe repository boundary.
 If either evidence exporter is unhealthy, stop that export and retain the
 sanitised records locally on Pi5 until repaired. Do not restore the superseded
 captured-output relay model, and do not promote evidence into desired state.
+
+## Superseded migration work
+
+GitHub issue `joshant20-ops/lifeos-platform#2` and relay job
+`0019-two-repo-migration-gate` describe the superseded two-repository target.
+They must not be used as acceptance gates for the current repository model or
+re-run to make the old relay authoritative. Preserve any existing job and
+result records as migration evidence; record the issue as superseded by this
+decision.
+
+Follow the migration gates in `architecture/REPOSITORY_MODEL.md` for the
+current three-repository model. In particular, retirement still requires
+sanitised exports to both evidence repositories and does not permit raw runtime
+output in Git.
