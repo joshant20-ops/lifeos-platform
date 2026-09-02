@@ -2,7 +2,11 @@
 set -euo pipefail
 
 readonly JOB_ID=c3751aaff97b
-readonly REPO="${LIFEOS_REPO_ROOT:-/opt/lifeos-platform}"
+# Pi5 owns the canonical checkout at this fixed path.  The previous /opt
+# default made a correctly published shadow fail as semaphore_compose_missing
+# before Compose could validate or start it.  Keep an explicit override for
+# the local contract test only; Watchman uses the canonical default.
+readonly REPO="${LIFEOS_REPO_ROOT:-/home/joshan/lifeos-platform}"
 readonly COMPOSE="$REPO/orchestration/semaphore/docker-compose.yml"
 readonly ENV_FILE=/etc/lifeos/semaphore.env
 readonly PROJECT=lifeos-semaphore-shadow
@@ -18,6 +22,7 @@ fail() {
 trap 'rc=$?; (( rc == 0 )) || true' EXIT
 
 [[ "$(id -u)" -eq 0 ]] || fail must_run_as_root_via_Watchman
+[[ -d "$REPO/.git" ]] || fail canonical_pi5_checkout_missing
 [[ -f "$COMPOSE" ]] || fail semaphore_compose_missing
 [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || fail missing_root_owned_semaphore_env
 [[ "$(stat -c '%U:%G:%a' "$ENV_FILE")" == root:root:600 ]] || fail unsafe_semaphore_env_permissions
@@ -68,5 +73,5 @@ published=$(docker inspect -f '{{(index (index .NetworkSettings.Ports "3000/tcp"
 [[ "$published" == "$LIFEOS_SEMAPHORE_BIND_IP" ]] || fail semaphore_not_lan_bound
 [[ "$(systemctl is-active lifeos-backlog-runner.timer 2>/dev/null || true)" == "$compat_before" ]] || fail compatibility_path_disturbed
 
-printf 'SEMAPHORE_SHADOW=PASS version=v2.18.29 architecture=arm64 bind=%s compatibility_timer=%s\n' "$LIFEOS_SEMAPHORE_BIND_IP" "$compat_before"
+printf 'SEMAPHORE_SHADOW=PASS job=%s version=v2.18.29 architecture=arm64 bind=%s compatibility_timer=%s\n' "$JOB_ID" "$LIFEOS_SEMAPHORE_BIND_IP" "$compat_before"
 finish PASS none 'add the allow-listed Ansible execution catalogue and structured Semaphore adapter' PASS 'compose contract, native ARM64 images, health, LAN and privilege boundaries PASS' 'verify persistence across Pi5 reboot and rehearse local backup/restore'

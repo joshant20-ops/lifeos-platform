@@ -34,6 +34,9 @@ def test_shadow_has_no_privileged_runtime_surface_or_inline_secrets():
 def test_runtime_acceptance_fails_closed_before_start():
     text = LAUNCHER.read_text()
     assert text.startswith("#!/usr/bin/env bash\nset -euo pipefail")
+    assert '${LIFEOS_REPO_ROOT:-/home/joshan/lifeos-platform}' in text
+    assert "canonical_pi5_checkout_missing" in text
+    assert "/opt/lifeos-platform" not in text
     assert "timeout 300s" in text
     assert "host_not_arm64" in text
     assert "resolved_image_not_arm64" in text
