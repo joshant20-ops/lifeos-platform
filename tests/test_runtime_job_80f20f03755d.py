@@ -47,7 +47,8 @@ def test_shadow_acceptance_checks_boundaries_health_and_persistence():
         "database_persistence_canary_failed",
         "database_backup_restore_rehearsal_failed",
         "shadow_recreate_or_health_failed",
-        "rundeck_recovery_restart_failed",
+        "rundeck_recovery_stop_failed",
+        "rundeck_recovery_start_failed",
     ):
         assert required in text
 
@@ -63,10 +64,12 @@ def test_retry_repairs_stale_unhealthy_shadow_without_removing_volumes():
 
 def test_restart_waits_for_database_and_runtime_probes_report_failures():
     text = LAUNCHER.read_text(encoding="utf-8")
+    rundeck_stop = text.index("compose stop -t 60 rundeck")
     restart = text.index("compose restart rundeck-db")
     database_healthy = text.index("database_unhealthy_after_restart")
-    rundeck_restart = text.index("compose restart rundeck >/dev/null")
-    assert restart < database_healthy < rundeck_restart
+    rundeck_start = text.index("compose start rundeck >/dev/null")
+    assert rundeck_stop < restart < database_healthy < rundeck_start
+    assert "compose restart rundeck >/dev/null" not in text
     assert "rundeck_published_port_inspection_failed" in text
     assert "database_persistence_canary_query_failed" in text
     assert "rundeck_container_lookup_failed" in text

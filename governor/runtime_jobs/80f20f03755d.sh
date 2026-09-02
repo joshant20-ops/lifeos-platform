@@ -138,10 +138,15 @@ timeout 30s docker exec "$db_id" psql -U rundeck -d rundeck -v ON_ERROR_STOP=1 \
   -c 'CREATE TABLE IF NOT EXISTS lifeos_shadow_acceptance (id text PRIMARY KEY);' \
   -c "INSERT INTO lifeos_shadow_acceptance (id) VALUES ('$JOB_ID') ON CONFLICT (id) DO NOTHING;" \
   >/dev/null || fail persistence_canary_create_failed
+# Stop the application before deliberately interrupting its database. Leaving
+# Rundeck running here can put its unless-stopped policy into a restart race with
+# an explicit `compose restart rundeck`, making a sound persistent stack fail the
+# acceptance rehearsal nondeterministically.
+compose stop -t 60 rundeck >/dev/null || fail rundeck_recovery_stop_failed
 compose restart rundeck-db >/dev/null || fail database_restart_failed
-# Wait for PostgreSQL before restarting Rundeck. `compose restart` does not
-# re-evaluate depends_on health conditions, so immediately restarting Rundeck
-# can race database recovery and leave an otherwise valid shadow stack unhealthy.
+# Wait for PostgreSQL before starting Rundeck. `compose start` does not
+# re-evaluate depends_on health conditions, so the launcher enforces that
+# ordering itself.
 db_id=$(lookup_container_id rundeck-db) || fail rundeck_db_container_lookup_failed_after_restart
 [[ -n "$db_id" ]] || fail rundeck_db_container_missing_after_restart
 for _ in $(seq 1 60); do
@@ -151,9 +156,10 @@ for _ in $(seq 1 60); do
 done
 [[ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$db_id" 2>/dev/null || true)" == healthy ]] \
   || fail database_unhealthy_after_restart
-# Recreate neither service here: restarting Rundeck exercises recovery from the
-# database interruption while retaining both persistent volumes.
-compose restart rundeck >/dev/null || fail rundeck_recovery_restart_failed
+# Recreate neither service here: starting the stopped Rundeck container
+# exercises recovery from the database interruption while retaining both
+# persistent volumes.
+compose start rundeck >/dev/null || fail rundeck_recovery_start_failed
 compose up -d --wait --wait-timeout 600 >/dev/null || fail post_restart_health_failed
 db_id=$(lookup_container_id rundeck-db) || fail rundeck_db_container_lookup_failed_after_recovery
 [[ -n "$db_id" ]] || fail rundeck_db_container_missing_after_recovery
