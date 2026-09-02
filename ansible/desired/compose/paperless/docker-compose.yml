@@ -1,6 +1,6 @@
 services:
   redis:
-    image: redis:7
+    image: redis@sha256:71da9275c5f3fcb97d0fa0c8c5b36cc995327265420f17a04bfd544f458059f7
     restart: unless-stopped
     volumes:
       - redis_data:/data
@@ -11,7 +11,7 @@ services:
       retries: 3
 
   db:
-    image: postgres:15
+    image: postgres@sha256:9b1d34adbce1dd07ee6e94b4a2cf698884b89bd44a6c9c12f5da8f3acbfe4957
     restart: unless-stopped
     environment:
       POSTGRES_DB: paperless
@@ -26,7 +26,7 @@ services:
       retries: 3
 
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    image: ghcr.io/paperless-ngx/paperless-ngx@sha256:5ab4f4f9bb099a36bec3e092906ea3e611323c5f18dc5cc38c76a1d540bdca9c
     restart: unless-stopped
     depends_on:
       - db
