@@ -21,11 +21,12 @@ def test_launcher_proves_issue_7_acceptance_contract():
         "nvidia-dkms-580",
         "nvidia-kernel-source-580",
         "version 59[05]*",
-        "version 6[01]0*",
+        "version 6*",
         "R580_DEPENDENCY_GRAPH=",
         "TRANSACTION_INSTALL=",
         "TRANSACTION_REMOVE=",
         "critical_removals=none",
+        "critical='^(proxmox|pve-",
         "/usr/src/linux-headers-$kernel",
         "rollback_kernel=",
         "Ollama remains loopback-only",
@@ -42,3 +43,11 @@ def test_launcher_emits_machine_contract_on_success_and_failure():
     ):
         assert key in text
     assert 'command=%q' in text
+
+
+def test_metadata_refresh_isolated_from_unrelated_host_sources():
+    text = SCRIPT.read_text()
+    assert 'cp -a /var/lib/apt/lists/. "$w/lists/"' in text
+    assert ': >"$w/etc/apt/sources.list"' in text
+    assert 'APT::Sandbox::User=$(id -un)' in text
+    assert 'cp -a /etc/apt/sources.list.d/.' not in text
