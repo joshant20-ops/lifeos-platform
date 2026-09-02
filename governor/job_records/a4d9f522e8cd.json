@@ -1,0 +1,44 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The runtime script failed because it was not run as root via Watchman. This is a runtime barrier that the autonomous system cannot resolve itself."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #25 in joshant20-ops/lifeos-platform: P0: Deploy and prove Power Down telemetry freshness fix before 18:00 event This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Priority P0 \u2014 today's joined Power Down event is 2026-09-01 18:00\u201319:00 Europe/London. ## Current live evidence - Joined future event ID 5833 detected for 18:00\u201319:00. - Battery readi",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 1,
+  "job_id": "a4d9f522e8cd",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": {
+    "commit": "73e012cf22ebcc4127b2f0fb32fab59c42f78be5",
+    "path": "governor/runtime_jobs/a4d9f522e8cd.sh",
+    "published": "PASS",
+    "sha256": "82f064376396ed9a75709f6c61db9ba9784ee462449e77f276c0fb1fbf59a8fb"
+  },
+  "runtime_return_code": 1,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T11:16:45+0100",
+    "created_at": "2026-09-02T11:11:37+0100",
+    "stage_changed_at": "2026-09-02T11:16:45+0100",
+    "started_at": "2026-09-02T11:11:37+0100"
+  }
+}
