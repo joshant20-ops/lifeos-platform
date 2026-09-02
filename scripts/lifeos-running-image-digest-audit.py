@@ -66,17 +66,41 @@ def inspect_container(name):
     }
 
 
+def image_repo(image):
+    """Return repository portion without tag/digest."""
+    image = (image or "").split("@", 1)[0]
+    last = image.rsplit("/", 1)[-1]
+    if ":" in last:
+        image = image.rsplit(":", 1)[0]
+    return image
+
+
 def choose_digest(desired, running, digests):
     if not digests:
         return ""
-    base = (desired or running or "").split("@")[0]
-    base_no_tag = base
-    if ":" in base.rsplit("/", 1)[-1]:
-        base_no_tag = base.rsplit(":", 1)[0]
+    wanted_repo = image_repo(desired or running)
     for d in digests:
-        if d.startswith(base_no_tag + "@"):
+        if d.startswith(wanted_repo + "@"):
             return d
     return digests[0]
+
+
+def images_match(desired, running, resolved_digest):
+    """Compare image identity, not merely the textual Docker reference.
+
+    Existing containers retain the tag used when they were created in
+    Config.Image. After desired state is changed from :latest/:stable/etc. to an
+    immutable repo@sha256 reference, that textual value will differ even when
+    the running container is backed by exactly the desired digest.
+    """
+    desired = desired or ""
+    running = running or ""
+    resolved_digest = resolved_digest or ""
+
+    if "@sha256:" in desired:
+        return desired == resolved_digest
+
+    return desired == running
 
 
 rows = desired_services()
@@ -87,8 +111,6 @@ counts = {"MATCH": 0, "DRIFT": 0, "NO_CONTAINER": 0, "LOCAL_BUILD": 0, "NO_DIGES
 
 for row in rows:
     service = row["service"]
-    # Current LifeOS compose files use explicit container_name almost everywhere.
-    # Prefer exact service name, then project name, then project-service compose default style.
     candidates = [service, row["project"], f"{row['project']}-{service}-1"]
     container = next((c for c in candidates if c in container_names), None)
 
@@ -111,7 +133,7 @@ for row in rows:
 
     if not digest:
         status = "NO_DIGEST"
-    elif desired == running:
+    elif images_match(desired, running, digest):
         status = "MATCH"
     else:
         status = "DRIFT"
