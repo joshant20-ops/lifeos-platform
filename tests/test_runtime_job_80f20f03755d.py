@@ -8,10 +8,10 @@ LAUNCHER = ROOT / "governor/runtime_jobs/80f20f03755d.sh"
 def test_shadow_acceptance_launcher_is_bounded_and_timeout_aware():
     text = LAUNCHER.read_text(encoding="utf-8")
     assert text.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
-    assert "timeout 10m docker compose" in text
+    assert "timeout 12m docker compose" in text
     assert "--project-name \"$PROJECT\"" in text
     assert "--env-file \"$ENV_FILE\"" in text
-    assert "compose up -d --wait --wait-timeout 240" in text
+    assert text.count("compose up -d --wait --wait-timeout 600") == 2
     assert "-v /var/run/docker.sock" not in text
     assert "--privileged" not in text
     assert "sudo" not in text
@@ -58,3 +58,10 @@ def test_launcher_emits_governor_and_wrapper_contracts():
         "NEXT_RUNTIME_CHECK=%s",
     ):
         assert field in text
+
+
+def test_failure_evidence_is_bounded_and_does_not_emit_secret_bearing_logs():
+    text = LAUNCHER.read_text(encoding="utf-8")
+    assert "FAIL_EVIDENCE service={{.Service}} state={{.State}} health={{.Health}}" in text
+    assert "compose logs" not in text
+    assert "docker inspect" in text
