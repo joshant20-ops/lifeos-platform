@@ -1,0 +1,13 @@
+[Unit]
+Description=LifeOS independent rollback for transaction %i
+Documentation=file:/var/lib/lifeos-transactions/%i/manifest.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/lifeos-rollback %i
+User=root
+Group=root
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/lifeos-transactions /usr/local/libexec
+PrivateTmp=yes
