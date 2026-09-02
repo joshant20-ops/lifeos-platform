@@ -1,0 +1,44 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": null
+  },
+  "final_status": "PASS",
+  "goal_summary": "Process GitHub issue #12 in joshant20-ops/lifeos-platform: Validate current GitHub issue-to-Engineer pickup path This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Goal Validate that the current LifeOS job publisher/Governor/Engineer architecture reliably discovers and consumes eligible GitHub issues, using issue #7 as the live test case. This is a follow-up for the",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 1,
+  "job_id": "2749620a3364",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": {
+    "commit": "6784df9d41427df61eedf365a9daad7fa4979137",
+    "path": "governor/runtime_jobs/2749620a3364.sh",
+    "published": "PASS",
+    "sha256": "ddb81eecdeb454708b28f176df9ddb48685c37f4b5dbb7ec8251a4e0bbd61f2a"
+  },
+  "runtime_return_code": 0,
+  "stage": "complete",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T13:51:36+0100",
+    "created_at": "2026-09-02T13:45:21+0100",
+    "stage_changed_at": "2026-09-02T13:51:36+0100",
+    "started_at": "2026-09-02T13:45:21+0100"
+  }
+}
