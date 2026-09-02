@@ -31,6 +31,29 @@ def run_manifest_validator(tmp_path, manifest, *, optimized=False):
     )
 
 
+def run_result_validator(tmp_path, result, *, optimized=False):
+    text = LAUNCHER.read_text()
+    match = re.search(
+        r'python3 - "\$result" <<\'PY\' \|\| fail pi_0019_result_not_pass\n(.*?)\nPY',
+        text,
+        re.DOTALL,
+    )
+    assert match, "result validator heredoc not found"
+    result_path = tmp_path / "0019-two-repo-migration-gate.json"
+    result_path.write_text(json.dumps(result))
+    env = os.environ.copy()
+    if optimized:
+        env["PYTHONOPTIMIZE"] = "1"
+    return subprocess.run(
+        ["python3", "-", str(result_path)],
+        input=match.group(1),
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+
 def test_launcher_is_safe_bounded_and_fail_closed():
     text = LAUNCHER.read_text()
     assert text.startswith("#!/usr/bin/env bash\nset -Eeuo pipefail")
@@ -86,5 +109,17 @@ def test_launcher_pins_migration_identity_and_waits_for_relay_pass():
     text = LAUNCHER.read_text()
     assert "3a93d6e9e99fe04f62f8a452b688639cefb05b82" in text
     assert "d9a4d225cd16663ec1ed5f0f909b615e4c1f9b91" in text
-    assert 'result.get("classification") == "PASS"' in text
+    assert 'classification != "PASS"' in text
     assert "PI_RELAY_RESULT=PASS" in text
+
+
+def test_result_validator_rejects_failure_when_python_optimized(tmp_path):
+    result = run_result_validator(tmp_path, {"classification": "FAIL"}, optimized=True)
+    assert result.returncode != 0
+    assert "relay result classification is not PASS: FAIL" in result.stderr
+
+
+def test_result_validator_accepts_pass(tmp_path):
+    result = run_result_validator(tmp_path, {"classification": "PASS"})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "PI_RELAY_RESULT=PASS"
