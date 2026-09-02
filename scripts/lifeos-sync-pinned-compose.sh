@@ -68,9 +68,9 @@ say "GATE 0 — Preflight"
 [[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform dirty"
 [[ "$(git -C "$PLATFORM" branch --show-current)" == main ]] || die "lifeos-platform must be on main"
 
-# Require the digest-aware audit implementation. Older revisions compared desired
-# tag text to Config.Image and incorrectly reported digest pins as drift.
-grep -q 'desired == digest' "$AUDIT" || die "digest audit is too old; fetch/reset origin/main before running"
+AUDIT_SCHEMA="$(python3 "$AUDIT" --schema 2>/dev/null || true)"
+[[ "$AUDIT_SCHEMA" == "2" ]] || die "digest audit schema is '$AUDIT_SCHEMA', expected 2; fetch/reset origin/main before running"
+info "Digest audit schema: $AUDIT_SCHEMA"
 
 python3 "$PLATFORM/scripts/validate-compose-inventory.py"
 
@@ -115,6 +115,7 @@ done
 say "GATE 3 — Runtime invariants"
 python3 "$AUDIT" | tee "$BACKUP/running-digest-audit.txt"
 
+grep -q '^AUDIT_SCHEMA=2$' "$BACKUP/running-digest-audit.txt" || die "unexpected digest audit schema at runtime"
 grep -q '^RUNNING_IMAGE_DIGEST_AUDIT=PASS$' "$BACKUP/running-digest-audit.txt" || die "running digest audit did not pass"
 grep -q '^DRIFT=0$' "$BACKUP/running-digest-audit.txt" || die "runtime digest drift detected"
 
@@ -136,6 +137,7 @@ CONTAINERS_RECREATED=0
 RUNTIME_DRIFT=0
 LIVE_PATH_SOURCE=COMPOSE_MANIFEST
 DIGEST_COMPARISON=RESOLVED_IDENTITY
+AUDIT_SCHEMA=2
 AUTOHEAL_UNCHANGED=YES
 QBITTORRENT_UNCHANGED=YES
 LIFEOS_ENERGY_UNCHANGED=YES
