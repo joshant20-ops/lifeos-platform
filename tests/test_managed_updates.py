@@ -59,14 +59,48 @@ def test_risky_release_escalates():
     assert "release_term:battery" in packet["risk_reasons"]
 
 
-def test_deliberate_regression_failure_proves_safe_rollback_decision():
+def test_deliberate_regression_failure_requires_rollback():
     item = observation()
     item["rollback_safe"] = True
     item["regression"] = {name: "PASS" for name in REGRESSION_CHECKS}
     item["regression"]["predbat_plan"] = "FAIL"
     packet = build_packet(POLICY, item)
+    assert packet["final_disposition"] == "ROLLBACK_REQUIRED"
+    assert packet["rollback_executed"] is False
+
+
+def test_rollback_is_reported_only_after_digest_restore_and_full_regression():
+    item = observation()
+    item["rollback_safe"] = True
+    item["regression"] = {name: "PASS" for name in REGRESSION_CHECKS}
+    item["regression"]["predbat_plan"] = "FAIL"
+    item["rollback_proof"] = {
+        "restored_digest": item["installed_digest"],
+        "regression": {name: "PASS" for name in REGRESSION_CHECKS},
+    }
+    packet = build_packet(POLICY, item)
     assert packet["final_disposition"] == "ROLLED_BACK"
     assert packet["rollback_executed"] is True
+    assert packet["rollback_proof"]["restored_digest"] == item["installed_digest"]
+    assert set(packet["rollback_proof"]["regression"].values()) == {"PASS"}
+
+
+@pytest.mark.parametrize("defect", ["digest", "regression"])
+def test_incomplete_rollback_proof_fails_closed(defect):
+    item = observation()
+    item["rollback_safe"] = True
+    item["regression"] = {name: "PASS" for name in REGRESSION_CHECKS}
+    item["regression"]["predbat_plan"] = "FAIL"
+    item["rollback_proof"] = {
+        "restored_digest": item["installed_digest"],
+        "regression": {name: "PASS" for name in REGRESSION_CHECKS},
+    }
+    if defect == "digest":
+        item["rollback_proof"]["restored_digest"] = "sha256:" + "f" * 64
+    else:
+        item["rollback_proof"]["regression"]["ha_api"] = "WATCH"
+    with pytest.raises(ContractError, match="rollback"):
+        build_packet(POLICY, item)
 
 
 def test_failed_regression_without_proven_rollback_escalates():
