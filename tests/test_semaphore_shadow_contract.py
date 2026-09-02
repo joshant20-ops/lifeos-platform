@@ -40,8 +40,14 @@ def test_runtime_acceptance_fails_closed_before_start():
     assert "shadow_source_not_tracked" in text
     assert "shadow_source_not_published" in text
     assert "source_commit_unavailable" in text
-    assert text.index("shadow_source_not_published") < text.index("missing_root_owned_semaphore_env")
+    bootstrap_call = text.index("bootstrap_first_run\n\nset -a")
+    assert text.index("shadow_source_not_published") < bootstrap_call
     assert "source_commit=%s" in text
+    assert "bootstrap_first_run" in text
+    assert "private_lan_ip_not_detected" in text
+    assert "openssl rand -base64 48" in text
+    assert "openssl rand -base64 32" in text
+    assert bootstrap_call < text.index("docker compose --env-file")
     assert "timeout 300s" in text
     assert "host_not_arm64" in text
     assert "resolved_image_not_arm64" in text

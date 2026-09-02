@@ -10,6 +10,7 @@ readonly REPO="${LIFEOS_REPO_ROOT:-/home/joshan/lifeos-platform}"
 readonly COMPOSE="$REPO/orchestration/semaphore/docker-compose.yml"
 readonly ENV_FILE=/etc/lifeos/semaphore.env
 readonly PROJECT=lifeos-semaphore-shadow
+readonly DEFAULT_SECRETS_DIR=/etc/lifeos/semaphore-secrets
 
 finish() {
   printf 'ISSUE_VALIDITY=VALID\nLIFEOS_WORK_STATE=%s\nBARRIER=%s\nNEXT_AUTONOMOUS_ACTION=%s\nDISCOVERED_ISSUES_JSON_B64=none\nRESULT=%s\nTESTS=%s\nNEXT_RUNTIME_CHECK=%s\n' \
@@ -20,6 +21,53 @@ fail() {
   exit 1
 }
 trap 'rc=$?; (( rc == 0 )) || true' EXIT
+
+private_lan_ip() {
+  local candidate
+  candidate=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')
+  [[ "$candidate" =~ ^10\. || "$candidate" =~ ^192\.168\. || "$candidate" =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
+create_secret() {
+  local path=$1 kind=$2 value
+  [[ ! -e "$path" ]] || return 0
+  case "$kind" in
+    admin_user) value=lifeos-admin ;;
+    encryption) value=$(timeout 10s openssl rand -base64 32) || fail secret_generation_failed ;;
+    password) value=$(timeout 10s openssl rand -base64 48) || fail secret_generation_failed ;;
+    *) fail invalid_secret_kind ;;
+  esac
+  (umask 077; printf '%s\n' "$value" >"$path") || fail secret_file_creation_failed
+}
+
+bootstrap_first_run() {
+  local bind_ip
+  # A missing configuration is an expected first-deployment state, not a
+  # human boundary. Watchman already grants this reviewed launcher root, so it
+  # can create least-privilege local material without exposing any value.
+  if [[ ! -e "$ENV_FILE" ]]; then
+    bind_ip=$(private_lan_ip) || fail private_lan_ip_not_detected
+    install -d -o root -g root -m 0755 /etc/lifeos || fail config_directory_creation_failed
+    (umask 077; printf 'LIFEOS_SEMAPHORE_BIND_IP=%s\nLIFEOS_SEMAPHORE_SECRETS_DIR=%s\n' \
+      "$bind_ip" "$DEFAULT_SECRETS_DIR" >"$ENV_FILE") || fail semaphore_env_creation_failed
+  fi
+  [[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || fail missing_root_owned_semaphore_env
+  [[ "$(stat -c '%U:%G:%a' "$ENV_FILE")" == root:root:600 ]] || fail unsafe_semaphore_env_permissions
+
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  if [[ ! -e "${LIFEOS_SEMAPHORE_SECRETS_DIR:-}" ]]; then
+    [[ "${LIFEOS_SEMAPHORE_SECRETS_DIR:-}" == "$DEFAULT_SECRETS_DIR" ]] || fail missing_semaphore_secrets_directory
+    install -d -o root -g root -m 0700 "$DEFAULT_SECRETS_DIR" || fail secrets_directory_creation_failed
+  fi
+  [[ -d "${LIFEOS_SEMAPHORE_SECRETS_DIR:-}" && ! -L "$LIFEOS_SEMAPHORE_SECRETS_DIR" ]] || fail missing_semaphore_secrets_directory
+  [[ "$(stat -c '%U:%G:%a' "$LIFEOS_SEMAPHORE_SECRETS_DIR")" == root:root:700 ]] || fail unsafe_semaphore_secrets_directory
+  create_secret "$LIFEOS_SEMAPHORE_SECRETS_DIR/db_password" password
+  create_secret "$LIFEOS_SEMAPHORE_SECRETS_DIR/admin_user" admin_user
+  create_secret "$LIFEOS_SEMAPHORE_SECRETS_DIR/admin_password" password
+  create_secret "$LIFEOS_SEMAPHORE_SECRETS_DIR/access_key_encryption" encryption
+}
 
 [[ "$(id -u)" -eq 0 ]] || fail must_run_as_root_via_Watchman
 [[ -d "$REPO/.git" ]] || fail canonical_pi5_checkout_missing
@@ -35,8 +83,7 @@ git -C "$REPO" diff --quiet HEAD -- \
   "governor/runtime_jobs/$JOB_ID.sh" || fail shadow_source_not_published
 source_commit=$(git -C "$REPO" rev-parse --verify HEAD) || fail source_commit_unavailable
 [[ "$source_commit" =~ ^[0-9a-f]{40}$ ]] || fail invalid_source_commit
-[[ -f "$ENV_FILE" && ! -L "$ENV_FILE" ]] || fail missing_root_owned_semaphore_env
-[[ "$(stat -c '%U:%G:%a' "$ENV_FILE")" == root:root:600 ]] || fail unsafe_semaphore_env_permissions
+bootstrap_first_run
 
 set -a
 # shellcheck disable=SC1090

@@ -13,13 +13,17 @@ explicit LAN address, never `0.0.0.0`.
 
 ## Secrets and initial deployment
 
-Create `/etc/lifeos/semaphore.env` from `runtime.env.example`, owned by root and
-mode `0600`. Create the configured secret directory root-owned and mode `0700`,
-with four regular files mode `0600`: `db_password`, `admin_user`,
-`admin_password`, and `access_key_encryption`. The encryption file must contain
-a stable base64-encoded 32-byte key. These values stay outside Git and must not
-be printed in runtime evidence. Changing or losing the encryption key makes
-stored credentials unusable.
+On a first deployment, the Watchman launcher detects the Pi5's private IPv4
+source address and creates `/etc/lifeos/semaphore.env` mode `0600`, plus a
+root-owned secret directory mode `0700`. It generates four regular files mode
+`0600`: `db_password`, `admin_user`, `admin_password`, and
+`access_key_encryption`. The encryption file contains a stable base64-encoded
+32-byte key. Existing configuration is never overwritten and unsafe ownership,
+permissions, symlinks, non-private binding, or a custom missing secrets path
+fail closed. These values stay outside Git and must not be printed in runtime
+evidence. Changing or losing the encryption key makes stored credentials
+unusable. `runtime.env.example` documents the non-secret settings for a
+deliberate pre-provisioned configuration.
 
 Only the reviewed launcher
 `governor/runtime_jobs/c3751aaff97b.sh` may inspect or start this shadow on Pi5.
