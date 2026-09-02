@@ -1,0 +1,44 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": "The runtime evidence indicates that the script is blocked by the 'must_run_as_root_via_Watchman' barrier. This is a safety/privacy policy prohibition that the autonomous system cannot resolve itself."
+  },
+  "final_status": "BLOCKED",
+  "goal_summary": "Process GitHub issue #23 in joshant20-ops/lifeos-platform: P0: Mesh LifeOS planner + Semaphore + Ansible + transactional root control This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Objective Replace the remaining bespoke privileged/runtime orchestration path with an OTS-first execution plane while preserving LifeOS planning, governance, privacy, evidence and the",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 4,
+  "job_id": "c3751aaff97b",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": {
+    "commit": "89319c752dcd91f9963f7fadaa9b09237521b56f",
+    "path": "governor/runtime_jobs/c3751aaff97b.sh",
+    "published": "PASS",
+    "sha256": "51410c8ab192fef334a9638425942f33df83ce77532066e7496fe9bc0615cccd"
+  },
+  "runtime_return_code": 1,
+  "stage": "blocked",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T15:28:03+0100",
+    "created_at": "2026-09-02T15:12:55+0100",
+    "stage_changed_at": "2026-09-02T15:28:03+0100",
+    "started_at": "2026-09-02T15:12:55+0100"
+  }
+}
