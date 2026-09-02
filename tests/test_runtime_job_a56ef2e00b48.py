@@ -75,6 +75,21 @@ def test_simulation_uses_only_disposable_writable_apt_state():
         assert option in text
 
 
+def test_all_apt_auxiliary_paths_are_explicitly_disposable():
+    text = SCRIPT.read_text()
+    assert '"$w/state/lists/auxfiles"' in text
+    for option in (
+        'Dir::Etc::sourcelist=$w/etc/apt/sources.list',
+        'Dir::Etc::sourceparts=$w/etc/apt/sources.list.d',
+        'Dir::Etc::preferencesparts=$w/etc/apt/preferences.d',
+        'Dir::State::cdroms=$w/state/cdroms.list',
+        'Dir::Cache::pkgcache=$w/cache/pkgcache.bin',
+        'Dir::Cache::srcpkgcache=$w/cache/srcpkgcache.bin',
+        'Dir::Cache::archives=$w/cache/archives',
+    ):
+        assert option in text
+
+
 def test_metadata_failure_keeps_full_diagnostics_for_watchman():
     text = SCRIPT.read_text()
     assert 'metadata_log="$w/metadata-update.txt"' in text
