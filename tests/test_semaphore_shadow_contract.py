@@ -37,6 +37,11 @@ def test_runtime_acceptance_fails_closed_before_start():
     assert '${LIFEOS_REPO_ROOT:-/home/joshan/lifeos-platform}' in text
     assert "canonical_pi5_checkout_missing" in text
     assert "/opt/lifeos-platform" not in text
+    assert "shadow_source_not_tracked" in text
+    assert "shadow_source_not_published" in text
+    assert "source_commit_unavailable" in text
+    assert text.index("shadow_source_not_published") < text.index("missing_root_owned_semaphore_env")
+    assert "source_commit=%s" in text
     assert "timeout 300s" in text
     assert "host_not_arm64" in text
     assert "resolved_image_not_arm64" in text
