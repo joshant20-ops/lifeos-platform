@@ -375,9 +375,44 @@ def submit_issue(issue, state):
         instruction = f"""Execute only target {target['id']}: {target['title']}\nAcceptance criteria:\n{criteria}\nDo not expand scope to the whole parent objective. Emit TARGET_STATE=PASS|FAILED|BLOCKED|WAITING_HUMAN and TARGET_EVIDENCE=<concise evidence>."""
     else: raise RuntimeError("plan has no eligible target")
     prompt = f"""Process GitHub issue #{number} in {REPO_FULL}: {issue.get('title','')}\nPlanning phase: {phase}\n\n{privacy_note}\n\n{instruction}\n\nPARENT ISSUE CONTEXT (context only):\n{body}\n\nEvery final iteration MUST emit:\nISSUE_VALIDITY=VALID|ALREADY_COMPLETE|SUPERSEDED|BLOCKED\nLIFEOS_WORK_STATE=PASS|BLOCKED|WAITING_HUMAN|WAITING_DEPENDENCY|SUPERSEDED\nBARRIER=<exact barrier or none>\nNEXT_AUTONOMOUS_ACTION=<next action>\nDISCOVERED_ISSUES_JSON_B64=<base64 JSON list or none>\n"""
-    job = api("/jobs?async=1", "POST", {"request": prompt, "dispatch_builder": "local" if is_private else "normal"})
+    try:
+        job = api("/jobs?async=1", "POST", {"request": prompt, "dispatch_builder": "local" if is_private else "normal"})
+    except Exception as exc:
+        # Governor rejection/unavailability must be durable, not merely a
+        # journal line.  The normal eligibility gate then provides a bounded
+        # retry and prevents a tight dispatch loop.
+        attempted = now()
+        entry.update({
+            "work_state": "WAITING_DEPENDENCY",
+            "issue_validity": "VALID",
+            "barrier": f"governor ingestion failed: {type(exc).__name__}",
+            "next_autonomous_action": "retry Governor ingestion after cooldown",
+            "retry_count": int(entry.get("retry_count", 0)) + 1,
+            "retry_after": attempted + RETRY_SECONDS,
+            "attempted_at": attempted,
+            "last_ingestion_failure": {
+                "attempted_at": attempted,
+                "error_type": type(exc).__name__,
+            },
+        })
+        save_state(state)
+        raise
     job_id = str(job.get("id") or "")
-    if not job_id: raise RuntimeError("governor returned no job id")
+    if not job_id:
+        exc = RuntimeError("governor returned no job id")
+        attempted = now()
+        entry.update({
+            "work_state": "WAITING_DEPENDENCY", "issue_validity": "VALID",
+            "barrier": "governor ingestion failed: missing job id",
+            "next_autonomous_action": "retry Governor ingestion after cooldown",
+            "retry_count": int(entry.get("retry_count", 0)) + 1,
+            "retry_after": attempted + RETRY_SECONDS, "attempted_at": attempted,
+            "last_ingestion_failure": {"attempted_at": attempted, "error_type": type(exc).__name__},
+        })
+        save_state(state)
+        raise exc
+    entry.update({"work_state": "IN_PROGRESS", "retry_after": None})
+    entry.pop("last_ingestion_failure", None)
     if target and phase == "target": target["state"] = "IN_PROGRESS"; target["attempts"] += 1
     state["active"] = {"issue": number, "job_id": job_id, "started": now(), "phase": phase,
                        "target_id": target["id"] if target else None}; save_state(state)
