@@ -4,8 +4,13 @@ import pathlib
 import subprocess
 import sys
 
+AUDIT_SCHEMA = 2
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 DESIRED = ROOT / "ansible" / "desired" / "compose"
+
+if "--schema" in sys.argv:
+    print(AUDIT_SCHEMA)
+    raise SystemExit(0)
 
 
 def run(*args):
@@ -86,13 +91,7 @@ def choose_digest(desired, running, digests):
 
 
 def images_match(desired, running, resolved_digest):
-    """Compare image identity, not merely the textual Docker reference.
-
-    Existing containers retain the tag used when they were created in
-    Config.Image. After desired state is changed from :latest/:stable/etc. to an
-    immutable repo@sha256 reference, that textual value will differ even when
-    the running container is backed by exactly the desired digest.
-    """
+    """Compare image identity, not merely the textual Docker reference."""
     desired = desired or ""
     running = running or ""
     resolved_digest = resolved_digest or ""
@@ -145,6 +144,7 @@ for row in rows:
     ]))
 
 print()
+print(f"AUDIT_SCHEMA={AUDIT_SCHEMA}")
 print("RUNNING_IMAGE_DIGEST_AUDIT=PASS")
 for k in ("MATCH", "DRIFT", "NO_CONTAINER", "LOCAL_BUILD", "NO_DIGEST"):
     print(f"{k}={counts[k]}")
