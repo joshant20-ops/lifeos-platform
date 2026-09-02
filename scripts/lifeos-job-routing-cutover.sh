@@ -19,6 +19,7 @@ set -Eeuo pipefail
 #   - no deletion of job state
 #   - no change to lifeos-pi-control / execution publisher
 #   - no Git commit/push from the Pi
+#   - no GitHub network/auth dependency during runtime cutover
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_ROOT="${LIFEOS_BACKUP_ROOT:-/mnt/docker-data/automation/backups/job-routing-${STAMP}}"
@@ -68,8 +69,6 @@ say "GATE 0 — Preflight"
 systemctl cat --no-pager "$SERVICE" >/dev/null || die "$SERVICE missing."
 
 cd "$PLATFORM_REPO"
-
-git fetch origin main >/dev/null
 [[ "$(git branch --show-current)" == "main" ]] || die "lifeos-platform must be on main."
 
 if [[ -n "$(git status --porcelain)" ]]; then
@@ -77,9 +76,11 @@ if [[ -n "$(git status --porcelain)" ]]; then
   die "lifeos-platform is dirty; refusing runtime cutover."
 fi
 
+# Deliberately do not fetch or compare with origin here. The caller already
+# fetched/reset the canonical repo, and this stage must not depend on GitHub SSH
+# authentication. Record the exact local commit being deployed for evidence.
 LOCAL_HEAD="$(git rev-parse HEAD)"
-ORIGIN_HEAD="$(git rev-parse origin/main)"
-[[ "$LOCAL_HEAD" == "$ORIGIN_HEAD" ]] || die "lifeos-platform is not aligned with origin/main. Fetch/reset before running."
+info "Deploying local canonical commit: $LOCAL_HEAD"
 
 OLD_COUNT="$(grep -Fc 'job["record_publication"] = publish_record(PLATFORM_REPO, job)' "$INSTALLED_AGENT" || true)"
 NEW_COUNT="$(grep -Fc '"state": "LOCAL_ONLY"' "$INSTALLED_AGENT" || true)"
@@ -93,7 +94,7 @@ elif [[ "$OLD_COUNT" != "1" ]]; then
   die "Expected exactly one legacy publication call; found $OLD_COUNT."
 fi
 
-info "Platform status: clean and aligned with origin/main"
+info "Platform working tree: clean"
 gate "Preflight passed. Create backup and disable direct platform job publication?"
 
 say "GATE 1 — Backup"
@@ -103,6 +104,7 @@ if [[ -f "$OVERRIDE_FILE" ]]; then
   cp -a "$OVERRIDE_FILE" "$BACKUP_ROOT/30-platform-readonly.conf.before"
 fi
 cp -a /var/lib/lifeos-agent "$BACKUP_ROOT/lifeos-agent-state.before" 2>/dev/null || true
+printf '%s\n' "$LOCAL_HEAD" > "$BACKUP_ROOT/platform-commit.txt"
 sync
 info "Backup complete."
 gate "Backup complete. Apply exact runtime patch and platform read-only sandbox?"
@@ -172,11 +174,11 @@ if [[ -n "$(git -C "$PLATFORM_REPO" status --porcelain)" ]]; then
   die "lifeos-platform became dirty during cutover."
 fi
 
-[[ "$(git -C "$PLATFORM_REPO" rev-parse HEAD)" == "$(git -C "$PLATFORM_REPO" rev-parse origin/main)" ]] || die "Platform branch diverged during cutover."
+[[ "$(git -C "$PLATFORM_REPO" rev-parse HEAD)" == "$LOCAL_HEAD" ]] || die "Platform HEAD changed during cutover."
 
 info "PASS: no direct job-record publication into lifeos-platform."
 info "PASS: autonomous agent has no platform write path."
-info "PASS: lifeos-platform remains clean and aligned."
+info "PASS: lifeos-platform remains clean on the deployed commit."
 info "PASS: local job state preserved."
 
 cat <<EOF
@@ -185,6 +187,7 @@ RESULT=PASS
 JOB_HISTORY_STATE=LOCAL_ONLY
 PLATFORM_MUTATION=DISABLED
 JOBS_REMOTE_PUBLICATION=NOT_YET_ENABLED
+PLATFORM_COMMIT=$LOCAL_HEAD
 BACKUP=$BACKUP_ROOT
 
 Next gate: verify/fix write authentication for /home/joshan/lifeos-jobs, then wire the existing sanitised exporter event-driven.
