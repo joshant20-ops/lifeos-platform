@@ -3,7 +3,8 @@
 This directory is the provider-independent boundary between OpenHands and the
 LifeOS governor. `provider_router.py` applies the zero-spend policy in
 `governor/policy.json`; `openhands_worker.py` supplies the selected provider to
-OpenHands through `LIFEOS_PROVIDER`. Provider-specific runtime configuration
+OpenHands through `LIFEOS_PROVIDER`, `LLM_MODEL`, and a selected-provider-only
+`LLM_API_KEY`. Provider-specific runtime configuration
 belongs on Engineer, not in Git.
 
 The worker defaults to dry-run and requires a non-main branch. Execution needs
@@ -19,7 +20,8 @@ file with exact mode `0600`, conventionally
 as `CREDENTIAL_REQUIRED`; routing continues to the next eligible free provider.
 Values are passed only to the selected child process and are never placed in
 evidence. Paid fallback is forbidden by policy. Each provider is bounded to two
-attempts and should enter the recorded 900-second cooldown after exhaustion.
+attempts; an exhausted provider receives a machine-readable 900-second cooldown
+marker and the worker moves to the next eligible free provider.
 
 Example dry-run on Engineer (normally exercised by Pi5 automation):
 
@@ -36,7 +38,7 @@ read-only dry-run inventory. It always preserves `.codex`, `.config/gh`,
 backups remain `REVIEW_REQUIRED`; `SAFE_TO_REMOVE` is deliberately empty and
 automatic deletion remains disabled pending separate evidence and approval.
 
-The job launcher `governor/runtime_jobs/9eb04949f627.sh` is the sole live Pi5
+The job launcher `governor/runtime_jobs/43110cd9baa0.sh` is the sole live Pi5
 entry point for this iteration. It verifies OpenHands/workspace availability,
 credential-file permissions, and cleanup dry-run behavior without printing
 credentials, installing packages, deleting files, or mutating either host.

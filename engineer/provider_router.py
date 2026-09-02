@@ -42,6 +42,26 @@ def route(policy: dict, task_class: str, secret_names: set[str], cooldowns=None,
             "task_class": task_class, "considered": considered, "fail_closed": selected is None,
             "max_attempts": policy["routing"]["max_attempts_per_provider"], "cooldown_seconds": policy["routing"]["cooldown_seconds"]}
 
+def eligible_providers(policy: dict, task_class: str, secret_names: set[str], cooldowns=None, now=None) -> tuple[list[dict], list[dict]]:
+    """Return eligible providers in policy order plus redacted routing evidence."""
+    decision = route(policy, task_class, secret_names, cooldowns, now)
+    statuses = {item["provider"]: item["status"] for item in decision["considered"]}
+    providers = [item for item in policy["providers"] if statuses.get(item["id"]) == "AVAILABLE"]
+    return providers, decision["considered"]
+
+def openhands_environment(provider: dict, secrets_path: Path | None) -> dict[str, str]:
+    """Translate governor policy to OpenHands/LiteLLM variables without logging values."""
+    model = provider.get("openhands_model")
+    if not model:
+        raise PolicyError(f"provider {provider['id']} has no OpenHands model")
+    allowed = {provider["credential"]} if provider.get("credential") else set()
+    native = credential_environment(secrets_path, allowed)
+    result = {"LIFEOS_PROVIDER": provider["id"], "LLM_MODEL": model}
+    if allowed:
+        result["LLM_API_KEY"] = native[provider["credential"]]
+        result.update(native)
+    return result
+
 def credential_environment(path: Path | None, allowed_names: set[str]) -> dict[str, str]:
     if path is None: return {}
     load_secret_names(path)
