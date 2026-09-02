@@ -59,13 +59,16 @@ timeout 90s python3 -m pytest -q "$REPO/tests/test_rundeck_shadow_contract.py" \
 compose config --quiet || fail compose_resolution_failed
 
 # Semaphore was design-only in this repository. The meaningful production
-# comparator is the current backlog compatibility timer/service. Preserve both
-# unit states exactly across shadow startup so this cannot become a cutover.
+# comparator is the current backlog compatibility timer/service. Preserve the
+# stable unit configuration and timer state so this cannot become a cutover.
 compat_timer_enabled=$(systemctl is-enabled lifeos-backlog-runner.timer 2>/dev/null || true)
 compat_timer_active=$(systemctl is-active lifeos-backlog-runner.timer 2>/dev/null || true)
-compat_service_active=$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)
-[[ -n "$compat_timer_enabled" && -n "$compat_timer_active" && -n "$compat_service_active" ]] \
+compat_service_enabled=$(systemctl is-enabled lifeos-backlog-runner.service 2>/dev/null || true)
+compat_service_state=$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)
+[[ -n "$compat_timer_enabled" && -n "$compat_timer_active" && \
+   -n "$compat_service_enabled" && -n "$compat_service_state" ]] \
   || fail compatibility_path_state_unavailable
+[[ "$compat_service_state" != failed ]] || fail compatibility_service_failed_before_shadow_test
 
 rundeck_id=$(compose ps -q rundeck 2>/dev/null || true)
 if [[ -z "$rundeck_id" ]]; then
@@ -156,8 +159,15 @@ timeout 60s docker exec "$db_id" sh -eu -c \
   || fail compatibility_timer_enablement_changed
 [[ "$(systemctl is-active lifeos-backlog-runner.timer 2>/dev/null || true)" == "$compat_timer_active" ]] \
   || fail compatibility_timer_runtime_changed
-[[ "$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)" == "$compat_service_active" ]] \
-  || fail compatibility_service_runtime_changed
+[[ "$(systemctl is-enabled lifeos-backlog-runner.service 2>/dev/null || true)" == "$compat_service_enabled" ]] \
+  || fail compatibility_service_enablement_changed
+# The timer-triggered service is transient: a legitimate backlog invocation may
+# move it between inactive and active during this bounded (potentially 20-minute)
+# shadow exercise. Exact equality here produced a false shadow-acceptance failure.
+# Ensure the unit did not fail; exact timer state and service enablement above are
+# stable evidence that this launcher neither cut over nor disabled the old path.
+compat_service_state=$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)
+[[ "$compat_service_state" != failed ]] || fail compatibility_service_failed_after_shadow_test
 
 started_here=false
 printf 'SHADOW_DEPLOYMENT=PASS containers=healthy images=digest_resolved persistence=restart_verified backup_restore=verified lan_binding=bounded\n'
