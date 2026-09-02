@@ -1,0 +1,71 @@
+services:
+  semaphore-db:
+    image: postgres:17.6-bookworm
+    platform: linux/arm64/v8
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: semaphore
+      POSTGRES_USER: semaphore
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    volumes:
+      - semaphore-db:/var/lib/postgresql/data
+      - "${LIFEOS_SEMAPHORE_SECRETS_DIR:?set the root-owned secrets directory}:/run/secrets:ro"
+    networks: [semaphore-internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U semaphore -d semaphore"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETGID, SETUID]
+    mem_limit: 512m
+    cpus: 1.0
+
+  semaphore:
+    image: semaphoreui/semaphore:v2.18.29
+    platform: linux/arm64/v8
+    restart: unless-stopped
+    depends_on:
+      semaphore-db:
+        condition: service_healthy
+    environment:
+      SEMAPHORE_DB_DIALECT: postgres
+      SEMAPHORE_DB_HOST: semaphore-db
+      SEMAPHORE_DB_NAME: semaphore
+      SEMAPHORE_DB_USER: semaphore
+      SEMAPHORE_DB_PASS_FILE: /run/secrets/db_password
+      SEMAPHORE_ADMIN_FILE: /run/secrets/admin_user
+      SEMAPHORE_ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      SEMAPHORE_ADMIN_NAME: LifeOS Semaphore Administrator
+      SEMAPHORE_ADMIN_EMAIL: admin@localhost
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION_FILE: /run/secrets/access_key_encryption
+      SEMAPHORE_LDAP_ACTIVATED: "no"
+    ports:
+      - "${LIFEOS_SEMAPHORE_BIND_IP:?set an explicit Pi5 LAN address}:3000:3000"
+    volumes:
+      - semaphore-config:/etc/semaphore
+      - semaphore-data:/var/lib/semaphore
+      - semaphore-work:/tmp/semaphore
+      - "${LIFEOS_SEMAPHORE_SECRETS_DIR:?set the root-owned secrets directory}:/run/secrets:ro"
+    networks: [semaphore-internal]
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3000/api/ping"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+    security_opt: [no-new-privileges:true]
+    cap_drop: [ALL]
+    mem_limit: 1g
+    cpus: 2.0
+
+networks:
+  semaphore-internal:
+    internal: true
+
+volumes:
+  semaphore-config:
+  semaphore-data:
+  semaphore-work:
+  semaphore-db:
