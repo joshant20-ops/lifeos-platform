@@ -1,0 +1,39 @@
+{
+  "canonical_commits": [],
+  "changed_files": [],
+  "classification": "normal",
+  "continuation": {
+    "child": null,
+    "parent": null,
+    "recovery_state": "none",
+    "retry_of": null
+  },
+  "failure": {
+    "class": null,
+    "reason": null
+  },
+  "final_status": "PASS",
+  "goal_summary": "Process GitHub issue #27 in joshant20-ops/lifeos-platform: P0: Add hierarchical autonomous planning, milestones and resumable targets This is ordinary engineering work; unrelated private data remains out of scope. First revalidate current relevance and dependencies, then implement and test safe work. ISSUE BODY: ## Objective Change LifeOS autonomous engineering so a GitHub issue represents an **outcome/objective**, not necessarily one monolithic builder job. The AI must pick up an issue, revalid",
+  "human_action_state": "NONE",
+  "implementation_summary": "",
+  "iteration_count": 1,
+  "job_id": "bbfab2806f9e",
+  "next_runtime_check": "none",
+  "record_publication": {
+    "state": "PUBLISHED"
+  },
+  "record_version": 1,
+  "runtime_artifact": null,
+  "runtime_return_code": null,
+  "stage": "complete",
+  "tests": {
+    "count": 0,
+    "summary": "not reported"
+  },
+  "timestamps": {
+    "completed_at": "2026-09-02T12:03:55+0100",
+    "created_at": "2026-09-02T11:58:53+0100",
+    "stage_changed_at": "2026-09-02T12:03:55+0100",
+    "started_at": "2026-09-02T11:58:53+0100"
+  }
+}
