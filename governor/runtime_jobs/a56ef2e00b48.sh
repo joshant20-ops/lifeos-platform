@@ -59,7 +59,8 @@ stage=repository_metadata
 w=$(mktemp -d)
 trap 'rm -rf -- "$w"' EXIT
 mkdir -p "$w/etc/apt/sources.list.d" "$w/etc/apt/preferences.d" \
-  "$w/state/lists/partial" "$w/cache/archives/partial" "$w/log"
+  "$w/state/lists/partial" "$w/state/lists/auxfiles" \
+  "$w/cache/archives/partial" "$w/log"
 # Snapshot package state as ordinary files in the disposable tree.  Pointing a
 # non-root APT process at the live dpkg state still lets APT probe locks and
 # auxiliary state below read-only /var/lib paths on some hosts/Watchman units.
@@ -96,9 +97,17 @@ Package: nvidia-* libnvidia-* cuda-* libcuda* xserver-xorg-video-nvidia*
 Pin: version 6*
 Pin-Priority: -1
 PINS
-o=(-o "Dir::Etc=$w/etc/apt" -o "Dir::State=$w/state" \
+o=(-o "Dir::Etc=$w/etc/apt" \
+   -o "Dir::Etc::sourcelist=$w/etc/apt/sources.list" \
+   -o "Dir::Etc::sourceparts=$w/etc/apt/sources.list.d" \
+   -o "Dir::Etc::preferencesparts=$w/etc/apt/preferences.d" \
+   -o "Dir::State=$w/state" \
    -o "Dir::State::status=$w/state/status" -o "Dir::State::extended_states=$w/state/extended_states" \
-   -o "Dir::State::lists=$w/state/lists" -o "Dir::Cache=$w/cache" -o "Dir::Log=$w/log" \
+   -o "Dir::State::cdroms=$w/state/cdroms.list" \
+   -o "Dir::State::lists=$w/state/lists" \
+   -o "Dir::Cache=$w/cache" -o "Dir::Cache::pkgcache=$w/cache/pkgcache.bin" \
+   -o "Dir::Cache::srcpkgcache=$w/cache/srcpkgcache.bin" \
+   -o "Dir::Cache::archives=$w/cache/archives" -o "Dir::Log=$w/log" \
    -o Acquire::Languages=none \
    -o APT::Get::List-Cleanup=0 -o Debug::NoLocking=1 \
    -o "APT::Sandbox::User=$(id -un)")
