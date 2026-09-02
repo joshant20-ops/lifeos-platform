@@ -45,12 +45,25 @@ def test_pi_launcher_is_bounded_and_enforces_review_contract():
     text = LAUNCHER.read_text(encoding="utf-8")
     assert text.startswith("#!/usr/bin/env bash\n")
     assert "timeout --signal=TERM --kill-after=10s" in text
-    assert "review_branch_is_default" in text
+    assert "defaultBranchRef" in text
+    assert '[[ "$branch" == "$default_branch" ]]' in text
+    assert "FOUNDATION_INTEGRATION=PASS" in text
+    assert "git ls-files --error-unmatch" in text
+    assert 'ISSUE_VALIDITY=$1' in text
     assert "copilot-swe-agent[bot]" in text
     assert "gh pr create" in text
     assert "--draft --title \"$PR_TITLE\"" in text
     assert "git commit" not in text
     assert "docker" not in text.lower()
+
+
+def test_pi_launcher_never_attempts_a_default_to_default_pr():
+    text = LAUNCHER.read_text(encoding="utf-8")
+    default_case = text.index('if [[ "$branch" == "$default_branch" ]]')
+    default_case_end = text.index("fi", default_case)
+    create = text.index("gh pr create")
+    assert default_case < default_case_end < create
+    assert '--base "$default_branch"' in text
 
 
 def test_pi_launcher_emits_iteration_contract():
