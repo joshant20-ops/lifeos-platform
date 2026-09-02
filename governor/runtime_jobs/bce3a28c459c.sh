@@ -115,10 +115,14 @@ path = value(source, {"canonical_script", "canonical_script_path", "script_path"
 digest = value(source, {"canonical_script_sha256", "script_sha256", "source_script_sha256", "source_sha256", "sha256"})
 
 normalized = repo.rstrip("/").removesuffix(".git").replace("github.com:", "github.com/")
-assert normalized.endswith("github.com/joshant20-ops/lifeos-platform"), "wrong canonical repository"
-assert re.fullmatch(r"[0-9a-f]{40}", commit), "invalid commit"
-assert path and not path.startswith("/") and ".." not in path.split("/"), "unsafe path"
-assert re.fullmatch(r"[0-9a-f]{64}", digest), "invalid sha256"
+if not normalized.endswith("github.com/joshant20-ops/lifeos-platform"):
+    raise SystemExit("wrong canonical repository")
+if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+    raise SystemExit("invalid commit")
+if not path or path.startswith("/") or ".." in path.split("/"):
+    raise SystemExit("unsafe path")
+if re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+    raise SystemExit("invalid sha256")
 print(commit); print(path); print(digest)
 PY
 ) || fail invalid_0019_manifest
