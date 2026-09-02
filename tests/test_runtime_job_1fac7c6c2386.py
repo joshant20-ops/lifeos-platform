@@ -25,7 +25,8 @@ def test_launcher_covers_acceptance_and_sensitive_regression_control():
         '"cloud_builder_forbidden_for_local_only_job"',
         '"PUBLICATION_EVIDENCE:"',
         '"PI5_RUNTIME_EVIDENCE:"',
-        'verdict.get("verdict") not in {"PASS", "FAIL"}',
+        '"RUNTIME_ACTION=none_declared"',
+        'verdict.get("verdict") != "PASS"',
         '"Elapsed:"',
         '"ETA estimate"',
     ):
