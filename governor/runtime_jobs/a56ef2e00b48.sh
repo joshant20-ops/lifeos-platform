@@ -140,6 +140,10 @@ rem=$(awk '$1=="Remv" {print $2}' "$sim")
 critical='^(proxmox|pve-|linux-(image|headers)-|openssh-(server|client)$|systemd|ifupdown|ifupdown2$|network-manager$|zfs|grub|shim|initramfs-tools$|apt$|dpkg$)'
 ! printf '%s\n' "$rem" | grep -Eq "$critical"
 for package in "${old_names[@]}"; do printf '%s\n' "$rem" | grep -Fqx "$package"; done
+unexpected_removals=$(comm -13 \
+  <(printf '%s\n' "${old_names[@]}" | sort -u) \
+  <(printf '%s\n' "$rem" | sed '/^$/d' | sort -u))
+[[ -z $unexpected_removals ]]
 printf 'STAGE=transaction PASS installs=%s removals=%s critical_removals=none open_modules=none R590_plus=none\n' \
   "$(printf '%s\n' "$inst" | wc -l)" "$(printf '%s\n' "$rem" | wc -l)"
 printf 'R580_DEPENDENCY_GRAPH=%s\n' "$(printf '%s\n' "$nv" | paste -sd' ' -)"
@@ -176,6 +180,9 @@ grep -q '^Inst nvidia-dkms-580 ' /root/lifeos-r580-final-simulation.txt
 grep -q '^Inst nvidia-kernel-source-580 ' /root/lifeos-r580-final-simulation.txt
 ! grep -Eiq '^Inst .*([-=(]59[0-9]|[-=(]6[0-9][0-9])' /root/lifeos-r580-final-simulation.txt
 ! awk '\$1=="Remv" {print \$2}' /root/lifeos-r580-final-simulation.txt | grep -Eq '$critical'
+allowed_removals='$(printf '%s\n' "${old_names[@]}" | sort -u | paste -sd, -)'
+actual_removals=\$(awk '\$1=="Remv" {print \$2}' /root/lifeos-r580-final-simulation.txt | sort -u | paste -sd, -)
+[[ \$actual_removals == \$allowed_removals ]] || { echo "REFUSED: removal set drift expected=\$allowed_removals actual=\$actual_removals"; exit 24; }
 apt-get --no-install-recommends install ${remove_args[*]} 'nvidia-driver-580=$version'
 update-initramfs -u -k '$kernel'
 echo 'INSTALL_COMPLETE: reboot required; expected outage 5-15 minutes'
@@ -189,6 +196,11 @@ REMOTE
 rc=$?
 set -e
 grep -v '^PRODUCTION_SCRIPT_B64=' "$tmp/remote" || :
+# Retain the complete remote transcript even on failure. Watchman/local
+# verification can then inspect the exact stage, command and APT diagnostics
+# without rerunning or relying on truncated terminal output.
+cp "$tmp/remote" "$EVIDENCE"
+printf 'REMOTE_EVIDENCE=%s\n' "$EVIDENCE"
 if [[ $rc -ne 0 ]]; then
   # The remote ERR trap emits the precise stage as a machine-readable final
   # marker. Preserve that name in the outer contract so the next autonomous
@@ -198,7 +210,6 @@ if [[ $rc -ne 0 ]]; then
   fail "$barrier"
 fi
 
-cp "$tmp/remote" "$EVIDENCE"
 payload=$(sed -n 's/^PRODUCTION_SCRIPT_B64=//p' "$tmp/remote")
 [[ -n $payload ]] || fail production_candidate_missing
 printf '%s' "$payload" | base64 -d >"$CANDIDATE" || fail production_candidate_decode
