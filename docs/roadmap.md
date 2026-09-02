@@ -4,7 +4,7 @@
 
 1. Keep `lifeos-platform` authoritative and maintain immutable source identity in
    every runtime request.
-2. Complete the gated move to the two-repository model described in
+2. Complete the gated move to the three-repository authority model described in
    `architecture/REPOSITORY_MODEL.md`.
 3. Preserve Watchman as the only execution gate and retain auditable result
    evidence.

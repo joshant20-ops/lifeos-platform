@@ -4,15 +4,19 @@ Canonical source of truth for LifeOS.
 
 All authoritative implementation belongs here: Homelab infrastructure, Home Assistant deployment, energy/Predbat/Octopus integration, forecast learning, financial accounting, tests, assurance tooling, documentation and deployment logic.
 
-The companion `lifeos-pi-control` repository is transport only. It carries execution manifests, thin wrappers, Pi results and runner state. It must not become a second authoritative implementation repository.
+Sanitised engineering history and observed-state evidence live in separate
+non-authoritative repositories. Live execution state and raw output remain local
+to the Pi5 control plane.
 
 ## Repository contract
 
 - Source changes are made here first.
 - Executable relay jobs must identify an immutable `lifeos-platform` commit SHA.
-- The Pi reports execution evidence through `lifeos-pi-control`.
+- Pi5 exports sanitised history to `lifeos-jobs` and sanitised observations to
+  `lifeos-snapshots`.
 - Feedback is used to make the next canonical change here.
-- Legacy repositories are retained only during gated migration and are retired after the Pi proves the two-repository path.
+- Legacy repositories are retained only during gated migration and are retired
+  after Pi5 proves the three-repository authority split.
 
 See `architecture/REPOSITORY_MODEL.md` for the migration and trust model.
 
