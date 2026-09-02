@@ -2,8 +2,16 @@
 
 This is the bounded M2 shadow deployment for issue #23. It is not authorised
 to replace the production Watchman/backlog path. The image is explicitly pinned
-to Rundeck Community `5.13.0`; changing that pin requires release-note review,
+to Rundeck Community `6.1.0`; changing that pin requires release-note review,
 a backup, and the shadow acceptance suite.
+
+The pin was revalidated on 2026-09-02 against Rundeck's official Docker and
+system-requirements documentation. The earlier `5.13.0` pin had aged beyond
+the documented one-year support window. Rundeck 6 requires Java 17, which is
+provided by the official container, and PostgreSQL 17 remains above the
+documented PostgreSQL 15.5 minimum. Pi5 capacity for the configured shadow
+limits is a runtime dependency to be measured by the acceptance launcher; the
+repository does not assume unrecorded hardware capacity.
 
 ## Boundary and secrets
 
@@ -54,3 +62,14 @@ The Pi5 verifier must confirm the resolved image digest, image architecture,
 LAN-only listening socket, healthy containers after reboot, persistent job
 history, successful backup/restore rehearsal, and absence of host/Docker/root
 mounts. Until that evidence exists this deployment remains shadow-only.
+
+The first bounded acceptance launcher is
+`governor/runtime_jobs/80f20f03755d.sh`. It validates the repository contract,
+starts only the named shadow Compose project, checks health and privilege/network
+boundaries, proves database persistence across a restart, and verifies that the
+existing backlog timer and service retain their exact pre-test states. The older
+Semaphore proposal never had a repository deployment, so the live equivalence
+baseline is the unchanged Watchman/backlog compatibility path; this launcher
+does not claim feature equivalence or authorise cutover. Reboot persistence,
+read-only job history, and failure-path equivalence remain required before M2
+acceptance is complete.

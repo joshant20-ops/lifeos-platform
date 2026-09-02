@@ -29,7 +29,7 @@ services:
     cpus: 1.0
 
   rundeck:
-    image: rundeck/rundeck:5.13.0
+    image: rundeck/rundeck:6.1.0
     restart: unless-stopped
     depends_on:
       rundeck-db:
