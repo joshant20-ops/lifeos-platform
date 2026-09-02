@@ -47,7 +47,101 @@ def api(path, method="GET", body=None):
         return json.load(response)
 
 
-def empty_state(): return {"version": 2, "active": None, "issues": {}, "attempts": []}
+def empty_state(): return {"version": 3, "active": None, "issues": {}, "attempts": []}
+
+
+def _clean_id(value):
+    value = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(value or "").strip()).strip("-")
+    if not value or len(value) > 80: raise ValueError("plan identifiers must be 1-80 safe characters")
+    return value
+
+
+def validate_plan(raw, issue_number):
+    """Validate the builder-produced plan before it becomes scheduler authority."""
+    if not isinstance(raw, dict) or not isinstance(raw.get("milestones"), list) or not raw["milestones"]:
+        raise ValueError("plan requires at least one milestone")
+    plan = {"schema_version": 1, "issue": int(issue_number), "revision": int(raw.get("revision", 1)),
+            "state": "IN_PROGRESS", "created_at": iso(now()), "milestones": []}
+    seen = set()
+    for mi, source_m in enumerate(raw["milestones"], 1):
+        mid = _clean_id(source_m.get("id") or f"m{mi}")
+        if mid in seen: raise ValueError(f"duplicate id: {mid}")
+        seen.add(mid); targets = source_m.get("targets")
+        if not isinstance(targets, list) or not targets: raise ValueError(f"milestone {mid} has no targets")
+        milestone = {"id": mid, "title": str(source_m.get("title") or mid)[:240],
+            "mandatory": bool(source_m.get("mandatory", True)), "state": "PLANNED",
+            "verification": str(source_m.get("verification") or "mandatory targets pass")[:2000], "targets": []}
+        for ti, source_t in enumerate(targets, 1):
+            tid = _clean_id(source_t.get("id") or f"{mid}.t{ti}")
+            if tid in seen: raise ValueError(f"duplicate id: {tid}")
+            seen.add(tid); acceptance = source_t.get("acceptance_criteria")
+            if not isinstance(acceptance, list) or not acceptance or not all(str(x).strip() for x in acceptance):
+                raise ValueError(f"target {tid} requires acceptance criteria")
+            milestone["targets"].append({"id": tid, "title": str(source_t.get("title") or tid)[:240],
+                "state": "PLANNED", "mandatory": bool(source_t.get("mandatory", True)),
+                "depends_on": [_clean_id(x) for x in source_t.get("depends_on", [])],
+                "acceptance_criteria": [str(x)[:1000] for x in acceptance],
+                "runtime_verification_required": bool(source_t.get("runtime_verification_required", False)),
+                "attempts": 0, "evidence": []})
+        plan["milestones"].append(milestone)
+    ids = {t["id"] for m in plan["milestones"] for t in m["targets"]}
+    for target in plan_targets(plan):
+        if set(target["depends_on"]) - ids or target["id"] in target["depends_on"]:
+            raise ValueError(f"invalid dependencies for {target['id']}")
+    return plan
+
+
+def plan_targets(plan): return [t for m in plan.get("milestones", []) for t in m.get("targets", [])]
+
+
+def next_target(plan):
+    targets = plan_targets(plan); passed = {t["id"] for t in targets if t["state"] == "PASS"}
+    return next((t for t in targets if t["state"] in {"PLANNED", "READY", "FAILED"}
+                 and set(t["depends_on"]) <= passed), None)
+
+
+def refresh_plan(plan):
+    for milestone in plan["milestones"]:
+        required = [t for t in milestone["targets"] if t["mandatory"]]
+        milestone["state"] = "PASS" if required and all(t["state"] == "PASS" for t in required) else "IN_PROGRESS"
+    mandatory = [m for m in plan["milestones"] if m["mandatory"]]
+    plan["state"] = "PASS" if mandatory and all(m["state"] == "PASS" for m in mandatory) else "IN_PROGRESS"
+    return plan
+
+
+def progress(plan):
+    targets = plan_targets(plan); current = next_target(plan)
+    return {"completed_targets": sum(t["state"] == "PASS" for t in targets), "total_targets": len(targets),
+            "current_target": current["id"] if current else None, "state": plan.get("state", "IN_PROGRESS")}
+
+
+def decode_field(evidence, name):
+    raw = field(evidence, name)
+    if not raw: raise ValueError(f"missing {name}")
+    return json.loads(base64.b64decode(raw, validate=True).decode())
+
+
+def apply_plan_result(entry, active, job):
+    """Checkpoint planning/target output without discarding prior PASS targets."""
+    evidence = final_evidence(job)
+    if active.get("phase") == "planning":
+        entry["plan"] = validate_plan(decode_field(evidence, "PLAN_JSON_B64"), active["issue"])
+        entry["work_state"] = "IN_PROGRESS"; entry["retry_after"] = None
+        return progress(entry["plan"])
+    plan = entry["plan"]
+    target = next((t for t in plan_targets(plan) if t["id"] == active.get("target_id")), None)
+    if not target: raise ValueError("active target is absent from persisted plan")
+    reported = (field(evidence, "TARGET_STATE") or "FAILED").upper()
+    if reported == "PASS" and target["runtime_verification_required"] and field(evidence, "TARGET_RUNTIME_VERIFIED").upper() != "PASS":
+        reported = "FAILED"
+    target["state"] = reported if reported in {"PASS", "BLOCKED", "WAITING_HUMAN"} else "FAILED"
+    target["evidence"].append({"job_id": active["job_id"], "finished_at": iso(now()),
+        "state": target["state"], "summary": (field(evidence, "TARGET_EVIDENCE") or "not reported")[:2000]})
+    if target["state"] == "FAILED" and target["attempts"] >= 3: target["state"] = "BLOCKED"
+    refresh_plan(plan); entry["work_state"] = plan["state"]
+    entry["barrier"] = field(evidence, "BARRIER") or "none"
+    entry["retry_after"] = None if next_target(plan) else entry.get("retry_after")
+    return progress(plan)
 
 
 def load_state():
@@ -56,7 +150,7 @@ def load_state():
     if "version" not in value:
         active = value if value.get("issue") and value.get("job_id") else None
         value = empty_state(); value["active"] = active
-    value.setdefault("issues", {}); value.setdefault("attempts", []); value.setdefault("active", None)
+    value.setdefault("issues", {}); value.setdefault("attempts", []); value.setdefault("active", None); value["version"] = 3
     migrate_issue_6(value)
     return value
 
@@ -157,7 +251,13 @@ def finish_active(state, open_issues):
     status = str(job.get("status", "")).upper()
     if status not in TERMINAL:
         log(f"ACTIVE_JOB={active['job_id']} ISSUE=#{active['issue']} STATUS={status} STAGE={job.get('stage','?')}"); return True
-    number = int(active["issue"]); record = terminal_record(job, active, state["issues"].get(str(number)))
+    number = int(active["issue"]); entry = state["issues"].setdefault(str(number), {})
+    try: plan_progress = apply_plan_result(entry, active, job)
+    except Exception as exc:
+        log(f"PLAN_CHECKPOINT=FAIL {type(exc).__name__}: {exc}"); return True
+    record = terminal_record(job, active, entry)
+    # A successful child job is not objective completion. The persisted gates decide that.
+    record["work_state"] = entry.get("plan", {}).get("state", "IN_PROGRESS")
     discovered = add_discovered_issues(final_evidence(job), number, open_issues)
     retry = iso(record["retry_after"]) if record["retry_after"] else "none"
     checkpoint = ("### LifeOS autonomous backlog checkpoint\n"
@@ -165,15 +265,17 @@ def finish_active(state, open_issues):
         f"- Changed/result: `{record['result']}`; commits: `{record['commits']}`\n- LifeOS job: `{record['job_id']}`; record: `governor/job_records/{record['job_id']}.json`\n"
         f"- Tests: {record['tests']}\n- Deployment/runtime verification: {record['runtime_verification']}\n"
         f"- Completion: `{record['final_status']}` / `{record['work_state']}`; validity: `{record['issue_validity']}`\n"
+        f"- Plan progress: `{plan_progress['completed_targets']}/{plan_progress['total_targets']}` targets; next: `{plan_progress['current_target'] or 'none'}`\n"
         f"- Exact barrier: {record['barrier']}\n- Next autonomous action: {record['next_autonomous_action']}\n"
         f"- Retry after: `{retry}`; retry count: `{record['retry_count']}`\n- Discovered issues created or linked: {len(discovered)}\n\nRaw logs, secrets, and private content are omitted.")
     try:
         issue_comment(number, checkpoint)
-        if record["work_state"] == "PASS" and record["issue_validity"] in {"VALID", "ALREADY_COMPLETE", "SUPERSEDED"}: issue_close(number, f"LifeOS job `{record['job_id']}` completed this issue.")
+        if record["work_state"] == "PASS" and record["issue_validity"] in {"VALID", "ALREADY_COMPLETE", "SUPERSEDED"}: issue_close(number, f"LifeOS job `{record['job_id']}` completed all mandatory milestone gates for this issue.")
     except Exception as exc:
         log(f"ISSUE_UPDATE=FAIL {type(exc).__name__}: {exc}"); return True
     state["attempts"].append(record); state["attempts"] = state["attempts"][-500:]
-    state["issues"][str(number)] = {k: record[k] for k in ("retry_count", "retry_after", "work_state", "issue_validity", "barrier", "next_autonomous_action", "job_id", "attempted_at") if k in record}
+    entry.update({k: record[k] for k in ("retry_count", "issue_validity", "barrier", "next_autonomous_action", "job_id", "attempted_at") if k in record})
+    entry["retry_after"] = None if next_target(entry["plan"]) else record["retry_after"]
     state["active"] = None; save_state(state)
     log(f"FINISHED_JOB={record['job_id']} ISSUE=#{number} RETRY_AFTER={retry}")
     return False
@@ -197,11 +299,22 @@ def choose_issue(issues, state, timestamp=None):
 def submit_issue(issue, state):
     number = int(issue["number"]); is_private = private_issue(issue); body = str(issue.get("body") or "")[:14000]
     privacy_note = "This issue is local-only; never transmit its contents outside the LAN." if is_private else "This is ordinary engineering work; unrelated private data remains out of scope."
-    prompt = f"""Process GitHub issue #{number} in {REPO_FULL}: {issue.get('title','')}\n\n{privacy_note}\n\nFirst revalidate current relevance and dependencies, then implement and test safe work.\n\nISSUE BODY:\n{body}\n\nEvery final iteration MUST emit:\nISSUE_VALIDITY=VALID|ALREADY_COMPLETE|SUPERSEDED|BLOCKED\nLIFEOS_WORK_STATE=PASS|BLOCKED|WAITING_HUMAN|WAITING_DEPENDENCY|SUPERSEDED\nBARRIER=<exact barrier or none>\nNEXT_AUTONOMOUS_ACTION=<next action>\nDISCOVERED_ISSUES_JSON_B64=<base64 JSON list or none>\n"""
+    entry = state["issues"].setdefault(str(number), {}); plan = entry.get("plan")
+    target = next_target(plan) if plan else None
+    if not plan:
+        phase = "planning"
+        instruction = """Revalidate current repository/runtime relevance first. Decide whether a single target or dynamic decomposition is appropriate. Return PLAN_JSON_B64 containing a base64 JSON object with milestones[]. Each milestone requires id, title, mandatory, verification, and targets[]. Each target requires id, title, mandatory, depends_on, acceptance_criteria (non-empty list), and runtime_verification_required. Do not implement the objective in this job."""
+    elif target:
+        phase = "target"; criteria = "\n".join(f"- {x}" for x in target["acceptance_criteria"])
+        instruction = f"""Execute only target {target['id']}: {target['title']}\nAcceptance criteria:\n{criteria}\nDo not expand scope to the whole parent objective. Emit TARGET_STATE=PASS|FAILED|BLOCKED|WAITING_HUMAN and TARGET_EVIDENCE=<concise evidence>."""
+    else: raise RuntimeError("plan has no eligible target")
+    prompt = f"""Process GitHub issue #{number} in {REPO_FULL}: {issue.get('title','')}\nPlanning phase: {phase}\n\n{privacy_note}\n\n{instruction}\n\nPARENT ISSUE CONTEXT (context only):\n{body}\n\nEvery final iteration MUST emit:\nISSUE_VALIDITY=VALID|ALREADY_COMPLETE|SUPERSEDED|BLOCKED\nLIFEOS_WORK_STATE=PASS|BLOCKED|WAITING_HUMAN|WAITING_DEPENDENCY|SUPERSEDED\nBARRIER=<exact barrier or none>\nNEXT_AUTONOMOUS_ACTION=<next action>\nDISCOVERED_ISSUES_JSON_B64=<base64 JSON list or none>\n"""
     job = api("/jobs?async=1", "POST", {"request": prompt, "dispatch_builder": "local" if is_private else "normal"})
     job_id = str(job.get("id") or "")
     if not job_id: raise RuntimeError("governor returned no job id")
-    state["active"] = {"issue": number, "job_id": job_id, "started": now()}; save_state(state)
+    if target: target["state"] = "IN_PROGRESS"; target["attempts"] += 1
+    state["active"] = {"issue": number, "job_id": job_id, "started": now(), "phase": phase,
+                       "target_id": target["id"] if target else None}; save_state(state)
     issue_comment(number, f"### LifeOS autonomous backlog start\n- Selected after a complete open-issue refresh and priority/dependency eligibility pass.\n- LifeOS job: `{job_id}`\n- Route: `{'local-only' if is_private else 'normal'}`\n- State: `IN_PROGRESS`")
     log(f"SUBMITTED_JOB={job_id} ISSUE=#{number}")
 
