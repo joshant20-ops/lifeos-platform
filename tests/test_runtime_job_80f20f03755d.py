@@ -12,6 +12,7 @@ def test_shadow_acceptance_launcher_is_bounded_and_timeout_aware():
     assert "--project-name \"$PROJECT\"" in text
     assert "--env-file \"$ENV_FILE\"" in text
     assert text.count("compose up -d --wait --wait-timeout 600") == 2
+    assert "compose up -d --force-recreate --wait --wait-timeout 600" in text
     assert "-v /var/run/docker.sock" not in text
     assert "--privileged" not in text
     assert "sudo" not in text
@@ -41,8 +42,19 @@ def test_shadow_acceptance_checks_boundaries_health_and_persistence():
         "lifeos_shadow_acceptance",
         "database_persistence_canary_failed",
         "database_backup_restore_rehearsal_failed",
+        "shadow_recreate_or_health_failed",
+        "rundeck_recovery_restart_failed",
     ):
         assert required in text
+
+
+def test_retry_repairs_stale_unhealthy_shadow_without_removing_volumes():
+    text = LAUNCHER.read_text(encoding="utf-8")
+    assert "shadow_needs_recreate=false" in text
+    assert ".State.Status" in text
+    assert ".State.Health.Status" in text
+    assert "--force-recreate" in text
+    assert "compose down -v" not in text
 
 
 def test_launcher_emits_governor_and_wrapper_contracts():
