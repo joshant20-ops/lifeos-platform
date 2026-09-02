@@ -9,7 +9,7 @@ EXAMPLE = ROOT / "orchestration/rundeck/runtime.env.example"
 
 def test_shadow_is_pinned_persistent_and_health_checked():
     text = COMPOSE.read_text(encoding="utf-8")
-    assert "rundeck/rundeck:5.13.0" in text
+    assert "rundeck/rundeck:6.1.0" in text
     assert "postgres:17.6-bookworm" in text
     assert text.count("restart: unless-stopped") == 2
     assert text.count("healthcheck:") == 2
