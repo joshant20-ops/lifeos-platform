@@ -231,6 +231,16 @@ class Controller:
         if manifest["state"] != "PROBATION":
             raise TransactionError("commit requires PROBATION")
         try:
+            deadline = datetime.fromisoformat(manifest["deadline"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise TransactionError("transaction deadline unavailable") from exc
+        # The timer is the independent backstop, but its dispatch can be
+        # delayed by boot or systemd scheduling.  Never let that delay create
+        # a fail-open window in which a stale verification can commit.
+        if self.now() >= deadline:
+            self.rollback(transaction_id, "health deadline expired")
+            raise TransactionError("transaction deadline expired; rolled back")
+        try:
             proof = json.loads((self._dir(transaction_id) / "verification.json").read_text())
         except Exception as exc:
             raise TransactionError("independent evidence unavailable") from exc
