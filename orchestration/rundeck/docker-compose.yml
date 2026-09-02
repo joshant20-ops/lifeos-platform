@@ -1,0 +1,71 @@
+services:
+  rundeck-db:
+    image: postgres:17.6-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rundeck
+      POSTGRES_USER: rundeck
+      POSTGRES_PASSWORD: "${RUNDECK_DATABASE_PASSWORD:?supply via the root-owned runtime env file}"
+    volumes:
+      - rundeck-db:/var/lib/postgresql/data
+    networks:
+      - rundeck-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rundeck -d rundeck"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    mem_limit: 1g
+    cpus: 1.0
+
+  rundeck:
+    image: rundeck/rundeck:5.13.0
+    restart: unless-stopped
+    depends_on:
+      rundeck-db:
+        condition: service_healthy
+    environment:
+      RUNDECK_GRAILS_URL: "http://${LIFEOS_RUNDECK_BIND_IP:?set an explicit Pi5 LAN address}:4440"
+      RUNDECK_SERVER_ADDRESS: 0.0.0.0
+      RUNDECK_DATABASE_DRIVER: org.postgresql.Driver
+      RUNDECK_DATABASE_URL: jdbc:postgresql://rundeck-db/rundeck
+      RUNDECK_DATABASE_USERNAME: rundeck
+      RUNDECK_DATABASE_PASSWORD: "${RUNDECK_DATABASE_PASSWORD:?supply via the root-owned runtime env file}"
+      RUNDECK_ADMIN_PASSWORD: "${RUNDECK_ADMIN_PASSWORD:?supply via the root-owned runtime env file}"
+      RUNDECK_LOGGING_STRATEGY: CONSOLE
+    ports:
+      - "${LIFEOS_RUNDECK_BIND_IP:?set an explicit Pi5 LAN address}:4440:4440"
+    volumes:
+      - rundeck-data:/home/rundeck/server/data
+    networks:
+      - rundeck-internal
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent --show-error http://127.0.0.1:4440/ >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    cpus: 2.0
+
+networks:
+  rundeck-internal:
+    internal: true
+
+volumes:
+  rundeck-data:
+  rundeck-db:

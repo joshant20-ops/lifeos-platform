@@ -15,9 +15,9 @@ single-flight behavior are deployed and runtime-verified.
 
 ## Engineer control plane
 
-Status: DESIGN DECIDED; COMPATIBILITY SAFETY WORK IN PROGRESS
+Status: RUNDECK SHADOW DEFINITION ADDED; RUNTIME VALIDATION PENDING
 
-Target: Ansible Semaphore and version-controlled Ansible automation, with the LifeOS policy/client and existing submission bridge/root broker retained as the privileged boundary.
+Target: Rundeck Community and version-controlled Ansible automation, with the LifeOS policy/client, #26 transaction controller, and existing submission bridge/root broker retained as privileged boundaries.
 
 The ownership model, component disposition, shadow gates, and rollback plan are defined in [ots-engineer-orchestration.md](ots-engineer-orchestration.md). No destructive cutover is authorised until shadow equivalence passes. Git-owned runtime queue directories remain temporary compatibility state, not the target design.
 
