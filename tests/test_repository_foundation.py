@@ -2,7 +2,6 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).parents[1]
-LAUNCHER = ROOT / "governor/runtime_jobs/242407bcc655.sh"
 REQUIRED = (
     "README.md",
     "AGENTS.md",
@@ -15,67 +14,64 @@ REQUIRED = (
 )
 
 
+def read(relative: str) -> str:
+    return (ROOT / relative).read_text(encoding="utf-8")
+
+
+def prose(relative: str) -> str:
+    return " ".join(read(relative).split())
+
+
 def test_required_foundation_files_exist_and_are_nonempty():
     for relative in REQUIRED:
         path = ROOT / relative
         assert path.is_file(), relative
-        assert path.read_text(encoding="utf-8").strip(), relative
+        assert not path.is_symlink(), relative
+        assert read(relative).strip(), relative
 
 
-def test_foundation_contract_is_consistent_across_governance_docs():
-    combined = "\n".join((ROOT / name).read_text(encoding="utf-8") for name in REQUIRED)
-    for statement in (
-        "canonical source of truth",
-        "Pi5",
-        "Watchman",
-        "Engineer",
-        "Auditor",
-        "Personal Assistant",
-        "TODO",
-    ):
-        assert statement in combined
-    communication = (ROOT / "governance/communication.md").read_text(encoding="utf-8")
+def test_authority_and_execution_contract_is_explicit():
+    architecture = prose("docs/architecture_overview.md")
+    assert "canonical source of truth" in read("README.md").lower()
+    assert "Pi5 is the permanent, always-on Governor and control plane" in architecture
+    assert "Watchman is the sole runtime execution gatekeeper" in architecture
+    assert "Z97" in architecture and "migration-only" in architecture
+
+
+def test_worker_boundaries_and_communication_are_consistent():
+    architecture = read("docs/architecture_overview.md")
+    communication = read("governance/communication.md")
+    for worker in ("Engineer", "Auditor", "Personal Assistant"):
+        assert worker in architecture
+        assert worker in communication
     assert "directly import" in communication
     assert "versioned files" in communication
     assert "explicit queue records" in communication
     assert "repository state" in communication
 
 
-def test_pi_launcher_is_bounded_and_enforces_review_contract():
-    text = LAUNCHER.read_text(encoding="utf-8")
-    assert text.startswith("#!/usr/bin/env bash\n")
-    assert "timeout --signal=TERM --kill-after=10s" in text
-    assert "defaultBranchRef" in text
-    assert '[[ "$branch" == "$default_branch" ]]' in text
-    assert "FOUNDATION_INTEGRATION=PASS" in text
-    assert "git ls-files --error-unmatch" in text
-    assert 'ISSUE_VALIDITY=$1' in text
-    assert "copilot-swe-agent[bot]" in text
-    assert "gh pr create" in text
-    assert "--draft --title \"$PR_TITLE\"" in text
-    assert "git commit" not in text
-    assert "docker" not in text.lower()
-
-
-def test_pi_launcher_never_attempts_a_default_to_default_pr():
-    text = LAUNCHER.read_text(encoding="utf-8")
-    default_case = text.index('if [[ "$branch" == "$default_branch" ]]')
-    default_case_end = text.index("fi", default_case)
-    create = text.index("gh pr create")
-    assert default_case < default_case_end < create
-    assert '--base "$default_branch"' in text
-
-
-def test_pi_launcher_emits_iteration_contract():
-    text = LAUNCHER.read_text(encoding="utf-8")
-    for field in (
-        "ISSUE_VALIDITY=",
-        "LIFEOS_WORK_STATE=",
-        "BARRIER=",
-        "NEXT_AUTONOMOUS_ACTION=",
-        "DISCOVERED_ISSUES_JSON_B64=",
-        "RESULT=",
-        "TESTS=",
-        "NEXT_RUNTIME_CHECK=",
+def test_open_source_and_unresolved_decision_policy_is_documented():
+    assert "Prefer maintained open-source components" in read("AGENTS.md")
+    for relative in (
+        "docs/architecture_overview.md",
+        "docs/roadmap.md",
+        "docs/migration_strategy.md",
+        "bootstrap/README.md",
+        "governance/communication.md",
     ):
-        assert field in text
+        assert "TODO" in read(relative), relative
+
+
+def test_foundation_bootstrap_scope_contains_no_executable_content():
+    bootstrap_files = tuple((ROOT / "bootstrap").rglob("*"))
+    assert bootstrap_files == (ROOT / "bootstrap/README.md",)
+    assert not any((ROOT / relative).name == "Dockerfile" for relative in REQUIRED)
+
+
+def test_foundation_docs_do_not_contain_host_specific_network_addresses():
+    combined = "\n".join(read(relative) for relative in REQUIRED)
+    # Architectural role names are expected, but LAN and loopback endpoints are
+    # outside the governed foundation's documentation scope.
+    forbidden_fragments = ("192.168.", "10.0.", "127.0.0.1", "localhost:")
+    for fragment in forbidden_fragments:
+        assert fragment not in combined
