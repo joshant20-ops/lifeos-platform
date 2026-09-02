@@ -80,3 +80,19 @@ def test_metadata_failure_keeps_full_diagnostics_for_watchman():
     assert 'metadata_log="$w/metadata-update.txt"' in text
     assert 'apt-get "${o[@]}" update >"$metadata_log" 2>&1' in text
     assert 'cat "$metadata_log" >&2' in text
+
+
+def test_every_simulated_removal_must_belong_to_the_old_gpu_inventory():
+    text = SCRIPT.read_text()
+    assert "unexpected_removals=$(comm -13" in text
+    assert "[[ -z $unexpected_removals ]]" in text
+    assert "REFUSED: removal set drift" in text
+    assert "exit 24" in text
+
+
+def test_remote_evidence_is_persisted_before_failure_dispatch():
+    text = SCRIPT.read_text()
+    copy = text.index('cp "$tmp/remote" "$EVIDENCE"')
+    failure = text.index('if [[ $rc -ne 0 ]]')
+    assert copy < failure
+    assert "REMOTE_EVIDENCE=%s" in text
