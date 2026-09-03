@@ -13,7 +13,7 @@ POLL_SECONDS=${POLL_SECONDS:-5}
 [[ -d "$PLATFORM/.git" ]] || { echo 'ERROR: platform repository missing'; exit 1; }
 [[ -r "$STATE" ]] || { echo 'ERROR: backlog state missing'; exit 1; }
 
-printf '%s\n' 'SEMAPHORE_TERMINAL_OBSERVER_VERSION=1'
+printf '%s\n' 'SEMAPHORE_TERMINAL_OBSERVER_VERSION=2'
 printf 'MUTATIONS=%s\n' 'NONE'
 printf 'JOB_ID=%s\n' "$JOB_ID"
 printf 'ISSUE=%s\n' "$ISSUE"
@@ -49,7 +49,9 @@ done
 echo "GOVERNOR_TERMINAL_STATUS=$terminal"
 
 # Once Governor is terminal, the legacy backlog timer should consume the result
-# and clear/advance the durable active record. Observe only; never start a unit.
+# and clear/advance the durable active record. Do not require a last_job_id field:
+# older durable state schemas prove handling through active clearance + terminal
+# work/validity state + the normal GitHub terminal checkpoint.
 completion_deadline=$(( $(date +%s) + 720 ))
 handled=no
 while :; do
@@ -71,7 +73,11 @@ PY
   WORK_STATE=${state_fields[3]:-none}
   ISSUE_VALIDITY=${state_fields[4]:-none}
 
-  if [[ "$ACTIVE_JOB" != "$JOB_ID" && "$LAST_JOB" == "$JOB_ID" ]]; then
+  case "$WORK_STATE" in
+    PASS|BLOCKED|WAITING_HUMAN|WAITING_DEPENDENCY|FAIL|ERROR|RETRY) terminal_work=yes ;;
+    *) terminal_work=no ;;
+  esac
+  if [[ "$ACTIVE_JOB" != "$JOB_ID" && "$ACTIVE_ISSUE" != "$ISSUE" && "$terminal_work" == yes ]]; then
     handled=yes
     break
   fi
@@ -88,18 +94,32 @@ echo "BACKLOG_WORK_STATE=$WORK_STATE"
 echo "BACKLOG_ISSUE_VALIDITY=$ISSUE_VALIDITY"
 echo "LEGACY_COMPLETION_HANDLED=$handled"
 
-comments=$(runuser -u joshan -- gh api "repos/$REPO_FULL/issues/$ISSUE/comments?per_page=100" --paginate 2>/dev/null || printf '[]')
-checkpoint=$(python3 - "$JOB_ID" <<'PY' <<<"$comments"
+# Parse comments in Python directly from a temp file rather than combining a
+# here-doc with a here-string (which previously caused JSON booleans to be
+# interpreted as Python source on some shells).
+COMMENTS_FILE=$(mktemp)
+trap 'rm -f "$COMMENTS_FILE"' EXIT
+runuser -u joshan -- gh api "repos/$REPO_FULL/issues/$ISSUE/comments?per_page=100" >"$COMMENTS_FILE" 2>/dev/null || printf '[]\n' >"$COMMENTS_FILE"
+checkpoint=$(python3 - "$COMMENTS_FILE" "$JOB_ID" <<'PY'
 import json,sys
-job=sys.argv[1]
-try: data=json.load(sys.stdin)
-except Exception: data=[]
-# gh --paginate may emit either one array or concatenated arrays depending version.
-if isinstance(data,dict): data=[data]
+path,job=sys.argv[1:]
+try:
+    data=json.load(open(path))
+except Exception:
+    data=[]
+if isinstance(data,dict):
+    data=[data]
 found=False
 for c in data if isinstance(data,list) else []:
     body=str(c.get('body') or '')
-    if job in body and ('LIFEOS_WORK_STATE=' in body or 'State:' in body or 'PASS' in body or 'BLOCKED' in body or 'FAIL' in body):
+    if job in body and (
+        'LIFEOS_WORK_STATE=' in body or
+        'State:' in body or
+        'PASS' in body or
+        'BLOCKED' in body or
+        'FAIL' in body or
+        'ERROR' in body
+    ):
         found=True
         break
 print('yes' if found else 'no')
