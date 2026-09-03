@@ -9,7 +9,7 @@ MAINT=/home/joshan/automation/queues/lifeos_engineer_maintenance.py
 fail(){ echo "ERROR: $*" >&2; exit 1; }
 
 cd "$PLATFORM"
-echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=3'
+echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=4'
 echo 'MUTATIONS=SEMAPHORE_CATALOGUE_AND_NON_DESTRUCTIVE_PROOF_TASK_HISTORY_ONLY'
 echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
 
@@ -67,25 +67,18 @@ cat >"$TMP/maintenance.yml" <<'YAML'
       changed_when: false
       register: fsck
     - name: Verify platform mount is read-only
-      ansible.builtin.shell: |
-        probe=/workspace/lifeos-platform/.semaphore-maintenance-write-probe
-        err=$(mktemp)
-        if : >"$probe" 2>"$err"; then
-          rm -f "$probe" "$err"
-          echo writable
-          exit 9
-        fi
-        rc=$?
-        if grep -Eqi 'read-only file system|permission denied' "$err"; then
-          rm -f "$err"
-          echo readonly
-          exit 0
-        fi
-        cat "$err" >&2
-        rm -f "$err"
-        exit "$rc"
-      args:
-        executable: /bin/sh
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - -c
+          - >-
+            import errno,pathlib,sys;
+            p=pathlib.Path('/workspace/lifeos-platform/.semaphore-maintenance-write-probe');
+            try:
+                f=p.open('w'); f.close(); p.unlink(missing_ok=True); print('writable'); sys.exit(9)
+            except OSError as exc:
+                print('readonly' if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM) else f'errno={exc.errno}');
+                sys.exit(0 if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM) else 8)
       changed_when: false
       register: ro
     - name: Emit self-maintenance proof marker
