@@ -3,7 +3,6 @@ set -Eeuo pipefail
 
 PLATFORM=/home/joshan/lifeos-platform
 STATE=/var/lib/lifeos-backlog-runner/state.json
-ENV_FILE=/etc/lifeos/semaphore.env
 PROJECT=lifeos-semaphore-shadow
 GOV=http://127.0.0.1:8790
 REPO_FULL=joshant20-ops/lifeos-platform
@@ -16,7 +15,7 @@ ORIGIN=$(git -C "$PLATFORM" rev-parse origin/main)
 [[ "$HEAD" == "$ORIGIN" ]] || { echo 'ERROR: platform HEAD is not origin/main'; exit 1; }
 [[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || { echo 'ERROR: platform repository dirty'; exit 1; }
 
-printf '%s\n' 'LEGACY_DISPATCHER_RETIREMENT_AUDIT_VERSION=2'
+printf '%s\n' 'LEGACY_DISPATCHER_RETIREMENT_AUDIT_VERSION=3'
 printf '%s\n' 'MUTATIONS=NONE'
 printf 'PLATFORM_HEAD=%s\n' "$HEAD"
 
@@ -32,13 +31,27 @@ for c in "${PROJECT}-semaphore-1" "${PROJECT}-semaphore-db-1"; do
     echo "$c state=absent"
   fi
 done
+
+# Do not depend on root-only /etc/lifeos/semaphore.env. Docker's published-port
+# metadata is visible to the normal deployment user and is the actual runtime
+# truth we need to prove host reachability.
 SEMAPHORE_API=UNKNOWN
-if [[ -r "$ENV_FILE" ]]; then
-  BIND_IP=$(awk -F= '$1=="LIFEOS_SEMAPHORE_BIND_IP"{print $2;exit}' "$ENV_FILE")
-  if [[ -n "$BIND_IP" ]]; then
-    if curl -fsS --max-time 5 "http://${BIND_IP}:3000/api/ping" >/dev/null; then SEMAPHORE_API=PASS; else SEMAPHORE_API=FAIL; fi
+SEMAPHORE_BIND=''
+if docker inspect "${PROJECT}-semaphore-1" >/dev/null 2>&1; then
+  SEMAPHORE_BIND=$(docker port "${PROJECT}-semaphore-1" 3000/tcp 2>/dev/null | head -1 || true)
+  if [[ -n "$SEMAPHORE_BIND" ]]; then
+    host=${SEMAPHORE_BIND%:*}
+    port=${SEMAPHORE_BIND##*:}
+    host=${host#[}
+    host=${host%]}
+    if [[ -n "$host" && -n "$port" ]] && curl -fsS --max-time 5 "http://${host}:${port}/api/ping" >/dev/null; then
+      SEMAPHORE_API=PASS
+    else
+      SEMAPHORE_API=FAIL
+    fi
   fi
 fi
+echo "SEMAPHORE_PUBLISHED_BIND=${SEMAPHORE_BIND:-none}"
 echo "SEMAPHORE_API=$SEMAPHORE_API"
 
 echo
@@ -128,14 +141,34 @@ PROOF_GOV_STATUS=${evidence[0]:-UNKNOWN}
 PROOF_ACTIVE_JOB=${evidence[1]:-unknown}
 PROOF_WORK_STATE=${evidence[2]:-unknown}
 PROOF_VALIDITY=${evidence[3]:-unknown}
-comments=$(runuser -u joshan -- gh api "repos/$REPO_FULL/issues/$PROOF_ISSUE/comments?per_page=100" 2>/dev/null || printf '[]')
+
+# Use the current user's authenticated gh context when already running as
+# joshan; only drop privileges when invoked as root. This matches the terminal
+# observer and avoids runuser failing silently in an unprivileged audit.
+if [[ $(id -u) -eq 0 ]]; then
+  comments=$(runuser -u joshan -- gh api "repos/$REPO_FULL/issues/$PROOF_ISSUE/comments?per_page=100" --paginate 2>/dev/null || printf '[]')
+else
+  comments=$(gh api "repos/$REPO_FULL/issues/$PROOF_ISSUE/comments?per_page=100" --paginate 2>/dev/null || printf '[]')
+fi
 PROOF_CHECKPOINT=$(COMMENTS="$comments" PROOF_JOB="$PROOF_JOB" python3 - <<'PY'
 import json,os
-try: data=json.loads(os.environ.get('COMMENTS','[]'))
-except Exception: data=[]
+raw=os.environ.get('COMMENTS','[]').strip()
 job=os.environ['PROOF_JOB']
+# gh --paginate may return one JSON array or multiple arrays separated by
+# whitespace/newlines depending on CLI version. Decode every JSON value.
+values=[]
+dec=json.JSONDecoder(); i=0
+while i < len(raw):
+    while i < len(raw) and raw[i].isspace(): i += 1
+    if i >= len(raw): break
+    try:
+        value,end=dec.raw_decode(raw,i)
+    except Exception:
+        values=[]; break
+    values.extend(value if isinstance(value,list) else [value]); i=end
 found=False
-for c in data if isinstance(data,list) else []:
+for c in values:
+    if not isinstance(c,dict): continue
     body=str(c.get('body') or '')
     if job in body and ('State:' in body or 'LIFEOS_WORK_STATE=' in body or 'PASS' in body or 'BLOCKED' in body or 'FAIL' in body):
         found=True; break
