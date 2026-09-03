@@ -9,7 +9,7 @@ MAINT=/home/joshan/automation/queues/lifeos_engineer_maintenance.py
 fail(){ echo "ERROR: $*" >&2; exit 1; }
 
 cd "$PLATFORM"
-echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=2'
+echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=3'
 echo 'MUTATIONS=SEMAPHORE_CATALOGUE_AND_NON_DESTRUCTIVE_PROOF_TASK_HISTORY_ONLY'
 echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
 
@@ -68,10 +68,22 @@ cat >"$TMP/maintenance.yml" <<'YAML'
       register: fsck
     - name: Verify platform mount is read-only
       ansible.builtin.shell: |
-        set -eu
         probe=/workspace/lifeos-platform/.semaphore-maintenance-write-probe
-        if : >"$probe" 2>/dev/null; then rm -f "$probe"; echo writable; exit 9; fi
-        echo readonly
+        err=$(mktemp)
+        if : >"$probe" 2>"$err"; then
+          rm -f "$probe" "$err"
+          echo writable
+          exit 9
+        fi
+        rc=$?
+        if grep -Eqi 'read-only file system|permission denied' "$err"; then
+          rm -f "$err"
+          echo readonly
+          exit 0
+        fi
+        cat "$err" >&2
+        rm -f "$err"
+        exit "$rc"
       args:
         executable: /bin/sh
       changed_when: false
