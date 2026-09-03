@@ -1,4 +1,4 @@
-name: LifeOS Pi Auto Smoke
+name: LifeOS Pi Automation Health
 
 on:
   push:
@@ -6,22 +6,25 @@ on:
     paths:
       - '.github/workflows/lifeos-pi-auto-smoke.yml'
       - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
+      - 'scripts/lifeos-worker-dispatcher-split-audit.sh'
       - 'scripts/lifeos-install-github-runner-gateway.sh'
       - 'scripts/lifeos-bootstrap-github-runner.sh'
   issues:
     types: [opened]
+  schedule:
+    - cron: '17 */6 * * *'
 
 permissions:
   contents: read
   issues: write
 
 concurrency:
-  group: lifeos-pi5-auto-smoke
+  group: lifeos-pi5-automation-health
   cancel-in-progress: false
 
 jobs:
-  smoke:
-    if: github.event_name != 'issues' || github.event.issue.title == 'LifeOS Pi Auto Smoke Trigger'
+  health:
+    if: github.event_name != 'issues' || github.event.issue.title == 'LifeOS Pi Auto Smoke Trigger' || github.event.issue.title == 'LifeOS Pi Health Trigger'
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 15
     steps:
@@ -45,7 +48,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
 
-      - name: Execute read-only deployment-gateway smoke audit
+      - name: Execute allow-listed post-retirement health audit
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -73,7 +76,7 @@ jobs:
             printf '%s\n' 'GATEWAY_RESULT=NO_EVIDENCE' 'GATEWAY_RC=unknown' > "$evidence"
           fi
           {
-            echo '### LifeOS Pi automatic smoke evidence'
+            echo '### LifeOS Pi automation health evidence'
             echo
             echo "- event: $GITHUB_EVENT_NAME"
             echo "- run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
@@ -86,11 +89,11 @@ jobs:
           } > "$RUNNER_TEMP/lifeos-evidence/issue-comment.md"
           gh issue comment 29 --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/lifeos-evidence/issue-comment.md"
 
-      - name: Upload smoke evidence
+      - name: Upload health evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lifeos-pi-auto-smoke-${{ github.run_id }}
+          name: lifeos-pi-automation-health-${{ github.run_id }}
           path: ${{ runner.temp }}/lifeos-evidence/
           if-no-files-found: warn
           retention-days: 30
