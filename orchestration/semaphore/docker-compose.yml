@@ -51,6 +51,7 @@ services:
       - semaphore-work:/tmp/semaphore
       - "${LIFEOS_SEMAPHORE_SECRETS_DIR:?set the root-owned secrets directory}:/run/secrets:ro"
       - /home/joshan/lifeos-platform:/workspace/lifeos-platform:ro
+      - /var/lib/lifeos-semaphore-shadow:/runtime/lifeos-shadow:ro
     networks:
       - semaphore-internal
       - semaphore-frontend
