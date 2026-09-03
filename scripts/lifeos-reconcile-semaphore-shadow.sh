@@ -9,6 +9,7 @@ CANONICAL="$PLATFORM/orchestration/semaphore/docker-compose.yml"
 LAUNCHER="$PLATFORM/governor/runtime_jobs/c3751aaff97b.sh"
 BACKUP="${LIFEOS_BACKUP_ROOT:-/mnt/docker-data/automation/backups/semaphore-reconcile-$STAMP}"
 PROJECT=lifeos-semaphore-shadow
+GIT_USER="${LIFEOS_GIT_USER:-joshan}"
 
 say(){ printf '\n==> %s\n' "$*"; }
 info(){ printf '    %s\n' "$*"; }
@@ -19,8 +20,13 @@ if [[ $EUID -ne 0 ]]; then exec sudo -E bash "$0" "$@"; fi
 mkdir -p "$BACKUP"
 exec > >(tee -a "$BACKUP/run.log") 2>&1
 
+git_as_owner(){
+  runuser -u "$GIT_USER" -- env HOME="/home/$GIT_USER" PATH=/usr/bin:/bin git -C "$PLATFORM" "$@"
+}
+
 say "LifeOS Semaphore shadow reconciliation"
-info "Platform HEAD: $(git -C "$PLATFORM" rev-parse --short=12 HEAD)"
+info "Platform HEAD: $(git_as_owner rev-parse --short=12 HEAD)"
+info "Git metadata user: $GIT_USER"
 info "Backup: $BACKUP"
 
 say "STAGE 0 — Preflight"
@@ -28,9 +34,17 @@ say "STAGE 0 — Preflight"
 [[ -d "$PLATFORM/.git" ]] || die "platform checkout missing"
 [[ -f "$CANONICAL" ]] || die "canonical Semaphore compose missing"
 [[ -f "$LAUNCHER" ]] || die "published Semaphore launcher missing"
-[[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform dirty"
-[[ "$(git -C "$PLATFORM" branch --show-current)" == main ]] || die "lifeos-platform must be on main"
-git -C "$PLATFORM" ls-files --error-unmatch orchestration/semaphore/docker-compose.yml governor/runtime_jobs/c3751aaff97b.sh >/dev/null
+[[ -z "$(git_as_owner status --porcelain)" ]] || die "lifeos-platform dirty"
+[[ "$(git_as_owner branch --show-current)" == main ]] || die "lifeos-platform must be on main"
+git_as_owner ls-files --error-unmatch orchestration/semaphore/docker-compose.yml governor/runtime_jobs/c3751aaff97b.sh >/dev/null
+
+# Guard the ownership boundary before a privileged deployment starts.
+[[ "$(stat -c '%U:%G' "$PLATFORM/.git/index")" == "$GIT_USER:$GIT_USER" ]] || die "Git index ownership is not $GIT_USER:$GIT_USER"
+
+# Snapshot protected custom execution units before doing anything to Semaphore.
+for unit in lifeos-autonomous-agent.service lifeos-engineer.service lifeos-control-job-submit.socket lifeos-root-broker.socket; do
+  systemctl is-active --quiet "$unit" || die "protected execution unit not active before migration: $unit"
+done
 
 docker ps --format '{{.Names}}' | grep -qx lifeos-semaphore-shadow-semaphore-1 || die "existing Semaphore shadow container not running"
 old_dialect="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' lifeos-semaphore-shadow-semaphore-1 | awk -F= '$1=="SEMAPHORE_DB_DIALECT"{print $2;exit}')"
@@ -70,7 +84,7 @@ say "STAGE 3 — Deploy canonical PostgreSQL shadow"
 # Reuse the already-reviewed root launcher. It creates root-owned env/secrets if
 # needed, validates published source, pulls native arm64 images, launches the
 # canonical Compose contract, and verifies health/privilege boundaries.
-LIFEOS_REPO_ROOT="$PLATFORM" bash "$LAUNCHER" | tee "$BACKUP/canonical-launcher.out"
+LIFEOS_REPO_ROOT="$PLATFORM" LIFEOS_GIT_USER="$GIT_USER" bash "$LAUNCHER" | tee "$BACKUP/canonical-launcher.out"
 grep -q '^SEMAPHORE_SHADOW=PASS ' "$BACKUP/canonical-launcher.out" || die "canonical launcher did not report PASS"
 grep -q '^RESULT=PASS$' "$BACKUP/canonical-launcher.out" || die "canonical launcher result was not PASS"
 
@@ -96,7 +110,8 @@ for unit in lifeos-autonomous-agent.service lifeos-engineer.service lifeos-contr
   systemctl is-active --quiet "$unit" || die "protected execution unit not active: $unit"
 done
 
-[[ -z "$(git -C "$PLATFORM" status --porcelain)" ]] || die "lifeos-platform became dirty"
+[[ -z "$(git_as_owner status --porcelain)" ]] || die "lifeos-platform became dirty"
+[[ "$(stat -c '%U:%G' "$PLATFORM/.git/index")" == "$GIT_USER:$GIT_USER" ]] || die "Git index ownership changed during deployment"
 
 cat <<EOF
 
@@ -107,6 +122,7 @@ NEW_DB_DIALECT=postgres
 CANONICAL_SERVICES=2
 CUSTOM_EXECUTION_PATH_CHANGED=NO
 OLD_SQLITE_VOLUMES_DELETED=NO
+GIT_METADATA_OWNER_PRESERVED=YES
 BACKUP=$BACKUP
 NEXT_ACTION=audit_replacement_scope_before_disabling_custom_orchestration
 EOF
