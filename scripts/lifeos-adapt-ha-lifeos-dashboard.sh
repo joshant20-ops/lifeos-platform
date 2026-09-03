@@ -39,8 +39,6 @@ for name in lovelace_dashboards lovelace.lifeos_control; do
   fi
 done
 
-# Build a dedicated current LifeOS dashboard from the preserved six-view layout.
-# Only presentation storage is changed; Home Assistant credentials/state are not read.
 docker exec -i "$CONTAINER" python3 - <<'PY'
 import copy, json, os, tempfile
 from pathlib import Path
@@ -71,15 +69,14 @@ def entities(title, items):
                          if attr else {'entity': control_entity, 'name': name}
                          for name, attr in items]}
 
-# Keep view names/navigation from the old dashboard, but put the current control-plane
-# information at the front of each relevant page. Existing legacy cards remain below
-# for now so the adaptation is incremental rather than destructive.
+# LifeOS Control is now a concise control-plane dashboard. Preserve the old six-view
+# navigation, but retain legacy cards only on Network where they still provide unique
+# presentation not replaced by the current control-state feed.
 for view in views:
     title = str(view.get('title') or '')
-    cards = view.get('cards') if isinstance(view.get('cards'), list) else []
-    prefix = []
+    legacy = view.get('cards') if isinstance(view.get('cards'), list) else []
     if title == 'Overview':
-        prefix = [
+        view['cards'] = [
             markdown('LifeOS live control state',
                 "## {{ states('sensor.lifeos_control_state') }}\n"
                 "**Roadmap:** {{ state_attr('sensor.lifeos_control_state','roadmap_stage') }}/{{ state_attr('sensor.lifeos_control_state','roadmap_stages') }} — {{ state_attr('sensor.lifeos_control_state','roadmap_progress_percent') }}%  \n"
@@ -90,34 +87,42 @@ for view in views:
             entities('Queue / progress', [('LifeOS state', None), ('Open issues','open_issue_count'), ('Eligible','eligible_count'), ('Blocked','blocked_count'), ('Last completed job','last_completed_job')]),
         ]
     elif title == 'Execution Safety':
-        prefix = [markdown('Execution safety',
-            "**Control plane:** {{ states('sensor.lifeos_control_state') }}  \n"
-            "**GitHub runner:** {{ state_attr('sensor.lifeos_control_state','github_runner')['state'] if state_attr('sensor.lifeos_control_state','github_runner') else 'unknown' }}  \n"
-            "**Semaphore:** {{ state_attr('sensor.lifeos_control_state','semaphore')['state'] if state_attr('sensor.lifeos_control_state','semaphore') else 'unknown' }}  \n"
-            "**Blocked jobs:** {{ state_attr('sensor.lifeos_control_state','blocked_count') or 0 }}")]
+        view['cards'] = [
+            markdown('Execution safety',
+                "## {{ states('sensor.lifeos_control_state') }}\n"
+                "**GitHub runner:** {{ state_attr('sensor.lifeos_control_state','github_runner')['state'] if state_attr('sensor.lifeos_control_state','github_runner') else 'unknown' }}  \n"
+                "**Semaphore:** {{ state_attr('sensor.lifeos_control_state','semaphore')['state'] if state_attr('sensor.lifeos_control_state','semaphore') else 'unknown' }}  \n"
+                "**Blocked jobs:** {{ state_attr('sensor.lifeos_control_state','blocked_count') or 0 }}  \n"
+                "**Blocker:** {{ state_attr('sensor.lifeos_control_state','blocker') or 'none' }}")
+        ]
     elif title == 'Hosts':
-        prefix = [markdown('Automation hosts',
-            "**Pi runner:** {{ state_attr('sensor.lifeos_control_state','github_runner')['state'] if state_attr('sensor.lifeos_control_state','github_runner') else 'unknown' }}  \n"
-            "**Semaphore:** {{ state_attr('sensor.lifeos_control_state','semaphore')['state'] if state_attr('sensor.lifeos_control_state','semaphore') else 'unknown' }}  \n"
-            "**Latest automation:** {{ state_attr('sensor.lifeos_control_state','automation')['state'] if state_attr('sensor.lifeos_control_state','automation') else 'unknown' }}")]
+        view['cards'] = [
+            markdown('Automation hosts',
+                "**Pi runner:** {{ state_attr('sensor.lifeos_control_state','github_runner')['state'] if state_attr('sensor.lifeos_control_state','github_runner') else 'unknown' }}  \n"
+                "**Semaphore:** {{ state_attr('sensor.lifeos_control_state','semaphore')['state'] if state_attr('sensor.lifeos_control_state','semaphore') else 'unknown' }}  \n"
+                "**Latest automation:** {{ state_attr('sensor.lifeos_control_state','automation')['state'] if state_attr('sensor.lifeos_control_state','automation') else 'unknown' }}")
+        ]
+    elif title == 'Network':
+        view['cards'] = legacy
     elif title == 'AI Workflow':
-        prefix = [markdown('Current AI workflow',
-            "**Issue:** #{{ state_attr('sensor.lifeos_control_state','current_issue') or '—' }} {{ state_attr('sensor.lifeos_control_state','current_title') or '' }}  \n"
-            "**Job:** {{ state_attr('sensor.lifeos_control_state','current_job') or 'none' }}  \n"
-            "**Stage:** {{ state_attr('sensor.lifeos_control_state','current_stage') or 'idle' }}  \n"
-            "**Detail:** {{ state_attr('sensor.lifeos_control_state','stage_detail') or '—' }}  \n"
-            "**Next:** {{ state_attr('sensor.lifeos_control_state','next_action') or '—' }}")]
+        view['cards'] = [
+            markdown('Current AI workflow',
+                "**Issue:** #{{ state_attr('sensor.lifeos_control_state','current_issue') or '—' }} {{ state_attr('sensor.lifeos_control_state','current_title') or '' }}  \n"
+                "**Job:** {{ state_attr('sensor.lifeos_control_state','current_job') or 'none' }}  \n"
+                "**Stage:** {{ state_attr('sensor.lifeos_control_state','current_stage') or 'idle' }}  \n"
+                "**Detail:** {{ state_attr('sensor.lifeos_control_state','stage_detail') or '—' }}  \n"
+                "**Next:** {{ state_attr('sensor.lifeos_control_state','next_action') or '—' }}")
+        ]
     elif title == 'Deep Debug':
-        prefix = [markdown('Current blocker / debug',
-            "**State:** {{ states('sensor.lifeos_control_state') }}  \n"
-            "**Blocker:** {{ state_attr('sensor.lifeos_control_state','blocker') or 'none' }}  \n"
-            "**Stalled for:** {{ state_attr('sensor.lifeos_control_state','stalled_for_seconds') or 0 }} seconds  \n"
-            "**Last progress epoch:** {{ state_attr('sensor.lifeos_control_state','last_progress_at') or 'unknown' }}  \n"
-            "**Last terminal:** {{ state_attr('sensor.lifeos_control_state','last_completed_job') or 'none' }} / {{ state_attr('sensor.lifeos_control_state','last_completed_status') or '—' }}")]
-    if prefix:
-        view['cards'] = prefix + cards
+        view['cards'] = [
+            markdown('Current blocker / debug',
+                "**State:** {{ states('sensor.lifeos_control_state') }}  \n"
+                "**Blocker:** {{ state_attr('sensor.lifeos_control_state','blocker') or 'none' }}  \n"
+                "**Stalled for:** {{ state_attr('sensor.lifeos_control_state','stalled_for_seconds') or 0 }} seconds  \n"
+                "**Last progress epoch:** {{ state_attr('sensor.lifeos_control_state','last_progress_at') or 'unknown' }}  \n"
+                "**Last terminal:** {{ state_attr('sensor.lifeos_control_state','last_completed_job') or 'none' }} / {{ state_attr('sensor.lifeos_control_state','last_completed_status') or '—' }}")
+        ]
 
-# Make a valid storage document using the preserved file's envelope where possible.
 out = copy.deepcopy(source_doc)
 out['key'] = 'lovelace.lifeos_control'
 if 'data' in out and isinstance(out['data'], dict):
@@ -136,12 +141,10 @@ def atomic_write(path, obj):
         except FileNotFoundError: pass
 
 atomic_write(target, out)
-
 registry = json.loads(dashboards_path.read_text()) if dashboards_path.exists() else {'version':1,'minor_version':1,'key':'lovelace_dashboards','data':{'items':[]}}
 data = registry.setdefault('data', {})
 items = data.setdefault('items', [])
-if not isinstance(items, list):
-    raise SystemExit('lovelace_dashboard_registry_invalid')
+if not isinstance(items, list): raise SystemExit('lovelace_dashboard_registry_invalid')
 item = next((x for x in items if isinstance(x, dict) and (x.get('id') == 'lifeos_control' or x.get('url_path') == 'lifeos-control')), None)
 if item is None:
     item = {'id':'lifeos_control','show_in_sidebar':True,'icon':'mdi:state-machine','title':'LifeOS Control','require_admin':False,'mode':'storage','url_path':'lifeos-control'}
@@ -149,11 +152,11 @@ if item is None:
 else:
     item.update({'id':'lifeos_control','show_in_sidebar':True,'icon':'mdi:state-machine','title':'LifeOS Control','require_admin':False,'mode':'storage','url_path':'lifeos-control'})
 atomic_write(dashboards_path, registry)
-
 print('SOURCE_DASHBOARD=' + source.name)
 print('TARGET_DASHBOARD=lovelace.lifeos_control')
 print('VIEWS=' + str(len(views)))
 print('VIEW_TITLES=' + ','.join(str(v.get('title') or '') for v in views))
+print('LIFEOS_CONTROL_SIMPLIFIED=YES')
 PY
 
 docker restart "$CONTAINER" >/dev/null
@@ -164,7 +167,6 @@ for _ in $(seq 1 60); do
   if [[ "$code" =~ ^(200|301|302|401)$ ]]; then break; fi
   sleep 2
 done
-
 code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8123/ 2>/dev/null || true)"
 [[ "$code" =~ ^(200|301|302|401)$ ]] || { echo "ERROR=homeassistant_http_$code"; false; }
 
@@ -181,12 +183,19 @@ items=reg.get('data',{}).get('items',[])
 assert any(x.get('id')=='lifeos_control' and x.get('url_path')=='lifeos-control' for x in items if isinstance(x,dict))
 text=json.dumps(config)
 assert 'sensor.lifeos_control_state' in text
+assert len(next(v for v in views if v.get('title')=='Overview').get('cards',[])) == 2
+assert len(next(v for v in views if v.get('title')=='Execution Safety').get('cards',[])) == 1
+assert len(next(v for v in views if v.get('title')=='Hosts').get('cards',[])) == 1
+assert len(next(v for v in views if v.get('title')=='AI Workflow').get('cards',[])) == 1
+assert len(next(v for v in views if v.get('title')=='Deep Debug').get('cards',[])) == 1
 print('DASHBOARD_VALIDATION=PASS')
 print('CONTROL_ENTITY_REFERENCED=YES')
+print('LIFEOS_CONTROL_BASE_CARDS=11')
 PY
 
 echo 'RESULT=PASS'
 echo 'LIFEOS_CONTROL_DASHBOARD_ADAPTED=YES'
+echo 'LIFEOS_CONTROL_SIMPLIFIED=YES'
 echo 'HOME_ASSISTANT_RESTART=PASS'
 echo 'DASHBOARD_PATH=/lifeos-control/overview'
 echo "BACKUP=$BACKUP"
