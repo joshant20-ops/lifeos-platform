@@ -1,0 +1,24 @@
+name: LifeOS automation request
+description: Request a bounded LifeOS automation action through GitHub
+title: "LifeOS Pi Health Trigger"
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form triggers only the currently allow-listed read-only Pi health operation. Privileged operations are added separately after their trust boundary and rollback path are reviewed.
+  - type: dropdown
+    id: operation
+    attributes:
+      label: Operation
+      options:
+        - Read-only Pi automation health audit
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgement
+    attributes:
+      label: Safety
+      options:
+        - label: I understand this request uses the fixed LifeOS automation boundary and does not grant arbitrary shell or sudo access.
+          required: true
