@@ -38,7 +38,7 @@ snapshot_units() {
 
 UNITS_BEFORE=$(snapshot_units)
 
-echo 'SEMAPHORE_READONLY_PROOF_VERSION=1'
+echo 'SEMAPHORE_READONLY_PROOF_VERSION=2'
 echo 'MUTATIONS=SEMAPHORE_CATALOGUE_ONLY'
 echo "platform_head=$HEAD_BEFORE"
 echo "semaphore_base=$BASE"
@@ -147,6 +147,7 @@ try:
                     'arguments': '[]',
                     'allow_override_args_in_task': False,
                     'description': 'Read-only LifeOS execution-plane proof',
+                    'app': 'ansible',
                     'type': '',
                     'start_version': '',
                     'build_template': None,
@@ -172,6 +173,27 @@ try:
     if template is None:
         raise RuntimeError('proof template missing from project')
     tid = int(template['id'])
+
+    # Semaphore 2.18 separates the application executor (`app`) from the
+    # task lifecycle type (`type`: task/build/deploy).  The v1 proof restored
+    # a legacy-looking template with type="" but no app, which Semaphore could
+    # queue but could not execute ("exec: no command").  Repair that catalogue
+    # entry in place so failed proof history remains visible.
+    if str(template.get('app') or '').lower() != 'ansible':
+        repaired = dict(template)
+        repaired['app'] = 'ansible'
+        repaired['type'] = repaired.get('type') or ''
+        repaired['arguments'] = repaired.get('arguments') or '[]'
+        repaired['allow_override_args_in_task'] = False
+        repaired['suppress_success_alerts'] = True
+        request('PUT', f'/project/{pid}/templates/{tid}', repaired, token=token, timeout=30)
+        template = request('GET', f'/project/{pid}/templates/{tid}', token=token)
+        if str(template.get('app') or '').lower() != 'ansible':
+            raise RuntimeError('proof template app repair did not persist')
+        print('TEMPLATE_APP_REPAIRED=ansible')
+    else:
+        print('TEMPLATE_APP=ansible')
+
     print(f'TEMPLATE_ID={tid}')
 
     task = request('POST', f'/project/{pid}/tasks', {'template_id': tid}, token=token, timeout=30)
