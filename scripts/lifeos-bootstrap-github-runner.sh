@@ -41,7 +41,9 @@ URL="https://github.com/actions/runner/releases/download/$TAG/actions-runner-lin
 
 mkdir -p "$RUNNER_DIR"
 chown joshan:joshan "$RUNNER_DIR"
-TMP=$(mktemp -d)
+TMP=$(mktemp -d /tmp/lifeos-actions-runner.XXXXXX)
+chown joshan:joshan "$TMP"
+chmod 700 "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 runj curl -fL --retry 3 --retry-delay 2 "$URL" -o "$TMP/runner.tgz"
 tar -xzf "$TMP/runner.tgz" -C "$RUNNER_DIR"
