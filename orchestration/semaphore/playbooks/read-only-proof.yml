@@ -17,6 +17,8 @@
       ansible.builtin.command:
         argv:
           - /usr/bin/git
+          - -c
+          - safe.directory=/workspace/lifeos-platform
           - -C
           - /workspace/lifeos-platform
           - rev-parse
