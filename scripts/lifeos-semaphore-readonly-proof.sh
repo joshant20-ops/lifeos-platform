@@ -38,7 +38,7 @@ snapshot_units() {
 
 UNITS_BEFORE=$(snapshot_units)
 
-echo 'SEMAPHORE_READONLY_PROOF_VERSION=2'
+echo 'SEMAPHORE_READONLY_PROOF_VERSION=3'
 echo 'MUTATIONS=SEMAPHORE_CATALOGUE_ONLY'
 echo "platform_head=$HEAD_BEFORE"
 echo "semaphore_base=$BASE"
@@ -174,11 +174,6 @@ try:
         raise RuntimeError('proof template missing from project')
     tid = int(template['id'])
 
-    # Semaphore 2.18 separates the application executor (`app`) from the
-    # task lifecycle type (`type`: task/build/deploy).  The v1 proof restored
-    # a legacy-looking template with type="" but no app, which Semaphore could
-    # queue but could not execute ("exec: no command").  Repair that catalogue
-    # entry in place so failed proof history remains visible.
     if str(template.get('app') or '').lower() != 'ansible':
         repaired = dict(template)
         repaired['app'] = 'ansible'
@@ -215,19 +210,46 @@ try:
         raise RuntimeError('Semaphore proof task did not reach terminal state within 180s')
 
     print(f'TASK_STATUS={terminal}')
-    output = request('GET', f'/project/{pid}/tasks/{task_id}/raw_output', token=token, timeout=30)
-    if not isinstance(output, str):
-        output = json.dumps(output, separators=(',', ':'))
+
+    def raw_output():
+        value = request('GET', f'/project/{pid}/tasks/{task_id}/raw_output', token=token, timeout=30)
+        if isinstance(value, str):
+            return value
+        return json.dumps(value, separators=(',', ':'))
+
+    output = raw_output()
     if terminal != 'success':
         print(output[-4000:])
         raise RuntimeError(f'proof task terminal status is {terminal}')
-    if 'LIFEOS_SEMAPHORE_PROOF=PASS' not in output:
-        print(output[-4000:])
-        raise RuntimeError('proof PASS marker absent from Semaphore task output')
-    if expected_head not in output:
-        print(output[-4000:])
-        raise RuntimeError('proof output does not contain expected platform commit')
 
+    # Semaphore persists task status and task-output rows separately. A task can
+    # report success a moment before the final output rows (including our proof
+    # marker) are visible through raw_output. Poll only the immutable completed
+    # task output for a bounded 30 seconds rather than treating that race as a
+    # failed execution proof.
+    marker_seen = False
+    commit_seen = False
+    for attempt in range(16):
+        marker_seen = 'LIFEOS_SEMAPHORE_PROOF=PASS' in output
+        commit_seen = expected_head in output
+        if marker_seen and commit_seen:
+            break
+        if attempt < 15:
+            time.sleep(2)
+            output = raw_output()
+
+    if not marker_seen or not commit_seen:
+        print(output[-6000:])
+        try:
+            structured = request('GET', f'/project/{pid}/tasks/{task_id}/output', token=token, timeout=30)
+            print('STRUCTURED_OUTPUT_DIAGNOSTIC=' + json.dumps(structured, separators=(',', ':'))[-6000:])
+        except Exception as exc:
+            print(f'STRUCTURED_OUTPUT_DIAGNOSTIC=ERROR:{type(exc).__name__}')
+        if not marker_seen:
+            raise RuntimeError('proof PASS marker absent after output persistence window')
+        raise RuntimeError('proof output does not contain expected platform commit after persistence window')
+
+    print('OUTPUT_PERSISTENCE=PASS')
     print('SEMAPHORE_TASK_EXECUTION=PASS')
     print('RESULT_PROPAGATION=PASS')
 finally:
