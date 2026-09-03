@@ -1,0 +1,26 @@
+[Unit]
+Description=LifeOS Tower power and status controller
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=joshan
+Group=joshan
+Environment=LIFEOS_TOWER_CONFIG=/etc/lifeos/tower.json
+Environment=LIFEOS_MQTT_HOST=127.0.0.1
+ExecStart=/usr/local/libexec/lifeos-tower-control
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+ReadOnlyPaths=/etc/lifeos/tower.json
+ReadWritePaths=/var/lib/lifeos-tower
+
+[Install]
+WantedBy=multi-user.target
