@@ -41,6 +41,8 @@ services:
       SEMAPHORE_ADMIN_EMAIL: admin@localhost
       SEMAPHORE_ACCESS_KEY_ENCRYPTION_FILE: /run/secrets/access_key_encryption
       SEMAPHORE_LDAP_ACTIVATED: "no"
+      SEMAPHORE_INTERFACE: "0.0.0.0"
+      SEMAPHORE_PORT: "3000"
     ports:
       - "${LIFEOS_SEMAPHORE_BIND_IP:?set an explicit Pi5 LAN address}:3000:3000"
     volumes:
@@ -49,9 +51,6 @@ services:
       - semaphore-work:/tmp/semaphore
       - "${LIFEOS_SEMAPHORE_SECRETS_DIR:?set the root-owned secrets directory}:/run/secrets:ro"
     networks: [semaphore-internal]
-    # The v2.18.29 image intentionally contains no curl/wget/busybox. Runtime
-    # acceptance probes /api/ping from the host instead of embedding an
-    # impossible in-container HTTP healthcheck.
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     mem_limit: 1g
