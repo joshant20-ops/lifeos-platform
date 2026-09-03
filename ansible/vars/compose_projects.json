@@ -22,6 +22,13 @@
       "desired_files": ["desired/compose/lifeos-energy/docker-compose.yml"]
     },
     {
+      "project": "lifeos-engineer-ui",
+      "working_dir": "/opt/stacks/lifeos-engineer-ui",
+      "config_files": ["/opt/stacks/lifeos-engineer-ui/docker-compose.yml"],
+      "containers": ["lifeos-engineer-ui"],
+      "desired_files": ["desired/compose/lifeos-engineer-ui/docker-compose.yml"]
+    },
+    {
       "project": "matter-server",
       "working_dir": "/home/joshan/docker/matter-server",
       "config_files": ["/home/joshan/docker/matter-server/docker-compose.yml"],
@@ -112,6 +119,15 @@
       "owner": "joshan",
       "group": "joshan",
       "mode": "0664"
+    },
+    {
+      "project": "lifeos-engineer-ui",
+      "working_dir": "/opt/stacks/lifeos-engineer-ui",
+      "live_path": "/opt/stacks/lifeos-engineer-ui/docker-compose.yml",
+      "desired_rel": "desired/compose/lifeos-engineer-ui/docker-compose.yml",
+      "owner": "root",
+      "group": "root",
+      "mode": "0644"
     },
     {
       "project": "matter-server",
