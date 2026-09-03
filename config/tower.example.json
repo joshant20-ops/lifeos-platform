@@ -1,0 +1,16 @@
+{
+  "mac": "",
+  "broadcast": "192.168.0.255",
+  "wol_port": 9,
+  "host": "",
+  "access_probe": {
+    "host": "",
+    "port": 22
+  },
+  "power_probe": {
+    "type": "none"
+  },
+  "shutdown": {
+    "type": "disabled"
+  }
+}
