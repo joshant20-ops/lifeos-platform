@@ -8,6 +8,8 @@ on:
       - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
       - 'scripts/lifeos-install-github-runner-gateway.sh'
       - 'scripts/lifeos-bootstrap-github-runner.sh'
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -19,12 +21,14 @@ concurrency:
 
 jobs:
   smoke:
+    if: github.event_name != 'issues' || github.event.issue.title == 'LifeOS Pi Auto Smoke Trigger'
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 15
     steps:
-      - name: Checkout pushed commit
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Synchronise canonical Pi checkout
@@ -63,6 +67,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/lifeos-evidence"
           evidence="$RUNNER_TEMP/lifeos-evidence/result.env"
           if [[ ! -f "$evidence" ]]; then
             printf '%s\n' 'GATEWAY_RESULT=NO_EVIDENCE' 'GATEWAY_RC=unknown' > "$evidence"
@@ -70,6 +75,7 @@ jobs:
           {
             echo '### LifeOS Pi automatic smoke evidence'
             echo
+            echo "- event: $GITHUB_EVENT_NAME"
             echo "- run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "- commit: $GITHUB_SHA"
             echo "- runner: $RUNNER_NAME"
