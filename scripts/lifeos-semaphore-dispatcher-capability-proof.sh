@@ -9,7 +9,7 @@ MAINT=/home/joshan/automation/queues/lifeos_engineer_maintenance.py
 fail(){ echo "ERROR: $*" >&2; exit 1; }
 
 cd "$PLATFORM"
-echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=4'
+echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=5'
 echo 'MUTATIONS=SEMAPHORE_CATALOGUE_AND_NON_DESTRUCTIVE_PROOF_TASK_HISTORY_ONLY'
 echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
 
@@ -71,14 +71,25 @@ cat >"$TMP/maintenance.yml" <<'YAML'
         argv:
           - /usr/bin/python3
           - -c
-          - >-
-            import errno,pathlib,sys;
-            p=pathlib.Path('/workspace/lifeos-platform/.semaphore-maintenance-write-probe');
+          - |
+            import errno
+            import pathlib
+            import sys
+
+            p = pathlib.Path('/workspace/lifeos-platform/.semaphore-maintenance-write-probe')
             try:
-                f=p.open('w'); f.close(); p.unlink(missing_ok=True); print('writable'); sys.exit(9)
+                with p.open('w'):
+                    pass
             except OSError as exc:
-                print('readonly' if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM) else f'errno={exc.errno}');
-                sys.exit(0 if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM) else 8)
+                if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM):
+                    print('readonly')
+                    sys.exit(0)
+                print(f'errno={exc.errno}', file=sys.stderr)
+                sys.exit(8)
+            else:
+                p.unlink(missing_ok=True)
+                print('writable')
+                sys.exit(9)
       changed_when: false
       register: ro
     - name: Emit self-maintenance proof marker
