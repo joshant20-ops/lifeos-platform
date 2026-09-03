@@ -1,0 +1,20 @@
+---
+- name: LifeOS Semaphore backlog dispatch shadow proof
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  become: false
+
+  tasks:
+    - name: Derive non-authoritative dispatch intent from read-only snapshot
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /workspace/lifeos-platform/orchestration/semaphore/tools/backlog-shadow-dispatch.py
+          - /var/lib/lifeos-semaphore-shadow/input/backlog-dispatch.json
+      register: dispatch_shadow
+      changed_when: false
+
+    - name: Emit structured shadow dispatch result
+      ansible.builtin.debug:
+        msg: "{{ dispatch_shadow.stdout }}"
