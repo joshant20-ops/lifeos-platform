@@ -1,0 +1,85 @@
+name: LifeOS HA Dashboard Discovery
+
+on:
+  workflow_dispatch:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: lifeos-ha-dashboard-discovery
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    if: github.event_name != 'issues' || github.event.issue.title == 'LifeOS HA Dashboard Discovery'
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Synchronise canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Discover existing HA dashboards
+        id: discovery
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/lifeos-ha-discovery"
+          cd /home/joshan/lifeos-platform
+          bash scripts/lifeos-ha-dashboard-discovery.sh \
+            2>&1 | tee "$RUNNER_TEMP/lifeos-ha-discovery/discovery.log"
+
+      - name: Publish discovery evidence
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          target=29
+          {
+            echo '### Home Assistant LifeOS dashboard discovery'
+            echo
+            echo "- run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- commit: $GITHUB_SHA"
+            echo "- runner: $RUNNER_NAME"
+            echo
+            echo '```text'
+            cat "$RUNNER_TEMP/lifeos-ha-discovery/discovery.log" 2>/dev/null || echo 'DISCOVERY_OUTPUT=missing'
+            echo '```'
+          } > "$RUNNER_TEMP/lifeos-ha-discovery/comment.md"
+          gh issue comment "$target" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/lifeos-ha-discovery/comment.md"
+
+      - name: Close successful explicit discovery trigger
+        if: success() && github.event_name == 'issues'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue close '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" \
+            --comment "HA dashboard discovery passed in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+
+      - name: Upload discovery artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifeos-ha-dashboard-discovery-${{ github.run_id }}
+          path: ${{ runner.temp }}/lifeos-ha-discovery/
+          if-no-files-found: warn
+          retention-days: 30
