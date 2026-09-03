@@ -24,15 +24,24 @@ rollback(){
 }
 trap 'rc=$?; if (( rc != 0 )); then rollback; fi; exit $rc' EXIT
 
-cd "$PLATFORM"
-echo 'ENGINEER_DISPATCHER_RETIREMENT_VERSION=1'
-echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
+# All repository reads must remain under the repository owner identity. Root is
+# used only for the actual systemd/file retirement boundary below.
+run_as_joshan(){
+  runuser -u joshan -- env -i \
+    HOME=/home/joshan \
+    PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+    LANG=C.UTF-8 \
+    "$@"
+}
+
+echo 'ENGINEER_DISPATCHER_RETIREMENT_VERSION=2'
+echo "PLATFORM_HEAD=$(run_as_joshan git -C "$PLATFORM" rev-parse HEAD)"
 echo "BACKUP=$BACKUP"
 echo 'TARGET=legacy engineer dispatcher and dedicated maintenance helper only'
 
 echo
 echo '==> GATE 0 — Re-prove replacement capabilities'
-PROOF=$(sudo -E bash "$PLATFORM/scripts/lifeos-semaphore-dispatcher-capability-proof.sh") || { echo "$PROOF"; fail 'Semaphore dispatcher capability proof failed'; }
+PROOF=$(run_as_joshan bash "$PLATFORM/scripts/lifeos-semaphore-dispatcher-capability-proof.sh") || { echo "$PROOF"; fail 'Semaphore dispatcher capability proof failed'; }
 echo "$PROOF"
 grep -qx 'RESULT=PASS' <<<"$PROOF" || fail 'capability proof missing RESULT=PASS'
 grep -qx 'SEMAPHORE_AUTONOMY_CANARY=PASS' <<<"$PROOF" || fail 'canary replacement not proven'
@@ -44,7 +53,7 @@ grep -qx 'SEMAPHORE_ENGINEER_SELF_MAINTENANCE=PASS' <<<"$PROOF" || fail 'mainten
 
 pending=0
 if [[ -f "$QUEUE" ]]; then
-  pending=$(python3 - "$QUEUE" <<'PY'
+  pending=$(run_as_joshan python3 - "$QUEUE" <<'PY'
 import json,sys
 n=0
 for line in open(sys.argv[1], encoding='utf-8'):
@@ -69,8 +78,8 @@ for u in lifeos-control-job-submit.socket lifeos-root-broker.socket lifeos-auton
   [[ "$(systemctl is-active "$u" 2>/dev/null || true)" == active ]] || fail "protected unit not active before retirement: $u"
 done
 
-BEFORE_HEAD=$(git rev-parse HEAD)
-BEFORE_STATUS=$(git status --porcelain)
+BEFORE_HEAD=$(run_as_joshan git -C "$PLATFORM" rev-parse HEAD)
+BEFORE_STATUS=$(run_as_joshan git -C "$PLATFORM" status --porcelain)
 
 mkdir -p "$BACKUP"
 cp -a "$DISPATCHER" "$BACKUP/lifeos_engineer_dispatcher.py"
@@ -101,8 +110,8 @@ for u in lifeos-control-job-submit.socket lifeos-root-broker.socket lifeos-auton
 done
 curl -fsS "$SEMAPHORE_BASE/ping" >/dev/null || curl -fsS "${SEMAPHORE_BASE%/api}/api/ping" >/dev/null || fail 'Semaphore API failed after retirement'
 
-AFTER_HEAD=$(git rev-parse HEAD)
-AFTER_STATUS=$(git status --porcelain)
+AFTER_HEAD=$(run_as_joshan git -C "$PLATFORM" rev-parse HEAD)
+AFTER_STATUS=$(run_as_joshan git -C "$PLATFORM" status --porcelain)
 [[ "$AFTER_HEAD" == "$BEFORE_HEAD" ]] || fail 'platform HEAD changed'
 [[ "$AFTER_STATUS" == "$BEFORE_STATUS" ]] || fail 'platform worktree changed'
 
