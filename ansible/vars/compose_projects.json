@@ -8,13 +8,6 @@
       "desired_files": ["desired/compose/adguard/docker-compose.yml"]
     },
     {
-      "project": "autoheal",
-      "working_dir": "/opt/stacks/autoheal",
-      "config_files": ["/opt/stacks/autoheal/docker-compose.yml"],
-      "containers": ["autoheal"],
-      "desired_files": ["desired/compose/autoheal/docker-compose.yml"]
-    },
-    {
       "project": "homeassistant",
       "working_dir": "/opt/stacks/homeassistant",
       "config_files": ["/opt/stacks/homeassistant/docker-compose.yml"],
@@ -101,15 +94,6 @@
       "owner": "joshan",
       "group": "joshan",
       "mode": "0664"
-    },
-    {
-      "project": "autoheal",
-      "working_dir": "/opt/stacks/autoheal",
-      "live_path": "/opt/stacks/autoheal/docker-compose.yml",
-      "desired_rel": "desired/compose/autoheal/docker-compose.yml",
-      "owner": "joshan",
-      "group": "joshan",
-      "mode": "0644"
     },
     {
       "project": "homeassistant",
