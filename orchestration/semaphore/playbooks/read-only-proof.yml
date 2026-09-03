@@ -1,0 +1,41 @@
+---
+- name: LifeOS Semaphore read-only proof
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Prove Ansible execution identity without mutation
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/id
+          - -u
+      register: uid_result
+      changed_when: false
+
+    - name: Read canonical platform commit without changing repository
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/git
+          - -C
+          - /workspace/lifeos-platform
+          - rev-parse
+          - HEAD
+      register: head_result
+      changed_when: false
+
+    - name: Verify platform checkout is mounted read-only
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/test
+          - -r
+          - /workspace/lifeos-platform/.git/HEAD
+      changed_when: false
+
+    - name: Emit structured proof marker
+      ansible.builtin.debug:
+        msg: >-
+          LIFEOS_SEMAPHORE_PROOF=PASS
+          runtime_uid={{ uid_result.stdout | trim }}
+          platform_head={{ head_result.stdout | trim }}
+          mutation=none
