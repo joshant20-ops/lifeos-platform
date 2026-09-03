@@ -48,14 +48,17 @@ say "STAGE 0 — Preflight"
 [[ "$(git_as_user branch --show-current)" == main ]] || die "lifeos-platform must be on main"
 git_as_user ls-files --error-unmatch orchestration/semaphore/docker-compose.yml governor/runtime_jobs/c3751aaff97b.sh >/dev/null
 
-existing_sem="$(docker ps --format '{{.Names}}' | grep '^lifeos-semaphore-shadow-semaphore-1$' || true)"
+existing_sem="$(docker ps -a --format '{{.Names}}' | grep '^lifeos-semaphore-shadow-semaphore-1$' || true)"
+preexisting_dialect=none
 if [[ -n "$existing_sem" ]]; then
-  old_dialect="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' lifeos-semaphore-shadow-semaphore-1 | awk -F= '$1=="SEMAPHORE_DB_DIALECT"{print $2;exit}')"
-  [[ "$old_dialect" == sqlite ]] || die "expected existing shadow to be sqlite, got ${old_dialect:-unknown}"
-  info "Existing shadow dialect: sqlite"
+  preexisting_dialect="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' lifeos-semaphore-shadow-semaphore-1 | awk -F= '$1=="SEMAPHORE_DB_DIALECT"{print $2;exit}')"
+  [[ "$preexisting_dialect" == sqlite || "$preexisting_dialect" == postgres ]] || die "unexpected existing Semaphore dialect: ${preexisting_dialect:-unknown}"
+  info "Existing Semaphore dialect: $preexisting_dialect"
+  if [[ "$preexisting_dialect" == postgres ]]; then
+    info "Resuming previously started canonical PostgreSQL migration"
+  fi
 else
-  old_dialect=sqlite
-  info "Legacy SQLite container already stopped by previous safe attempt"
+  info "No Semaphore application container currently present"
 fi
 
 say "STAGE 1 — Recovery backup"
@@ -63,21 +66,18 @@ mkdir -p "$BACKUP/live-stack" "$BACKUP/inspect"
 [[ -f "$LIVE_COMPOSE" ]] && cp -a "$LIVE_COMPOSE" "$BACKUP/live-stack/docker-compose.yml.before"
 cp -a "$ENV_FILE" "$BACKUP/semaphore.env.before" 2>/dev/null || true
 cp -a "$DEFAULT_SECRETS_DIR" "$BACKUP/semaphore-secrets.before" 2>/dev/null || true
-
 if [[ -n "$existing_sem" ]]; then
   docker inspect lifeos-semaphore-shadow-semaphore-1 > "$BACKUP/inspect/semaphore.before.json"
   docker logs --timestamps lifeos-semaphore-shadow-semaphore-1 > "$BACKUP/inspect/semaphore.before.log" 2>&1 || true
 fi
-
 for vol in lifeos-semaphore-shadow_semaphore_data lifeos-semaphore-shadow_semaphore_config; do
   if docker volume inspect "$vol" >/dev/null 2>&1; then
     mp="$(docker volume inspect -f '{{.Mountpoint}}' "$vol")"
     tar -C "$mp" -czf "$BACKUP/${vol}.tgz" .
-    info "Backed up volume: $vol"
+    info "Preserved legacy SQLite volume: $vol"
   fi
 done
-
-docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$BACKUP/docker-ps.before.tsv"
+docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$BACKUP/docker-ps.before.tsv"
 
 say "STAGE 2 — Normalize canonical Semaphore bootstrap state"
 install -d -o root -g root -m 0755 /etc/lifeos
@@ -103,42 +103,37 @@ if [[ "$secrets_dir" != "$DEFAULT_SECRETS_DIR" || ! -e "$DEFAULT_SECRETS_DIR" ]]
   chmod 600 "$ENV_FILE"
 fi
 
-say "STAGE 3 — Stop legacy SQLite shadow if still present"
-if [[ -n "$existing_sem" ]]; then
+say "STAGE 3 — Retire legacy SQLite runtime only when still present"
+if [[ "$preexisting_dialect" == sqlite ]]; then
   if [[ -f "$LIVE_COMPOSE" ]]; then
     docker compose -p "$PROJECT" -f "$LIVE_COMPOSE" down || die "failed to stop legacy Semaphore shadow"
   else
     docker rm -f lifeos-semaphore-shadow-semaphore-1 >/dev/null
   fi
+elif [[ "$preexisting_dialect" == postgres ]]; then
+  info "Canonical PostgreSQL runtime already exists; preserving DB and allowing Compose to repair/recreate only what changed"
 fi
-[[ -z "$(docker ps -a --format '{{.Names}}' | grep '^lifeos-semaphore-shadow-' || true)" ]] || die "legacy shadow containers remain"
 
-say "STAGE 4 — Deploy canonical PostgreSQL shadow"
+say "STAGE 4 — Deploy/repair canonical PostgreSQL shadow"
 LIFEOS_REPO_ROOT="$PLATFORM" bash "$LAUNCHER" | tee "$BACKUP/canonical-launcher.out"
 grep -q '^SEMAPHORE_SHADOW=PASS ' "$BACKUP/canonical-launcher.out" || die "canonical launcher did not report PASS"
 grep -q '^RESULT=PASS$' "$BACKUP/canonical-launcher.out" || die "canonical launcher result was not PASS"
 
 say "STAGE 5 — Runtime invariants"
-mapfile -t cids < <(docker ps --filter "label=com.docker.compose.project=$PROJECT" --format '{{.ID}}')
-(( ${#cids[@]} == 2 )) || die "expected two running canonical shadow containers, found ${#cids[@]}"
-
-for svc in semaphore-db semaphore; do
-  cid="$(docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f "$CANONICAL" ps -q "$svc")"
-  [[ -n "$cid" ]] || die "missing canonical service: $svc"
-  health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid")"
-  [[ "$health" == healthy ]] || die "$svc health=$health"
-done
-
-sem_cid="$(docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f "$CANONICAL" ps -q semaphore)"
+compose=(docker compose --env-file "$ENV_FILE" -p "$PROJECT" -f "$CANONICAL")
+db_cid="$("${compose[@]}" ps -q semaphore-db)"
+sem_cid="$("${compose[@]}" ps -q semaphore)"
+[[ -n "$db_cid" && -n "$sem_cid" ]] || die "canonical services missing"
+[[ "$(docker inspect -f '{{.State.Health.Status}}' "$db_cid")" == healthy ]] || die "semaphore-db not healthy"
+[[ "$(docker inspect -f '{{.State.Running}}' "$sem_cid")" == true ]] || die "Semaphore not running"
+timeout 5s curl -fsS "http://$bind_ip:3000/api/ping" >/dev/null || die "Semaphore API ping failed"
 new_dialect="$(docker inspect -f '{{range .Config.Env}}{{println .}}{{end}}' "$sem_cid" | awk -F= '$1=="SEMAPHORE_DB_DIALECT"{print $2;exit}')"
 [[ "$new_dialect" == postgres ]] || die "Semaphore did not switch to postgres"
 
-docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$BACKUP/docker-ps.after.tsv"
-
+docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$BACKUP/docker-ps.after.tsv"
 for unit in lifeos-autonomous-agent.service lifeos-engineer.service lifeos-control-job-submit.socket lifeos-root-broker.socket; do
   systemctl is-active --quiet "$unit" || die "protected execution unit not active: $unit"
 done
-
 [[ -z "$(git_as_user status --porcelain)" ]] || die "lifeos-platform became dirty"
 [[ "$(stat -c '%U:%G' "$PLATFORM/.git/index")" == "$GIT_USER:$GIT_USER" ]] || die "git metadata ownership changed"
 
@@ -146,7 +141,8 @@ cat <<EOF
 
 RESULT=PASS
 SEMAPHORE_SHADOW_RECONCILED=YES
-OLD_DB_DIALECT=sqlite
+MIGRATION_ORIGIN=sqlite
+PREEXISTING_RUNTIME_DIALECT=$preexisting_dialect
 NEW_DB_DIALECT=postgres
 CANONICAL_SERVICES=2
 CUSTOM_EXECUTION_PATH_CHANGED=NO
