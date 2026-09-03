@@ -27,7 +27,7 @@ docker inspect "$CONTAINER" >/dev/null 2>&1 || { echo 'ERROR=homeassistant_conta
 mkdir -p "$BACKUP"
 
 # Discover active storage dashboards and back them up before any simplification.
-mapfile -t ACTIVE < <(docker exec "$CONTAINER" python3 - <<'PY'
+mapfile -t ACTIVE < <(docker exec -i "$CONTAINER" python3 - <<'PY'
 import json
 from pathlib import Path
 root=Path('/config/.storage')
@@ -62,7 +62,7 @@ printf 'ACTIVE_DASHBOARD=%s\n' "${ACTIVE[@]}"
 
 # Audit + apply only mechanically safe simplifications.
 docker exec -i "$CONTAINER" python3 - <<'PY'
-import copy, hashlib, json, os, re, tempfile
+import hashlib, json, os, re, tempfile
 from pathlib import Path
 
 root=Path('/config/.storage')
@@ -93,7 +93,6 @@ if entity_registry.exists():
 entity_rx=re.compile(r'\b(?:sensor|binary_sensor|switch|light|button|input_boolean|input_button|input_select|input_number|input_text|input_datetime|automation|script|person|device_tracker|climate|cover|fan|media_player|camera|lock|vacuum|weather|scene|sun)\.[a-zA-Z0-9_]+\b')
 retired_rx=re.compile(r'lifeos[-_](?:engineer[-_]?worker|engineer[-_]?dispatcher)|engineer_job_queue|engineer_jobs_pending',re.I)
 expected_lifeos=['Overview','Execution Safety','Hosts','Network','AI Workflow','Deep Debug']
-
 summary={'dashboards':0,'views':0,'cards_before':0,'cards_after':0,'duplicates_removed':0,'retired_cards_removed':0,'missing_entity_refs':set(),'empty_views':[],'lifeos_role_errors':[]}
 
 def config_of(doc):
@@ -137,16 +136,13 @@ for key in active:
             if digest in seen:
                 dup+=1; summary['duplicates_removed']+=1; changed=True; continue
             seen.add(digest)
-            # Only remove obsolete custom dispatcher/worker presentation from the dedicated LifeOS dashboard.
             if key=='lovelace.lifeos_control' and retired_rx.search(canonical):
                 retired+=1; summary['retired_cards_removed']+=1; changed=True; continue
             new.append(card)
             for ent in entity_rx.findall(canonical):
                 if registered and ent not in registered:
-                    # Dynamic MQTT entities can exist in the runtime state registry without core.entity_registry.
-                    # Report these as references requiring validation rather than deleting cards.
                     summary['missing_entity_refs'].add(f'{key}:{vtitle}:{ent}')
-        if changed and (dup or retired):
+        if dup or retired:
             view['cards']=new
         summary['cards_after']+=len(new)
         print(f'VIEW={vtitle} CARDS={len(cards)} DUPLICATES_REMOVED={dup} RETIRED_REMOVED={retired}')
@@ -155,7 +151,6 @@ for key in active:
         titles=[str(v.get('title') or '') for v in views if isinstance(v,dict)]
         if titles[:6] != expected_lifeos:
             summary['lifeos_role_errors'].append('view_order_or_titles')
-        text=json.dumps(cfg)
         required={
           'Overview':['sensor.lifeos_control_state','sensor.tower_status'],
           'Hosts':['sensor.tower_status','switch.tower_power','binary_sensor.tower_accessible'],
