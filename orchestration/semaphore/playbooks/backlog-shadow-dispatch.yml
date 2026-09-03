@@ -5,13 +5,31 @@
   connection: local
   become: false
 
+  vars:
+    dispatch_snapshot: /runtime/lifeos-shadow/input/backlog-dispatch.json
+
   tasks:
+    - name: Verify dispatch snapshot is visible through the read-only runtime mount
+      ansible.builtin.stat:
+        path: "{{ dispatch_snapshot }}"
+      register: dispatch_snapshot_stat
+      changed_when: false
+
+    - name: Require dispatch snapshot before deriving intent
+      ansible.builtin.assert:
+        that:
+          - dispatch_snapshot_stat.stat.exists
+          - dispatch_snapshot_stat.stat.isreg
+          - dispatch_snapshot_stat.stat.readable
+        fail_msg: "Semaphore dispatch snapshot is not readable at {{ dispatch_snapshot }}"
+        quiet: true
+
     - name: Derive non-authoritative dispatch intent from read-only snapshot
       ansible.builtin.command:
         argv:
           - /usr/bin/python3
           - /workspace/lifeos-platform/orchestration/semaphore/tools/backlog-shadow-dispatch.py
-          - /var/lib/lifeos-semaphore-shadow/input/backlog-dispatch.json
+          - "{{ dispatch_snapshot }}"
       register: dispatch_shadow
       changed_when: false
 
