@@ -28,11 +28,15 @@ OPS = {
         'script': 'scripts/lifeos-retire-engineer-dispatcher.sh',
         'privileged': True,
     },
+    'deploy-ha-control-bridge': {
+        'script': 'scripts/lifeos-deploy-ha-control-bridge.sh',
+        'privileged': True,
+    },
 }
 
 
 def fail(msg: str, code: int = 1) -> None:
-    print(f'GATEWAY_RESULT=FAIL')
+    print('GATEWAY_RESULT=FAIL')
     print(f'GATEWAY_ERROR={msg}')
     raise SystemExit(code)
 
@@ -45,13 +49,9 @@ def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[
         'LANG=C.UTF-8',
         *args,
     ]
-    return subprocess.run(
-        cmd,
-        text=True,
-        check=False,
-        stdout=subprocess.PIPE if capture else None,
-        stderr=subprocess.STDOUT if capture else None,
-    )
+    return subprocess.run(cmd, text=True, check=False,
+                          stdout=subprocess.PIPE if capture else None,
+                          stderr=subprocess.STDOUT if capture else None)
 
 
 def git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
@@ -103,7 +103,7 @@ def main() -> int:
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
 
-    print('LIFEOS_DEPLOY_GATEWAY_VERSION=1')
+    print('LIFEOS_DEPLOY_GATEWAY_VERSION=2')
     print(f'GATEWAY_OPERATION={operation}')
     print(f'GATEWAY_PLATFORM_HEAD={head}')
     print(f'GATEWAY_PRIVILEGED={"YES" if spec["privileged"] else "NO"}')
