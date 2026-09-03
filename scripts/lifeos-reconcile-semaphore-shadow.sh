@@ -26,6 +26,13 @@ git_as_user() {
   runuser -u "$GIT_USER" -- env -i HOME=/home/joshan PATH=/usr/bin:/bin LANG=C.UTF-8 git -C "$PLATFORM" "$@"
 }
 
+private_lan_ip() {
+  local candidate
+  candidate=$(ip -4 route get 1.1.1.1 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "src") {print $(i+1); exit}}')
+  [[ "$candidate" =~ ^10\. || "$candidate" =~ ^192\.168\. || "$candidate" =~ ^172\.(1[6-9]|2[0-9]|3[01])\. ]] || return 1
+  printf '%s\n' "$candidate"
+}
+
 say "LifeOS Semaphore shadow reconciliation"
 info "Platform HEAD: $(git_as_user rev-parse --short=12 HEAD)"
 info "Git metadata user: $GIT_USER"
@@ -73,19 +80,27 @@ done
 docker ps --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | sort > "$BACKUP/docker-ps.before.tsv"
 
 say "STAGE 2 — Normalize canonical Semaphore bootstrap state"
+install -d -o root -g root -m 0755 /etc/lifeos
+bind_ip=""
+secrets_dir=""
 if [[ -f "$ENV_FILE" ]]; then
   [[ ! -L "$ENV_FILE" ]] || die "Semaphore env file must not be a symlink"
   [[ "$(stat -c '%U:%G:%a' "$ENV_FILE")" == root:root:600 ]] || die "unsafe Semaphore env permissions"
   bind_ip="$(awk -F= '$1=="LIFEOS_SEMAPHORE_BIND_IP"{print $2;exit}' "$ENV_FILE")"
   secrets_dir="$(awk -F= '$1=="LIFEOS_SEMAPHORE_SECRETS_DIR"{print $2;exit}' "$ENV_FILE")"
-  [[ -n "$bind_ip" ]] || die "existing Semaphore env has no bind IP"
-  if [[ -n "$secrets_dir" && "$secrets_dir" != "$DEFAULT_SECRETS_DIR" && ! -e "$secrets_dir" ]]; then
-    info "Repairing stale missing secrets path: $secrets_dir -> $DEFAULT_SECRETS_DIR"
-    umask 077
-    printf 'LIFEOS_SEMAPHORE_BIND_IP=%s\nLIFEOS_SEMAPHORE_SECRETS_DIR=%s\n' "$bind_ip" "$DEFAULT_SECRETS_DIR" > "$ENV_FILE"
-    chown root:root "$ENV_FILE"
-    chmod 600 "$ENV_FILE"
-  fi
+fi
+if [[ -z "$bind_ip" ]]; then
+  bind_ip="$(private_lan_ip)" || die "private LAN IP could not be derived"
+  info "Derived canonical Semaphore bind IP: $bind_ip"
+fi
+[[ "$bind_ip" != 0.0.0.0 && "$bind_ip" != 127.* ]] || die "unsafe derived Semaphore bind IP: $bind_ip"
+if [[ "$secrets_dir" != "$DEFAULT_SECRETS_DIR" || ! -e "$DEFAULT_SECRETS_DIR" ]]; then
+  [[ -z "$secrets_dir" || "$secrets_dir" == "$DEFAULT_SECRETS_DIR" || ! -e "$secrets_dir" ]] || die "refusing to replace an existing noncanonical secrets directory: $secrets_dir"
+  info "Normalizing Semaphore env/secrets to canonical path: $DEFAULT_SECRETS_DIR"
+  umask 077
+  printf 'LIFEOS_SEMAPHORE_BIND_IP=%s\nLIFEOS_SEMAPHORE_SECRETS_DIR=%s\n' "$bind_ip" "$DEFAULT_SECRETS_DIR" > "$ENV_FILE"
+  chown root:root "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
 fi
 
 say "STAGE 3 — Stop legacy SQLite shadow if still present"
