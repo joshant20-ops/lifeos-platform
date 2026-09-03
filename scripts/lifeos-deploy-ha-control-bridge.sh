@@ -13,6 +13,7 @@ TOWER_CONFIG=/etc/lifeos/tower.json
 TOWER_CONFIG_EXAMPLE="$PLATFORM/config/tower.example.json"
 DASHBOARD_ADAPTER="$PLATFORM/scripts/lifeos-adapt-ha-lifeos-dashboard.sh"
 TOWER_DASHBOARD_ADAPTER="$PLATFORM/scripts/lifeos-adapt-ha-tower-control.sh"
+DASHBOARD_AUDIT="$PLATFORM/scripts/lifeos-ha-dashboard-audit-simplify.sh"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP="/mnt/docker-data/automation/backups/ha-control-bridge-$STAMP"
 
@@ -41,7 +42,7 @@ rollback() {
 trap rollback ERR
 
 [[ $EUID -eq 0 ]] || { echo 'ERROR=must_run_as_root'; exit 1; }
-for file in "$SOURCE" "$TOWER_SOURCE" "$TOWER_UNIT_SOURCE" "$TOWER_CONFIG_EXAMPLE" "$DASHBOARD_ADAPTER" "$TOWER_DASHBOARD_ADAPTER"; do
+for file in "$SOURCE" "$TOWER_SOURCE" "$TOWER_UNIT_SOURCE" "$TOWER_CONFIG_EXAMPLE" "$DASHBOARD_ADAPTER" "$TOWER_DASHBOARD_ADAPTER" "$DASHBOARD_AUDIT"; do
   [[ -f "$file" && ! -L "$file" ]] || { echo "ERROR=canonical_file_missing:$file"; exit 1; }
 done
 [[ -f "$DEST" && ! -L "$DEST" ]] || { echo 'ERROR=installed_bridge_missing'; exit 1; }
@@ -149,6 +150,8 @@ echo '==> ADAPT CURRENT LIFEOS DASHBOARD'
 bash "$DASHBOARD_ADAPTER"
 echo '==> ADD TOWER CONTROL TO LIFEOS DASHBOARD'
 bash "$TOWER_DASHBOARD_ADAPTER"
+echo '==> AUDIT / SAFELY SIMPLIFY ALL ACTIVE HA DASHBOARDS'
+bash "$DASHBOARD_AUDIT"
 
 echo 'RESULT=PASS'
 echo 'HA_CONTROL_BRIDGE_DEPLOYED=YES'
@@ -162,5 +165,6 @@ echo 'TOWER_SHUTDOWN_CONFIRMATION=YES'
 echo 'HOME_ASSISTANT_DEVICE=LifeOS Issue Queue'
 echo 'LIFEOS_CONTROL_DASHBOARD=ADAPTED'
 echo 'LIFEOS_CONTROL_DASHBOARD_PATH=/lifeos-control/overview'
+echo 'HA_DASHBOARD_AUDIT_AND_SIMPLIFICATION=PASS'
 echo "BACKUP=$BACKUP"
 echo 'ROLLBACK=restore backup bridge/Tower controller/dashboard storage then restart affected services'
