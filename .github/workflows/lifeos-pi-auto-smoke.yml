@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: lifeos-pi5-auto-smoke
@@ -54,6 +55,30 @@ jobs:
             > "$RUNNER_TEMP/lifeos-evidence/result.env" || true
           echo "GATEWAY_RC=$rc" | tee -a "$RUNNER_TEMP/lifeos-evidence/result.env"
           exit "$rc"
+
+      - name: Publish machine-readable evidence to issue 29
+        if: always()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          evidence="$RUNNER_TEMP/lifeos-evidence/result.env"
+          if [[ ! -f "$evidence" ]]; then
+            printf '%s\n' 'GATEWAY_RESULT=NO_EVIDENCE' 'GATEWAY_RC=unknown' > "$evidence"
+          fi
+          {
+            echo '### LifeOS Pi automatic smoke evidence'
+            echo
+            echo "- run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "- commit: $GITHUB_SHA"
+            echo "- runner: $RUNNER_NAME"
+            echo
+            echo '```text'
+            cat "$evidence"
+            echo '```'
+          } > "$RUNNER_TEMP/lifeos-evidence/issue-comment.md"
+          gh issue comment 29 --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/lifeos-evidence/issue-comment.md"
 
       - name: Upload smoke evidence
         if: always()
