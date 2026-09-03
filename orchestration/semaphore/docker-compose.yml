@@ -49,12 +49,9 @@ services:
       - semaphore-work:/tmp/semaphore
       - "${LIFEOS_SEMAPHORE_SECRETS_DIR:?set the root-owned secrets directory}:/run/secrets:ro"
     networks: [semaphore-internal]
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:3000/api/ping"]
-      interval: 15s
-      timeout: 5s
-      retries: 20
-      start_period: 60s
+    # The v2.18.29 image intentionally contains no curl/wget/busybox. Runtime
+    # acceptance probes /api/ping from the host instead of embedding an
+    # impossible in-container HTTP healthcheck.
     security_opt: [no-new-privileges:true]
     cap_drop: [ALL]
     mem_limit: 1g
