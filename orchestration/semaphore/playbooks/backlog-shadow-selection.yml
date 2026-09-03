@@ -1,0 +1,19 @@
+---
+- name: LifeOS Semaphore backlog shadow selection
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Execute pure read-only backlog selector
+      ansible.builtin.command:
+        argv:
+          - /usr/bin/python3
+          - /workspace/lifeos-platform/orchestration/semaphore/scripts/backlog-shadow-select.py
+          - /runtime/lifeos-shadow/input/backlog-selection.json
+      register: selection
+      changed_when: false
+
+    - name: Emit selector result for adapter verification
+      ansible.builtin.debug:
+        msg: "{{ selection.stdout }}"
