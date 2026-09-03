@@ -1,131 +1,146 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-BASE=/home/joshan/automation
-QUEUE="$BASE/queues/engineer_job_queue.jsonl"
-WORKER="$BASE/queues/lifeos_engineer_worker.py"
-DISPATCHER="$BASE/queues/lifeos_engineer_dispatcher.py"
-MAINT="$BASE/queues/lifeos_engineer_maintenance.py"
+PLATFORM=/home/joshan/lifeos-platform
+PROJECT=lifeos-semaphore-shadow
+QUEUE=/home/joshan/automation/queues/engineer_job_queue.jsonl
 
-printf '%s\n' 'WORKER_DISPATCHER_SPLIT_AUDIT_VERSION=1'
+failures=()
+record_failure(){ failures+=("$1"); }
+
+printf '%s\n' 'LIFEOS_POST_RETIREMENT_HEALTH_AUDIT_VERSION=1'
 printf '%s\n' 'MUTATIONS=NONE'
-printf 'PLATFORM_HEAD=%s\n' "$(git -C /home/joshan/lifeos-platform rev-parse HEAD)"
+printf 'PLATFORM_HEAD=%s\n' "$(git -C "$PLATFORM" rev-parse HEAD)"
 
 echo
-echo '=== UNIT STATE ==='
-for u in \
-  lifeos-engineer-worker.timer lifeos-engineer-worker.service \
-  lifeos-engineer-dispatcher.timer lifeos-engineer-dispatcher.service; do
-  printf '%-40s active=%-10s enabled=%s\n' "$u" \
-    "$(systemctl is-active "$u" 2>/dev/null || true)" \
-    "$(systemctl is-enabled "$u" 2>/dev/null || true)"
+echo '=== REPOSITORY ==='
+HEAD=$(git -C "$PLATFORM" rev-parse HEAD)
+ORIGIN=$(git -C "$PLATFORM" rev-parse origin/main)
+STATUS=$(git -C "$PLATFORM" status --porcelain)
+printf 'HEAD=%s\nORIGIN_MAIN=%s\n' "$HEAD" "$ORIGIN"
+if [[ "$HEAD" == "$ORIGIN" ]]; then echo 'REPO_HEAD_MATCH=PASS'; else echo 'REPO_HEAD_MATCH=FAIL'; record_failure repo_head_mismatch; fi
+if [[ -z "$STATUS" ]]; then echo 'REPO_CLEAN=PASS'; else echo 'REPO_CLEAN=FAIL'; record_failure repo_dirty; fi
+
+echo
+echo '=== RETIRED DISPATCHER ARTIFACTS ==='
+retired_paths=(
+  /home/joshan/automation/queues/lifeos_engineer_worker.py
+  /home/joshan/automation/queues/lifeos_engineer_dispatcher.py
+  /home/joshan/automation/queues/lifeos_engineer_maintenance.py
+  /etc/systemd/system/lifeos-engineer-worker.service
+  /etc/systemd/system/lifeos-engineer-worker.timer
+  /etc/systemd/system/lifeos-engineer-dispatcher.service
+  /etc/systemd/system/lifeos-engineer-dispatcher.timer
+)
+retired_present=0
+for p in "${retired_paths[@]}"; do
+  if [[ -e "$p" || -L "$p" ]]; then
+    echo "RETIRED_PATH_PRESENT=$p"
+    retired_present=$((retired_present+1))
+  fi
+done
+printf 'RETIRED_PATHS_PRESENT=%s\n' "$retired_present"
+if (( retired_present == 0 )); then echo 'RETIRED_ARTIFACTS_ABSENT=PASS'; else echo 'RETIRED_ARTIFACTS_ABSENT=FAIL'; record_failure retired_artifacts_present; fi
+
+for u in lifeos-engineer-worker.timer lifeos-engineer-dispatcher.timer; do
+  active=$(systemctl is-active "$u" 2>/dev/null || true)
+  enabled=$(systemctl is-enabled "$u" 2>/dev/null || true)
+  printf '%s active=%s enabled=%s\n' "$u" "${active:-not-found}" "${enabled:-not-found}"
+  if [[ "$active" == active || "$enabled" == enabled ]]; then record_failure "retired_unit_live_${u}"; fi
 done
 
 echo
-echo '=== QUEUE CLASSIFICATION ==='
-python3 - "$QUEUE" <<'PY'
-import json, pathlib, sys
-p=pathlib.Path(sys.argv[1])
-counts={}
-pending={}
-total=0
+echo '=== SEMAPHORE ==='
+semaphore=${PROJECT}-semaphore-1
+db=${PROJECT}-semaphore-db-1
+for c in "$semaphore" "$db"; do
+  if docker inspect "$c" >/dev/null 2>&1; then
+    printf 'container=%s state=%s health=%s restart_count=%s\n' "$c" \
+      "$(docker inspect -f '{{.State.Status}}' "$c")" \
+      "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$c")" \
+      "$(docker inspect -f '{{.RestartCount}}' "$c")"
+  else
+    echo "container=$c state=absent"
+    record_failure "container_absent_${c}"
+  fi
+done
+
+SEMAPHORE_API=FAIL
+bind=$(docker port "$semaphore" 3000/tcp 2>/dev/null | head -1 || true)
+if [[ -n "$bind" ]]; then
+  host=${bind%:*}; port=${bind##*:}; host=${host#[}; host=${host%]}
+  if curl -fsS --max-time 5 "http://${host}:${port}/api/ping" >/dev/null; then SEMAPHORE_API=PASS; fi
+fi
+echo "SEMAPHORE_PUBLISHED_BIND=${bind:-none}"
+echo "SEMAPHORE_API=$SEMAPHORE_API"
+[[ "$SEMAPHORE_API" == PASS ]] || record_failure semaphore_api
+
+echo
+echo '=== PROTECTED LIFEOS BOUNDARIES ==='
+protected=(
+  lifeos-control-job-submit.socket
+  lifeos-root-broker.socket
+  lifeos-autonomous-agent.service
+  lifeos-engineer.service
+  lifeos-ha-issue-queue-bridge.service
+)
+for u in "${protected[@]}"; do
+  active=$(systemctl is-active "$u" 2>/dev/null || true)
+  enabled=$(systemctl is-enabled "$u" 2>/dev/null || true)
+  printf '%s active=%s enabled=%s\n' "$u" "$active" "$enabled"
+  [[ "$active" == active ]] || record_failure "protected_inactive_${u}"
+done
+
+echo
+echo '=== QUEUE ==='
+readarray -t q < <(python3 - "$QUEUE" <<'PY'
+import json,pathlib,sys
+p=pathlib.Path(sys.argv[1]); total=pending=invalid=0
 if p.exists():
     for line in p.read_text(errors='replace').splitlines():
         if not line.strip(): continue
         total += 1
         try: d=json.loads(line)
-        except Exception:
-            counts['<invalid>']=counts.get('<invalid>',0)+1
-            pending['<invalid>']=pending.get('<invalid>',0)+1
-            continue
-        typ=str(d.get('job_type') or '<missing>')
-        counts[typ]=counts.get(typ,0)+1
-        if str(d.get('status') or '').lower() == 'pending':
-            pending[typ]=pending.get(typ,0)+1
+        except Exception: invalid += 1; continue
+        if str(d.get('status') or '').lower() == 'pending': pending += 1
 print(f'QUEUE_PRESENT={"yes" if p.exists() else "no"}')
 print(f'QUEUE_TOTAL={total}')
-for k in sorted(counts): print(f'QUEUE_TYPE_{k}={counts[k]}')
-print(f'PENDING_TOTAL={sum(pending.values())}')
-for k in sorted(pending): print(f'PENDING_TYPE_{k}={pending[k]}')
-worker_pending=sum(v for k,v in pending.items() if k in {'service_check','failure_review'})
-dispatch_pending=sum(v for k,v in pending.items() if k in {'autonomy_canary','engineer_self_maintenance'})
-unknown_pending=sum(v for k,v in pending.items() if k not in {'service_check','failure_review','autonomy_canary','engineer_self_maintenance'})
-print(f'WORKER_ONLY_PENDING={worker_pending}')
-print(f'DISPATCHER_ONLY_PENDING={dispatch_pending}')
-print(f'UNKNOWN_PENDING={unknown_pending}')
-PY
-
-echo
-echo '=== FILE PRESENCE ==='
-for f in "$WORKER" "$DISPATCHER" "$MAINT"; do
-  if [[ -e "$f" ]]; then
-    stat -c 'present=yes owner=%U group=%G mode=%a bytes=%s path=%n' "$f"
-  else
-    echo "present=no path=$f"
-  fi
-done
-
-echo
-echo '=== DISPATCHER UNIQUE CAPABILITY SIGNALS ==='
-if [[ -f "$DISPATCHER" ]]; then
-  grep -nE 'ALLOWED_TYPES|autonomy_canary|engineer_self_maintenance|lifeos_engineer_maintenance|subprocess\.run|execute_canary|execute_maintenance' "$DISPATCHER" || true
-fi
-
-echo
-echo '=== MAINTENANCE CAPABILITY SIGNALS ==='
-if [[ -f "$MAINT" ]]; then
-  grep -nE 'def |subprocess|systemctl|docker|git|restart|update|install|maintenance|health|backup|rollback' "$MAINT" | head -160 || true
-fi
-
-echo
-echo '=== REPOSITORY RETIREMENT DECISION ==='
-if [[ -f /home/joshan/lifeos-platform/architecture/decisions/engineer-worker-retirement.md ]]; then
-  sed -n '1,120p' /home/joshan/lifeos-platform/architecture/decisions/engineer-worker-retirement.md
-fi
-
-echo
-echo '=== CLASSIFICATION ==='
-worker_active=$(systemctl is-active lifeos-engineer-worker.timer 2>/dev/null || true)
-dispatch_active=$(systemctl is-active lifeos-engineer-dispatcher.timer 2>/dev/null || true)
-readarray -t q < <(python3 - "$QUEUE" <<'PY'
-import json,pathlib,sys
-p=pathlib.Path(sys.argv[1]); wp=dp=up=0
-if p.exists():
-  for line in p.read_text(errors='replace').splitlines():
-    if not line.strip(): continue
-    try:d=json.loads(line)
-    except Exception: up+=1; continue
-    if str(d.get('status') or '').lower()!='pending': continue
-    t=str(d.get('job_type') or '')
-    if t in {'service_check','failure_review'}: wp+=1
-    elif t in {'autonomy_canary','engineer_self_maintenance'}: dp+=1
-    else: up+=1
-print(wp); print(dp); print(up)
+print(f'QUEUE_PENDING={pending}')
+print(f'QUEUE_INVALID={invalid}')
+print(pending)
+print(invalid)
 PY
 )
-wp=${q[0]:-0}; dp=${q[1]:-0}; up=${q[2]:-0}
+printf '%s\n' "${q[0]:-QUEUE_PRESENT=no}" "${q[1]:-QUEUE_TOTAL=0}" "${q[2]:-QUEUE_PENDING=0}" "${q[3]:-QUEUE_INVALID=0}"
+[[ ${q[4]:-0} -eq 0 ]] || record_failure queue_pending
+[[ ${q[5]:-0} -eq 0 ]] || record_failure queue_invalid
 
-if [[ "$worker_active" == inactive && "$wp" == 0 && "$up" == 0 ]]; then
-  echo 'WORKER_RETIREMENT_READY=YES'
-  echo 'WORKER_DECISION=RETIRE_FILE_AND_UNITS_CANDIDATE'
+echo
+echo '=== GITHUB RUNNER ==='
+runner_unit=$(systemctl list-unit-files 'actions.runner.joshant20-ops-lifeos-platform.lifeos-pi5.service' --no-legend 2>/dev/null | awk 'NR==1{print $1}')
+if [[ -n "$runner_unit" ]]; then
+  runner_active=$(systemctl is-active "$runner_unit" 2>/dev/null || true)
+  runner_enabled=$(systemctl is-enabled "$runner_unit" 2>/dev/null || true)
+  echo "GITHUB_RUNNER_UNIT=$runner_unit"
+  echo "GITHUB_RUNNER_ACTIVE=$runner_active"
+  echo "GITHUB_RUNNER_ENABLED=$runner_enabled"
+  [[ "$runner_active" == active ]] || record_failure github_runner_inactive
 else
-  echo 'WORKER_RETIREMENT_READY=NO'
-  echo "WORKER_BLOCKER=timer_state_${worker_active}_worker_pending_${wp}_unknown_pending_${up}"
+  echo 'GITHUB_RUNNER_UNIT=none'
+  record_failure github_runner_missing
 fi
 
-if [[ "$dispatch_active" == inactive ]]; then
-  echo 'DISPATCHER_RUNTIME_STATE=SAFELY_DISABLED'
-else
-  echo 'DISPATCHER_RUNTIME_STATE=ACTIVE_UNEXPECTEDLY'
+echo
+echo '=== RESULT ==='
+if (( ${#failures[@]} == 0 )); then
+  echo 'POST_RETIREMENT_HEALTH=PASS'
+  echo 'AUDIT_RESULT=PASS'
+  echo 'NEXT_ACTION=continue_automatic_github_managed_operations'
+  exit 0
 fi
-
-if [[ -f "$MAINT" ]]; then
-  echo 'DISPATCHER_FILE_RETIREMENT_READY=NO'
-  echo 'DISPATCHER_BLOCKER=self_maintenance_capability_not_yet_proven_in_semaphore'
-  echo 'NEXT_ACTION=retire_worker_only_then_build_semaphore_canary_and_self_maintenance_templates_before_dispatcher_file_retirement'
-else
-  echo 'DISPATCHER_FILE_RETIREMENT_READY=REQUIRES_REVIEW'
-  echo 'NEXT_ACTION=review_missing_maintenance_helper_before_dispatcher_file_retirement'
-fi
-
-echo 'AUDIT_RESULT=PASS'
+printf 'FAILURE_COUNT=%s\n' "${#failures[@]}"
+printf 'FAILURES=%s\n' "$(IFS=,; echo "${failures[*]}")"
+echo 'POST_RETIREMENT_HEALTH=FAIL'
+echo 'AUDIT_RESULT=FAIL'
+echo 'NEXT_ACTION=preserve_automation_boundaries_and_remediate_reported_failure'
+exit 1
