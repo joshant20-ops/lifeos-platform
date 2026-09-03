@@ -43,7 +43,7 @@ snapshot_units() {
 
 UNITS_BEFORE=$(snapshot_units)
 
-echo 'SEMAPHORE_BACKLOG_SHADOW_PROOF_VERSION=1'
+echo 'SEMAPHORE_BACKLOG_SHADOW_PROOF_VERSION=2'
 echo 'MUTATIONS=LOCAL_SHADOW_STATE_AND_SEMAPHORE_CATALOGUE_ONLY'
 echo "platform_head=$HEAD_BEFORE"
 echo "semaphore_base=$BASE"
@@ -53,14 +53,44 @@ curl -fsS --max-time 5 "$BASE/ping" >/dev/null || { echo 'ERROR: Semaphore API u
 install -d -o root -g root -m 0755 "$SHADOW_ROOT" "$INPUT_DIR"
 TMP_ISSUES=$(mktemp)
 trap 'rm -f "$TMP_ISSUES"' EXIT
-runuser -u joshan -- gh api "repos/$REPO_FULL/issues?state=open&per_page=100" --paginate --slurp >"$TMP_ISSUES"
+# gh versions prior to --slurp support concatenate paginated JSON arrays.
+# Fetch one page at a time and let Python combine them deterministically.
+: >"$TMP_ISSUES"
+page=1
+while :; do
+  PAGE_FILE=$(mktemp)
+  runuser -u joshan -- gh api "repos/$REPO_FULL/issues?state=open&per_page=100&page=$page" >"$PAGE_FILE"
+  PAGE_COUNT=$(python3 - "$PAGE_FILE" <<'PY'
+import json, sys
+value = json.load(open(sys.argv[1]))
+if not isinstance(value, list):
+    raise SystemExit('GitHub issues response is not a list')
+print(len(value))
+PY
+)
+  cat "$PAGE_FILE" >>"$TMP_ISSUES"
+  printf '\n' >>"$TMP_ISSUES"
+  rm -f "$PAGE_FILE"
+  (( PAGE_COUNT < 100 )) && break
+  ((page++))
+  (( page <= 50 )) || { echo 'ERROR: excessive GitHub issue pagination'; exit 1; }
+done
 
 SNAPSHOT="$SNAPSHOT" TMP_ISSUES="$TMP_ISSUES" python3 - <<'PY'
 import json, os, pathlib, time
-raw = json.loads(pathlib.Path(os.environ['TMP_ISSUES']).read_text())
-pages = raw if isinstance(raw, list) else [raw]
-if pages and isinstance(pages[0], dict):
-    pages = [pages]
+text = pathlib.Path(os.environ['TMP_ISSUES']).read_text()
+decoder = json.JSONDecoder()
+pos = 0
+pages = []
+while True:
+    while pos < len(text) and text[pos].isspace():
+        pos += 1
+    if pos >= len(text):
+        break
+    value, pos = decoder.raw_decode(text, pos)
+    if not isinstance(value, list):
+        raise SystemExit('GitHub issues page is not a list')
+    pages.append(value)
 issues = []
 for page in pages:
     for item in page:
