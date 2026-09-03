@@ -9,21 +9,14 @@ MAINT=/home/joshan/automation/queues/lifeos_engineer_maintenance.py
 fail(){ echo "ERROR: $*" >&2; exit 1; }
 
 cd "$PLATFORM"
-echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=1'
+echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=2'
 echo 'MUTATIONS=SEMAPHORE_CATALOGUE_AND_NON_DESTRUCTIVE_PROOF_TASK_HISTORY_ONLY'
 echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
 
 for p in "$DISPATCHER" "$MAINT"; do [[ -f "$p" ]] || fail "missing legacy capability source: $p"; done
 [[ "$(systemctl is-active lifeos-engineer-dispatcher.timer 2>/dev/null || true)" == inactive ]] || fail 'legacy dispatcher timer must remain inactive'
 
-# Semaphore runtime must be reachable.
 curl -fsS "$SEMAPHORE_BASE/ping" >/dev/null || curl -fsS "${SEMAPHORE_BASE%/api}/api/ping" >/dev/null || fail 'Semaphore API unavailable'
-
-# The proof is deliberately non-destructive. It validates that Semaphore can
-# execute the exact capability classes formerly owned by the dispatcher:
-#  1) autonomy canary: fixed local execution identity / host facts only.
-#  2) engineer self-maintenance: repository read-only diagnostics only.
-# No queue files, Git refs, services, package state, or platform files may change.
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -57,8 +50,6 @@ cat >"$TMP/maintenance.yml" <<'YAML'
   hosts: localhost
   gather_facts: false
   connection: local
-  vars:
-    repo: /workspace/lifeos-platform
   tasks:
     - name: Repository status read-only
       ansible.builtin.command:
@@ -90,23 +81,31 @@ cat >"$TMP/maintenance.yml" <<'YAML'
         msg: "SEMAPHORE_ENGINEER_SELF_MAINTENANCE=PASS branch={{ branch.stdout | trim }} mount={{ ro.stdout | trim }} status_bytes={{ status.stdout | length }} fsck_rc={{ fsck.rc }}"
 YAML
 
-# Copy proof playbooks into the canonical repo path visible read-only to Semaphore.
-# Do not mutate the checkout: stage them in Semaphore's existing runtime input mount instead.
 RUNTIME=/var/lib/lifeos-semaphore-shadow/input/dispatcher-capability-proof
-sudo install -d -o root -g root -m 0755 "$RUNTIME"
-sudo install -o root -g root -m 0644 "$TMP/canary.yml" "$RUNTIME/canary.yml"
-sudo install -o root -g root -m 0644 "$TMP/maintenance.yml" "$RUNTIME/maintenance.yml"
+install -d -o root -g root -m 0755 "$RUNTIME"
+install -o root -g root -m 0644 "$TMP/canary.yml" "$RUNTIME/canary.yml"
+install -o root -g root -m 0644 "$TMP/maintenance.yml" "$RUNTIME/maintenance.yml"
 
-# Execute through the same Ansible runtime inside Semaphore without adding any
-# authority. This intentionally uses docker exec only as a proof harness; the
-# production templates will be catalogued after parity is established.
 CONTAINER=lifeos-semaphore-shadow-semaphore-1
 MOUNT=/runtime/lifeos-shadow/input/dispatcher-capability-proof
 
-docker exec "$CONTAINER" sh -lc "ansible-playbook -i localhost, '$MOUNT/canary.yml'" | tee "$TMP/canary.out"
+ANSIBLE_PLAYBOOK=$(docker exec "$CONTAINER" sh -lc '
+  if command -v ansible-playbook >/dev/null 2>&1; then
+    command -v ansible-playbook
+    exit 0
+  fi
+  for p in /opt/semaphore/apps/ansible/*/venv/bin/ansible-playbook; do
+    if [ -x "$p" ]; then printf "%s\n" "$p"; exit 0; fi
+  done
+  exit 1
+') || fail 'Semaphore managed ansible-playbook not found'
+[[ -n "$ANSIBLE_PLAYBOOK" ]] || fail 'Semaphore managed ansible-playbook path empty'
+echo "SEMAPHORE_ANSIBLE_PLAYBOOK=$ANSIBLE_PLAYBOOK"
+
+docker exec "$CONTAINER" "$ANSIBLE_PLAYBOOK" -i localhost, "$MOUNT/canary.yml" | tee "$TMP/canary.out"
 grep -q 'SEMAPHORE_AUTONOMY_CANARY=PASS' "$TMP/canary.out" || fail 'autonomy canary marker absent'
 
-docker exec "$CONTAINER" sh -lc "ansible-playbook -i localhost, '$MOUNT/maintenance.yml'" | tee "$TMP/maintenance.out"
+docker exec "$CONTAINER" "$ANSIBLE_PLAYBOOK" -i localhost, "$MOUNT/maintenance.yml" | tee "$TMP/maintenance.out"
 grep -q 'SEMAPHORE_ENGINEER_SELF_MAINTENANCE=PASS' "$TMP/maintenance.out" || fail 'self-maintenance marker absent'
 
 AFTER_STATUS=$(git status --porcelain)
