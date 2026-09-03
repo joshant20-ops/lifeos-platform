@@ -49,6 +49,7 @@ jobs:
           echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
 
       - name: Execute allow-listed post-retirement health audit
+        id: health_audit
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -61,6 +62,7 @@ jobs:
           grep -E '^[A-Z0-9_]+=' "$RUNNER_TEMP/lifeos-evidence/gateway.log" \
             > "$RUNNER_TEMP/lifeos-evidence/result.env" || true
           echo "GATEWAY_RC=$rc" | tee -a "$RUNNER_TEMP/lifeos-evidence/result.env"
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
           exit "$rc"
 
       - name: Publish machine-readable evidence to issue 29
@@ -88,6 +90,39 @@ jobs:
             echo '```'
           } > "$RUNNER_TEMP/lifeos-evidence/issue-comment.md"
           gh issue comment 29 --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/lifeos-evidence/issue-comment.md"
+
+      - name: Escalate failed automation health
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          title='LifeOS automation health failure'
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "in:title $title" --json number,title --jq ".[] | select(.title == \"$title\") | .number" | head -1 || true)
+          {
+            echo 'The automatic Pi health gate failed.'
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Commit: $GITHUB_SHA"
+            echo
+            echo 'Machine-readable evidence is also recorded in #29.'
+          } > "$RUNNER_TEMP/lifeos-evidence/failure.md"
+          if [[ -n "$existing" ]]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/lifeos-evidence/failure.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/lifeos-evidence/failure.md"
+          fi
+
+      - name: Close successful explicit health trigger
+        if: success() && github.event_name == 'issues'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          gh issue close '${{ github.event.issue.number }}' --repo "$GITHUB_REPOSITORY" \
+            --comment "Automatic Pi health gate passed in $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
 
       - name: Upload health evidence
         if: always()
