@@ -1,0 +1,69 @@
+name: LifeOS Pi Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Allow-listed LifeOS deployment operation
+        required: true
+        type: choice
+        options:
+          - audit-dispatcher-retirement
+          - retire-engineer-dispatcher
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact main commit
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify runner identity and canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "RUNNER_NAME=$RUNNER_NAME"
+          echo "RUNNER_ARCH=$RUNNER_ARCH"
+          test "$RUNNER_ARCH" = ARM64
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
+
+      - name: Execute allow-listed deployment gateway
+        id: gateway
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/lifeos-evidence"
+          set +e
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway '${{ inputs.operation }}' \
+            2>&1 | tee "$RUNNER_TEMP/lifeos-evidence/gateway.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "gateway_rc=$rc" >> "$GITHUB_OUTPUT"
+          grep -E '^[A-Z0-9_]+=' "$RUNNER_TEMP/lifeos-evidence/gateway.log" \
+            > "$RUNNER_TEMP/lifeos-evidence/result.env" || true
+          exit "$rc"
+
+      - name: Upload deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifeos-${{ inputs.operation }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/lifeos-evidence/
+          if-no-files-found: warn
+          retention-days: 30
