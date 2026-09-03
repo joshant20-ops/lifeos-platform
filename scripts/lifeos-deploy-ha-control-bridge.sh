@@ -5,6 +5,7 @@ PLATFORM=/home/joshan/lifeos-platform
 SOURCE="$PLATFORM/governor/ha_issue_queue_bridge.py"
 DEST=/usr/local/libexec/lifeos-ha-issue-queue-bridge
 UNIT=lifeos-ha-issue-queue-bridge.service
+DASHBOARD_ADAPTER="$PLATFORM/scripts/lifeos-adapt-ha-lifeos-dashboard.sh"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP="/mnt/docker-data/automation/backups/ha-control-bridge-$STAMP"
 
@@ -23,6 +24,7 @@ trap rollback ERR
 [[ $EUID -eq 0 ]] || { echo 'ERROR=must_run_as_root'; exit 1; }
 [[ -f "$SOURCE" && ! -L "$SOURCE" ]] || { echo 'ERROR=canonical_bridge_missing'; exit 1; }
 [[ -f "$DEST" && ! -L "$DEST" ]] || { echo 'ERROR=installed_bridge_missing'; exit 1; }
+[[ -f "$DASHBOARD_ADAPTER" && ! -L "$DASHBOARD_ADAPTER" ]] || { echo 'ERROR=dashboard_adapter_missing'; exit 1; }
 
 mkdir -p "$BACKUP"
 cp -a "$DEST" "$BACKUP/lifeos-ha-issue-queue-bridge.before"
@@ -56,9 +58,14 @@ print('CONTROL_NEXT_ACTION=' + str(value.get('next_action') or 'none'))
 print('CONTROL_ROADMAP=' + str(value.get('roadmap_stage')) + '/' + str(value.get('roadmap_stages')))
 PY
 
+echo '==> ADAPT CURRENT LIFEOS DASHBOARD'
+bash "$DASHBOARD_ADAPTER"
+
 echo 'RESULT=PASS'
 echo 'HA_CONTROL_BRIDGE_DEPLOYED=YES'
 echo 'MQTT_CONTROL_TOPIC=PASS'
 echo 'HOME_ASSISTANT_DEVICE=LifeOS Issue Queue'
+echo 'LIFEOS_CONTROL_DASHBOARD=ADAPTED'
+echo 'LIFEOS_CONTROL_DASHBOARD_PATH=/lifeos-control/overview'
 echo "BACKUP=$BACKUP"
-echo 'ROLLBACK=restore backup bridge and restart lifeos-ha-issue-queue-bridge.service'
+echo 'ROLLBACK=restore backup bridge and dashboard storage backups then restart affected services'
