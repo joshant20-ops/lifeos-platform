@@ -20,13 +20,12 @@ ORIGIN=$(runuser -u joshan -- git -C "$PLATFORM" rev-parse origin/main)
 [[ -z "$(runuser -u joshan -- git -C "$PLATFORM" status --porcelain)" ]] || { echo 'ERROR: platform repository dirty'; exit 1; }
 [[ "$(stat -c '%U:%G' "$PLATFORM/.git/index")" == 'joshan:joshan' ]] || { echo 'ERROR: git metadata ownership invalid'; exit 1; }
 
-printf '%s\n' 'SEMAPHORE_SINGLE_GATED_SUBMISSION_VERSION=1'
+printf '%s\n' 'SEMAPHORE_SINGLE_GATED_SUBMISSION_VERSION=2'
 printf 'MODE=%s\n' "$MODE"
 printf 'PLATFORM_HEAD=%s\n' "$HEAD"
 printf '%s\n' 'AUTHORITY_MODEL=SEMAPHORE_INTENT_HOST_VALIDATION_GOVERNOR_SUBMISSION'
 printf '%s\n' 'GOVERNOR_CREDENTIAL_IN_SEMAPHORE=NO'
 
-# Legacy runner must be quiescent before even constructing an authoritative intent.
 [[ "$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)" != active ]] || { echo 'ERROR: legacy backlog runner service currently active'; exit 1; }
 
 ACTIVE_GOV=$(python3 - "$GOV" <<'PY'
@@ -41,16 +40,20 @@ PY
 [[ "$ACTIVE_GOV" == 0 ]] || { echo "ERROR: governor already has active jobs count=$ACTIVE_GOV"; exit 1; }
 
 TMP=$(mktemp -d)
+chown joshan:joshan "$TMP"
+chmod 0700 "$TMP"
 trap 'rm -rf "$TMP"' EXIT
 ISSUES=$TMP/issues.json
 PLAN=$TMP/plan.json
-printf '[]\n' >"$ISSUES"
+runuser -u joshan -- sh -c 'printf "[]\n" > "$1"' sh "$ISSUES"
 page=1
 while :; do
   PAGE=$TMP/page.json
   runuser -u joshan -- gh api "repos/$REPO_FULL/issues?state=open&per_page=100&page=$page" >"$PAGE"
-  COUNT=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$PAGE")
-  python3 - "$ISSUES" "$PAGE" <<'PY'
+  chown joshan:joshan "$PAGE"
+  chmod 0600 "$PAGE"
+  COUNT=$(runuser -u joshan -- python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$PAGE")
+  runuser -u joshan -- python3 - "$ISSUES" "$PAGE" <<'PY'
 import json,pathlib,sys
 out,page=map(pathlib.Path,sys.argv[1:])
 a=json.loads(out.read_text()); b=json.loads(page.read_text())
@@ -60,9 +63,6 @@ PY
   ((page++))
 done
 
-# Use the authoritative backlog_runner implementation itself in a sandboxed capture:
-# monkey-patch all side effects, call submit_issue on deep copies, and retain only the
-# exact request/body/state transition it WOULD perform. No Governor/GitHub/state write occurs here.
 PLATFORM="$PLATFORM" STATE="$STATE" ISSUES="$ISSUES" PLAN="$PLAN" runuser -u joshan -- env \
   PLATFORM="$PLATFORM" STATE="$STATE" ISSUES="$ISSUES" PLAN="$PLAN" python3 - <<'PY'
 import copy, importlib.util, json, os, pathlib, time
@@ -100,7 +100,7 @@ if issue is not None:
 pathlib.Path(os.environ['PLAN']).write_text(json.dumps(out,sort_keys=True)+'\n')
 PY
 
-ELIGIBLE=$(python3 -c 'import json,sys; print("yes" if json.load(open(sys.argv[1]))["eligible"] else "no")' "$PLAN")
+ELIGIBLE=$(runuser -u joshan -- python3 -c 'import json,sys; print("yes" if json.load(open(sys.argv[1]))["eligible"] else "no")' "$PLAN")
 if [[ "$ELIGIBLE" == no ]]; then
   echo 'ELIGIBLE_ISSUE=none'
   echo 'AUTHORITATIVE_SUBMISSION=NONE'
@@ -110,10 +110,10 @@ if [[ "$ELIGIBLE" == no ]]; then
   exit 0
 fi
 
-ISSUE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["issue"])' "$PLAN")
-PHASE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["phase"] or "none")' "$PLAN")
-BUILDER=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["dispatch_builder"])' "$PLAN")
-TARGET=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target_id"] or "none")' "$PLAN")
+ISSUE=$(runuser -u joshan -- python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["issue"])' "$PLAN")
+PHASE=$(runuser -u joshan -- python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["phase"] or "none")' "$PLAN")
+BUILDER=$(runuser -u joshan -- python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["dispatch_builder"])' "$PLAN")
+TARGET=$(runuser -u joshan -- python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["target_id"] or "none")' "$PLAN")
 echo "ELIGIBLE_ISSUE=$ISSUE"
 echo "DISPATCH_PHASE=$PHASE"
 echo "DISPATCH_BUILDER=$BUILDER"
@@ -126,9 +126,6 @@ if [[ "$MODE" == --check ]]; then
   exit 0
 fi
 
-# Transaction: temporarily stop the timer (do not disable it), re-check all single-flight
-# barriers, submit exactly once, persist the canonical prospective state with the real job id,
-# post the same start checkpoint, then restore timer activity in all cases.
 TIMER_WAS_ACTIVE=$(systemctl is-active lifeos-backlog-runner.timer 2>/dev/null || true)
 restore_timer() {
   if [[ "$TIMER_WAS_ACTIVE" == active ]]; then systemctl start lifeos-backlog-runner.timer >/dev/null 2>&1 || true; fi
@@ -137,7 +134,6 @@ trap 'restore_timer; rm -rf "$TMP"' EXIT
 systemctl stop lifeos-backlog-runner.timer
 [[ "$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)" != active ]] || { echo 'ERROR: legacy runner raced transaction'; exit 1; }
 
-# Re-check state and Governor after the timer is quiesced.
 python3 - "$STATE" <<'PY'
 import json,sys
 if json.load(open(sys.argv[1])).get('active'): raise SystemExit('ERROR: backlog became active before submission')
