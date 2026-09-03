@@ -7,11 +7,13 @@ DISPATCHER=/home/joshan/automation/queues/lifeos_engineer_dispatcher.py
 MAINT=/home/joshan/automation/queues/lifeos_engineer_maintenance.py
 
 fail(){ echo "ERROR: $*" >&2; exit 1; }
+runj(){ runuser -u joshan -- env -i HOME=/home/joshan PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin LANG=C.UTF-8 "$@"; }
+gitj(){ runj git -C "$PLATFORM" "$@"; }
 
 cd "$PLATFORM"
-echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=5'
+echo 'SEMAPHORE_DISPATCHER_CAPABILITY_PROOF_VERSION=6'
 echo 'MUTATIONS=SEMAPHORE_CATALOGUE_AND_NON_DESTRUCTIVE_PROOF_TASK_HISTORY_ONLY'
-echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
+echo "PLATFORM_HEAD=$(gitj rev-parse HEAD)"
 
 for p in "$DISPATCHER" "$MAINT"; do [[ -f "$p" ]] || fail "missing legacy capability source: $p"; done
 [[ "$(systemctl is-active lifeos-engineer-dispatcher.timer 2>/dev/null || true)" == inactive ]] || fail 'legacy dispatcher timer must remain inactive'
@@ -20,9 +22,8 @@ curl -fsS "$SEMAPHORE_BASE/ping" >/dev/null || curl -fsS "${SEMAPHORE_BASE%/api}
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
-
-BEFORE_STATUS=$(git status --porcelain)
-BEFORE_HEAD=$(git rev-parse HEAD)
+BEFORE_STATUS=$(gitj status --porcelain)
+BEFORE_HEAD=$(gitj rev-parse HEAD)
 
 cat >"$TMP/canary.yml" <<'YAML'
 - name: LifeOS Semaphore autonomy canary proof
@@ -72,24 +73,17 @@ cat >"$TMP/maintenance.yml" <<'YAML'
           - /usr/bin/python3
           - -c
           - |
-            import errno
-            import pathlib
-            import sys
-
+            import errno, pathlib, sys
             p = pathlib.Path('/workspace/lifeos-platform/.semaphore-maintenance-write-probe')
             try:
                 with p.open('w'):
                     pass
             except OSError as exc:
                 if exc.errno in (errno.EROFS, errno.EACCES, errno.EPERM):
-                    print('readonly')
-                    sys.exit(0)
-                print(f'errno={exc.errno}', file=sys.stderr)
-                sys.exit(8)
+                    print('readonly'); sys.exit(0)
+                print(f'errno={exc.errno}', file=sys.stderr); sys.exit(8)
             else:
-                p.unlink(missing_ok=True)
-                print('writable')
-                sys.exit(9)
+                p.unlink(missing_ok=True); print('writable'); sys.exit(9)
       changed_when: false
       register: ro
     - name: Emit self-maintenance proof marker
@@ -98,18 +92,17 @@ cat >"$TMP/maintenance.yml" <<'YAML'
 YAML
 
 RUNTIME=/var/lib/lifeos-semaphore-shadow/input/dispatcher-capability-proof
+# Runtime staging deliberately remains root-owned. Repeated proofs overwrite
+# previous root-owned files atomically through install; Git operations above
+# remain under joshan.
 install -d -o root -g root -m 0755 "$RUNTIME"
 install -o root -g root -m 0644 "$TMP/canary.yml" "$RUNTIME/canary.yml"
 install -o root -g root -m 0644 "$TMP/maintenance.yml" "$RUNTIME/maintenance.yml"
 
 CONTAINER=lifeos-semaphore-shadow-semaphore-1
 MOUNT=/runtime/lifeos-shadow/input/dispatcher-capability-proof
-
 ANSIBLE_PLAYBOOK=$(docker exec "$CONTAINER" sh -lc '
-  if command -v ansible-playbook >/dev/null 2>&1; then
-    command -v ansible-playbook
-    exit 0
-  fi
+  if command -v ansible-playbook >/dev/null 2>&1; then command -v ansible-playbook; exit 0; fi
   for p in /opt/semaphore/apps/ansible/*/venv/bin/ansible-playbook; do
     if [ -x "$p" ]; then printf "%s\n" "$p"; exit 0; fi
   done
@@ -120,12 +113,11 @@ echo "SEMAPHORE_ANSIBLE_PLAYBOOK=$ANSIBLE_PLAYBOOK"
 
 docker exec "$CONTAINER" "$ANSIBLE_PLAYBOOK" -i localhost, "$MOUNT/canary.yml" | tee "$TMP/canary.out"
 grep -q 'SEMAPHORE_AUTONOMY_CANARY=PASS' "$TMP/canary.out" || fail 'autonomy canary marker absent'
-
 docker exec "$CONTAINER" "$ANSIBLE_PLAYBOOK" -i localhost, "$MOUNT/maintenance.yml" | tee "$TMP/maintenance.out"
 grep -q 'SEMAPHORE_ENGINEER_SELF_MAINTENANCE=PASS' "$TMP/maintenance.out" || fail 'self-maintenance marker absent'
 
-AFTER_STATUS=$(git status --porcelain)
-AFTER_HEAD=$(git rev-parse HEAD)
+AFTER_STATUS=$(gitj status --porcelain)
+AFTER_HEAD=$(gitj rev-parse HEAD)
 [[ "$AFTER_HEAD" == "$BEFORE_HEAD" ]] || fail 'platform HEAD changed during proof'
 [[ "$AFTER_STATUS" == "$BEFORE_STATUS" ]] || fail 'platform worktree changed during proof'
 [[ "$(systemctl is-active lifeos-engineer-dispatcher.timer 2>/dev/null || true)" == inactive ]] || fail 'legacy dispatcher timer changed state'
@@ -137,4 +129,4 @@ echo 'SEMAPHORE_ENGINEER_SELF_MAINTENANCE=PASS'
 echo 'LEGACY_DISPATCHER_TIMER_CHANGED=NO'
 echo 'PLATFORM_MUTATION=NONE'
 echo 'GITHUB_MUTATION=NONE'
-echo 'NEXT_ACTION=create_gated_dispatcher_file_retirement_after_template_catalogue_is_committed'
+echo 'NEXT_ACTION=retire legacy dispatcher or execute through GitHub deployment gateway'
