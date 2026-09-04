@@ -249,6 +249,8 @@ def publish_locked():
         print('No staged manifests')
         return 0
 
+    # Strict FIFO: only the oldest staged manifest is considered per run.
+    # An invalid oldest item blocks later work rather than allowing queue bypass.
     manifest = manifests[0]
     d, script = validate_manifest(manifest)
 
