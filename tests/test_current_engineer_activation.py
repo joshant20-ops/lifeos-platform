@@ -29,10 +29,27 @@ class CurrentEngineerActivationTests(unittest.TestCase):
         self.assertIn("assert d['target']==target",TEXT)
         self.assertIn('TARGET_ID=',TEXT)
 
-    def test_retry_uses_new_job_id_and_preserves_failed_evidence(self):
-        self.assertIn('readonly JOB_ID=engineer-current-20260904-v2',TEXT)
+    def test_retry_uses_new_job_id_and_preserves_prior_evidence(self):
+        self.assertIn('readonly JOB_ID=engineer-current-20260904-v3',TEXT)
         self.assertNotIn('rm -f "$APPROVAL"',TEXT)
         self.assertNotIn('rm -f "$AUDIT"',TEXT)
+
+    def test_exact_observed_metadata_repair_is_narrow(self):
+        self.assertIn('readonly BACKEND_REL=governor/engineer_backend.py',TEXT)
+        self.assertIn("if mode != 0o775",TEXT)
+        self.assertIn('backend mode changed from observed 775',TEXT)
+        self.assertIn('chmod 0755 "$PLATFORM/$BACKEND_REL"',TEXT)
+        self.assertIn('METADATA_REPAIR=governor/engineer_backend.py:0775->0755',TEXT)
+        self.assertNotIn('chown ',TEXT)
+        self.assertNotIn('chmod -R',TEXT)
+
+    def test_reproduces_broker_source_safety_before_approval(self):
+        self.assertIn('stat.S_ISREG(st.st_mode)',TEXT)
+        self.assertIn('st.st_uid==repo_uid',TEXT)
+        self.assertIn('not (st.st_mode & 0o022)',TEXT)
+        self.assertIn('actual==expected',TEXT)
+        self.assertLess(TEXT.index("stage 2 'EXACT SOURCE SAFETY REPAIR AND REVALIDATION'"),
+                        TEXT.index("stage 3 'CREATE FRESH ROOT-OWNED APPROVAL'"))
 
     def test_approval_is_exact_and_root_owned(self):
         for rel in ('governor/autonomous_agent.py','governor/target_identity.py','governor/engineer_backend.py'):
