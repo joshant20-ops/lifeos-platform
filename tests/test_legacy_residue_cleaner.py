@@ -1,6 +1,5 @@
 import pathlib
 import subprocess
-import tempfile
 import unittest
 
 SCRIPT = pathlib.Path('scripts/clean-lifeos-control-legacy-executable-residue.sh')
@@ -12,8 +11,8 @@ class LegacyResidueCleanerTests(unittest.TestCase):
         cp = subprocess.run(['bash', '-n', str(SCRIPT)], text=True, capture_output=True)
         self.assertEqual(cp.returncode, 0, cp.stderr)
 
-    def test_check_source_initialises_rel_before_using_it(self):
-        marker = 'check_source(){\n'
+    def test_optional_source_initialises_rel_before_using_it(self):
+        marker = 'check_optional_source(){\n'
         start = TEXT.index(marker) + len(marker)
         body = TEXT[start:TEXT.index('\n}\n', start)]
         self.assertIn('local rel expected path actual', body)
@@ -21,6 +20,7 @@ class LegacyResidueCleanerTests(unittest.TestCase):
         self.assertIn('expected="$2"', body)
         self.assertIn('path="$CONTROL/$rel"', body)
         self.assertLess(body.index('rel="$1"'), body.index('path="$CONTROL/$rel"'))
+        self.assertIn('already-removed', body)
 
     def test_nounset_startup_regression_for_local_dependency(self):
         snippet = r'''set -u

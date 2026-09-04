@@ -20,11 +20,18 @@ class ControlLegacyResidueCleanerTests(unittest.TestCase):
             self.assertIn(blob, TEXT)
         self.assertIn('git hash-object "$path"', TEXT)
 
+    def test_source_may_be_exact_blob_or_already_removed(self):
+        self.assertIn('check_optional_source(){', TEXT)
+        self.assertIn('LEGACY_SOURCE_STATE=$rel:already-removed', TEXT)
+        self.assertIn('LEGACY_SOURCE_STATE=$rel:exact-former-blob', TEXT)
+        self.assertIn('legacy source blob mismatch', TEXT)
+
     def test_only_expected_residue_and_pycache_are_permitted(self):
-        self.assertIn('broker/lifeos-root-broker', TEXT)
-        self.assertIn('publisher/lifeos-job-publisher', TEXT)
-        self.assertIn('runner/lifeos-pi-control-runner', TEXT)
-        self.assertIn('broker/__pycache__/*.pyc', TEXT)
+        self.assertIn('lifeos-root-broker', TEXT)
+        self.assertIn('lifeos-job-publisher', TEXT)
+        self.assertIn('lifeos-pi-control-runner', TEXT)
+        self.assertIn('__pycache__', TEXT)
+        self.assertIn('*.pyc', TEXT)
         self.assertIn('unexpected legacy residue path', TEXT)
         self.assertIn('symlink not permitted in legacy residue', TEXT)
 
