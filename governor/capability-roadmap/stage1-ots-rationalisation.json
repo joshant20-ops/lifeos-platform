@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "capability_stage": 1,
+  "name": "OTS rationalisation and custom-code purge",
+  "principle": "OTS first; configuration and integration before bespoke code",
+  "classification": ["KEEP_OTS", "KEEP_THIN_GLUE", "REPLACE_WITH_OTS", "RETIRE_OBSOLETE", "REVIEW_UNIQUE"],
+  "protected": [
+    "Watchman execution authority",
+    "GitHub canonical source",
+    "Stage 10/11/12 governance gates",
+    "Home Assistant configuration source",
+    "deployment rollback and runtime verification"
+  ],
+  "ots_preference_order": [
+    "existing deployed OTS capability",
+    "native integration/configuration",
+    "established OTS component",
+    "thin replaceable adapter",
+    "bespoke implementation only with documented gap and owner"
+  ],
+  "auto_delete": false,
+  "report_only_until_unique_responsibility_is_proven": true
+}
