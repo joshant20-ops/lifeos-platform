@@ -12,731 +12,388 @@ import sys
 import time
 from datetime import datetime, timezone
 
-REPO=pathlib.Path(
-    os.environ.get(
-        "LIFEOS_CONTROL_REPO",
-        "/home/joshan/lifeos-pi-control",
-    )
+REPO = pathlib.Path(os.environ.get("LIFEOS_CONTROL_REPO", "/home/joshan/lifeos-pi-control"))
+IDENTITY_FILE = pathlib.Path("/etc/lifeos-control/identity.json")
+STATE_DIR = pathlib.Path("/home/joshan/.local/state/lifeos-pi-control")
+LOG_DIR = STATE_DIR / "logs"
+LOCK = STATE_DIR / "runner.lock"
+PAUSE = STATE_DIR / "paused_job"
+MAX_JOBS = 50
+RUNTIME_SPECS = (
+    "jobs/staging", "jobs/staged", "jobs/pending", "jobs/archive", "jobs/scripts",
+    "jobs/change-scripts", "jobs/root-scripts", "results", "state",
 )
 
-IDENTITY_FILE=pathlib.Path(
-    "/etc/lifeos-control/identity.json"
-)
-
-STATE_DIR=pathlib.Path(
-    "/home/joshan/.local/state/lifeos-pi-control"
-)
-
-LOG_DIR=STATE_DIR/"logs"
-LOCK=STATE_DIR/"runner.lock"
-PAUSE=STATE_DIR/"paused_job"
-
-MAX_JOBS=50
-
-STATE_DIR.mkdir(parents=True,exist_ok=True)
-LOG_DIR.mkdir(parents=True,exist_ok=True)
-
-lock_handle=LOCK.open("w")
-
+STATE_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+lock_handle = LOCK.open("w")
 try:
-    fcntl.flock(
-        lock_handle,
-        fcntl.LOCK_EX | fcntl.LOCK_NB,
-    )
+    fcntl.flock(lock_handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
 except BlockingIOError:
     print("Another control runner is active")
     raise SystemExit(0)
 
-identity=json.loads(IDENTITY_FILE.read_text())
+identity = json.loads(IDENTITY_FILE.read_text())
+TARGET_ID = identity["target_id"]
+ALIASES = set(identity.get("aliases", []))
+ACCEPTED_TARGETS = {TARGET_ID, *ALIASES}
 
-TARGET_ID=identity["target_id"]
-ALIASES=set(identity.get("aliases",[]))
-ACCEPTED_TARGETS={TARGET_ID,*ALIASES}
 
 def now():
-    return datetime.now(
-        timezone.utc
-    ).astimezone().isoformat()
+    return datetime.now(timezone.utc).astimezone().isoformat()
 
-def run(
-    args,
-    *,
-    check=True,
-    capture=False,
-    env=None,
-    timeout=None,
-):
-    result=subprocess.run(
+
+def run(args, *, check=True, capture=False, env=None, timeout=None):
+    result = subprocess.run(
         args,
         cwd=REPO,
         text=True,
-        stdout=(
-            subprocess.PIPE
-            if capture else None
-        ),
-        stderr=(
-            subprocess.STDOUT
-            if capture else None
-        ),
+        stdout=subprocess.PIPE if capture else None,
+        stderr=subprocess.STDOUT if capture else None,
         env=env,
         timeout=timeout,
     )
-
     if check and result.returncode != 0:
-        raise RuntimeError(
-            f"command failed rc={result.returncode}: "
-            + " ".join(args)
-        )
-
+        raise RuntimeError(f"command failed rc={result.returncode}: " + " ".join(args))
     return result
 
-def git(*args,check=True,capture=False):
-    return run(
-        ["git",*args],
-        check=check,
-        capture=capture,
+
+def git(*args, check=True, capture=False):
+    return run(["git", *args], check=check, capture=capture)
+
+
+def upstream_runtime_paths():
+    return git(
+        "ls-tree", "-r", "--name-only", "origin/main", "--", *RUNTIME_SPECS,
+        check=False, capture=True,
     )
+
 
 def sync_repo():
-    git("fetch","origin","main")
+    """Fast-forward static control definitions without touching runtime-owned state."""
+    tracked = upstream_runtime_paths()
+    if tracked.returncode == 0 and tracked.stdout.strip():
+        raise RuntimeError("origin/main tracks runtime-owned paths; migration required before runner sync")
 
-    local=git(
-        "rev-parse","HEAD",
-        capture=True,
-    ).stdout.strip()
+    before = git("rev-parse", "HEAD", capture=True).stdout.strip()
+    git(
+        "fetch", "--no-write-fetch-head", "origin",
+        "+refs/heads/main:refs/remotes/origin/main",
+    )
+    after = git("rev-parse", "HEAD", capture=True).stdout.strip()
+    if after != before:
+        raise RuntimeError("fetch unexpectedly changed checked-out HEAD")
 
-    remote=git(
-        "rev-parse","origin/main",
-        capture=True,
-    ).stdout.strip()
+    tracked = upstream_runtime_paths()
+    if tracked.returncode == 0 and tracked.stdout.strip():
+        raise RuntimeError("origin/main tracks runtime-owned paths; refusing unsafe merge")
 
+    dirty = git("status", "--porcelain=v1", "--untracked-files=no", capture=True)
+    if dirty.stdout.strip():
+        raise RuntimeError("tracked working tree changes prevent safe runner fast-forward")
+
+    local = git("rev-parse", "HEAD", capture=True).stdout.strip()
+    remote = git("rev-parse", "refs/remotes/origin/main", capture=True).stdout.strip()
     if local == remote:
         return
-
-    ancestor=git(
-        "merge-base",
-        "--is-ancestor",
-        local,
-        remote,
-        check=False,
-    )
-
+    ancestor = git("merge-base", "--is-ancestor", local, remote, check=False)
     if ancestor.returncode != 0:
-        raise RuntimeError(
-            "non-fast-forward remote history"
-        )
+        raise RuntimeError("non-fast-forward remote history")
+    git("merge", "--ff-only", "refs/remotes/origin/main")
 
-    git("merge","--ff-only","origin/main")
 
 def target_matches(data):
     return data.get("target") in ACCEPTED_TARGETS
 
+
 def read_pause():
     if not PAUSE.exists():
         return None
-
-    value=PAUSE.read_text().strip()
+    value = PAUSE.read_text().strip()
     return value or None
 
-def select_manifest():
-    paused=read_pause()
 
-    for path in sorted(
-        (REPO/"jobs/pending").glob("*.json")
-    ):
+def select_manifest():
+    paused = read_pause()
+    for path in sorted((REPO / "jobs/pending").glob("*.json")):
         try:
-            data=json.loads(path.read_text())
+            data = json.loads(path.read_text())
         except Exception:
             continue
-
-        #
-        # KEY MULTI-NODE RULE:
-        # jobs for other machines are ignored,
-        # not rejected and not allowed to block this node.
-        #
         if not target_matches(data):
             continue
-
-        if paused is None:
+        if paused is None or data.get("resume_after") == paused:
             return path
-
-        if data.get("resume_after") == paused:
-            return path
-
     return None
 
+
 def validate_manifest(path):
-    data=json.loads(path.read_text())
-
-    required={
-        "schema_version",
-        "job_id",
-        "target",
-        "job_type",
-        "script",
-        "script_sha256",
-        "timeout_seconds",
-        "created_by",
-        "description",
+    data = json.loads(path.read_text())
+    required = {
+        "schema_version", "job_id", "target", "job_type", "script", "script_sha256",
+        "timeout_seconds", "created_by", "description",
     }
-
-    missing=required-set(data)
-
+    missing = required - set(data)
     if missing:
-        raise RuntimeError(
-            "missing manifest fields: "
-            + ",".join(sorted(missing))
-        )
-
+        raise RuntimeError("missing manifest fields: " + ",".join(sorted(missing)))
     if data["schema_version"] != 1:
-        raise RuntimeError(
-            "unsupported schema_version"
-        )
-
+        raise RuntimeError("unsupported schema_version")
     if not target_matches(data):
-        raise RuntimeError(
-            f"job target {data['target']!r} "
-            f"does not match {TARGET_ID!r}"
-        )
+        raise RuntimeError(f"job target {data['target']!r} does not match {TARGET_ID!r}")
+    if data["job_type"] not in {"diagnostic", "change"}:
+        raise RuntimeError("unsupported job_type")
+    if not isinstance(data["timeout_seconds"], int) or not 1 <= data["timeout_seconds"] <= 900:
+        raise RuntimeError("timeout_seconds out of range")
 
-    if data["job_type"] not in {
-        "diagnostic",
-        "change",
-    }:
-        raise RuntimeError(
-            "unsupported job_type"
-        )
+    sha = data["script_sha256"]
+    if not isinstance(sha, str) or len(sha) != 64 or any(c not in "0123456789abcdef" for c in sha):
+        raise RuntimeError("invalid script_sha256")
 
-    if not isinstance(
-        data["timeout_seconds"],
-        int,
-    ) or not 1 <= data["timeout_seconds"] <= 900:
-        raise RuntimeError(
-            "timeout_seconds out of range"
-        )
-
-    sha=data["script_sha256"]
-
-    if (
-        not isinstance(sha,str)
-        or len(sha) != 64
-        or any(
-            c not in "0123456789abcdef"
-            for c in sha
-        )
-    ):
-        raise RuntimeError(
-            "invalid script_sha256"
-        )
-
-    script=data["script"]
-
+    script = data["script"]
     if data["job_type"] == "diagnostic":
-
-        if not script.startswith(
-            "jobs/scripts/"
-        ):
-            raise RuntimeError(
-                "invalid diagnostic path"
-            )
-
+        if not script.startswith("jobs/scripts/"):
+            raise RuntimeError("invalid diagnostic path")
     else:
-
-        for key in (
-            "change_scope",
-            "change_policy",
-            "requires_root",
-        ):
+        for key in ("change_scope", "change_policy", "requires_root"):
             if key not in data:
-                raise RuntimeError(
-                    f"missing change field {key}"
-                )
-
+                raise RuntimeError(f"missing change field {key}")
         if data["change_policy"] != "gated-v1":
-            raise RuntimeError(
-                "unsupported change policy"
-            )
-
-        scope=data["change_scope"]
-
+            raise RuntimeError("unsupported change policy")
+        scope = data["change_scope"]
         if scope == "control-state":
-
             if data["requires_root"] is not False:
-                raise RuntimeError(
-                    "control-state cannot require root"
-                )
-
-            if not script.startswith(
-                "jobs/change-scripts/"
-            ):
-                raise RuntimeError(
-                    "invalid control-state path"
-                )
-
+                raise RuntimeError("control-state cannot require root")
+            if not script.startswith("jobs/change-scripts/"):
+                raise RuntimeError("invalid control-state path")
         elif scope == "root-broker":
-
             if data["requires_root"] is not True:
-                raise RuntimeError(
-                    "root-broker must require root"
-                )
-
-            if not script.startswith(
-                "jobs/root-scripts/"
-            ):
-                raise RuntimeError(
-                    "invalid root-broker script path"
-                )
-
+                raise RuntimeError("root-broker must require root")
+            if not script.startswith("jobs/root-scripts/"):
+                raise RuntimeError("invalid root-broker script path")
         else:
-            raise RuntimeError(
-                "change scope not allowlisted"
-            )
+            raise RuntimeError("change scope not allowlisted")
 
-    resume=data.get("resume_after")
-
-    if resume is not None and (
-        not isinstance(resume,str)
-        or not resume
-    ):
-        raise RuntimeError(
-            "invalid resume_after"
-        )
-
+    resume = data.get("resume_after")
+    if resume is not None and (not isinstance(resume, str) or not resume):
+        raise RuntimeError("invalid resume_after")
     return data
 
+
 def sha256(path):
-    h=hashlib.sha256()
-
-    with path.open("rb") as f:
-        for chunk in iter(
-            lambda:f.read(1024*1024),
-            b"",
-        ):
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             h.update(chunk)
-
     return h.hexdigest()
 
-def gitleaks(path):
-    result=run(
-        [
-            "gitleaks",
-            "dir",
-            str(path),
-            "--no-banner",
-            "--no-color",
-            "--redact",
-        ],
-        check=False,
-    )
 
-    return result.returncode == 0
+def gitleaks(path):
+    return run(
+        ["gitleaks", "dir", str(path), "--no-banner", "--no-color", "--redact"],
+        check=False,
+    ).returncode == 0
+
 
 def critical_health():
-    names=run(
-        [
-            "docker","ps",
-            "--format","{{.Names}}",
-        ],
-        capture=True,
-    ).stdout.splitlines()
-
-    running=set(names)
-
-    required={
-        "homeassistant",
-        "lifeos-energy",
-        "predbat",
-        "vaultwarden",
-        "uptime-kuma",
-        "prometheus",
-        "autoheal",
-        "watchtower",
+    names = run(["docker", "ps", "--format", "{{.Names}}"], capture=True).stdout.splitlines()
+    running = set(names)
+    required = {
+        "homeassistant", "lifeos-energy", "predbat", "vaultwarden",
+        "uptime-kuma", "prometheus", "autoheal", "watchtower",
     }
-
     return required <= running
 
+
 def v3_status(log=None):
-    kwargs={}
-
+    kwargs = {}
     if log is not None:
-        kwargs["stdout"]=log
-        kwargs["stderr"]=subprocess.STDOUT
+        kwargs["stdout"] = log
+        kwargs["stderr"] = subprocess.STDOUT
+    return subprocess.run(["/usr/local/sbin/lifeos-ansible-adopt", "--status"], **kwargs).returncode == 0
 
-    return subprocess.run(
-        [
-            "/usr/local/sbin/lifeos-ansible-adopt",
-            "--status",
-        ],
-        **kwargs,
-    ).returncode == 0
 
 def broker_available():
     try:
-        s=socket.socket(
-            socket.AF_UNIX,
-            socket.SOCK_STREAM,
-        )
-
-        s.settimeout(2)
-        s.connect(
-            "/run/lifeos-root-broker.sock"
-        )
-        s.close()
+        sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        sock.connect("/run/lifeos-root-broker.sock")
+        sock.close()
         return True
-
     except Exception:
         return False
 
+
 def process_one(manifest_path):
-    data=validate_manifest(
-        manifest_path
-    )
-
-    job_id=data["job_id"]
-
-    script=REPO/data["script"]
-
+    data = validate_manifest(manifest_path)
+    job_id = data["job_id"]
+    script = REPO / data["script"]
     if not script.is_file():
-        raise RuntimeError(
-            f"script missing: {script}"
-        )
-
-    actual=sha256(script)
-
+        raise RuntimeError(f"script missing: {script}")
+    actual = sha256(script)
     if actual != data["script_sha256"]:
-        raise RuntimeError(
-            "script checksum mismatch"
-        )
-
+        raise RuntimeError("script checksum mismatch")
     if not gitleaks(manifest_path):
-        raise RuntimeError(
-            "manifest failed Gitleaks"
-        )
-
+        raise RuntimeError("manifest failed Gitleaks")
     if not gitleaks(script):
-        raise RuntimeError(
-            "script failed Gitleaks"
-        )
+        raise RuntimeError("script failed Gitleaks")
 
-    result_json=REPO/f"results/{job_id}.json"
-    archive=REPO/f"jobs/archive/{job_id}.json"
-
+    result_json = REPO / f"results/{job_id}.json"
+    archive = REPO / f"jobs/archive/{job_id}.json"
     if result_json.exists():
-        raise RuntimeError(
-            "job already completed"
-        )
-
+        raise RuntimeError("job already completed")
     if archive.exists():
-        raise RuntimeError(
-            "job already archived"
-        )
+        raise RuntimeError("job already archived")
 
     if data["job_type"] == "change":
-
         if not v3_status():
-            raise RuntimeError(
-                "V3 pre-change baseline failed"
-            )
-
+            raise RuntimeError("V3 pre-change baseline failed")
         if not critical_health():
-            raise RuntimeError(
-                "critical pre-change health failed"
-            )
+            raise RuntimeError("critical pre-change health failed")
+        if data["change_scope"] == "root-broker" and not broker_available():
+            raise RuntimeError("root broker unavailable")
 
-        if (
-            data["change_scope"]
-            == "root-broker"
-            and not broker_available()
-        ):
-            raise RuntimeError(
-                "root broker unavailable"
-            )
-
-    run_log=LOG_DIR/f"{job_id}.log"
-
-    started=now()
-    start_epoch=time.time()
-
-    manifest_commit=git(
-        "rev-parse","HEAD",
-        capture=True,
-    ).stdout.strip()
-
-    env=os.environ.copy()
+    run_log = LOG_DIR / f"{job_id}.log"
+    started = now()
+    start_epoch = time.time()
+    definition_commit = git("rev-parse", "HEAD", capture=True).stdout.strip()
+    env = os.environ.copy()
     env.update({
-        "LIFEOS_JOB_ID":job_id,
-        "LIFEOS_CONTROL_REPO":str(REPO),
-        "LIFEOS_TARGET_ID":TARGET_ID,
+        "LIFEOS_JOB_ID": job_id,
+        "LIFEOS_CONTROL_REPO": str(REPO),
+        "LIFEOS_TARGET_ID": TARGET_ID,
     })
-
     with run_log.open("w") as log:
-        result=subprocess.run(
+        result = subprocess.run(
             [
-                "timeout",
-                "--signal=TERM",
-                "--kill-after=5s",
-                f"{data['timeout_seconds']}s",
-                "bash",
-                str(script),
+                "timeout", "--signal=TERM", "--kill-after=5s",
+                f"{data['timeout_seconds']}s", "bash", str(script),
             ],
             cwd=REPO,
             env=env,
             stdout=log,
             stderr=subprocess.STDOUT,
         )
+    rc = result.returncode
 
-    rc=result.returncode
-
-    if (
-        rc == 0
-        and data["job_type"] == "change"
-    ):
+    if rc == 0 and data["job_type"] == "change":
         with run_log.open("a") as log:
-
             if not v3_status(log):
-                rc=91
+                rc = 91
+            if rc == 0 and not critical_health():
+                print("critical post-change health failed", file=log)
+                rc = 92
 
-            if (
-                rc == 0
-                and not critical_health()
-            ):
-                print(
-                    "critical post-change "
-                    "health failed",
-                    file=log,
-                )
-                rc=92
-
-    finished=now()
-    elapsed=int(
-        time.time()-start_epoch
-    )
-
-    classification=(
-        "PASS"
-        if rc == 0
-        else "TIMEOUT"
-        if rc == 124
-        else "FAIL"
-    )
-
-    output_withheld=not gitleaks(
-        run_log
-    )
-
-    output_path=None
-
+    finished = now()
+    elapsed = int(time.time() - start_epoch)
+    classification = "PASS" if rc == 0 else "TIMEOUT" if rc == 124 else "FAIL"
+    output_withheld = not gitleaks(run_log)
+    output_path = None
     if not output_withheld:
-        output_path=f"results/{job_id}.log"
-        shutil.copy2(
-            run_log,
-            REPO/output_path,
-        )
+        output_path = f"results/{job_id}.log"
+        (REPO / "results").mkdir(parents=True, exist_ok=True)
+        shutil.copy2(run_log, REPO / output_path)
 
-    result_data={
-        "schema_version":1,
-        "job_id":job_id,
-        "job_type":data["job_type"],
-        "requested_target":data["target"],
-        "target_id":TARGET_ID,
-        "manifest_commit":manifest_commit,
-        "script":data["script"],
-        "script_sha256":actual,
-        "started_at":started,
-        "finished_at":finished,
-        "elapsed_seconds":elapsed,
-        "exit_code":rc,
-        "classification":classification,
-        "host":socket.gethostname(),
-        "output_withheld":output_withheld,
-        "output_path":output_path,
+    result_data = {
+        "schema_version": 1,
+        "job_id": job_id,
+        "job_type": data["job_type"],
+        "requested_target": data["target"],
+        "target_id": TARGET_ID,
+        "definition_commit": definition_commit,
+        "manifest_commit": definition_commit,
+        "script": data["script"],
+        "script_sha256": actual,
+        "started_at": started,
+        "finished_at": finished,
+        "elapsed_seconds": elapsed,
+        "exit_code": rc,
+        "classification": classification,
+        "host": socket.gethostname(),
+        "output_withheld": output_withheld,
+        "output_path": output_path,
+        "persistence": "local-runtime",
     }
-
     if data["job_type"] == "change":
         result_data.update({
-            "change_scope":
-                data["change_scope"],
-            "change_policy":
-                data["change_policy"],
-            "requires_root":
-                data["requires_root"],
+            "change_scope": data["change_scope"],
+            "change_policy": data["change_policy"],
+            "requires_root": data["requires_root"],
         })
-
     if "resume_after" in data:
-        result_data["resume_after"]=(
-            data["resume_after"]
-        )
+        result_data["resume_after"] = data["resume_after"]
 
-    result_json.write_text(
-        json.dumps(
-            result_data,
-            indent=2,
-        )+"\n"
-    )
-
-    archive.parent.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
-
-    shutil.copy2(
-        manifest_path,
-        archive,
-    )
-
+    result_json.parent.mkdir(parents=True, exist_ok=True)
+    result_json.write_text(json.dumps(result_data, indent=2) + "\n")
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(manifest_path, archive)
     manifest_path.unlink()
 
-    state_dir=REPO/"state"
-    state_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    runtime_state_dir = REPO / "state"
+    runtime_state_dir.mkdir(parents=True, exist_ok=True)
+    state_file = runtime_state_dir / f"{TARGET_ID}.json"
+    state_file.write_text(json.dumps({
+        "schema_version": 1,
+        "target_id": TARGET_ID,
+        "last_job_id": job_id,
+        "last_result": classification,
+        "updated_at": finished,
+        "definition_commit": definition_commit,
+        "manifest_commit": definition_commit,
+        "persistence": "local-runtime",
+    }, indent=2) + "\n")
 
-    state_file=(
-        state_dir/f"{TARGET_ID}.json"
-    )
-
-    state_file.write_text(
-        json.dumps({
-            "schema_version":1,
-            "target_id":TARGET_ID,
-            "last_job_id":job_id,
-            "last_result":classification,
-            "updated_at":finished,
-            "manifest_commit":
-                manifest_commit,
-        },indent=2)+"\n"
-    )
-
-    if not gitleaks(REPO/"results"):
-        raise RuntimeError(
-            "result safety gate failed"
-        )
-
-    git(
-        "add",
-        "jobs/pending",
-        "jobs/archive",
-        "results",
-        "state",
-    )
-
-    run(
-        [
-            "git",
-            "-c",
-            "user.name=LifeOS Pi Control",
-            "-c",
-            "user.email=lifeos-pi-control@localhost",
-            "commit",
-            "-m",
-            f"result: {TARGET_ID} "
-            f"{job_id} {classification}",
-        ]
-    )
-
-    git("fetch","origin","main")
-    git("rebase","origin/main")
-    git("push","origin","main")
+    if not gitleaks(REPO / "results"):
+        raise RuntimeError("result safety gate failed")
 
     print(
-        f"JOB {job_id}: "
-        f"{classification} "
-        f"rc={rc} "
-        f"elapsed={elapsed}s "
-        f"target={TARGET_ID} "
-        f"type={data['job_type']} "
+        f"JOB {job_id}: {classification} rc={rc} elapsed={elapsed}s "
+        f"target={TARGET_ID} type={data['job_type']} "
         f"scope={data.get('change_scope','none')} "
-        f"resume_after="
-        f"{data.get('resume_after','none')}"
+        f"resume_after={data.get('resume_after','none')} persistence=local-runtime"
     )
 
     if classification != "PASS":
-        PAUSE.write_text(job_id+"\n")
-
-        print(
-            f"QUEUE PAUSED after {job_id}; "
-            f"awaiting resume_after={job_id}"
-        )
-
+        PAUSE.write_text(job_id + "\n")
+        print(f"QUEUE PAUSED after {job_id}; awaiting resume_after={job_id}")
         return 10
 
-    paused=read_pause()
-
-    if (
-        paused
-        and data.get("resume_after")
-        == paused
-    ):
+    paused = read_pause()
+    if paused and data.get("resume_after") == paused:
         PAUSE.unlink(missing_ok=True)
-
-        print(
-            f"QUEUE RESUMED after "
-            f"successful repair {job_id}"
-        )
-
+        print(f"QUEUE RESUMED after successful repair {job_id}")
     return 0
 
 
-sync_repo()
-
-count=0
-
-while count < MAX_JOBS:
-
-    manifest=select_manifest()
-
-    if manifest is None:
-
-        paused=read_pause()
-
-        if paused:
-            print(
-                f"Queue paused on {paused}; "
-                "no matching resume job "
-                f"for target {TARGET_ID}"
-            )
-        else:
-            print(
-                f"No pending jobs for "
-                f"target {TARGET_ID}"
-            )
-
-        raise SystemExit(0)
-
-    count += 1
-
-    print(
-        f"===== CONTROL JOB {count}: "
-        f"{manifest.name} "
-        f"[target={TARGET_ID}] ====="
-    )
-
-    try:
-        rc=process_one(manifest)
-
-    except Exception as exc:
-        print(
-            f"REJECTED: {exc}",
-            file=sys.stderr,
-        )
-        raise SystemExit(20)
-
-    if rc == 10:
-        raise SystemExit(0)
-
-    if rc != 0:
-        raise SystemExit(rc)
-
-    print(
-        "Result uploaded; immediately "
-        "checking GitHub for next "
-        f"{TARGET_ID} job..."
-    )
-
+def main():
     sync_repo()
+    count = 0
+    while count < MAX_JOBS:
+        manifest = select_manifest()
+        if manifest is None:
+            paused = read_pause()
+            if paused:
+                print(f"Queue paused on {paused}; no matching resume job for target {TARGET_ID}")
+            else:
+                print(f"No pending jobs for target {TARGET_ID}")
+            return 0
 
-print(
-    f"Reached safety cap of "
-    f"{MAX_JOBS} jobs"
-)
+        count += 1
+        print(f"===== CONTROL JOB {count}: {manifest.name} [target={TARGET_ID}] =====")
+        try:
+            rc = process_one(manifest)
+        except Exception as exc:
+            print(f"REJECTED: {exc}", file=sys.stderr)
+            return 20
+        if rc == 10:
+            return 0
+        if rc != 0:
+            return rc
+        print(f"Result persisted locally; checking for next {TARGET_ID} job...")
+        sync_repo()
+
+    print(f"Reached safety cap of {MAX_JOBS} jobs")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
