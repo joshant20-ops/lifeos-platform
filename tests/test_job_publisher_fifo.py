@@ -213,18 +213,15 @@ class PublisherFifoTests(unittest.TestCase):
         with mock.patch.object(self.m, 'git', side_effect=result) as git:
             self.m.sync_repo()
 
+        runtime = self.m.RUNTIME_SPECS
         self.assertEqual(git.call_args_list, [
-            mock.call('ls-tree', '-r', '--name-only', 'origin/main', '--',
-                      'jobs/staging', 'jobs/pending', 'jobs/archive', 'jobs/scripts',
-                      'jobs/change-scripts', 'jobs/root-scripts', 'results', 'state',
+            mock.call('ls-tree', '-r', '--name-only', 'origin/main', '--', *runtime,
                       check=False, capture=True),
             mock.call('rev-parse', 'HEAD', capture=True),
             mock.call('fetch', '--no-write-fetch-head', 'origin',
                       '+refs/heads/main:refs/remotes/origin/main'),
             mock.call('rev-parse', 'HEAD', capture=True),
-            mock.call('ls-tree', '-r', '--name-only', 'origin/main', '--',
-                      'jobs/staging', 'jobs/pending', 'jobs/archive', 'jobs/scripts',
-                      'jobs/change-scripts', 'jobs/root-scripts', 'results', 'state',
+            mock.call('ls-tree', '-r', '--name-only', 'origin/main', '--', *runtime,
                       check=False, capture=True),
             mock.call('status', '--porcelain=v1', '--untracked-files=no', capture=True),
             mock.call('merge', '--ff-only', 'refs/remotes/origin/main'),

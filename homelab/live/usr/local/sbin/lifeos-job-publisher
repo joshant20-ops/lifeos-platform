@@ -22,7 +22,7 @@ SCRIPT_ROOTS = {
     'root-broker': REPO / 'jobs/root-scripts',
 }
 RUNTIME_SPECS = (
-    'jobs/staging', 'jobs/pending', 'jobs/archive', 'jobs/scripts',
+    'jobs/staging', 'jobs/staged', 'jobs/pending', 'jobs/archive', 'jobs/scripts',
     'jobs/change-scripts', 'jobs/root-scripts', 'results', 'state',
 )
 JOB_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$')
