@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 # Capability Stage 3: native systemd cleanup only.
 # No custom supervisor is introduced. Historical transient failed units are reset;
-# the superseded lifeos-pi-control service is disabled/stopped but its unit file is
-# preserved for rollback. Protected permanent control-plane units are never stopped.
+# the superseded lifeos-pi-control timer/service pair is disabled/stopped but unit
+# files are preserved for rollback. Protected permanent control-plane units are never stopped.
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo 'ERROR=must_run_as_root'; exit 1; }
 
@@ -43,9 +43,10 @@ fi
 echo "FAILED_BEFORE=${#FAILED[@]}"
 
 # Old two-repository relay is explicitly superseded by the canonical GitHub runner model.
-if systemctl cat lifeos-pi-control.service >/dev/null 2>&1; then
-  systemctl disable --now lifeos-pi-control.service >/dev/null 2>&1 || true
-  echo 'LIFEOS_PI_CONTROL=DISABLED_SUPERSEDED_UNIT_PRESERVED'
+# Disable both timer and service so native systemd cannot recreate a stale failure later.
+if systemctl cat lifeos-pi-control.service >/dev/null 2>&1 || systemctl cat lifeos-pi-control.timer >/dev/null 2>&1; then
+  systemctl disable --now lifeos-pi-control.timer lifeos-pi-control.service >/dev/null 2>&1 || true
+  echo 'LIFEOS_PI_CONTROL=DISABLED_SUPERSEDED_TIMER_AND_SERVICE_PRESERVED'
 else
   echo 'LIFEOS_PI_CONTROL=ABSENT'
 fi
@@ -56,7 +57,6 @@ for u in "${FAILED[@]}"; do
   echo "RESET_FAILED=$u"
 done
 
-# Re-evaluate and fail closed if anything remains failed.
 mapfile -t AFTER < <(systemctl --failed --no-legend --plain 2>/dev/null | awk '{print $1}' | sed '/^$/d')
 if ((${#AFTER[@]})); then
   printf 'ERROR=failed_unit_remains:%s\n' "${AFTER[@]}"
@@ -69,7 +69,9 @@ for u in "${PROTECTED[@]}"; do
   echo "PROTECTED_AFTER=$u:$after"
 done
 
-# Current OTS/control runtime must still be healthy.
+timer_state=$(systemctl is-enabled lifeos-pi-control.timer 2>/dev/null || true)
+[[ "$timer_state" != enabled ]] || { echo 'ERROR=pi_control_timer_still_enabled'; exit 1; }
+
 docker ps --format '{{.Names}} {{.Status}}' | grep -q '^homeassistant .*Up ' || { echo 'ERROR=homeassistant_not_running'; exit 1; }
 docker ps --format '{{.Names}} {{.Status}}' | grep -q '^uptime-kuma .*Up ' || { echo 'ERROR=uptime_kuma_not_running'; exit 1; }
 docker ps --format '{{.Names}} {{.Status}}' | grep -q 'semaphore' || { echo 'ERROR=semaphore_not_running'; exit 1; }
@@ -77,6 +79,7 @@ docker ps --format '{{.Names}} {{.Status}}' | grep -q 'semaphore' || { echo 'ERR
 echo 'RESULT=PASS'
 echo 'CAPABILITY_STAGE3_SYSTEMD_CLEANUP=PASS'
 echo 'FAILED_SYSTEMD_UNITS=0'
+echo 'LIFEOS_PI_CONTROL_TIMER_ENABLED=NO'
 echo 'CUSTOM_SUPERVISOR_ADDED=NO'
-echo 'OTS_MECHANISM=systemd_reset_failed'
-echo 'ROLLBACK=systemctl enable --now lifeos-pi-control.service only if old relay architecture is intentionally restored'
+echo 'OTS_MECHANISM=systemd_disable_and_reset_failed'
+echo 'ROLLBACK=systemctl enable --now lifeos-pi-control.timer only if old relay architecture is intentionally restored'
