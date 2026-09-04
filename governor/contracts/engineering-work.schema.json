@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lifeos.local/contracts/engineering-work.schema.json",
+  "title": "LifeOS Engineering Work Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "work_id",
+    "issue",
+    "objective",
+    "risk_class",
+    "state",
+    "plan",
+    "tests",
+    "deployment",
+    "runtime_verification",
+    "evidence"
+  ],
+  "properties": {
+    "schema_version": {"const": 1},
+    "work_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"},
+    "issue": {"type": "integer", "minimum": 1},
+    "objective": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "risk_class": {"enum": ["read-only", "bounded-change", "privileged-bounded"]},
+    "state": {"enum": ["PLANNED", "IMPLEMENTING", "TESTING", "READY_TO_DEPLOY", "DEPLOYING", "VERIFYING", "PASS", "BLOCKED", "FAILED", "ROLLED_BACK"]},
+    "plan": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "description"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"},
+              "description": {"type": "string", "minLength": 1, "maxLength": 1000}
+            }
+          }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "command", "required"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 200},
+          "command": {"type": "string", "minLength": 1, "maxLength": 1000},
+          "required": {"type": "boolean"},
+          "result": {"enum": ["PENDING", "PASS", "FAIL"]}
+        }
+      }
+    },
+    "deployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "gateway_operation"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "gateway_operation": {"type": ["string", "null"], "maxLength": 128},
+        "source_commit": {"type": ["string", "null"], "pattern": "^[0-9a-f]{40}$"},
+        "rollback_required": {"type": "boolean"}
+      }
+    },
+    "runtime_verification": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "checks"],
+      "properties": {
+        "required": {"type": "boolean"},
+        "checks": {
+          "type": "array",
+          "items": {"type": "string", "minLength": 1, "maxLength": 500}
+        },
+        "result": {"enum": ["PENDING", "PASS", "FAIL"]}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["records"],
+      "properties": {
+        "records": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "value"],
+            "properties": {
+              "kind": {"enum": ["commit", "test", "deployment", "runtime", "rollback", "blocker"]},
+              "value": {"type": "string", "minLength": 1, "maxLength": 4000}
+            }
+          }
+        }
+      }
+    },
+    "blocker": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["reason", "next_action"],
+      "properties": {
+        "reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+        "next_action": {"type": "string", "minLength": 1, "maxLength": 2000}
+      }
+    }
+  }
+}
