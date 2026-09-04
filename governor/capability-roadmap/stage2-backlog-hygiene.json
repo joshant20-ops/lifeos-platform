@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "capability_stage": 2,
+  "name": "Backlog and issue hygiene",
+  "status": "COMPLETE",
+  "completed_at": "2026-09-04",
+  "policy": {
+    "authoritative_backlog": "GitHub issues",
+    "foundation_complete": true,
+    "ots_first": true,
+    "close_historical_triggers_after_later_proof": true,
+    "preserve_historical_evidence": true
+  },
+  "closed_or_superseded": [2,6,23,25,30,31,35,36,37,38,42,43,47,48,49,52],
+  "retained_actionable": [7,14,15,16,17,18,19,20,24,26,29,53],
+  "notes": [
+    "Stage 10-12 roadmap issues closed with final gate evidence.",
+    "Obsolete OpenHands and two-repository relay architectures closed as superseded.",
+    "Semaphore/Ansible migration closed as complete after production cutover and legacy retirement.",
+    "Expired Power Down incident closed while preserving lasting telemetry-safety requirements.",
+    "Central backlog issue 24 refreshed to the capability-roadmap operating model.",
+    "Transactional root issue 26 intentionally retained until every acceptance item is explicitly reconciled."
+  ]
+}
