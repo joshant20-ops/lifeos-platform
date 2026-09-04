@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "stage": 12,
+  "title": "LifeOS application platform",
+  "outcomes": [
+    {"id":"control_surface","description":"One user-facing LifeOS control surface shows current work, blockers, health, hosts and actionable controls."},
+    {"id":"personal_assistant","description":"Personal-assistant capabilities are surfaced through governed interfaces rather than ad-hoc scripts."},
+    {"id":"infrastructure_ops","description":"Homelab services, hosts and recovery capabilities are observable and governed through the control plane."},
+    {"id":"energy_intelligence","description":"Energy state, forecasting and learning are exposed as a maintained LifeOS capability."},
+    {"id":"engineering_autonomy","description":"Stages 10 and 11 provide validated engineering and bounded self-improvement foundations."},
+    {"id":"evidence_and_memory","description":"Durable evidence, verification state and long-term operational memory remain attributable and auditable."},
+    {"id":"repository_authority","description":"lifeos-platform remains the canonical implementation authority with runtime drift detection."},
+    {"id":"human_boundary","description":"High-risk, destructive, financially consequential and ambiguous actions remain explicitly human-controlled."}
+  ]
+}
