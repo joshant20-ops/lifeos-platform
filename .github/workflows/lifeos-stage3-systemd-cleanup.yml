@@ -1,0 +1,43 @@
+name: LifeOS Stage 3 Systemd Cleanup
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-stage3-systemd-cleanup.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-stage3-systemd-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Execute bounded native-systemd cleanup
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway capability-stage3-systemd-cleanup
+
+      - name: Re-run Stage 3 OTS operations audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/run-capability-stage3-ops-audit.py
