@@ -45,7 +45,8 @@ jobs:
             tests.test_control_runtime_ownership_migration \
             tests.test_legacy_residue_cleaner \
             tests.test_historical_stale_activation_wrapper \
-            tests.test_current_engineer_activation
+            tests.test_current_engineer_activation \
+            tests.test_engineer_source_safety_diagnostic
 
       - name: Validate desired Compose YAML
         run: |
