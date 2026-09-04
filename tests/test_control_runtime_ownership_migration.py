@@ -33,6 +33,17 @@ class ControlRuntimeOwnershipMigrationTests(unittest.TestCase):
         ):
             self.assertIn(token, TEXT)
 
+    def test_partial_post_migration_failure_keeps_writers_stopped(self):
+        for token in (
+            'SAFE_TO_RESTORE_WRITERS=0',
+            'CONTROL_WRITERS_LEFT_STOPPED=YES',
+            'post-migration safety gate not complete',
+            'SAFE_TO_RESTORE_WRITERS=1',
+        ):
+            self.assertIn(token, TEXT)
+        self.assertLess(TEXT.index('SAFE_TO_RESTORE_WRITERS=1'),
+                        TEXT.index("stage 9 'REGRESSION GATES'"))
+
     def test_stale_activation_is_quarantined_not_executed(self):
         self.assertIn('QUARANTINE OBSOLETE ACTIVATION WITHOUT CONSUMING IT', TEXT)
         self.assertIn('QUARANTINED_SUPERSEDED', TEXT)
