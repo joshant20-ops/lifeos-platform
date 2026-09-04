@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "stage": 11,
+  "name": "bounded automatic self-improvement",
+  "candidate_classes": ["repair", "maintenance", "optimization", "new-capability"],
+  "scoring": {
+    "weights": {"evidence": 35, "impact": 25, "reversibility": 20, "scope": 10, "urgency": 10},
+    "autonomous_threshold": 75,
+    "maximum_score": 100
+  },
+  "resource_budget": {
+    "candidates_per_run": 1,
+    "proof_window_seconds": 600,
+    "dependency_installation": false
+  },
+  "autonomous_scope": {
+    "allowed": ["verification", "observability", "maintenance", "reversible-configuration"],
+    "max_files_changed": 1,
+    "service_restart": false,
+    "data_mutation": false,
+    "secrets_or_auth": false,
+    "privilege_boundary_change": false
+  },
+  "human_approval_required_for": [
+    "privileged-boundary-change",
+    "service-restart",
+    "destructive-data-mutation",
+    "secrets-or-auth-change",
+    "multi-component-change",
+    "scope-outside-allowlist"
+  ],
+  "experiment": {
+    "mode": "deterministic-plus-live-runtime",
+    "long_running_experiments": "blocked-until-explicit-policy"
+  },
+  "performance_targets": {
+    "required_test_regressions": 0,
+    "runtime_regressions": 0,
+    "measurable_improvement_required": true,
+    "rollback_or_rejection_evidence_required": true
+  },
+  "ledger": "~/.local/state/lifeos/stage11-improvement-ledger.jsonl"
+}
