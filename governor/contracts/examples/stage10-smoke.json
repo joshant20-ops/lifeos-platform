@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "work_id": "stage10-smoke",
+  "issue": 47,
+  "objective": "Prove the Stage 10 engineering work contract can represent a bounded deployable task.",
+  "risk_class": "bounded-change",
+  "state": "PLANNED",
+  "plan": {
+    "steps": [
+      {"id": "implement", "description": "Implement the bounded change."},
+      {"id": "test", "description": "Run deterministic tests."},
+      {"id": "deploy", "description": "Deploy through an allow-listed gateway operation."},
+      {"id": "verify", "description": "Verify the runtime result and attach evidence."}
+    ]
+  },
+  "tests": [
+    {
+      "name": "contract validator",
+      "command": "python3 scripts/validate-engineering-work-contract.py governor/contracts/examples/stage10-smoke.json",
+      "required": true,
+      "result": "PENDING"
+    }
+  ],
+  "deployment": {
+    "required": true,
+    "gateway_operation": "stage10-smoke",
+    "source_commit": null,
+    "rollback_required": true
+  },
+  "runtime_verification": {
+    "required": true,
+    "checks": ["runtime health gate returns PASS"],
+    "result": "PENDING"
+  },
+  "evidence": {"records": []},
+  "blocker": null
+}
