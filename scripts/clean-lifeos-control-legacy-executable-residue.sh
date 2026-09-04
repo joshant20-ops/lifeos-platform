@@ -31,7 +31,10 @@ mkdir -p "$BACKUP"
   fail 'tracked control tree is dirty'
 
 check_source(){
-  local rel="$1" expected="$2" path="$CONTROL/$rel" actual
+  local rel expected path actual
+  rel="$1"
+  expected="$2"
+  path="$CONTROL/$rel"
   [[ -f "$path" && ! -L "$path" ]] || fail "missing or unsafe legacy source: $rel"
   actual="$(git hash-object "$path")"
   [[ "$actual" == "$expected" ]] || fail "legacy source blob mismatch: $rel actual=$actual expected=$expected"
