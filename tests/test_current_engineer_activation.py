@@ -20,6 +20,20 @@ class CurrentEngineerActivationTests(unittest.TestCase):
         self.assertIn('status --porcelain --untracked-files=no',TEXT)
         self.assertIn('platform is not checked out at published main',TEXT)
 
+    def test_binds_approval_and_request_to_canonical_target_identity(self):
+        self.assertIn('readonly IDENTITY=/etc/lifeos-control/identity.json',TEXT)
+        self.assertIn("d.get('target_id')",TEXT)
+        self.assertIn('TARGET="$(python3 - "$IDENTITY"',TEXT)
+        self.assertNotIn('readonly TARGET=pi5',TEXT)
+        self.assertIn("'target':target",TEXT)
+        self.assertIn("assert d['target']==target",TEXT)
+        self.assertIn('TARGET_ID=',TEXT)
+
+    def test_retry_uses_new_job_id_and_preserves_failed_evidence(self):
+        self.assertIn('readonly JOB_ID=engineer-current-20260904-v2',TEXT)
+        self.assertNotIn('rm -f "$APPROVAL"',TEXT)
+        self.assertNotIn('rm -f "$AUDIT"',TEXT)
+
     def test_approval_is_exact_and_root_owned(self):
         for rel in ('governor/autonomous_agent.py','governor/target_identity.py','governor/engineer_backend.py'):
             self.assertIn(rel,TEXT)
