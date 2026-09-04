@@ -47,3 +47,10 @@ jobs:
           test "$rc" -eq 64
           grep -q 'capability-stage3-systemd-cleanup' <<<"$out"
           echo 'STAGE3_GATEWAY_REFRESH=PASS'
+
+      - name: Prove canonical LifeOS dashboard survived deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n python3 homeassistant/verify-lifeos-dashboard.py
