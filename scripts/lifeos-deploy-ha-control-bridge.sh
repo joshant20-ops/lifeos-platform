@@ -8,5 +8,16 @@ PLATFORM=/home/joshan/lifeos-platform
 bash "$PLATFORM/scripts/lifeos-install-github-runner-gateway.sh"
 bash "$PLATFORM/scripts/lifeos-deploy-ha-control-bridge-impl.sh"
 python3 "$PLATFORM/homeassistant/deploy-lifeos-dashboard.py"
+
+# The historical adapter restarts Home Assistant. Use Docker's native health state
+# rather than racing the verifier while the container is still in `starting`.
+for _ in $(seq 1 60); do
+  health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' homeassistant 2>/dev/null || true)
+  [[ "$health" == healthy || "$health" == running ]] && break
+  sleep 2
+done
+health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' homeassistant 2>/dev/null || true)
+[[ "$health" == healthy || "$health" == running ]] || { echo "ERROR=homeassistant_health:$health"; exit 1; }
+
 python3 "$PLATFORM/homeassistant/verify-lifeos-dashboard.py"
 echo 'CANONICAL_LIFEOS_DASHBOARD=PASS'
