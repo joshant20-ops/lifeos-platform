@@ -1,0 +1,49 @@
+name: LifeOS Stage 3 Gateway Refresh
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-stage3-gateway-refresh.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-stage3-gateway-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Refresh gateway through existing allow-listed operation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge
+
+      - name: Prove new allow-list is installed
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +e
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway 2>&1)
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          test "$rc" -eq 64
+          grep -q 'capability-stage3-systemd-cleanup' <<<"$out"
+          echo 'STAGE3_GATEWAY_REFRESH=PASS'
