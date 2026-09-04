@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "capability_stage": 3,
+  "name": "Production operations",
+  "status": "IN_PROGRESS",
+  "principle": "Use mature OTS operational tooling; LifeOS only aggregates policy/evidence.",
+  "required_capabilities": {
+    "container_health": ["Docker", "Uptime Kuma"],
+    "service_health": ["systemd", "Uptime Kuma"],
+    "host_storage": ["Linux filesystem metrics", "Home Assistant or Uptime Kuma alerting"],
+    "backup_evidence": ["existing backup/restore tooling"],
+    "network_reachability": ["Uptime Kuma"],
+    "home_automation_health": ["Home Assistant"],
+    "orchestration_health": ["Semaphore", "GitHub Actions self-hosted runner"],
+    "update_awareness": ["GitHub/Dependabot or existing image/update monitoring"]
+  },
+  "custom_code_rule": "No bespoke generic monitor. Custom code may only produce a bounded audit/report from OTS evidence.",
+  "disk_warning_percent": 80,
+  "disk_critical_percent": 90,
+  "exit_condition": "Required operational surfaces are present, healthy, and gaps are explicit rather than hidden."
+}
