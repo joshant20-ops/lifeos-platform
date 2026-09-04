@@ -31,6 +31,14 @@ def fail(name, detail=''):
 if os.geteuid()!=0:
     os.execvp('sudo',['sudo',sys.executable,str(Path(__file__).resolve())])
 
+# Stage 11 bounded self-improvement: fail closed if the HA container is not actually healthy/running.
+r=run(['docker','inspect','-f','{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}','homeassistant'])
+if r.returncode:
+    fail('Home Assistant container health',(r.stdout+r.stderr).strip())
+ha_health=r.stdout.strip().lower()
+if ha_health not in {'healthy','running'}:
+    fail('Home Assistant container health',f'status={ha_health or "unknown"}')
+
 r=run([sys.executable,'homeassistant/deploy-lifeos-dashboard.py','--check'])
 if r.returncode or 'DRIFT: none' not in r.stdout:
     fail('repository/runtime drift',(r.stdout+r.stderr).strip())
@@ -60,5 +68,6 @@ missing=[x for x in required if x not in set(r.stdout.splitlines())]
 if missing: fail('Tower entities registered','missing='+','.join(missing))
 
 print('LIFEOS_HA_GATE=PASS')
+print(f'homeassistant={ha_health}')
 print('dashboard=/lifeos legacy=absent drift=none')
 print('views=overview:7,energy-ai:11,autonomous-work:8 tower_controls=3/3')
