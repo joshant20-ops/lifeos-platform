@@ -4,11 +4,12 @@ set -Eeuo pipefail
 readonly PLATFORM=/home/joshan/lifeos-platform
 readonly BROKER=/usr/local/sbin/lifeos-root-broker
 readonly BROKER_SOCKET=/run/lifeos-root-broker.sock
+readonly IDENTITY=/etc/lifeos-control/identity.json
 readonly APPROVAL_DIR=/var/lib/lifeos-control/engineer-deploy-approvals
 readonly AUDIT_DIR=/var/lib/lifeos-control/engineer-deploy-audit
 readonly EXPECTED_BROKER_SHA=a9da48216ad261631be29216e001d52306f6981fb07e35727d8b38b92f02b309
-readonly JOB_ID=engineer-current-20260904
-readonly TARGET=pi5
+readonly JOB_ID=engineer-current-20260904-v2
+TARGET=""
 
 stage(){ printf '\n===== STAGE %s — %s =====\n' "$1" "$2"; }
 pass(){ printf 'STAGE_%s=PASS\n' "$1"; }
@@ -22,7 +23,19 @@ for c in git sha256sum python3 systemctl; do command -v "$c" >/dev/null || fail 
 [[ -d "$PLATFORM/.git" ]] || fail 1 'platform repository missing'
 [[ -S "$BROKER_SOCKET" ]] || fail 1 'root broker socket missing'
 [[ -f "$BROKER" ]] || fail 1 'root broker binary missing'
+[[ -f "$IDENTITY" ]] || fail 1 'control identity missing'
 [[ "$(sha "$BROKER")" == "$EXPECTED_BROKER_SHA" ]] || fail 1 'live broker hash differs from approved migrated broker'
+TARGET="$(python3 - "$IDENTITY" <<'PY'
+import json,sys
+with open(sys.argv[1]) as f:
+    d=json.load(f)
+t=d.get('target_id')
+if not isinstance(t,str) or not t or any(c not in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-' for c in t):
+    raise SystemExit(1)
+print(t)
+PY
+)" || fail 1 'control target identity invalid'
+[[ -n "$TARGET" ]] || fail 1 'control target identity empty'
 HEAD="$(git -C "$PLATFORM" rev-parse HEAD)"
 MAIN="$(git -C "$PLATFORM" rev-parse main)"
 ORIGIN="$(git -C "$PLATFORM" rev-parse refs/remotes/origin/main)"
@@ -34,6 +47,7 @@ for rel in governor/autonomous_agent.py governor/target_identity.py governor/eng
 done
 printf 'SOURCE_COMMIT=%s\n' "$HEAD"
 printf 'BROKER_SHA256=%s\n' "$EXPECTED_BROKER_SHA"
+printf 'TARGET_ID=%s\n' "$TARGET"
 pass 1
 
 stage 2 'CREATE FRESH ROOT-OWNED APPROVAL'
@@ -61,7 +75,7 @@ payload={
   'publication_verified':True,
   'independent_verifier':{
     'verdict':'PASS',
-    'evidence_id':'lifeos-ci-current-engineer-activation',
+    'evidence_id':'lifeos-ci-current-engineer-activation-target-bound',
   },
   'protected_policy':{
     'verdict':'PASS',
@@ -102,13 +116,14 @@ PY
 pass 3
 
 stage 4 'AUDIT AND LIVE HASH VERIFICATION'
-python3 - "$AUDIT" "$HEAD" "$AGENT_SHA" "$IDENTITY_SHA" "$BACKEND_SHA" <<'PY' || fail 4 'deployment audit validation failed'
+python3 - "$AUDIT" "$HEAD" "$AGENT_SHA" "$IDENTITY_SHA" "$BACKEND_SHA" "$TARGET" <<'PY' || fail 4 'deployment audit validation failed'
 import json,sys
-path,commit,agent,identity,backend=sys.argv[1:]
+path,commit,agent,identity,backend,target=sys.argv[1:]
 d=json.load(open(path))
 assert d['deployment_result']=='PASS', d
 assert d['rollback_result']=='not-required', d
 assert d['source_commit']==commit, d
+assert d['target']==target, d
 assert d['source_hashes']['governor/autonomous_agent.py']==agent, d
 assert d['source_hashes']['governor/target_identity.py']==identity, d
 assert d['source_hashes']['governor/engineer_backend.py']==backend, d
@@ -172,5 +187,6 @@ pass 6
 
 echo 'FINAL_STATUS=PASS'
 echo "SOURCE_COMMIT=$HEAD"
+echo "TARGET_ID=$TARGET"
 echo "AUDIT_EVIDENCE=$AUDIT"
 echo 'NEXT_REQUIRED=phase1_closure_review'
