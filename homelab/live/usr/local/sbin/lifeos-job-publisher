@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
+import fcntl
 import hashlib
 import json
 import os
 import pathlib
 import pwd
 import re
-import shutil
 import subprocess
 import sys
 
@@ -21,6 +21,10 @@ SCRIPT_ROOTS = {
     'control-state': REPO / 'jobs/change-scripts',
     'root-broker': REPO / 'jobs/root-scripts',
 }
+RUNTIME_SPECS = (
+    'jobs/staging', 'jobs/pending', 'jobs/archive', 'jobs/scripts',
+    'jobs/change-scripts', 'jobs/root-scripts', 'results', 'state',
+)
 JOB_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$')
 GIT_USER = 'joshan'
 GIT_HOME = '/home/joshan'
@@ -89,10 +93,37 @@ def git(*args, check=True, capture=False):
     )
 
 
+def upstream_runtime_paths():
+    return git(
+        'ls-tree', '-r', '--name-only', 'origin/main', '--', *RUNTIME_SPECS,
+        check=False, capture=True,
+    )
+
+
 def sync_repo():
-    """Synchronise with origin before inspecting the FIFO."""
-    git('fetch', 'origin', 'main')
-    git('pull', '--ff-only', 'origin', 'main')
+    """Safely fast-forward control definitions without touching runtime state."""
+    tracked = upstream_runtime_paths()
+    if tracked.returncode == 0 and tracked.stdout.strip():
+        fail('origin/main tracks runtime-owned paths; migration required before sync', 20)
+
+    before = git('rev-parse', 'HEAD', capture=True).stdout.strip()
+    git(
+        'fetch', '--no-write-fetch-head', 'origin',
+        '+refs/heads/main:refs/remotes/origin/main',
+    )
+    after = git('rev-parse', 'HEAD', capture=True).stdout.strip()
+    if after != before:
+        fail('fetch unexpectedly changed checked-out HEAD', 20)
+
+    tracked = upstream_runtime_paths()
+    if tracked.returncode == 0 and tracked.stdout.strip():
+        fail('origin/main tracks runtime-owned paths; refusing unsafe merge', 20)
+
+    dirty = git('status', '--porcelain=v1', '--untracked-files=no', capture=True)
+    if dirty.stdout.strip():
+        fail('tracked working tree changes prevent safe fast-forward', 20)
+
+    git('merge', '--ff-only', 'refs/remotes/origin/main')
 
 
 def validate_manifest(path):
@@ -182,15 +213,6 @@ def validate_manifest(path):
     return d, script
 
 
-def stage_promotion(manifest, dest, script):
-    git('add', '--', str(dest.relative_to(REPO)), str(script.relative_to(REPO)))
-
-    staging_rel = str(manifest.relative_to(REPO))
-    tracked = git('ls-files', '--error-unmatch', '--', staging_rel, check=False, capture=True)
-    if tracked.returncode == 0:
-        git('add', '-u', '--', staging_rel)
-
-
 def pending_for_target(target):
     for path in sorted(PENDING.glob('*.json')):
         try:
@@ -204,22 +226,21 @@ def pending_for_target(target):
 
 def promote_one(manifest, d, script):
     dest = PENDING / manifest.name
-    shutil.move(str(manifest), str(dest))
-    stage_promotion(manifest, dest, script)
-    git('-c','user.name=LifeOS Job Publisher','-c','user.email=lifeos-job-publisher@localhost',
-        'commit','-m',f'publish: {d["target"]} {d["job_id"]}')
-    git('fetch','origin','main')
-    git('rebase','origin/main')
-    git('push','origin','main')
+    try:
+        os.link(manifest, dest)
+    except FileExistsError:
+        fail(f'{manifest.name}: pending destination already exists')
+    except OSError as exc:
+        fail(f'{manifest.name}: atomic pending promotion failed: {exc}')
+    manifest.unlink()
     print(f'PUBLISHED: {d["job_id"]} target={d["target"]}')
 
 
-def main():
+def publish_locked():
     STAGING.mkdir(parents=True, exist_ok=True)
     PENDING.mkdir(parents=True, exist_ok=True)
     ARCHIVE.mkdir(parents=True, exist_ok=True)
     RESULTS.mkdir(parents=True, exist_ok=True)
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
 
     sync_repo()
 
@@ -242,6 +263,13 @@ def main():
     promote_one(manifest, d, script)
     print('Publisher summary: promoted=1 rejected=0 held=0')
     return 0
+
+
+def main():
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    with LOCK.open('a') as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        return publish_locked()
 
 
 if __name__ == '__main__':
