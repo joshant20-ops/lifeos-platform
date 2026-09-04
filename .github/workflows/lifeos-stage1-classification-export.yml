@@ -1,0 +1,46 @@
+name: LifeOS Stage 1 Classification Export
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-stage1-classification-export.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  classify:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Synchronize and run Stage 1 audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          python3 scripts/run-capability-stage1-ots-audit.py
+
+      - name: Emit rationalisation summary
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import collections,json,pathlib
+          p=pathlib.Path.home()/'.local/state/lifeos/capability-stage1-ots-report.json'
+          d=json.loads(p.read_text())
+          print('===== RETIRE_OBSOLETE =====')
+          for x in d['items']:
+              if x['classification']=='RETIRE_OBSOLETE': print(x['path'])
+          print('===== REVIEW_UNIQUE DIRECTORY BUCKETS =====')
+          c=collections.Counter()
+          for x in d['items']:
+              if x['classification']=='REVIEW_UNIQUE':
+                  parts=x['path'].split('/')
+                  c['/'.join(parts[:2]) if len(parts)>1 else parts[0]]+=1
+          for k,v in c.most_common(): print(f'{v:4d} {k}')
+          print('===== CUSTOM SYSTEMD =====')
+          for x in d['custom_systemd_units']: print(x['unit'],x['state'])
+          PY
