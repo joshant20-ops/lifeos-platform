@@ -151,8 +151,8 @@ class PublisherFifoTests(unittest.TestCase):
         with mock.patch.object(self.m.os, 'geteuid', return_value=1000), \
              mock.patch.object(self.m.pwd, 'getpwuid', return_value=mock.Mock(pw_name='joshan')), \
              mock.patch.object(self.m.subprocess, 'run', return_value=completed) as run:
-            self.m.git('pull', '--ff-only', 'origin', 'main')
-        self.assertEqual(run.call_args.args[0], ['/usr/bin/git', 'pull', '--ff-only', 'origin', 'main'])
+            self.m.git('merge', '--ff-only', 'refs/remotes/origin/main')
+        self.assertEqual(run.call_args.args[0], ['/usr/bin/git', 'merge', '--ff-only', 'refs/remotes/origin/main'])
         self.assertEqual(run.call_args.kwargs['env'], {
             'HOME': '/home/joshan', 'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'
         })
@@ -203,13 +203,73 @@ class PublisherFifoTests(unittest.TestCase):
                 self.m.git('fetch', 'origin', 'main')
         run.assert_not_called()
 
-    def test_sync_repo_keeps_mandatory_fixed_origin_main_fetch_and_ff_pull(self):
-        with mock.patch.object(self.m, 'git') as git:
+    def test_sync_repo_fetches_only_remote_tracking_ref_and_checks_head(self):
+        clean = mock.Mock(returncode=0, stdout='')
+        head = mock.Mock(returncode=0, stdout='abc123\n')
+
+        def result(*args, **kwargs):
+            return head if args[:2] == ('rev-parse', 'HEAD') else clean
+
+        with mock.patch.object(self.m, 'git', side_effect=result) as git:
             self.m.sync_repo()
+
         self.assertEqual(git.call_args_list, [
-            mock.call('fetch', 'origin', 'main'),
-            mock.call('pull', '--ff-only', 'origin', 'main'),
+            mock.call('ls-tree', '-r', '--name-only', 'origin/main', '--',
+                      'jobs/staging', 'jobs/pending', 'jobs/archive', 'jobs/scripts',
+                      'jobs/change-scripts', 'jobs/root-scripts', 'results', 'state',
+                      check=False, capture=True),
+            mock.call('rev-parse', 'HEAD', capture=True),
+            mock.call('fetch', '--no-write-fetch-head', 'origin',
+                      '+refs/heads/main:refs/remotes/origin/main'),
+            mock.call('rev-parse', 'HEAD', capture=True),
+            mock.call('ls-tree', '-r', '--name-only', 'origin/main', '--',
+                      'jobs/staging', 'jobs/pending', 'jobs/archive', 'jobs/scripts',
+                      'jobs/change-scripts', 'jobs/root-scripts', 'results', 'state',
+                      check=False, capture=True),
+            mock.call('status', '--porcelain=v1', '--untracked-files=no', capture=True),
+            mock.call('merge', '--ff-only', 'refs/remotes/origin/main'),
         ])
+
+    def test_sync_fails_if_fetch_moves_checked_out_branch(self):
+        responses = iter([
+            mock.Mock(returncode=0, stdout=''),
+            mock.Mock(returncode=0, stdout='before\n'),
+            mock.Mock(returncode=0, stdout=''),
+            mock.Mock(returncode=0, stdout='after\n'),
+        ])
+        with mock.patch.object(self.m, 'git', side_effect=lambda *a, **k: next(responses)):
+            with self.assertRaises(SystemExit):
+                self.m.sync_repo()
+
+    def test_sync_rejects_upstream_runtime_paths_before_fetch(self):
+        tracked = mock.Mock(returncode=0, stdout='jobs/pending/existing.json\n')
+        with mock.patch.object(self.m, 'git', return_value=tracked) as git:
+            with self.assertRaises(SystemExit):
+                self.m.sync_repo()
+        git.assert_called_once()
+
+    def test_promotion_preserves_script_and_does_not_use_git(self):
+        manifest = self.add_job('0030-oldest')
+        with mock.patch.object(self.m, 'gitleaks', return_value=True):
+            data, script = self.m.validate_manifest(manifest)
+        before = self.m.sha256(script)
+        with mock.patch.object(self.m, 'git') as git:
+            self.m.promote_one(manifest, data, script)
+        self.assertFalse(manifest.exists())
+        self.assertTrue((self.m.PENDING / manifest.name).exists())
+        self.assertEqual(self.m.sha256(script), before)
+        git.assert_not_called()
+
+    def test_reentry_does_not_duplicate_existing_job(self):
+        manifest = self.add_job('0030-oldest')
+        with mock.patch.object(self.m, 'gitleaks', return_value=True):
+            data, script = self.m.validate_manifest(manifest)
+        self.m.promote_one(manifest, data, script)
+        duplicate = self.m.STAGING / manifest.name
+        duplicate.write_text(json.dumps(data))
+        with mock.patch.object(self.m, 'gitleaks', return_value=True):
+            with self.assertRaises(SystemExit):
+                self.m.validate_manifest(duplicate)
 
 
 if __name__ == '__main__':
