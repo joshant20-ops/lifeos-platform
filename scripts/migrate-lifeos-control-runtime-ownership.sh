@@ -29,6 +29,8 @@ RUNTIME_PATHS=(
 OLD_HEAD=""
 MUTATION_STARTED=0
 MIGRATION_VERIFIED=0
+QUIESCED=0
+SAFE_TO_RESTORE_WRITERS=0
 SUBMIT_SOCKET_WAS_ACTIVE=0
 ACTIVE_UNITS=()
 
@@ -49,6 +51,9 @@ diagnostics(){
   echo "host=$(hostname 2>/dev/null || true)"
   echo "user=$(id -un 2>/dev/null || true)"
   echo "backup=$BACKUP"
+  echo "quiesced=$QUIESCED"
+  echo "migration_verified=$MIGRATION_VERIFIED"
+  echo "safe_to_restore_writers=$SAFE_TO_RESTORE_WRITERS"
   if [[ -d "$CONTROL/.git" ]]; then
     echo "control_head=$(git -C "$CONTROL" rev-parse HEAD 2>/dev/null || true)"
     echo "control_branch=$(git -C "$CONTROL" branch --show-current 2>/dev/null || true)"
@@ -95,9 +100,21 @@ rollback(){
 
 on_exit(){
   local rc=$?
-  (( rc == 0 )) || rollback
-  restore_services
-  if (( rc != 0 )); then echo 'FINAL_STATUS=FAIL'; echo "BACKUP=$BACKUP"; fi
+  if (( rc != 0 )); then
+    rollback
+    if (( QUIESCED )); then
+      if (( ! MIGRATION_VERIFIED || SAFE_TO_RESTORE_WRITERS )); then
+        restore_services
+      else
+        echo 'CONTROL_WRITERS_LEFT_STOPPED=YES'
+        echo 'CONTROL_WRITERS_STOP_REASON=post-migration safety gate not complete'
+      fi
+    fi
+    echo 'FINAL_STATUS=FAIL'
+    echo "BACKUP=$BACKUP"
+  else
+    (( QUIESCED )) && restore_services
+  fi
   exit "$rc"
 }
 trap on_exit EXIT
@@ -185,6 +202,7 @@ mkdir -p "$CONTROL/state" /home/joshan/.local/state/lifeos-pi-control
 exec 8>"$CONTROL/state/publisher.lock"; flock -n 8 || fail 4 'publisher still active'
 exec 9>/home/joshan/.local/state/lifeos-pi-control/runner.lock; flock -n 9 || fail 4 'runner still active'
 pgrep -af 'lifeos-(job-publisher|pi-control-runner)' >/dev/null && fail 4 'control writer process remains active' || true
+QUIESCED=1
 pass 4
 
 stage 5 'PRESERVE ALL RUNTIME STATE'
@@ -241,7 +259,7 @@ if [[ -f "$CONTROL/$STALE_MANIFEST" ]]; then
   qmanifest="$qdir/${STALE_ACTIVATION_ID}.${STAMP}.json"
   mv "$CONTROL/$STALE_MANIFEST" "$qmanifest" || fail 8 'cannot quarantine stale activation manifest'
   python3 - "$qdir/${STALE_ACTIVATION_ID}.${STAMP}.reason.json" "$qmanifest" <<'PY' || fail 8 'cannot write quarantine reason'
-import datetime,json,os,sys
+import datetime,json,sys
 out,manifest=sys.argv[1:]
 d={
  'schema_version':1,'job_id':'activate-engineer-v1-660a6d4862fa','status':'QUARANTINED_SUPERSEDED',
@@ -255,6 +273,7 @@ PY
 else
   echo 'STALE_ACTIVATION_QUARANTINE=not-needed-already-complete'
 fi
+SAFE_TO_RESTORE_WRITERS=1
 pass 8
 
 stage 9 'REGRESSION GATES'
@@ -290,7 +309,7 @@ done
 pass 10
 
 restore_services
-ACTIVE_UNITS=(); SUBMIT_SOCKET_WAS_ACTIVE=0
+ACTIVE_UNITS=(); SUBMIT_SOCKET_WAS_ACTIVE=0; QUIESCED=0
 trap - EXIT
 echo 'FINAL_STATUS=PASS'
 echo "BACKUP=$BACKUP"
