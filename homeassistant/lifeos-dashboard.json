@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace.dashboard_lifeos",
+  "data": {
+    "config": {
+      "title": "LifeOS",
+      "views": [
+        {
+          "title": "Overview",
+          "path": "overview",
+          "cards": [
+            {"type":"markdown","content":"# LifeOS\nAutonomous operations and infrastructure control."},
+            {"type":"entities","title":"Tower PC / Z97","show_header_toggle":false,"entities":[{"entity":"sensor.tower_pc_tower_status","name":"Status"},{"entity":"binary_sensor.tower_pc_tower_accessible","name":"Accessible"},{"entity":"switch.tower_pc_tower_power","name":"Power"}]},
+            {"type":"entities","title":"Control Plane","entities":["sensor.lifeos_control_plane_lifeos_pipeline_health","sensor.lifeos_system_health","sensor.lifeos_system_health_level","sensor.lifeos_system_health_status","sensor.lifeos_attention_summary"]},
+            {"type":"entities","title":"Current AI Work","entities":["sensor.lifeos_control_plane_lifeos_job_status","sensor.lifeos_control_plane_lifeos_job_stage","sensor.lifeos_control_plane_lifeos_active_issue","sensor.lifeos_control_plane_lifeos_active_job","sensor.lifeos_control_plane_lifeos_current_task","sensor.lifeos_control_plane_lifeos_job_detail"]},
+            {"type":"entities","title":"Backlog","entities":["sensor.lifeos_control_plane_lifeos_blocked_issues","sensor.lifeos_control_plane_lifeos_cooldown_issues","sensor.lifeos_watchman_queue_depth","sensor.lifeos_watchman_pending_proposals","sensor.lifeos_safe_queue_items","sensor.lifeos_quarantined_items"]},
+            {"type":"entities","title":"Last Autonomous Result","entities":["sensor.lifeos_control_plane_lifeos_last_job_status","sensor.lifeos_control_plane_lifeos_last_job","sensor.lifeos_control_plane_lifeos_last_job_task"]},
+            {"type":"entities","title":"Governance","entities":["sensor.lifeos_important_info_pending_proposals","sensor.lifeos_verification_status","sensor.lifeos_verification_needs_review","sensor.lifeos_verification_conflicting","sensor.lifeos_verification_stale","sensor.lifeos_open_loops_count"]}
+          ]
+        },
+        {"title":"Energy AI","path":"energy-ai","cards":[]},
+        {"title":"Autonomous Work","path":"autonomous-work","cards":[]}
+      ]
+    }
+  }
+}
