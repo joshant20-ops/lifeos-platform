@@ -15,9 +15,17 @@ PY
 )
 while IFS= read -r f; do
   [[ -r "$f" ]] || continue
-  set -a
-  source "$f"
-  set +a
+  while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$f" <<'PY'
+import os,shlex,sys
+for raw in open(sys.argv[1]):
+    line=raw.strip()
+    if not line or line.startswith('#'): continue
+    if line.startswith('export '): line=line[7:].lstrip()
+    try: parts=shlex.split(line,comments=True,posix=True)
+    except ValueError: continue
+    if parts and '=' in parts[0]: os.write(1,parts[0].encode()+b'\0')
+PY
+  )
 done < <(systemctl cat "$svc" | sed -nE 's/^[[:space:]]*EnvironmentFile=-?([^[:space:]]+).*/\1/p')
 execstart="$(systemctl show "$svc" -p ExecStart --value)"
 while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$execstart" <<'PY'
