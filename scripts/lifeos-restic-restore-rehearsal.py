@@ -32,7 +32,8 @@ def restic_env():
     state = systemctl("show", SERVICE, "-p", "LoadState", "--value").strip()
     if state != "loaded":
         raise RuntimeError("backup service missing")
-    items = shlex.split(systemctl("show", SERVICE, "-p", "Environment", "--value"))
+    raw_env = systemctl("show", SERVICE, "-p", "Environment", "--value")
+    items = shlex.split(raw_env)
     unit = systemctl("cat", SERVICE)
     for rawpath in re.findall(r"^\s*EnvironmentFile=-?([^\s]+)", unit, re.M):
         path = Path(rawpath.strip("\"'"))
@@ -67,9 +68,10 @@ def restic(env, *args, capture=False):
 def main():
     print("RESTORE_REHEARSAL=START")
     env = restic_env()
-    snapshots = json.loads(
-        restic(env, "snapshots", "--latest", "1", "--json", capture=True).stdout
+    result = restic(
+        env, "snapshots", "--latest", "1", "--json", capture=True
     )
+    snapshots = json.loads(result.stdout)
     if not snapshots:
         raise RuntimeError("no snapshots")
     snap = snapshots[0]
@@ -100,7 +102,8 @@ def main():
     }
     fd, temp = tempfile.mkstemp(prefix=".restore-rehearsal-", dir=state)
     os.close(fd)
-    Path(temp).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    encoded = json.dumps(record, indent=2) + "\n"
+    Path(temp).write_text(encoded, encoding="utf-8")
     os.replace(temp, state / "latest.json")
     print("PRODUCTION_OVERWRITE=NO")
     print("SECRETS_EMITTED=NO")
