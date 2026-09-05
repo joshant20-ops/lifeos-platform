@@ -38,3 +38,5 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo WAVE_A_REPOSITORY_FINAL=PASS
+
+# 2026-09-06: live acceptance rerun after governed Wave A deployment and deploy-workflow repair.
