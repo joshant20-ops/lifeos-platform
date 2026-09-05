@@ -9,6 +9,9 @@ on:
       - 'scripts/run-stage11-complete.py'
       - 'scripts/run-stage10-exit-gate.py'
       - 'scripts/run-stage10-gates.py'
+      - 'scripts/lifeos-deploy-ha-control-bridge.sh'
+      - 'scripts/lifeos-deploy-ha-control-bridge-impl.sh'
+      - 'config/tower.example.json'
       - 'governor/application-platform/stage12-outcomes.json'
       - 'homeassistant/verify-lifeos-dashboard.py'
   workflow_dispatch:
@@ -23,7 +26,7 @@ concurrency:
 jobs:
   stage12:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Synchronize canonical Pi checkout
         shell: bash
@@ -34,6 +37,20 @@ jobs:
           git reset --hard origin/main
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Reconcile canonical HA and Tower control prerequisites
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge 2>&1)
+          rc=$?
+          printf '%s\n' "$out"
+          echo "STAGE12_PREREQ_RECONCILE_RC=$rc"
+          test "$rc" -eq 0
+          grep -q '^GATEWAY_RESULT=PASS$' <<<"$out"
+          grep -q '^TOWER_WOL_CONFIG=PASS$' <<<"$out"
+          grep -q '^CANONICAL_LIFEOS_DASHBOARD=PASS$' <<<"$out"
+          echo 'STAGE12_PREREQ_RECONCILE=PASS'
 
       - name: Run Stage 12 final gate
         shell: bash
