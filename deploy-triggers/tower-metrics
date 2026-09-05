@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=retry-after-mosquitto-client-prerequisite
-requested_commit=b98bbe72b667a85285519ad9614e2e9835274952
-nonce=2026-09-05T02:10Z
+reason=retry-after-staging-permission-fix
+requested_commit=03ea51ead0016c8daffcdf73632309705ce6fd5b
+nonce=2026-09-05T02:15Z
