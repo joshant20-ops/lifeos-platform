@@ -33,7 +33,7 @@ OPS = {
         'privileged': True,
     },
     'deploy-tower-metrics': {
-        'script': 'scripts/lifeos-deploy-tower-metrics.sh',
+        'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh',
         'privileged': True,
     },
     'capability-stage3-systemd-cleanup': {
