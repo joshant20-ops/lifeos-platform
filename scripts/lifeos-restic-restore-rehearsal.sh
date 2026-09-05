@@ -27,7 +27,7 @@ unit = subprocess.check_output(['systemctl', 'cat', svc], text=True)
 for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
     path = Path(rawpath.strip('"\''))
     try:
-        lines = path.read_text().splitlines()
+        lines = path.read_text(encoding='utf-8').splitlines()
     except OSError:
         continue
     for rawline in lines:
@@ -94,13 +94,10 @@ record = {
     'production_overwrite': False,
     'secrets_emitted': False,
 }
-fd, tmp = tempfile.mkstemp(
-    prefix='.restore-rehearsal-',
-    dir=state_dir,
-)
+fd, tmp = tempfile.mkstemp(prefix='.restore-rehearsal-', dir=state_dir)
 os.close(fd)
 encoded = json.dumps(record, indent=2, sort_keys=True) + '\n'
-Path(tmp).write_text(encoded)
+Path(tmp).write_text(encoded, encoding='utf-8')
 os.replace(tmp, state_dir / 'latest.json')
 print('PRODUCTION_OVERWRITE=NO')
 print('SECRETS_EMITTED=NO')
