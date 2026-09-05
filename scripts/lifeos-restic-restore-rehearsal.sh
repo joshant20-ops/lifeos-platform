@@ -5,7 +5,7 @@ import json
 import os
 import re
 import shlex
-import subprocess
+import subprocess  # nosec
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +16,7 @@ systemctl = '/usr/bin/systemctl'
 
 
 def systemctl_text(*args):
-    proc = subprocess.run(  # nosec B603
+    proc = subprocess.run(
         [systemctl, *args],
         text=True,
         check=True,
@@ -63,7 +63,7 @@ if 'RESTIC_REPOSITORY' not in env:
 
 def restic(*args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
-    return subprocess.run(  # nosec B603
+    return subprocess.run(
         ['/usr/bin/restic', *args],
         env=env,
         text=True,
