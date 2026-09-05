@@ -5,7 +5,7 @@ import json
 import os
 import re
 import shlex
-import subprocess  # nosec B404 - fixed argv only; no shell execution
+import subprocess  # nosec B404
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,7 +23,9 @@ pattern = (
 )
 allow = re.compile(pattern)
 cmd = [systemctl, 'show', svc, '-p', 'Environment', '--value']
-items = shlex.split(subprocess.check_output(cmd, text=True))  # nosec B603
+items = shlex.split(
+    subprocess.check_output(cmd, text=True)  # nosec B603
+)
 unit = subprocess.check_output(  # nosec B603
     [systemctl, 'cat', svc], text=True
 )
@@ -54,7 +56,7 @@ if 'RESTIC_REPOSITORY' not in env:
 
 def restic(*args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
-    return subprocess.run(  # nosec B603 - fixed executable, argv list
+    return subprocess.run(  # nosec B603
         ['/usr/bin/restic', *args],
         env=env,
         text=True,
