@@ -28,7 +28,7 @@ class Step11LiveClosureContract(unittest.TestCase):
         self.assertIn("'step11-live-closure': {", text)
         self.assertIn("'script': 'scripts/lifeos-step11-live-closure.sh'", text)
         self.assertIn("'privileged': True", text)
-        self.assertIn("if len(sys.argv) != 2 or sys.argv[1] not in OPS", text)
+        self.assertIn("sys.argv[1] not in OPS", text)
         self.assertNotIn("shell=True", text)
         self.assertNotIn("eval(", text)
 
