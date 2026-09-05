@@ -6,23 +6,9 @@ echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
-while IFS= read -r -d '' assignment; do
-  key="${assignment%%=*}"; value="${assignment#*=}"
-  case "$key" in
-    RESTIC_REPOSITORY) export RESTIC_REPOSITORY="$value" ;;
-    RESTIC_PASSWORD) export RESTIC_PASSWORD="$value" ;;
-    RESTIC_PASSWORD_FILE) export RESTIC_PASSWORD_FILE="$value" ;;
-    RESTIC_REPOSITORY_FILE) export RESTIC_REPOSITORY_FILE="$value" ;;
-    AWS_ACCESS_KEY_ID) export AWS_ACCESS_KEY_ID="$value" ;;
-    AWS_SECRET_ACCESS_KEY) export AWS_SECRET_ACCESS_KEY="$value" ;;
-    AWS_DEFAULT_REGION) export AWS_DEFAULT_REGION="$value" ;;
-    B2_ACCOUNT_ID) export B2_ACCOUNT_ID="$value" ;;
-    B2_ACCOUNT_KEY) export B2_ACCOUNT_KEY="$value" ;;
-    AZURE_ACCOUNT_NAME) export AZURE_ACCOUNT_NAME="$value" ;;
-    AZURE_ACCOUNT_KEY) export AZURE_ACCOUNT_KEY="$value" ;;
-  esac
-done < <(python3 - "$svc" <<'PY'
+mapfile -d '' -t restic_env < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
+allow=re.compile(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=')
 svc=sys.argv[1]; items=shlex.split(subprocess.check_output(['systemctl','show',svc,'-p','Environment','--value'],text=True)); unit=subprocess.check_output(['systemctl','cat',svc],text=True)
 for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)',unit,re.M):
     path=rawpath.strip('"\'')
@@ -36,19 +22,20 @@ for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)',unit,re.M):
             try: items.extend(shlex.split(line,comments=True,posix=True))
             except ValueError: continue
 for item in items:
-    if '=' in item: os.write(1,item.encode()+b'\0')
+    if allow.match(item): os.write(1,item.encode()+b'\0')
 PY
 )
-if [[ -z "${RESTIC_REPOSITORY:-}" ]]; then echo 'RESTORE_REHEARSAL=FAIL reason=repository_contract_missing'; exit 1; fi
-latest="$(restic snapshots --latest 1 --json)"
+if ! printf '%s\n' "${restic_env[@]}" | grep -q '^RESTIC_REPOSITORY='; then echo 'RESTORE_REHEARSAL=FAIL reason=repository_contract_missing'; exit 1; fi
+r=(env "${restic_env[@]}" restic)
+latest="$(${r[@]} snapshots --latest 1 --json)"
 python3 - "$latest" <<'PY'
 import json,sys
 x=json.loads(sys.argv[1]); assert x, 'no snapshots'; s=x[0]
 print('SNAPSHOT_PRESENT=YES'); print('SNAPSHOT_TIME='+str(s.get('time',''))); print('SNAPSHOT_HOST='+str(s.get('hostname',''))); print('SNAPSHOT_PATH_COUNT='+str(len(s.get('paths') or [])))
 PY
-restic check --read-data-subset=1/100 >/dev/null
+${r[@]} check --read-data-subset=1/100 >/dev/null
 echo 'RESTIC_CHECK=PASS'
-restic restore latest --target "$TMP/restore" >/dev/null
+${r[@]} restore latest --target "$TMP/restore" >/dev/null
 count="$(find "$TMP/restore" -type f 2>/dev/null | wc -l)"
 [[ "$count" -gt 0 ]] || { echo 'RESTORE_REHEARSAL=FAIL reason=no_files_restored'; exit 1; }
 echo "RESTORED_FILE_COUNT=$count"
