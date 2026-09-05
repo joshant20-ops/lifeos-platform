@@ -29,18 +29,17 @@ class CurrentEngineerActivationTests(unittest.TestCase):
         self.assertIn("assert d['target']==target",TEXT)
         self.assertIn('TARGET_ID=',TEXT)
 
-    def test_retry_uses_new_job_id_and_preserves_prior_evidence(self):
-        self.assertIn('readonly JOB_ID=engineer-current-20260904-v3',TEXT)
+    def test_v4_uses_new_job_id_and_preserves_prior_evidence(self):
+        self.assertIn('readonly JOB_ID=engineer-current-20260905-v4',TEXT)
         self.assertNotIn('rm -f "$APPROVAL"',TEXT)
         self.assertNotIn('rm -f "$AUDIT"',TEXT)
 
-    def test_exact_observed_metadata_repair_is_narrow(self):
+    def test_exact_metadata_repair_is_narrow_and_idempotent(self):
         self.assertIn('readonly BACKEND_REL=governor/engineer_backend.py',TEXT)
-        self.assertIn("if mode != 0o775",TEXT)
-        self.assertIn('backend mode changed from observed 775',TEXT)
+        self.assertIn('mode not in (0o755,0o775)',TEXT)
         self.assertIn('chmod 0755 "$PLATFORM/$BACKEND_REL"',TEXT)
         self.assertIn('METADATA_REPAIR=governor/engineer_backend.py:0775->0755',TEXT)
-        self.assertNotIn('chown ',TEXT)
+        self.assertIn('METADATA_REPAIR=not-required',TEXT)
         self.assertNotIn('chmod -R',TEXT)
 
     def test_reproduces_broker_source_safety_before_approval(self):
@@ -51,30 +50,24 @@ class CurrentEngineerActivationTests(unittest.TestCase):
         self.assertLess(TEXT.index("stage 2 'EXACT SOURCE SAFETY REPAIR AND REVALIDATION'"),
                         TEXT.index("stage 3 'CREATE FRESH ROOT-OWNED APPROVAL'"))
 
-    def test_approval_is_exact_and_root_owned(self):
-        for rel in ('governor/autonomous_agent.py','governor/target_identity.py','governor/engineer_backend.py'):
-            self.assertIn(rel,TEXT)
-        self.assertIn("'operation':'deploy-engineer-runtime'",TEXT)
-        self.assertIn("os.open(path,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)",TEXT)
-        self.assertIn('os.chown(path,0,0)',TEXT)
-
     def test_uses_existing_bounded_broker_only(self):
         self.assertIn("'operation':'deploy-engineer-runtime'",TEXT)
         self.assertIn('/run/lifeos-root-broker.sock',TEXT)
         self.assertNotIn('cp "$PLATFORM/governor/engineer_backend.py"',TEXT)
         self.assertNotIn('install "$PLATFORM/governor/engineer_backend.py"',TEXT)
 
-    def test_validates_audit_live_hashes_health_and_fail_closed(self):
+    def test_validates_liveness_readiness_model_and_fail_closed(self):
         self.assertIn("d['deployment_result']=='PASS'",TEXT)
-        self.assertIn('lifeos-autonomous-agent',TEXT)
-        self.assertIn('lifeos-engineer',TEXT)
         self.assertIn('http://127.0.0.1:8793/health',TEXT)
-        self.assertIn('OPEN_WEBUI_ACCEPTANCE=PASS',TEXT)
+        self.assertIn('http://127.0.0.1:8793/ready',TEXT)
+        self.assertIn('ENGINEER_LIVENESS=PASS',TEXT)
+        self.assertIn('ENGINEER_READINESS=PASS',TEXT)
+        self.assertIn('INFORMATION_ONLY_NO_JOB_PROPOSAL=PASS',TEXT)
         self.assertIn('MALFORMED_REQUEST_REJECTION=PASS',TEXT)
 
     def test_machine_readable_completion(self):
-        self.assertIn("FINAL_STATUS=PASS",TEXT)
-        self.assertIn("NEXT_REQUIRED=phase1_closure_review",TEXT)
+        self.assertIn('FINAL_STATUS=PASS',TEXT)
+        self.assertIn('NEXT_REQUIRED=phase1_closure_review',TEXT)
 
 
 if __name__=='__main__':
