@@ -1,4 +1,4 @@
 operation=deploy-ha-control-bridge
-reason=render-z97-masonry-after-verifier-order-fix
-requested_commit=c94aa700326e623dc5bf265c1770fd16a70625cc
-nonce=2026-09-05T04:14+01:00
+reason=repair-lifeos-control-state-publisher
+requested_commit=main
+nonce=2026-09-05T09:50+01:00
