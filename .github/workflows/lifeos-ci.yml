@@ -49,7 +49,8 @@ jobs:
             tests.test_engineer_source_safety_diagnostic \
             tests.test_engineer_runtime_health_diagnostic \
             tests.test_engineer_runtime_contracts \
-            tests.test_engineer_terminal_policy
+            tests.test_engineer_terminal_policy \
+            tests.test_step11_live_terminal_policy_diagnostic
 
       - name: Validate desired Compose YAML
         run: |
