@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=retry-after-ha-stdin-verifier-fix
-requested_commit=4040b3b306e9f3ce98ffa58c6c91a1ec6dc5dec4
-nonce=2026-09-05T03:16+01:00
+reason=retry-after-dashboard-baseline-fix
+requested_commit=97623c30a714f5f0cd99e8ec1295c263db1841fe
+nonce=2026-09-05T03:18+01:00
