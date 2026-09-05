@@ -8,8 +8,8 @@ svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
 while IFS= read -r -d '' assignment; do
   key="${assignment%%=*}"; value="${assignment#*=}"
-  printf -v "$key" '%s' "$value"
-  export "$key"
+  case "$key" in RESTIC_*|AWS_*|B2_*|AZURE_*) ;; *) continue ;; esac
+  printf -v "$key" '%s' "$value"; export "$key"
 done < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
 svc=sys.argv[1]; items=shlex.split(subprocess.check_output(['systemctl','show',svc,'-p','Environment','--value'],text=True)); unit=subprocess.check_output(['systemctl','cat',svc],text=True)
@@ -22,9 +22,8 @@ for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)',unit,re.M):
             line=rawline.strip()
             if not line or line.startswith('#'): continue
             if line.startswith('export '): line=line[7:].lstrip()
-            try: parts=shlex.split(line,comments=True,posix=True)
+            try: items.extend(shlex.split(line,comments=True,posix=True))
             except ValueError: continue
-            items.extend(parts)
 for item in items:
     if '=' in item: os.write(1,item.encode()+b'\0')
 PY
