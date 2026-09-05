@@ -47,6 +47,10 @@ OPS = {
         'script': 'scripts/lifeos-verify-transaction-core.sh',
         'privileged': True,
     },
+    'resume-issue26-after-root-proof': {
+        'script': 'scripts/lifeos-resume-issue26-after-root-proof.sh',
+        'privileged': True,
+    },
 }
 
 
@@ -116,7 +120,7 @@ def main():
     script = REPO / str(spec['script'])
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
-    print('LIFEOS_DEPLOY_GATEWAY_VERSION=4')
+    print('LIFEOS_DEPLOY_GATEWAY_VERSION=5')
     print(f'GATEWAY_OPERATION={operation}')
     print(f'GATEWAY_PLATFORM_HEAD={head}')
     if spec['privileged']:
