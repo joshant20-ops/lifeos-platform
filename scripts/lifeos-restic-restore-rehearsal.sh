@@ -6,14 +6,14 @@ echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
-# Import the proven service's Environment= and EnvironmentFile= contracts without printing values.
-python3 - "$svc" >"$TMP/env" <<'PY'
+# Import the proven service's Environment= and EnvironmentFile= contracts in-memory; never print values.
+while IFS= read -r assignment; do [[ -n "$assignment" ]] && export "$assignment"; done < <(python3 - "$svc" <<'PY'
 import shlex,subprocess,sys
 raw=subprocess.check_output(['systemctl','show',sys.argv[1],'-p','Environment','--value'],text=True)
 for item in shlex.split(raw):
     if '=' in item: print(item)
 PY
-while IFS= read -r assignment; do [[ -n "$assignment" ]] && export "$assignment"; done <"$TMP/env"
+)
 while IFS= read -r f; do
   [[ -r "$f" ]] || continue
   set -a
