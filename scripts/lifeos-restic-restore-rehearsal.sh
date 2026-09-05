@@ -23,9 +23,8 @@ pattern = (
 )
 allow = re.compile(pattern)
 cmd = [systemctl, 'show', svc, '-p', 'Environment', '--value']
-items = shlex.split(
-    subprocess.check_output(cmd, text=True)  # nosec B603
-)
+env_text = subprocess.check_output(cmd, text=True)  # nosec B603
+items = shlex.split(env_text)
 unit = subprocess.check_output(  # nosec B603
     [systemctl, 'cat', svc], text=True
 )
