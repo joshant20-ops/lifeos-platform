@@ -58,7 +58,9 @@ def restic(*args, capture=False):
     )
 
 
-snaps = json.loads(restic('snapshots', '--latest', '1', '--json', capture=True).stdout)
+snaps = json.loads(
+    restic('snapshots', '--latest', '1', '--json', capture=True).stdout
+)
 if not snaps:
     raise SystemExit('no snapshots')
 snapshot = snaps[0]
@@ -71,7 +73,7 @@ print('RESTIC_CHECK=PASS')
 with tempfile.TemporaryDirectory() as td:
     target = Path(td) / 'restore'
     restic('restore', 'latest', '--target', str(target))
-    count = sum(1 for f in target.rglob('*') if f.is_file())
+    count = sum(1 for file_path in target.rglob('*') if file_path.is_file())
     if count <= 0:
         raise SystemExit('no files restored')
     print(f'RESTORED_FILE_COUNT={count}')
