@@ -54,10 +54,12 @@ def fail(msg: str, code: int = 1) -> None:
 def as_joshan(
     *args: str, capture: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    path = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    path_env = (
+        'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+    )
     cmd = [
         RUNUSER, '-u', 'joshan', '--', ENV, '-i',
-        'HOME=/home/joshan', path, 'LANG=C.UTF-8', *args,
+        'HOME=/home/joshan', path_env, 'LANG=C.UTF-8', *args,
     ]
     stdout = subprocess.PIPE if capture else None
     stderr = subprocess.STDOUT if capture else None
