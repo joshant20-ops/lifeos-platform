@@ -1,9 +1,30 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "capability_stage": 1,
   "name": "OTS rationalisation and custom-code purge",
+  "status": "CLOSURE_PENDING_LIVE_PROOF",
   "principle": "OTS first; configuration and integration before bespoke code",
-  "classification": ["KEEP_OTS", "KEEP_THIN_GLUE", "REPLACE_WITH_OTS", "RETIRE_OBSOLETE", "REVIEW_UNIQUE"],
+  "scope": {
+    "closure_surface": [
+      "active containers and services",
+      "enabled timers and schedulers",
+      "desired-state application definitions",
+      "custom executables invoked by active runtime paths"
+    ],
+    "non_blocking_historical_surface": [
+      "retired migration scripts",
+      "rollback/rehearsal artifacts",
+      "historical proof code not referenced by active runtime"
+    ],
+    "reason": "Historical Git evidence must not be misclassified as a live service. Stage 1 closes on the active and desired estate, while provenance remains preserved."
+  },
+  "classification": [
+    "KEEP_OTS",
+    "KEEP_THIN_GLUE",
+    "REPLACE_WITH_OTS",
+    "RETIRE_OBSOLETE",
+    "REVIEW_UNIQUE"
+  ],
   "protected": [
     "Watchman execution authority",
     "GitHub canonical source",
@@ -18,6 +39,46 @@
     "thin replaceable adapter",
     "bespoke implementation only with documented gap and owner"
   ],
+  "known_dispositions": {
+    "Home Assistant": "KEEP_OTS",
+    "Mosquitto": "KEEP_OTS",
+    "Predbat": "KEEP_OTS",
+    "Paperless-ngx": "KEEP_OTS",
+    "Vaultwarden": "KEEP_OTS",
+    "AdGuard Home": "KEEP_OTS",
+    "Nginx Proxy Manager": "KEEP_OTS",
+    "Uptime Kuma": "KEEP_OTS",
+    "Prometheus": "KEEP_OTS",
+    "Grafana": "KEEP_OTS",
+    "node-exporter": "KEEP_OTS",
+    "cAdvisor": "KEEP_OTS",
+    "Semaphore": "KEEP_OTS",
+    "Ansible": "KEEP_OTS",
+    "GitHub Actions self-hosted runner": "KEEP_OTS",
+    "Restic": "KEEP_OTS",
+    "Docker": "KEEP_OTS",
+    "Matter Server": "KEEP_OTS",
+    "Z-Wave JS UI": "KEEP_OTS",
+    "qBittorrent": "KEEP_OTS_USER_SERVICE",
+    "Portainer": "KEEP_OTS_BREAK_GLASS_UI_IF_LIVE",
+    "Renovate": "KEEP_OTS",
+    "Gitleaks": "KEEP_OTS",
+    "Ollama": "KEEP_OTS",
+    "Rundeck": "RETIRE_OBSOLETE_IF_LIVE_SEMAPHORE_IS_PRODUCTION_AUTHORITY",
+    "Autoheal": "RETIRE_OBSOLETE_IF_LIVE_NATIVE_RESTART_HEALTH_POLICY_PROVED",
+    "Watchtower": "RETIRE_OBSOLETE_IF_LIVE_CONTROLLED_PINNED_UPDATE_PATH_IS_PROVED"
+  },
+  "closure_requirements": [
+    "every active service/container/timer has an explicit disposition and distinct responsibility",
+    "no active RETIRE_OBSOLETE item remains",
+    "no active REVIEW_UNIQUE item remains without a documented unique responsibility and maintenance owner",
+    "no duplicate production orchestrators remain",
+    "automatic update/restart tooling does not bypass governed change, verification, and rollback policy",
+    "protected core services survive every retirement batch",
+    "runtime and desired state agree after bounded retirement",
+    "fresh live evidence is recorded before status becomes COMPLETE"
+  ],
   "auto_delete": false,
-  "report_only_until_unique_responsibility_is_proven": true
+  "report_only_until_unique_responsibility_is_proven": true,
+  "completion_rule": "Do not set COMPLETE from repository classification alone. COMPLETE requires fresh live runtime evidence after all obsolete active components are retired or explicitly justified."
 }
