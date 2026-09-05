@@ -9,17 +9,17 @@ svc=lifeos-restic-backup.service
 while IFS= read -r -d '' assignment; do
   key="${assignment%%=*}"; value="${assignment#*=}"
   case "$key" in
-    RESTIC_REPOSITORY) RESTIC_REPOSITORY="$value"; export RESTIC_REPOSITORY ;;
-    RESTIC_PASSWORD) RESTIC_PASSWORD="$value"; export RESTIC_PASSWORD ;;
-    RESTIC_PASSWORD_FILE) RESTIC_PASSWORD_FILE="$value"; export RESTIC_PASSWORD_FILE ;;
-    RESTIC_REPOSITORY_FILE) RESTIC_REPOSITORY_FILE="$value"; export RESTIC_REPOSITORY_FILE ;;
-    AWS_ACCESS_KEY_ID) AWS_ACCESS_KEY_ID="$value"; export AWS_ACCESS_KEY_ID ;;
-    AWS_SECRET_ACCESS_KEY) AWS_SECRET_ACCESS_KEY="$value"; export AWS_SECRET_ACCESS_KEY ;;
-    AWS_DEFAULT_REGION) AWS_DEFAULT_REGION="$value"; export AWS_DEFAULT_REGION ;;
-    B2_ACCOUNT_ID) B2_ACCOUNT_ID="$value"; export B2_ACCOUNT_ID ;;
-    B2_ACCOUNT_KEY) B2_ACCOUNT_KEY="$value"; export B2_ACCOUNT_KEY ;;
-    AZURE_ACCOUNT_NAME) AZURE_ACCOUNT_NAME="$value"; export AZURE_ACCOUNT_NAME ;;
-    AZURE_ACCOUNT_KEY) AZURE_ACCOUNT_KEY="$value"; export AZURE_ACCOUNT_KEY ;;
+    RESTIC_REPOSITORY) export RESTIC_REPOSITORY="$value" ;;
+    RESTIC_PASSWORD) export RESTIC_PASSWORD="$value" ;;
+    RESTIC_PASSWORD_FILE) export RESTIC_PASSWORD_FILE="$value" ;;
+    RESTIC_REPOSITORY_FILE) export RESTIC_REPOSITORY_FILE="$value" ;;
+    AWS_ACCESS_KEY_ID) export AWS_ACCESS_KEY_ID="$value" ;;
+    AWS_SECRET_ACCESS_KEY) export AWS_SECRET_ACCESS_KEY="$value" ;;
+    AWS_DEFAULT_REGION) export AWS_DEFAULT_REGION="$value" ;;
+    B2_ACCOUNT_ID) export B2_ACCOUNT_ID="$value" ;;
+    B2_ACCOUNT_KEY) export B2_ACCOUNT_KEY="$value" ;;
+    AZURE_ACCOUNT_NAME) export AZURE_ACCOUNT_NAME="$value" ;;
+    AZURE_ACCOUNT_KEY) export AZURE_ACCOUNT_KEY="$value" ;;
   esac
 done < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
