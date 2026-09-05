@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=rerender-z97-masonry-after-wol-discovery-fix
-requested_commit=dc10f8915d657179ad0ab5623f4096ec503aa860
-nonce=2026-09-05T04:03+01:00
+reason=install-live-z97-metrics-user-confirmed-online
+requested_commit=main
+nonce=2026-09-05T09:46+01:00
