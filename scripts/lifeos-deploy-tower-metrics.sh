@@ -77,11 +77,11 @@ python3 -m py_compile "$METRICS_SOURCE"
 
 # Resolve the live Tower address from its already-canonical MAC without committing
 # a private LAN address to the repository.
-TOWER_IP="$(ip -j neigh | python3 - "$EXPECTED_MAC" <<'PY'
-import json,sys
+TOWER_IP="$(python3 - "$EXPECTED_MAC" <<'PY'
+import json, subprocess, sys
 mac=sys.argv[1].lower()
 try:
-    rows=json.load(sys.stdin)
+    rows=json.loads(subprocess.check_output(['ip','-j','neigh'], text=True))
 except Exception:
     rows=[]
 for row in rows:
@@ -238,23 +238,34 @@ PY
 )"
 printf '%s\n' "$VALIDATION"
 
-# Wait for Home Assistant MQTT discovery to register the telemetry entities.
+# Wait for Home Assistant MQTT discovery to register both the fixed telemetry set
+# and at least one physical disk's read + write entities.
+COUNT=0
+DISK_COUNT=0
 for _ in $(seq 1 30); do
-  COUNT="$(docker exec homeassistant python3 - <<'PY'
+  REGISTRY_COUNTS="$(docker exec homeassistant python3 - <<'PY'
 import json
 from pathlib import Path
 p=Path('/config/.storage/core.entity_registry')
 if not p.exists():
-    print(0); raise SystemExit
+    print('0|0'); raise SystemExit
 ents=json.loads(p.read_text()).get('data',{}).get('entities',[])
-print(sum(1 for e in ents if str(e.get('unique_id') or '').startswith('lifeos_tower_') and str(e.get('unique_id') or '').endswith('_v1')))
+uids=[str(e.get('unique_id') or '') for e in ents]
+metrics=[u for u in uids if u.startswith('lifeos_tower_') and u.endswith('_v1')]
+disk_rates=[u for u in metrics if u.startswith('lifeos_tower_disk_') and (u.endswith('_read_v1') or u.endswith('_write_v1'))]
+print(f'{len(metrics)}|{len(disk_rates)}')
 PY
 )"
-  (( COUNT >= 10 )) && break
+  IFS='|' read -r COUNT DISK_COUNT <<<"$REGISTRY_COUNTS"
+  if (( COUNT >= 10 && DISK_COUNT >= 2 )); then
+    break
+  fi
   sleep 2
 done
 (( COUNT >= 10 )) || { echo "ERROR=ha_metrics_discovery_incomplete:$COUNT"; false; }
+(( DISK_COUNT >= 2 )) || { echo "ERROR=ha_disk_rate_discovery_incomplete:$DISK_COUNT"; false; }
 echo "TOWER_HA_METRICS_ENTITY_COUNT=$COUNT"
+echo "TOWER_HA_DISK_RATE_ENTITY_COUNT=$DISK_COUNT"
 
 # Rebuild the dedicated view now that actual disk entity IDs exist.
 bash "$DASHBOARD_ADAPTER"
