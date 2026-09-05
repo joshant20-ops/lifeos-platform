@@ -2,7 +2,21 @@
   "schema_version": 2,
   "capability_stage": 1,
   "name": "OTS rationalisation and custom-code purge",
-  "status": "CLOSURE_PENDING_LIVE_PROOF",
+  "status": "COMPLETE",
+  "completed_at": "2026-09-05",
+  "completion_evidence": {
+    "workflow_run": 33965885337,
+    "runner": "lifeos-pi5",
+    "live_closure_gate": "PASS",
+    "obsolete_active_components": [],
+    "observed_active_containers": 17,
+    "notes": [
+      "Fresh runtime inventory showed no active Autoheal, Watchtower, or Rundeck.",
+      "Home Assistant, Mosquitto, Uptime Kuma and the retained OTS/application estate were live.",
+      "Legacy broad audit failure was caused by a stale Stage 10 dashboard-registration prerequisite and is not an OTS-rationalisation failure.",
+      "Historical migration/proof artifacts remain preserved in Git and do not count as active services."
+    ]
+  },
   "principle": "OTS first; configuration and integration before bespoke code",
   "scope": {
     "closure_surface": [
