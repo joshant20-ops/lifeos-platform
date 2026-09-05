@@ -6,12 +6,13 @@ echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
-while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$svc" <<'PY'
+while IFS= read -r -d '' assignment; do
+  key="${assignment%%=*}"; value="${assignment#*=}"
+  printf -v "$key" '%s' "$value"
+  export "$key"
+done < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
-svc=sys.argv[1]
-raw=subprocess.check_output(['systemctl','show',svc,'-p','Environment','--value'],text=True)
-items=shlex.split(raw)
-unit=subprocess.check_output(['systemctl','cat',svc],text=True)
+svc=sys.argv[1]; items=shlex.split(subprocess.check_output(['systemctl','show',svc,'-p','Environment','--value'],text=True)); unit=subprocess.check_output(['systemctl','cat',svc],text=True)
 for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)',unit,re.M):
     path=rawpath.strip('"\'')
     try: fh=open(path)
@@ -23,7 +24,7 @@ for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)',unit,re.M):
             if line.startswith('export '): line=line[7:].lstrip()
             try: parts=shlex.split(line,comments=True,posix=True)
             except ValueError: continue
-            if parts: items.extend(parts)
+            items.extend(parts)
 for item in items:
     if '=' in item: os.write(1,item.encode()+b'\0')
 PY
