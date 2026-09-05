@@ -4,6 +4,7 @@ set -Eeuo pipefail
 PLATFORM=/home/joshan/lifeos-platform
 DEPLOY="$PLATFORM/scripts/lifeos-deploy-tower-metrics.sh"
 BASE_DASHBOARD="$PLATFORM/scripts/lifeos-adapt-ha-lifeos-dashboard.sh"
+CONTROL_ENTITY_RESOLVER="$PLATFORM/scripts/lifeos-resolve-ha-control-entity.sh"
 DIAGNOSTICS="$PLATFORM/scripts/lifeos-tower-metrics-live-diagnostics.sh"
 EXPECTED_MAC=40:8d:5c:84:41:64
 EXPECTED_HOST=TowerPC.Tailor
@@ -42,6 +43,7 @@ trap rollback_package ERR
 [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo 'ERROR=must_run_as_root'; exit 1; }
 [[ -f "$DEPLOY" && ! -L "$DEPLOY" ]] || { echo 'ERROR=canonical_tower_metrics_deploy_missing'; exit 1; }
 [[ -f "$BASE_DASHBOARD" && ! -L "$BASE_DASHBOARD" ]] || { echo 'ERROR=canonical_lifeos_dashboard_adapter_missing'; exit 1; }
+[[ -f "$CONTROL_ENTITY_RESOLVER" && ! -L "$CONTROL_ENTITY_RESOLVER" ]] || { echo 'ERROR=canonical_control_entity_resolver_missing'; exit 1; }
 [[ -f "$DIAGNOSTICS" && ! -L "$DIAGNOSTICS" ]] || { echo 'ERROR=canonical_tower_metrics_diagnostics_missing'; exit 1; }
 
 find_tower_by_mac() {
@@ -134,6 +136,7 @@ else
 fi
 
 bash "$BASE_DASHBOARD"
+bash "$CONTROL_ENTITY_RESOLVER"
 echo 'TOWER_DASHBOARD_BASELINE=PASS'
 
 bash "$DEPLOY"
