@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-"""Emit the small live PA lifecycle helper only after a conservative secret scan.
-Used to establish canonical source before Wave A mutation.
-"""
+"""Emit safe PA lifecycle helper source and structural producer references."""
 import subprocess
 code=r'''
 import pathlib,re
 p=pathlib.Path('/config/scripts/lifeos_pa_lifecycle_export.py')
 raw=p.read_text()
-# Refuse to emit if it appears to contain embedded credentials or network secrets.
 patterns=[r'(?i)(password|passwd|token|api[_-]?key|secret)\s*=\s*["\'][^"\']+["\']',r'https?://[^\s]+@']
 if any(re.search(x,raw) for x in patterns):
  print('SAFE_SOURCE=REFUSED'); raise SystemExit(2)
 print('SAFE_SOURCE=PASS')
-print('---BEGIN---')
-print(raw,end='' if raw.endswith('\n') else '\n')
-print('---END---')
+print('---BEGIN---'); print(raw,end='' if raw.endswith('\n') else '\n'); print('---END---')
+# Emit only filenames that reference lifecycle output names; never contents.
+needles=('open_loops_attention.json','open_loops_active.json','pa_dashboard_summary.json')
+for root in ('/config/scripts','/config/packages'):
+ for q in pathlib.Path(root).rglob('*'):
+  if not q.is_file() or q.stat().st_size>300000: continue
+  try: text=q.read_text(errors='ignore')
+  except Exception: continue
+  if any(n in text for n in needles): print('CONFIG_REFERENCE='+str(q))
 '''
 r=subprocess.run(['docker','exec','homeassistant','python3','-c',code],text=True,capture_output=True)
 print(r.stdout,end='')
 if r.returncode: raise SystemExit(r.returncode)
+# Host unit references: unit names only.
+s=subprocess.run(['sh','-lc',"grep -RIlE 'open_loops_attention\\.json|pa_dashboard_summary\\.json' /etc/systemd/system /usr/local/lib/systemd/system 2>/dev/null | sed 's#^.*/##' | sort -u"],text=True,capture_output=True)
+for x in s.stdout.splitlines(): print('SYSTEMD_REFERENCE='+x)
