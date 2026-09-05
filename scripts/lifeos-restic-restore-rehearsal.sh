@@ -5,7 +5,8 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
-[[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
+mapfile -t load_state < <(systemctl show "$svc" -p LoadState --value)
+[[ "${load_state[0]:-}" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
 mapfile -d '' -t restic_env < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
 allow=re.compile(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=')
