@@ -16,8 +16,7 @@ systemctl = '/usr/bin/systemctl'
 
 
 def systemctl_text(*args):
-    # Fixed absolute executable and bounded internal arguments; shell=False.
-    proc = subprocess.run(  # nosec B603
+    proc = subprocess.run(  # nosec B603,B607
         [systemctl, *args],
         text=True,
         check=True,
@@ -64,8 +63,7 @@ if 'RESTIC_REPOSITORY' not in env:
 
 def restic(*args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
-    # Fixed absolute executable; callers below supply only constant restic args.
-    return subprocess.run(  # nosec B603
+    return subprocess.run(  # nosec B603,B607
         ['/usr/bin/restic', *args],
         env=env,
         text=True,
