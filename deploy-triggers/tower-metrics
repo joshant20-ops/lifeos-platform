@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=enable-live-z97-metrics
-requested_commit=583e62c6e8e13432549537901e5ed549e82cec8a
-nonce=2026-09-05T02:05Z
+reason=retry-after-mosquitto-client-prerequisite
+requested_commit=b98bbe72b667a85285519ad9614e2e9835274952
+nonce=2026-09-05T02:10Z
