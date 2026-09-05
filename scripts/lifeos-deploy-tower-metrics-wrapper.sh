@@ -5,6 +5,7 @@ PLATFORM=/home/joshan/lifeos-platform
 DEPLOY="$PLATFORM/scripts/lifeos-deploy-tower-metrics.sh"
 BASE_DASHBOARD="$PLATFORM/scripts/lifeos-adapt-ha-lifeos-dashboard.sh"
 EXPECTED_MAC=40:8d:5c:84:41:64
+EXPECTED_HOST=TowerPC.Tailor
 REMOTE_USER=joshan
 PACKAGE=mosquitto-clients
 INSTALLED_HERE=0
@@ -41,7 +42,8 @@ trap rollback_package ERR
 [[ -f "$DEPLOY" && ! -L "$DEPLOY" ]] || { echo 'ERROR=canonical_tower_metrics_deploy_missing'; exit 1; }
 [[ -f "$BASE_DASHBOARD" && ! -L "$BASE_DASHBOARD" ]] || { echo 'ERROR=canonical_lifeos_dashboard_adapter_missing'; exit 1; }
 
-TOWER_IP="$(python3 - "$EXPECTED_MAC" <<'PY'
+find_tower_by_mac() {
+  python3 - "$EXPECTED_MAC" <<'PY'
 import json, subprocess, sys
 mac=sys.argv[1].lower()
 try:
@@ -53,13 +55,51 @@ for row in rows:
         print(row['dst'])
         break
 PY
-)"
-[[ -n "$TOWER_IP" ]] || { echo 'ERROR=tower_mac_not_present_in_neighbor_table'; false; }
+}
+
+# A sleeping host naturally ages out of the neighbour table. First resolve its
+# canonical LAN hostname and probe it to repopulate ARP. If still absent, send the
+# already-proven WOL packet and wait for the same hostname/IP to return. Identity
+# is never accepted until the observed neighbour MAC matches EXPECTED_MAC.
+TOWER_IP="$(find_tower_by_mac)"
+HOST_IP="$(getent ahostsv4 "$EXPECTED_HOST" 2>/dev/null | awk 'NR==1{print $1}' || true)"
+if [[ -z "$TOWER_IP" && -n "$HOST_IP" ]]; then
+  ping -c 1 -W 1 "$HOST_IP" >/dev/null 2>&1 || true
+  sleep 1
+  ACTUAL_MAC="$(ip neigh show "$HOST_IP" | awk '{for(i=1;i<=NF;i++) if($i=="lladdr") print $(i+1)}' | head -n1 | tr '[:upper:]' '[:lower:]')"
+  if [[ "$ACTUAL_MAC" == "$EXPECTED_MAC" ]]; then
+    TOWER_IP="$HOST_IP"
+  fi
+fi
+
+if [[ -z "$TOWER_IP" ]]; then
+  command -v wakeonlan >/dev/null || { echo 'ERROR=wakeonlan_missing_on_deploy_host'; false; }
+  echo 'TOWER_WAKE=REQUESTED'
+  wakeonlan "$EXPECTED_MAC"
+  for _ in $(seq 1 45); do
+    HOST_IP="$(getent ahostsv4 "$EXPECTED_HOST" 2>/dev/null | awk 'NR==1{print $1}' || true)"
+    if [[ -n "$HOST_IP" ]]; then
+      ping -c 1 -W 1 "$HOST_IP" >/dev/null 2>&1 || true
+      ACTUAL_MAC="$(ip neigh show "$HOST_IP" | awk '{for(i=1;i<=NF;i++) if($i=="lladdr") print $(i+1)}' | head -n1 | tr '[:upper:]' '[:lower:]')"
+      if [[ "$ACTUAL_MAC" == "$EXPECTED_MAC" ]]; then
+        TOWER_IP="$HOST_IP"
+        break
+      fi
+    fi
+    TOWER_IP="$(find_tower_by_mac)"
+    [[ -n "$TOWER_IP" ]] && break
+    sleep 2
+  done
+fi
+
+[[ -n "$TOWER_IP" ]] || { echo 'ERROR=tower_not_reachable_after_wol'; false; }
 ACTUAL_MAC="$(ip neigh show "$TOWER_IP" | awk '{for(i=1;i<=NF;i++) if($i=="lladdr") print $(i+1)}' | head -n1 | tr '[:upper:]' '[:lower:]')"
 [[ "$ACTUAL_MAC" == "$EXPECTED_MAC" ]] || { echo "ERROR=tower_mac_mismatch:$ACTUAL_MAC"; false; }
+echo 'TOWER_NETWORK_IDENTITY=PASS'
+echo "TOWER_IP=$TOWER_IP"
 
 REVERSE_HOST="$(getent hosts "$TOWER_IP" 2>/dev/null | awk 'NR==1{print $2}' || true)"
-for candidate in "$REVERSE_HOST" "$TOWER_IP"; do
+for candidate in "$EXPECTED_HOST" "$REVERSE_HOST" "$TOWER_IP"; do
   [[ -n "$candidate" ]] || continue
   target="$REMOTE_USER@$candidate"
   if "${AS_JOSHAN[@]}" ssh "${SSH_OPTS[@]}" "$target" 'printf READY' 2>/dev/null | grep -qx READY; then
@@ -91,14 +131,9 @@ else
   echo 'TOWER_MQTT_CLIENT=INSTALLED'
 fi
 
-# Rebuild the canonical LifeOS dashboard baseline if another deployment has removed
-# its storage object. The Tower-specific adapter then works against the same known
-# dashboard identity every time instead of assuming the storage file survived.
 bash "$BASE_DASHBOARD"
 echo 'TOWER_DASHBOARD_BASELINE=PASS'
 
-# The canonical deployment performs its own independent identity, MQTT, payload,
-# Home Assistant discovery, disk-graph and rollback checks.
 bash "$DEPLOY"
 
 INSTALLED_HERE=0
