@@ -1,4 +1,4 @@
 operation=deploy-ha-control-bridge
-reason=repair-live-lifeos-control-and-refresh-z97-disk-cards
-requested_commit=main
-nonce=2026-09-05T10:14+01:00
+reason=deploy-z97-read-write-only-disk-cards
+requested_commit=10cf45fd2ad9cc7636a16c1cf96b54e24f60c287
+nonce=2026-09-05T10:21+01:00
