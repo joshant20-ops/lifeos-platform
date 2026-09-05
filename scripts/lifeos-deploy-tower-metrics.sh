@@ -244,7 +244,7 @@ printf '%s\n' "$VALIDATION"
 COUNT=0
 DISK_COUNT=0
 for _ in $(seq 1 30); do
-  REGISTRY_COUNTS="$(docker exec homeassistant python3 - <<'PY'
+  REGISTRY_COUNTS="$(docker exec -i homeassistant python3 - <<'PY'
 import json
 from pathlib import Path
 p=Path('/config/.storage/core.entity_registry')
@@ -272,7 +272,7 @@ echo "TOWER_HA_DISK_RATE_ENTITY_COUNT=$DISK_COUNT"
 bash "$DASHBOARD_ADAPTER"
 
 # Prove the live Z97 view contains graphs and at least one physical-disk graph.
-docker exec homeassistant python3 - <<'PY'
+docker exec -i homeassistant python3 - <<'PY'
 import json
 from pathlib import Path
 doc=json.loads(Path('/config/.storage/lovelace.lifeos_control').read_text())
