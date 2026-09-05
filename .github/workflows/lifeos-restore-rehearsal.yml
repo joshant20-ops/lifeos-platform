@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/lifeos-restic-restore-rehearsal.sh'
+      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
       - '.github/workflows/lifeos-restore-rehearsal.yml'
   workflow_dispatch:
 permissions: {contents: read}
@@ -23,28 +24,18 @@ jobs:
           git fetch --prune origin main
           git reset --hard origin/main
           test -z "$(git status --porcelain --untracked-files=all)"
-      - name: Run non-destructive restore rehearsal
+      - name: Refresh reviewed gateway and run restore rehearsal
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          bash scripts/lifeos-restic-restore-rehearsal.sh
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway restore-rehearsal
       - name: Verify durable evidence
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
-          import json,pathlib
-          p=pathlib.Path.home()/'.local/state/lifeos/restore-rehearsal/latest.json'
-          d=json.loads(p.read_text())
-          assert d['result']=='PASS'
-          assert d['repository_check']=='PASS'
-          assert d['actual_restore']=='PASS'
-          assert d['restored_file_count']>0
-          assert d['production_overwrite'] is False
-          assert d['secrets_emitted'] is False
-          print('DURABLE_RESTORE_EVIDENCE=PASS')
-          PY
+          sudo -n cat /root/.local/state/lifeos/restore-rehearsal/latest.json | python3 -c "import json,sys; d=json.load(sys.stdin); assert d['result']=='PASS' and d['repository_check']=='PASS' and d['actual_restore']=='PASS' and d['restored_file_count']>0 and not d['production_overwrite'] and not d['secrets_emitted']; print('DURABLE_RESTORE_EVIDENCE=PASS')"
       - name: Prove repository non-mutation
         shell: bash
         run: |
