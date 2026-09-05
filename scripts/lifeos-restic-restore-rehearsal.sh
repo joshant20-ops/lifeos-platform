@@ -18,8 +18,7 @@ import sys
 from pathlib import Path
 unit = Path(sys.argv[1]).read_text(encoding='utf-8')
 env = {}
-pattern = r'^\s*EnvironmentFile=-?([^\s]+)'
-for rawpath in re.findall(pattern, unit, re.M):
+for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
     path = Path(rawpath.strip('"\''))
     try:
         lines = path.read_text(encoding='utf-8').splitlines()
@@ -85,12 +84,16 @@ env = os.environ.copy()
 env.update(env_data)
 subprocess.run(  # nosec B603
     ['/usr/bin/restic', 'check', '--read-data-subset=1/100'],
-    env=env, check=True, stdout=subprocess.DEVNULL,
+    env=env,
+    check=True,
+    stdout=subprocess.DEVNULL,
 )
 print('RESTIC_CHECK=PASS')
 subprocess.run(  # nosec B603
     ['/usr/bin/restic', 'restore', 'latest', '--target', sys.argv[2]],
-    env=env, check=True, stdout=subprocess.DEVNULL,
+    env=env,
+    check=True,
+    stdout=subprocess.DEVNULL,
 )
 PY
 python3 - "$TMP/restore" "$STATE_DIR" <<'PY'
@@ -108,13 +111,20 @@ print(f'RESTORED_FILE_COUNT={count}')
 record = {
     'schema_version': 1,
     'timestamp': datetime.now(timezone.utc).isoformat(),
-    'result': 'PASS', 'repository_check': 'PASS', 'actual_restore': 'PASS',
-    'restored_file_count': count, 'production_overwrite': False,
+    'result': 'PASS',
+    'repository_check': 'PASS',
+    'actual_restore': 'PASS',
+    'restored_file_count': count,
+    'production_overwrite': False,
     'secrets_emitted': False,
 }
-fd, tmp = tempfile.mkstemp(prefix='.restore-rehearsal-', dir=state_dir)
+fd, tmp = tempfile.mkstemp(
+    prefix='.restore-rehearsal-',
+    dir=state_dir,
+)
 os.close(fd)
-Path(tmp).write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
+encoded = json.dumps(record, indent=2) + '\n'
+Path(tmp).write_text(encoded, encoding='utf-8')
 os.replace(tmp, state_dir / 'latest.json')
 PY
 echo 'PRODUCTION_OVERWRITE=NO'
