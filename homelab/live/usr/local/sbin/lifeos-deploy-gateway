@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Root-owned allow-listed deployment gateway for GitHub/Semaphore automation."""
 from __future__ import annotations
+
 import os
 import pathlib
 import pwd
 import subprocess
 import sys
+
 REPO = pathlib.Path('/home/joshan/lifeos-platform')
 GIT = '/usr/bin/git'
 RUNUSER = '/usr/sbin/runuser'
@@ -42,10 +44,12 @@ OPS = {
     },
 }
 
+
 def fail(msg: str, code: int = 1) -> None:
     print('GATEWAY_RESULT=FAIL')
     print(f'GATEWAY_ERROR={msg}')
     raise SystemExit(code)
+
 
 def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
     cmd = [
@@ -59,13 +63,16 @@ def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[
         cmd, text=True, check=False, stdout=stdout, stderr=stderr
     )
 
+
 def git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
     return as_joshan(GIT, '-C', str(REPO), *args, capture=capture)
+
 
 def one_line(cp, label):
     if cp.returncode != 0:
         fail(f'{label}_failed_rc_{cp.returncode}')
     return (cp.stdout or '').strip()
+
 
 def preflight():
     if os.geteuid() != 0:
@@ -84,6 +91,7 @@ def preflight():
     if status or head != origin:
         fail('platform_not_clean_origin_main')
     return head
+
 
 def main():
     if len(sys.argv) != 2 or sys.argv[1] not in OPS:
@@ -109,6 +117,7 @@ def main():
         return cp.returncode
     print('GATEWAY_RESULT=PASS')
     return 0
+
 
 if __name__ == '__main__':
     raise SystemExit(main())
