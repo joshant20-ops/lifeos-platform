@@ -6,7 +6,7 @@ echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
-# Import non-secret service Environment= values in-memory. NUL delimiters preserve spaces.
+# Import Environment= values in-memory. Never print them.
 while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$svc" <<'PY'
 import os,shlex,subprocess,sys
 raw=subprocess.check_output(['systemctl','show',sys.argv[1],'-p','Environment','--value'],text=True)
@@ -14,15 +14,7 @@ for item in shlex.split(raw):
     if '=' in item: os.write(1,item.encode()+b'\0')
 PY
 )
-# Reuse root-owned restic credential files already proven by the backup service.
-for f in /etc/lifeos/restic.env /etc/default/lifeos-restic /etc/lifeos/backup.env; do
-  [[ -r "$f" ]] || continue
-  set -a
-  # shellcheck disable=SC1090
-  source "$f"
-  set +a
-done
-# If systemd explicitly declares readable environment files, import them too.
+# Import any EnvironmentFile= entries declared by the actual installed unit.
 while IFS= read -r f; do
   [[ -r "$f" ]] || continue
   set -a
@@ -30,7 +22,16 @@ while IFS= read -r f; do
   source "$f"
   set +a
 done < <(systemctl cat "$svc" | sed -nE 's/^[[:space:]]*EnvironmentFile=-?([^[:space:]]+).*/\1/p')
-: "${RESTIC_REPOSITORY:?backup credential contract does not expose RESTIC_REPOSITORY}"
+# Some backup units place the restic environment directly on ExecStart via env(1).
+execstart="$(systemctl show "$svc" -p ExecStart --value)"
+while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$execstart" <<'PY'
+import os,re,shlex,sys
+raw=sys.argv[1]
+for tok in shlex.split(raw):
+    if re.match(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=',tok): os.write(1,tok.encode()+b'\0')
+PY
+)
+: "${RESTIC_REPOSITORY:?backup service contract does not expose RESTIC_REPOSITORY}"
 latest="$(restic snapshots --latest 1 --json)"
 python3 - "$latest" <<'PY'
 import json,sys
