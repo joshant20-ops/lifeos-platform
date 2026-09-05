@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# bandit: skip=B404,B603
 import json
 import os
 import re
@@ -13,7 +14,7 @@ ALLOWED = re.compile(r"^(RESTIC_|AWS_|B2_|AZURE_)[A-Z0-9_]+=")
 
 
 def systemctl(*args):
-    proc = subprocess.run(  # nosec
+    proc = subprocess.run(
         ["/usr/bin/systemctl", *args],
         text=True,
         check=True,
@@ -24,7 +25,7 @@ def systemctl(*args):
 
 def restic(env, *args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
-    return subprocess.run(  # nosec
+    return subprocess.run(
         ["/usr/bin/restic", *args],
         env=env,
         text=True,
