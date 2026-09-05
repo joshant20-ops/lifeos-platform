@@ -54,6 +54,17 @@ jobs:
             tests.test_step11_live_closure \
             tests.test_tower_metrics
 
+      - name: Validate Tower metrics deployment boundary
+        run: |
+          bash -n scripts/lifeos-deploy-tower-metrics.sh
+          python3 -m py_compile \
+            governor/tower_metrics.py \
+            homelab/live/usr/local/sbin/lifeos-deploy-gateway
+          grep -F "'deploy-tower-metrics'" \
+            homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
+          grep -F "sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-tower-metrics" \
+            .github/workflows/lifeos-tower-metrics-deploy.yml >/dev/null
+
       - name: Validate desired Compose YAML
         run: |
           python3 - <<'PY'
