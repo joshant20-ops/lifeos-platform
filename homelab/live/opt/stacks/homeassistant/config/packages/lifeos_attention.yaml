@@ -18,6 +18,10 @@ template:
             {% set issues = issues + ['📡 Pi3 controller not ready'] %}
           {% endif %}
 
+          {% if states('sensor.lifeos_energy_opportunity_attention') == 'attention' %}
+            {% set issues = issues + ['⚡ Negative-price energy opportunity'] %}
+          {% endif %}
+
           {% if issues | length == 0 %}
             All systems normal
           {% else %}
