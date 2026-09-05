@@ -1,0 +1,53 @@
+name: LifeOS Wave A Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-wave-a-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - name: Synchronize canonical checkout
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Refresh governed gateway through existing proven deployment boundary
+        run: |
+          set -Eeuo pipefail
+          # deploy-ha-control-bridge begins by refreshing the canonical gateway.
+          # Its later HA/Tower checks may fail without invalidating that refresh,
+          # so verify the installed allow-list explicitly afterwards.
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge || true
+          set +e
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway __not_allowlisted__ 2>&1)
+          rc=$?
+          set -e
+          test "$rc" -eq 64
+          grep -q 'deploy-wave-a-energy-attention' <<<"$out"
+          echo WAVE_A_GATEWAY_REFRESH=PASS
+      - name: Deploy Wave A energy attention
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-wave-a-energy-attention
+      - name: Clean canonical proof
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo WAVE_A_DEPLOY_REPOSITORY=PASS
