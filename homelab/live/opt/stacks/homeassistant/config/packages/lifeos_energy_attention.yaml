@@ -1,0 +1,18 @@
+command_line:
+  - sensor:
+      name: LifeOS Energy Opportunity Attention
+      unique_id: lifeos_energy_opportunity_attention
+      command: "python3 /config/scripts/lifeos_energy_attention_sensor.py"
+      scan_interval: 300
+      value_template: "{{ value_json.state }}"
+      json_attributes:
+        - count
+        - attention_id
+        - opportunity_ids
+        - kind
+        - severity
+        - summary
+        - start
+        - end
+        - minimum_price_p_per_kwh
+        - source
