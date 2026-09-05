@@ -1,0 +1,66 @@
+name: LifeOS Issue 26 Root Recovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-issue26-root-recovery.yml'
+      - 'scripts/lifeos-verify-transaction-core.sh'
+      - 'scripts/lifeos-resume-issue26-after-root-proof.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-issue26-root-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Verify transaction core through installed governed gateway
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +e
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway verify-transaction-core 2>&1)
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          echo "VERIFY_GATEWAY_RC=$rc"
+          test "$rc" -eq 0
+          grep -qx 'TRANSACTION_CORE_VERIFY=PASS' <<<"$out"
+          grep -qx 'GATEWAY_RESULT=PASS' <<<"$out"
+          echo 'TRANSACTION_ROOT_PATH_ACCEPTANCE=PASS'
+
+      - name: Resume issue 26 and prove HA blocker advanced
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +e
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway resume-issue26-after-root-proof 2>&1)
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          echo "RESUME_GATEWAY_RC=$rc"
+          test "$rc" -eq 0
+          grep -qx 'ISSUE26_STATE_RECONCILED=PASS' <<<"$out"
+          grep -qx 'ISSUE26_RESUME=PASS' <<<"$out"
+          grep -qx 'ROOT_BARRIER_CLEARED=PASS' <<<"$out"
+          grep -qx 'BACKLOG_RUNNER_RESUMED=PASS' <<<"$out"
+          ! grep -q 'CONTROL_BLOCKER_AFTER_RESUME=must_run_as_root_via_Watchman' <<<"$out"
+          grep -qx 'GATEWAY_RESULT=PASS' <<<"$out"
+          echo 'ISSUE26_ROOT_BLOCKER_ACCEPTANCE=PASS'
