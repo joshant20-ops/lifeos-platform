@@ -1,0 +1,109 @@
+name: LifeOS Capability Stage 1 Closure
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'governor/capability-roadmap/stage1-ots-rationalisation.json'
+      - '.github/workflows/lifeos-capability-stage1-closure.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-closure-audit:
+    runs-on: [self-hosted, linux]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Inventory active runtime and enforce Stage 1 dispositions
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+
+          policy=json.loads(Path('governor/capability-roadmap/stage1-ots-rationalisation.json').read_text())
+          assert policy['status'] == 'CLOSURE_PENDING_LIVE_PROOF'
+
+          def out(cmd):
+              return subprocess.run(cmd,text=True,capture_output=True,check=True).stdout
+
+          rows=[]
+          for line in out(['docker','ps','--format','{{.Names}}|{{.Image}}']).splitlines():
+              if '|' in line:
+                  name,image=line.split('|',1)
+                  rows.append((name,image))
+
+          print('===== ACTIVE CONTAINERS =====')
+          for name,image in rows:
+              print(f'{name}|{image}')
+
+          text='\n'.join(f'{n} {i}'.lower() for n,i in rows)
+          obsolete=[]
+          for marker,reason in [
+              ('autoheal','native restart/health policy supersedes generic autoheal'),
+              ('watchtower','unreviewed automatic updates conflict with governed pinned update path'),
+              ('rundeck','Semaphore is the proved production orchestration authority'),
+          ]:
+              if marker in text:
+                  obsolete.append((marker,reason))
+
+          if obsolete:
+              print('STAGE1_OBSOLETE_ACTIVE=YES')
+              for name,reason in obsolete:
+                  print(f'OBSOLETE={name}|{reason}')
+              raise SystemExit(20)
+
+          required_any={
+              'home-assistant':'Home Assistant',
+              'mosquitto':'Mosquitto',
+              'uptime-kuma':'Uptime Kuma',
+          }
+          missing=[label for marker,label in required_any.items() if marker not in text]
+          if missing:
+              print('STAGE1_REQUIRED_OTS_MISSING='+','.join(missing))
+              raise SystemExit(21)
+
+          units=out(['systemctl','list-unit-files','lifeos-*','--no-legend','--no-pager'])
+          print('===== LIFEOS SYSTEMD UNITS =====')
+          print(units.strip() or '(none)')
+
+          active=[]
+          for line in units.splitlines():
+              unit=line.split()[0]
+              r=subprocess.run(['systemctl','is-active',unit],text=True,capture_output=True)
+              if r.stdout.strip()=='active':
+                  active.append(unit)
+          print('ACTIVE_LIFEOS_UNITS='+','.join(sorted(active)))
+          print('STAGE1_LIVE_CLOSURE_AUDIT=PASS')
+          PY
+
+      - name: Run existing conservative Stage 1 inventory for evidence
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          set +e
+          python3 scripts/run-capability-stage1-ots-audit.py
+          rc=$?
+          set -e
+          # The legacy audit may still report IN_PROGRESS because it counts historical Git artifacts.
+          # It must nevertheless execute successfully and produce its durable report.
+          test "$rc" -eq 0
+
+      - name: Final repository non-mutation proof
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain)"
+          echo STAGE1_REPOSITORY_NON_MUTATION=PASS
