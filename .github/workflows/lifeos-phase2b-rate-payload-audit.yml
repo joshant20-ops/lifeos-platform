@@ -1,0 +1,34 @@
+name: LifeOS Phase 2B Rate Payload Audit
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/audit-ha-octopus-rate-payload.py','.github/workflows/lifeos-phase2b-rate-payload-audit.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Sync
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Inspect sanitized payload shape
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-ha-octopus-rate-payload.py
+      - name: Non-mutation
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo RATE_PAYLOAD_REPOSITORY_FINAL=PASS
