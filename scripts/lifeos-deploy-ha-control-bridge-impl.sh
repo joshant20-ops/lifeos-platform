@@ -35,6 +35,11 @@ rollback() {
   elif [[ -f "$BACKUP/lifeos-tower-control.service.absent" ]]; then
     rm -f "$TOWER_UNIT" || true
   fi
+  if [[ -f "$BACKUP/tower.json.before" ]]; then
+    install -o root -g joshan -m 0640 "$BACKUP/tower.json.before" "$TOWER_CONFIG" || true
+  elif [[ -f "$BACKUP/tower.json.absent" ]]; then
+    rm -f "$TOWER_CONFIG" || true
+  fi
   systemctl daemon-reload || true
   if [[ -f "$BACKUP/tower-unit-was-active" ]]; then systemctl restart lifeos-tower-control.service || true; else systemctl stop lifeos-tower-control.service >/dev/null 2>&1 || true; fi
   exit "$rc"
@@ -51,6 +56,7 @@ mkdir -p "$BACKUP" /etc/lifeos /var/lib/lifeos-tower
 cp -a "$DEST" "$BACKUP/lifeos-ha-issue-queue-bridge.before"
 if [[ -f "$TOWER_DEST" ]]; then cp -a "$TOWER_DEST" "$BACKUP/lifeos-tower-control.before"; else : > "$BACKUP/lifeos-tower-control.absent"; fi
 if [[ -f "$TOWER_UNIT" ]]; then cp -a "$TOWER_UNIT" "$BACKUP/lifeos-tower-control.service.before"; else : > "$BACKUP/lifeos-tower-control.service.absent"; fi
+if [[ -f "$TOWER_CONFIG" ]]; then cp -a "$TOWER_CONFIG" "$BACKUP/tower.json.before"; else : > "$BACKUP/tower.json.absent"; fi
 if systemctl is-active --quiet lifeos-tower-control.service 2>/dev/null; then : > "$BACKUP/tower-unit-was-active"; fi
 
 python3 -m py_compile "$SOURCE" "$TOWER_SOURCE"
@@ -59,13 +65,46 @@ install -o root -g root -m 0755 "$TOWER_SOURCE" "$TOWER_DEST"
 install -o root -g root -m 0644 "$TOWER_UNIT_SOURCE" "$TOWER_UNIT"
 if [[ ! -e "$TOWER_CONFIG" ]]; then
   install -o root -g joshan -m 0640 "$TOWER_CONFIG_EXAMPLE" "$TOWER_CONFIG"
-  echo 'TOWER_CONFIG=CREATED_SAFE_UNCONFIGURED'
+  echo 'TOWER_CONFIG=CREATED_CANONICAL'
 else
-  echo 'TOWER_CONFIG=PRESERVED'
+  python3 - "$TOWER_CONFIG" "$TOWER_CONFIG_EXAMPLE" <<'PY'
+import json, re, sys
+from pathlib import Path
+live_path, canonical_path = map(Path, sys.argv[1:3])
+live = json.loads(live_path.read_text())
+canonical = json.loads(canonical_path.read_text())
+old_mac = str(live.get('mac') or '').strip()
+if not old_mac:
+    live['mac'] = canonical['mac']
+    # The original unconfigured template also carried a subnet-specific broadcast.
+    # Move that untouched default to the generic limited broadcast used by wakeonlan.
+    if str(live.get('broadcast') or '') in {'', '192.168.0.255'}:
+        live['broadcast'] = canonical['broadcast']
+    live['wol_port'] = int(live.get('wol_port') or canonical.get('wol_port') or 9)
+    live_path.write_text(json.dumps(live, indent=2) + '\n')
+    print('TOWER_CONFIG=MIGRATED_MISSING_WOL_IDENTITY')
+else:
+    print('TOWER_CONFIG=PRESERVED_CONFIGURED')
+mac = str(live.get('mac') or '').lower()
+if not re.fullmatch(r'(?:[0-9a-f]{2}:){5}[0-9a-f]{2}', mac):
+    raise SystemExit('ERROR=invalid_tower_mac')
+PY
 fi
 chown root:joshan "$TOWER_CONFIG"
 chmod 0640 "$TOWER_CONFIG"
 chown -R joshan:joshan /var/lib/lifeos-tower
+
+python3 - "$TOWER_CONFIG" "$TOWER_CONFIG_EXAMPLE" <<'PY'
+import json, sys
+from pathlib import Path
+live=json.loads(Path(sys.argv[1]).read_text())
+canonical=json.loads(Path(sys.argv[2]).read_text())
+if str(live.get('mac','')).lower() != str(canonical.get('mac','')).lower():
+    raise SystemExit('ERROR=tower_mac_does_not_match_canonical')
+print('TOWER_WOL_CONFIG=PASS')
+print('TOWER_WOL_BROADCAST=' + str(live.get('broadcast') or ''))
+print('TOWER_WOL_PORT=' + str(live.get('wol_port') or 9))
+PY
 
 systemctl daemon-reload
 systemctl enable --now lifeos-tower-control.service
@@ -82,15 +121,19 @@ CONTROL="$(timeout 15s mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/issue_queue/con
 [[ -n "$CONTROL" ]] || { echo 'ERROR=control_topic_absent'; false; }
 TOWER="$(timeout 15s mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state 2>/dev/null || true)"
 [[ -n "$TOWER" ]] || { echo 'ERROR=tower_state_topic_absent'; false; }
+DISCOVERY="$(timeout 10s mosquitto_sub -h 127.0.0.1 -C 1 -t homeassistant/switch/lifeos_tower/power/config 2>/dev/null || true)"
+[[ -n "$DISCOVERY" ]] || { echo 'ERROR=tower_switch_discovery_absent'; false; }
 
-python3 - "$CONTROL" "$TOWER" <<'PY'
+python3 - "$CONTROL" "$TOWER" "$DISCOVERY" <<'PY'
 import json, sys
-value=json.loads(sys.argv[1]); tower=json.loads(sys.argv[2])
+value=json.loads(sys.argv[1]); tower=json.loads(sys.argv[2]); discovery=json.loads(sys.argv[3])
 required={'state','github_runner','semaphore','roadmap_stage','roadmap_progress_percent','open_issue_count','eligible_count','blocked_count'}
 missing=sorted(required-set(value))
 if missing: raise SystemExit('missing_control_fields=' + ','.join(missing))
 if value['state'] not in {'WORKING','IDLE','BLOCKED','STALLED','DEGRADED'}: raise SystemExit('invalid_control_state=' + str(value['state']))
 if tower.get('state') not in {'OFF','POWERED_INACCESSIBLE','ACCESSIBLE','UNKNOWN'}: raise SystemExit('invalid_tower_state=' + str(tower.get('state')))
+if discovery.get('command_topic') != 'lifeos/tower/power/set': raise SystemExit('invalid_tower_command_topic=' + str(discovery.get('command_topic')))
+if discovery.get('payload_on') != 'ON' or discovery.get('payload_off') != 'OFF': raise SystemExit('invalid_tower_power_payloads')
 print('CONTROL_STATE=' + value['state'])
 print('CONTROL_CURRENT_ISSUE=' + str(value.get('current_issue') or 'none'))
 print('CONTROL_BLOCKER=' + str(value.get('blocker') or 'none'))
@@ -99,6 +142,7 @@ print('CONTROL_ROADMAP=' + str(value.get('roadmap_stage')) + '/' + str(value.get
 print('TOWER_STATE=' + tower['state'])
 print('TOWER_POWER=' + tower.get('physical_power','UNKNOWN'))
 print('TOWER_ACCESSIBLE=' + ('YES' if tower.get('accessible') else 'NO'))
+print('TOWER_SWITCH_COMMAND_PATH=PASS')
 PY
 
 echo '==> TOWER / POWER ENTITY DISCOVERY CANDIDATES'
@@ -159,6 +203,8 @@ echo 'MQTT_CONTROL_TOPIC=PASS'
 echo 'TOWER_CONTROLLER_DEPLOYED=YES'
 echo 'TOWER_MQTT_DISCOVERY=PASS'
 echo 'TOWER_POWER_COMMANDS=BOUNDED'
+echo 'TOWER_WOL_IDENTITY=CONFIGURED'
+echo 'TOWER_SWITCH_COMMAND_PATH=PASS'
 echo 'TOWER_OFF_REQUIRES_CONFIGURED_GRACEFUL_SHUTDOWN=YES'
 echo 'TOWER_DASHBOARD_LIGHT=GRAY_OFF_YELLOW_INACCESSIBLE_GREEN_ACCESSIBLE'
 echo 'TOWER_SHUTDOWN_CONFIRMATION=YES'
@@ -167,4 +213,4 @@ echo 'LIFEOS_CONTROL_DASHBOARD=ADAPTED'
 echo 'LIFEOS_CONTROL_DASHBOARD_PATH=/lifeos-control/overview'
 echo 'HA_DASHBOARD_AUDIT_AND_SIMPLIFICATION=PASS'
 echo "BACKUP=$BACKUP"
-echo 'ROLLBACK=restore backup bridge/Tower controller/dashboard storage then restart affected services'
+echo 'ROLLBACK=restore backup bridge/Tower controller/Tower config/dashboard storage then restart affected services'
