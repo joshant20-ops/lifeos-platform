@@ -13,8 +13,19 @@ from pathlib import Path
 print('RESTORE_REHEARSAL=START')
 svc = 'lifeos-restic-backup.service'
 systemctl = '/usr/bin/systemctl'
-cmd = [systemctl, 'show', svc, '-p', 'LoadState', '--value']
-state = subprocess.check_output(cmd, text=True).strip()  # nosec B603
+
+
+def systemctl_text(*args):
+    proc = subprocess.run(  # nosec B603
+        [systemctl, *args],
+        text=True,
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    return proc.stdout
+
+
+state = systemctl_text('show', svc, '-p', 'LoadState', '--value').strip()
 if state != 'loaded':
     raise SystemExit('backup service missing')
 pattern = (
@@ -22,12 +33,9 @@ pattern = (
     r'B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)='
 )
 allow = re.compile(pattern)
-cmd = [systemctl, 'show', svc, '-p', 'Environment', '--value']
-env_text = subprocess.check_output(cmd, text=True)  # nosec B603
+env_text = systemctl_text('show', svc, '-p', 'Environment', '--value')
 items = shlex.split(env_text)
-unit = subprocess.check_output(  # nosec B603
-    [systemctl, 'cat', svc], text=True
-)
+unit = systemctl_text('cat', svc)
 for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
     path = Path(rawpath.strip('"\''))
     try:
