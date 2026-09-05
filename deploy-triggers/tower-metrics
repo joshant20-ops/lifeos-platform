@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=install-live-z97-metrics-user-confirmed-online
-requested_commit=main
-nonce=2026-09-05T09:46+01:00
+reason=prove-sdb-live-read-write-and-usage-status
+requested_commit=b48b70a3e421d7e9a13df51f860dd39a37b311ea
+nonce=2026-09-05T10:00+01:00
