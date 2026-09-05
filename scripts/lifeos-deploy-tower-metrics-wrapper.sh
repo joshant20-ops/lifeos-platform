@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 PLATFORM=/home/joshan/lifeos-platform
 DEPLOY="$PLATFORM/scripts/lifeos-deploy-tower-metrics.sh"
+BASE_DASHBOARD="$PLATFORM/scripts/lifeos-adapt-ha-lifeos-dashboard.sh"
 EXPECTED_MAC=40:8d:5c:84:41:64
 REMOTE_USER=joshan
 PACKAGE=mosquitto-clients
@@ -38,6 +39,7 @@ trap rollback_package ERR
 
 [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo 'ERROR=must_run_as_root'; exit 1; }
 [[ -f "$DEPLOY" && ! -L "$DEPLOY" ]] || { echo 'ERROR=canonical_tower_metrics_deploy_missing'; exit 1; }
+[[ -f "$BASE_DASHBOARD" && ! -L "$BASE_DASHBOARD" ]] || { echo 'ERROR=canonical_lifeos_dashboard_adapter_missing'; exit 1; }
 
 TOWER_IP="$(python3 - "$EXPECTED_MAC" <<'PY'
 import json, subprocess, sys
@@ -88,6 +90,12 @@ else
   }
   echo 'TOWER_MQTT_CLIENT=INSTALLED'
 fi
+
+# Rebuild the canonical LifeOS dashboard baseline if another deployment has removed
+# its storage object. The Tower-specific adapter then works against the same known
+# dashboard identity every time instead of assuming the storage file survived.
+bash "$BASE_DASHBOARD"
+echo 'TOWER_DASHBOARD_BASELINE=PASS'
 
 # The canonical deployment performs its own independent identity, MQTT, payload,
 # Home Assistant discovery, disk-graph and rollback checks.
