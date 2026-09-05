@@ -74,9 +74,10 @@ print('RESTIC_CHECK=PASS')
 with tempfile.TemporaryDirectory() as td:
     target = Path(td) / 'restore'
     restic('restore', 'latest', '--target', str(target))
-    count = sum(
-        1 for file_path in target.rglob('*') if file_path.is_file()
-    )
+    count = 0
+    for file_path in target.rglob('*'):
+        if file_path.is_file():
+            count += 1
     if count <= 0:
         raise SystemExit('no files restored')
     print(f'RESTORED_FILE_COUNT={count}')
