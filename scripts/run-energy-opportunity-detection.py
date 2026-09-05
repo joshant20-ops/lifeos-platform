@@ -37,13 +37,17 @@ print(json.dumps(a.get('rates',[]),separators=(',',':')))
  if x.returncode: raise SystemExit(x.stderr)
  for raw in json.loads(x.stdout):
   start=datetime.fromisoformat(raw['start']); end=datetime.fromisoformat(raw['end'])
-  slots[start.isoformat()]=m.RateSlot(start,end,float(raw['value_inc_vat']))
+  # HA Octopus event value_inc_vat is GBP/kWh; the Energy Opportunity contract is p/kWh.
+  price_p=float(raw['value_inc_vat'])*100.0
+  slots[start.isoformat()]=m.RateSlot(start,end,price_p)
 now=datetime.now().astimezone()
 opps=m.group_negative_import_slots(slots.values(),detected_at=now,source='home_assistant_octopus_rate_events')
 CURRENT.parent.mkdir(parents=True,exist_ok=True)
 CURRENT.write_text(json.dumps([m.asdict(x) for x in opps],indent=2,sort_keys=True)+'\n')
 ledger=m.OpportunityLedger(LEDGER); unseen=ledger.unseen(opps)
 print('ENERGY_OPPORTUNITY_DETECTION=PASS')
+print('RATE_UNIT=p_per_kwh')
+print('HA_SOURCE_UNIT=GBP_per_kwh')
 print('RATE_EVENT_ENTITIES='+str(len(ids)))
 print('RATE_SLOTS='+str(len(slots)))
 print('NEGATIVE_WINDOWS='+str(len(opps)))
