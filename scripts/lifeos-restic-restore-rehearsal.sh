@@ -99,7 +99,8 @@ fd, tmp = tempfile.mkstemp(
     dir=state_dir,
 )
 os.close(fd)
-Path(tmp).write_text(json.dumps(record, indent=2, sort_keys=True) + '\n')
+encoded = json.dumps(record, indent=2, sort_keys=True) + '\n'
+Path(tmp).write_text(encoded)
 os.replace(tmp, state_dir / 'latest.json')
 print('PRODUCTION_OVERWRITE=NO')
 print('SECRETS_EMITTED=NO')
