@@ -1,44 +1,76 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 python3 - <<'PY'
-import json, os, re, shlex, subprocess, tempfile
+import json
+import os
+import re
+import shlex
+import subprocess
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
 print('RESTORE_REHEARSAL=START')
-svc='lifeos-restic-backup.service'
-state=subprocess.check_output(['systemctl','show',svc,'-p','LoadState','--value'],text=True).strip()
-if state!='loaded': raise SystemExit('backup service missing')
-allow=re.compile(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=')
-items=shlex.split(subprocess.check_output(['systemctl','show',svc,'-p','Environment','--value'],text=True)); unit=subprocess.check_output(['systemctl','cat',svc],text=True)
-for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)',unit,re.M):
-    path=rawpath.strip('"\'')
-    try: fh=open(path)
-    except OSError: continue
+svc = 'lifeos-restic-backup.service'
+state = subprocess.check_output(['systemctl', 'show', svc, '-p', 'LoadState', '--value'], text=True).strip()
+if state != 'loaded':
+    raise SystemExit('backup service missing')
+allow = re.compile(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=')
+items = shlex.split(subprocess.check_output(['systemctl', 'show', svc, '-p', 'Environment', '--value'], text=True))
+unit = subprocess.check_output(['systemctl', 'cat', svc], text=True)
+for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
+    path = rawpath.strip('"\'')
+    try:
+        fh = open(path)
+    except OSError:
+        continue
     with fh:
         for rawline in fh:
-            line=rawline.strip()
-            if not line or line.startswith('#'): continue
-            if line.startswith('export '): line=line[7:].lstrip()
-            try: items.extend(shlex.split(line,comments=True,posix=True))
-            except ValueError: continue
-env=os.environ.copy()
+            line = rawline.strip()
+            if not line or line.startswith('#'):
+                continue
+            if line.startswith('export '):
+                line = line[7:].lstrip()
+            try:
+                items.extend(shlex.split(line, comments=True, posix=True))
+            except ValueError:
+                continue
+env = os.environ.copy()
 for item in items:
     if allow.match(item):
-        k,v=item.split('=',1); env[k]=v
-if 'RESTIC_REPOSITORY' not in env: raise SystemExit('repository contract missing')
+        key, value = item.split('=', 1)
+        env[key] = value
+if 'RESTIC_REPOSITORY' not in env:
+    raise SystemExit('repository contract missing')
+
 def restic(*args, capture=False):
-    return subprocess.run(['restic',*args],env=env,text=True,check=True,stdout=subprocess.PIPE if capture else subprocess.DEVNULL)
-snaps=json.loads(restic('snapshots','--latest','1','--json',capture=True).stdout)
-if not snaps: raise SystemExit('no snapshots')
-s=snaps[0]
-print('SNAPSHOT_PRESENT=YES'); print('SNAPSHOT_TIME='+str(s.get('time',''))); print('SNAPSHOT_HOST='+str(s.get('hostname',''))); print('SNAPSHOT_PATH_COUNT='+str(len(s.get('paths') or [])))
-restic('check','--read-data-subset=1/100'); print('RESTIC_CHECK=PASS')
+    return subprocess.run(['restic', *args], env=env, text=True, check=True, stdout=subprocess.PIPE if capture else subprocess.DEVNULL)
+
+snaps = json.loads(restic('snapshots', '--latest', '1', '--json', capture=True).stdout)
+if not snaps:
+    raise SystemExit('no snapshots')
+snapshot = snaps[0]
+print('SNAPSHOT_PRESENT=YES')
+print('SNAPSHOT_TIME=' + str(snapshot.get('time', '')))
+print('SNAPSHOT_HOST=' + str(snapshot.get('hostname', '')))
+print('SNAPSHOT_PATH_COUNT=' + str(len(snapshot.get('paths') or [])))
+restic('check', '--read-data-subset=1/100')
+print('RESTIC_CHECK=PASS')
 with tempfile.TemporaryDirectory() as td:
-    target=Path(td)/'restore'; restic('restore','latest','--target',str(target)); count=sum(1 for f in target.rglob('*') if f.is_file())
-    if count<=0: raise SystemExit('no files restored')
+    target = Path(td) / 'restore'
+    restic('restore', 'latest', '--target', str(target))
+    count = sum(1 for f in target.rglob('*') if f.is_file())
+    if count <= 0:
+        raise SystemExit('no files restored')
     print(f'RESTORED_FILE_COUNT={count}')
-state_dir=Path.home()/'.local/state/lifeos/restore-rehearsal'; state_dir.mkdir(parents=True,exist_ok=True)
-r={'schema_version':1,'timestamp':datetime.now(timezone.utc).isoformat(),'result':'PASS','repository_check':'PASS','actual_restore':'PASS','restored_file_count':count,'production_overwrite':False,'secrets_emitted':False}
-fd,tmp=tempfile.mkstemp(prefix='.restore-rehearsal-',dir=state_dir); os.close(fd); Path(tmp).write_text(json.dumps(r,indent=2,sort_keys=True)+'\n'); os.replace(tmp,state_dir/'latest.json')
-print('PRODUCTION_OVERWRITE=NO'); print('SECRETS_EMITTED=NO'); print('RESTORE_REHEARSAL=PASS')
+state_dir = Path.home() / '.local/state/lifeos/restore-rehearsal'
+state_dir.mkdir(parents=True, exist_ok=True)
+record = {'schema_version': 1, 'timestamp': datetime.now(timezone.utc).isoformat(), 'result': 'PASS', 'repository_check': 'PASS', 'actual_restore': 'PASS', 'restored_file_count': count, 'production_overwrite': False, 'secrets_emitted': False}
+fd, tmp = tempfile.mkstemp(prefix='.restore-rehearsal-', dir=state_dir)
+os.close(fd)
+Path(tmp).write_text(json.dumps(record, indent=2, sort_keys=True) + '\n')
+os.replace(tmp, state_dir / 'latest.json')
+print('PRODUCTION_OVERWRITE=NO')
+print('SECRETS_EMITTED=NO')
+print('RESTORE_REHEARSAL=PASS')
 PY
