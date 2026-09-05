@@ -51,7 +51,9 @@ def fail(msg: str, code: int = 1) -> None:
     raise SystemExit(code)
 
 
-def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
+def as_joshan(
+    *args: str, capture: bool = False
+) -> subprocess.CompletedProcess[str]:
     cmd = [
         RUNUSER, '-u', 'joshan', '--', ENV, '-i', 'HOME=/home/joshan',
         'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
@@ -64,7 +66,9 @@ def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[
     )
 
 
-def git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
+def git(
+    *args: str, capture: bool = True
+) -> subprocess.CompletedProcess[str]:
     return as_joshan(GIT, '-C', str(REPO), *args, capture=capture)
 
 
