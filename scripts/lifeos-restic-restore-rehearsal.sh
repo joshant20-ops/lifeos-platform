@@ -6,7 +6,7 @@ echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
-# Import the proven service's Environment= contract in-memory. NUL delimiters preserve spaces without logging values.
+# Import non-secret service Environment= values in-memory. NUL delimiters preserve spaces.
 while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$svc" <<'PY'
 import os,shlex,subprocess,sys
 raw=subprocess.check_output(['systemctl','show',sys.argv[1],'-p','Environment','--value'],text=True)
@@ -14,15 +14,23 @@ for item in shlex.split(raw):
     if '=' in item: os.write(1,item.encode()+b'\0')
 PY
 )
-# EnvironmentFiles output includes optional markers/metadata; strip those but never print file contents.
+# Reuse root-owned restic credential files already proven by the backup service.
+for f in /etc/lifeos/restic.env /etc/default/lifeos-restic /etc/lifeos/backup.env; do
+  [[ -r "$f" ]] || continue
+  set -a
+  # shellcheck disable=SC1090
+  source "$f"
+  set +a
+done
+# If systemd explicitly declares readable environment files, import them too.
 while IFS= read -r f; do
   [[ -r "$f" ]] || continue
   set -a
   # shellcheck disable=SC1090
   source "$f"
   set +a
-done < <(systemctl show "$svc" -p EnvironmentFiles --value | grep -oE '/[^ ;]+' || true)
-: "${RESTIC_REPOSITORY:?backup service does not expose RESTIC_REPOSITORY}"
+done < <(systemctl cat "$svc" | sed -nE 's/^[[:space:]]*EnvironmentFile=-?([^[:space:]]+).*/\1/p')
+: "${RESTIC_REPOSITORY:?backup credential contract does not expose RESTIC_REPOSITORY}"
 latest="$(restic snapshots --latest 1 --json)"
 python3 - "$latest" <<'PY'
 import json,sys
