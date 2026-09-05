@@ -57,8 +57,13 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway step11-live-closure)
+          set +e
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway step11-live-closure 2>&1)
+          rc=$?
+          set -e
           printf '%s\n' "$out"
+          echo "STEP11_GATEWAY_RC=$rc"
+          test "$rc" -eq 0
           grep -qx 'STEP_11=PASS' <<<"$out"
           grep -qx 'LIVE_MODULE_SYNC=PASS' <<<"$out"
           grep -qx 'PASS_STOP=PASS' <<<"$out"
