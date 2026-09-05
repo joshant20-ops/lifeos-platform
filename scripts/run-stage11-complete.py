@@ -25,7 +25,7 @@ def fail(gate,detail=''):
  for label,cmd in [
   ('git',['git','status','--short','--branch']),
   ('head',['git','log','--oneline','--decorate','-10']),
-  ('target-history',['git','log','--oneline','-5','--',TARGET]),
+  ('target-history',['git','log','--oneline','-8','--',TARGET]),
   ('containers',['docker','ps','--format','{{.Names}}\t{{.Status}}']),
  ]: show(label,cmd)
  raise SystemExit(1)
@@ -46,19 +46,30 @@ if p.get('stage')!=11 or p.get('scoring',{}).get('autonomous_threshold') is None
 if p['autonomous_scope'].get('max_files_changed')!=1: fail('policy','first autonomous scope must be exactly one file')
 print('PASS: policy')
 
-# Gate 2: observe a real before/after weakness from repository history.
-r=cp(['git','log','-2','--format=%H','--',TARGET])
+# Gate 2: observe the actual false->true health-guard transition in repository history.
+# Later legitimate edits to TARGET must not invalidate this historical proof.
+r=cp(['git','log','--format=%H','--',TARGET])
 commits=[x for x in r.stdout.splitlines() if x.strip()]
 if r.returncode or len(commits)<2: fail('observe-candidate','insufficient target history')
-new_commit,old_commit=commits[0],commits[1]
-old=cp(['git','show',f'{old_commit}:{TARGET}'])
-new=cp(['git','show',f'{new_commit}:{TARGET}'])
-if old.returncode or new.returncode: fail('observe-candidate','unable to read historical target revisions')
 marker="docker','inspect"
-before_guard=marker in old.stdout
-after_guard=marker in new.stdout
-if before_guard or not after_guard: fail('observe-candidate',f'before_guard={before_guard} after_guard={after_guard}')
-print('PASS: observe-candidate')
+new_commit=old_commit=None
+before_guard=after_guard=None
+for newer, older in zip(commits, commits[1:]):
+    old=cp(['git','show',f'{older}:{TARGET}'])
+    new=cp(['git','show',f'{newer}:{TARGET}'])
+    if old.returncode or new.returncode:
+        continue
+    old_has=marker in old.stdout
+    new_has=marker in new.stdout
+    if not old_has and new_has:
+        old_commit=older
+        new_commit=newer
+        before_guard=old_has
+        after_guard=new_has
+        break
+if not old_commit or not new_commit:
+    fail('observe-candidate','no historical container-health guard transition found')
+print(f'PASS: observe-candidate old={old_commit[:12]} new={new_commit[:12]}')
 
 # Gate 3: classify and score using explicit evidence-based policy.
 candidate={
