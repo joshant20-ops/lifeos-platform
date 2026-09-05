@@ -32,10 +32,14 @@ def restic(env, args, output=None):
     actions = []
     fd = None
     if output is not None:
-        fd = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        fd = os.open(output, flags, 0o600)
         actions.append((os.POSIX_SPAWN_DUP2, fd, 1))
     pid = os.posix_spawn(
-        "/usr/bin/restic", ["restic", *args], env, file_actions=actions
+        "/usr/bin/restic",
+        ["restic", *args],
+        env,
+        file_actions=actions,
     )
     if fd is not None:
         os.close(fd)
@@ -83,7 +87,11 @@ def main():
     with tempfile.TemporaryDirectory() as temp:
         base = Path(temp)
         snapshot_file = base / "snapshots.json"
-        restic(env, ["snapshots", "--latest", "1", "--json"], str(snapshot_file))
+        restic(
+            env,
+            ["snapshots", "--latest", "1", "--json"],
+            str(snapshot_file),
+        )
         snapshots = json.loads(snapshot_file.read_text(encoding="utf-8"))
         if not snapshots:
             raise RuntimeError("no snapshots")
@@ -114,7 +122,8 @@ def main():
     }
     fd, temp = tempfile.mkstemp(prefix=".restore-rehearsal-", dir=state)
     os.close(fd)
-    Path(temp).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    encoded = json.dumps(record, indent=2) + "\n"
+    Path(temp).write_text(encoded, encoding="utf-8")
     os.replace(temp, state / "latest.json")
     print("PRODUCTION_OVERWRITE=NO")
     print("SECRETS_EMITTED=NO")
