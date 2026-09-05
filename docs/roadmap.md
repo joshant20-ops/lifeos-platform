@@ -11,7 +11,7 @@
 ## Capability status
 
 - Foundation roadmap: **12/12 COMPLETE**.
-- Capability Stage 1 — OTS rationalisation/custom-code purge: **COMPLETE 2026-09-05**. Fresh Pi5 runtime evidence showed no active Autoheal, Watchtower, or Rundeck; historical proof/migration files are retained as evidence and no longer miscounted as live services.
+- Capability Stage 1 — OTS rationalisation/custom-code purge: **COMPLETE 2026-09-05**. Live closure run `33965885337` on `lifeos-pi5` passed the active-runtime gate: 17 active containers were inventoried; no active Autoheal, Watchtower or Rundeck was present; Home Assistant, Mosquitto and Uptime Kuma were live. Historical proof/migration files remain as evidence and are not treated as active services.
 - Capability Stage 2 — backlog/issue hygiene: **COMPLETE 2026-09-04**.
 - Capability Stage 3 — production operations OTS audit: **COMPLETE 2026-09-05**. Durable restore rehearsal continues independently under issue #106 and does not reopen the base operations audit.
 - Capability Stages 4–14: capability delivery roadmap; several already have partial implementations or dedicated issues.
