@@ -27,15 +27,15 @@ PY
 )
 if ! printf '%s\n' "${restic_env[@]}" | grep -q '^RESTIC_REPOSITORY='; then echo 'RESTORE_REHEARSAL=FAIL reason=repository_contract_missing'; exit 1; fi
 r=(env "${restic_env[@]}" restic)
-latest="$(${r[@]} snapshots --latest 1 --json)"
+latest="$("${r[@]}" snapshots --latest 1 --json)"
 python3 - "$latest" <<'PY'
 import json,sys
 x=json.loads(sys.argv[1]); assert x, 'no snapshots'; s=x[0]
 print('SNAPSHOT_PRESENT=YES'); print('SNAPSHOT_TIME='+str(s.get('time',''))); print('SNAPSHOT_HOST='+str(s.get('hostname',''))); print('SNAPSHOT_PATH_COUNT='+str(len(s.get('paths') or [])))
 PY
-${r[@]} check --read-data-subset=1/100 >/dev/null
+"${r[@]}" check --read-data-subset=1/100 >/dev/null
 echo 'RESTIC_CHECK=PASS'
-${r[@]} restore latest --target "$TMP/restore" >/dev/null
+"${r[@]}" restore latest --target "$TMP/restore" >/dev/null
 count="$(find "$TMP/restore" -type f 2>/dev/null | wc -l)"
 [[ "$count" -gt 0 ]] || { echo 'RESTORE_REHEARSAL=FAIL reason=no_files_restored'; exit 1; }
 echo "RESTORED_FILE_COUNT=$count"
