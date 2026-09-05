@@ -1,6 +1,6 @@
 {
-  "mac": "",
-  "broadcast": "192.168.0.255",
+  "mac": "40:8d:5c:84:41:64",
+  "broadcast": "255.255.255.255",
   "wol_port": 9,
   "host": "",
   "access_probe": {
