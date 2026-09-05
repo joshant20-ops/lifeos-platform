@@ -329,3 +329,81 @@ At the start of any LifeOS/Homelab conversation, the user can say:
 > **Read the canonical LifeOS mission brief from `joshant20-ops/lifeos-platform` at `docs/MISSION_BRIEF.md`, treat it as the governing requirements for this work, check the current roadmap/state in GitHub, and continue from the appropriate phase. Do not rely on an older pasted copy if GitHub is available.**
 
 That repository document is authoritative over abbreviated copies in chat.
+
+---
+
+## Work log — 2026-09-05 — backlog/snag audit and Watchman recovery
+
+### Governing rule established
+
+Before any change for an open issue, establish current live/repository state and compare it with the historical reason the issue exists. **Current reality outranks stale issue text.** If the problem is gone or the system works acceptably, close/archive rather than “fix” it. If it remains, diagnose read-only first and mutate only after a current defect/gap is proven. Preserve working systems; potentially disruptive changes require extra safety checks.
+
+### Backlog cleanup
+
+- #19 Northampton air-quality platform — closed `not_planned`; explicitly no longer relevant.
+- #20 heat-pump/battery expansion — closed `not_planned`; explicitly no longer relevant for now.
+- Historical/deployment trigger issues previously cleaned up include #60, #79, #82, #53, #81, #111 and #112 where superseded by current evidence/work.
+
+### Confirmed human/external boundaries
+
+- #103 WhatsApp household energy alerts — requires an authorised provider/account path and intended household recipients. Do not invent credentials.
+- #104 Alexa energy announcements — current canonical/live inspection found no usable Alexa notification target. No HA configuration was changed. This remains an account/integration-authorisation boundary unless a usable authorised path subsequently appears.
+- #105 positive cheap-power threshold — negative-price alerts work; positive-cheap threshold remains a user policy decision. Proposed `<5p/kWh` class remains disabled unless explicitly approved.
+
+### #26 transactional root self-modification — live blocker recovered
+
+Home Assistant Engineer dashboard showed a genuine current blocker:
+
+`BLOCKED: must_run_as_root_via_Watchman`
+
+It had been stalled for roughly 5.5 hours. This was treated as current live evidence and given priority over historical backlog assumptions.
+
+Recovery was performed through the existing governed privilege boundary rather than bypassing Watchman. GitHub Actions run `33960807378`, job `101292252399`, runner `lifeos-pi5` / machine `Docker`, proved:
+
+- canonical Pi checkout synchronized to main;
+- governed root gateway accepted `verify-transaction-core`;
+- 15 focused transaction-core tests passed;
+- `TRANSACTION_CORE_VERIFY=PASS`;
+- `PROTECTED_CORE=PASS`;
+- `WATCHDOG=PASS`;
+- watchdog deadline is 2h and persistent;
+- `SCOPED_TRANSACTION_TESTS=PASS`;
+- `GATEWAY_RESULT=PASS`;
+- state reconciliation passed;
+- control state advanced to `WORKING`;
+- stale `must_run_as_root_via_Watchman` blocker cleared;
+- backlog runner resumed;
+- next activity was `iteration 1: Codex implementation`;
+- `ISSUE26_ROOT_BLOCKER_ACCEPTANCE=PASS`.
+
+No unrestricted root shell, package changes, GPU changes or reboot were used. Temporary verification issue #120 was closed after successful proof. #26 itself remains open because clearing this blocker does not prove the entire transactional-root capability complete. Reconcile its acceptance criteria against already-live transaction/recovery functionality before adding further code, and close only on independent live proof.
+
+A subsequent scheduled `LifeOS Pi Automation Health` run also completed successfully on the same main commit.
+
+### #7 P106/R580 GPU
+
+Do **not** change NVIDIA drivers/packages/repositories or reboot based on historical issue assumptions. Fresh Tower metrics evidence proves the P106 is present and GPU telemetry works, but does not by itself prove Ollama CUDA inference. Next permitted action is read-only verification of current NVIDIA driver and actual Ollama GPU/CUDA use. If current acceleration is fit for purpose, close #7 as superseded rather than migrate.
+
+### #14 privacy classifier
+
+Current source behaviour indicates ordinary engineering work is classified `normal` while sensitive/private content remains `local-only`. Historical attempts did not provide sufficient fresh end-to-end runtime proof. Establish current state first and obtain a bounded fresh E2E proof only if still missing. Do not blindly mutate historical probe files.
+
+### #18 Zemismart Matter curtain
+
+Historical failed autonomous jobs did not prove a curtain fault; they stopped on unrelated dirty-checkout conditions. Earlier bounded Matter inspection showed node 3 readable/available. Next action is read-only current HA/Matter entity availability and recent state/error inspection. Do not reset, re-pair, recommission or change Matter configuration unless a current defect is demonstrated.
+
+### Other active backlog
+
+- #24 central build/backlog index — reconcile against the current issue list and remove stale references, including #19/#20. This is portfolio/index maintenance, not a new foundation stage.
+- #15 Personal Assistant HA UI, #16 autonomous job UI/management and #17 LifeOS Finance are capability backlog rather than current snags. Inspect existing implementation before building because substantial control/PA infrastructure may already exist.
+- #29 remains the machine-readable automation evidence sink while actively referenced.
+
+### Continuation point
+
+1. Inspect the current live state of #26 following the Watchman recovery.
+2. Let the existing autonomous process continue if healthy; diagnose it if stalled again.
+3. Reconcile #26 acceptance criteria against the already-live transaction/recovery implementation and close only when independently proven.
+4. Finish safe read-only/current-state verification for #14, #7 and #18.
+5. Reconcile #24.
+6. Leave #103/#104/#105 at genuine human/account/policy boundaries rather than fabricating credentials or preferences.
+7. Continue useful engineering autonomously without asking the user to run routine commands.
