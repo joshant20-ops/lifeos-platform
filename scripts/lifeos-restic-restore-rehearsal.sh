@@ -12,19 +12,15 @@ from pathlib import Path
 
 print('RESTORE_REHEARSAL=START')
 svc = 'lifeos-restic-backup.service'
-state = subprocess.check_output(
-    ['systemctl', 'show', svc, '-p', 'LoadState', '--value'], text=True
-).strip()
+cmd = ['systemctl', 'show', svc, '-p', 'LoadState', '--value']
+state = subprocess.check_output(cmd, text=True).strip()
 if state != 'loaded':
     raise SystemExit('backup service missing')
 allow = re.compile(
     r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)='
 )
-items = shlex.split(
-    subprocess.check_output(
-        ['systemctl', 'show', svc, '-p', 'Environment', '--value'], text=True
-    )
-)
+cmd = ['systemctl', 'show', svc, '-p', 'Environment', '--value']
+items = shlex.split(subprocess.check_output(cmd, text=True))
 unit = subprocess.check_output(['systemctl', 'cat', svc], text=True)
 for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
     path = Path(rawpath.strip('"\''))
@@ -73,7 +69,9 @@ print('RESTIC_CHECK=PASS')
 with tempfile.TemporaryDirectory() as td:
     target = Path(td) / 'restore'
     restic('restore', 'latest', '--target', str(target))
-    count = sum(1 for file_path in target.rglob('*') if file_path.is_file())
+    count = sum(
+        1 for file_path in target.rglob('*') if file_path.is_file()
+    )
     if count <= 0:
         raise SystemExit('no files restored')
     print(f'RESTORED_FILE_COUNT={count}')
