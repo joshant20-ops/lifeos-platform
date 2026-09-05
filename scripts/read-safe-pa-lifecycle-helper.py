@@ -25,6 +25,13 @@ s=subprocess.run(['sh','-lc',"grep -RIlE 'open_loops_attention\\.json|pa_dashboa
 for x in s.stdout.splitlines(): print('SYSTEMD_REFERENCE='+x)
 u=subprocess.run(['sh','-lc',"systemctl list-unit-files --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei 'energy|opportun|negative|octopus' | sort -u"],text=True,capture_output=True)
 for x in u.stdout.splitlines(): print('ENERGY_UNIT='+x)
+for unit in ('lifeos-energy-forecast.service','lifeos-energy-shadow-learning.service'):
+ sh=subprocess.run(['systemctl','show',unit,'--property=User,ExecStart,WorkingDirectory,ActiveState'],text=True,capture_output=True)
+ for line in sh.stdout.splitlines():
+  if line.startswith('ExecStart='):
+   # Emit only executable path/basename section, not environment/arguments after semicolons.
+   v=line.split(';',1)[0][:500]
+   print('UNIT_'+unit+'_'+v)
+  elif line.startswith(('User=','WorkingDirectory=','ActiveState=')): print('UNIT_'+unit+'_'+line)
 ur=subprocess.run(['systemctl','--user','is-system-running'],text=True,capture_output=True)
-print('USER_SYSTEMD_RC='+str(ur.returncode))
-print('USER_SYSTEMD_STATE='+(ur.stdout.strip() or 'none'))
+print('USER_SYSTEMD_RC='+str(ur.returncode)); print('USER_SYSTEMD_STATE='+(ur.stdout.strip() or 'none'))
