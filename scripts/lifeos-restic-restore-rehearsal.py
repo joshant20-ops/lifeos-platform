@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-# bandit: skip=B404,B603
 import json
 import os
 import re
 import shlex
-import subprocess
+import subprocess  # nosec B404
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +13,7 @@ ALLOWED = re.compile(r"^(RESTIC_|AWS_|B2_|AZURE_)[A-Z0-9_]+=")
 
 
 def systemctl(*args):
-    proc = subprocess.run(
+    proc = subprocess.run(  # nosec B603
         ["/usr/bin/systemctl", *args],
         text=True,
         check=True,
@@ -25,7 +24,7 @@ def systemctl(*args):
 
 def restic(env, *args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
-    return subprocess.run(
+    return subprocess.run(  # nosec B603
         ["/usr/bin/restic", *args],
         env=env,
         text=True,
