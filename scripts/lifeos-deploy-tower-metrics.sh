@@ -10,6 +10,7 @@ REMOTE_USER=joshan
 MQTT_PORT=1883
 STAMP="$(date +%Y%m%d-%H%M%S)"
 TMPDIR="$(mktemp -d /tmp/lifeos-tower-metrics.XXXXXX)"
+chmod 0755 "$TMPDIR"
 REMOTE_BACKUP="/var/backups/lifeos-tower-metrics-$STAMP"
 DEPLOY_STARTED=0
 SSH_TARGET=''
