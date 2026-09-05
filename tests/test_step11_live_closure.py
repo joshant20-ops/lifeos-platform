@@ -23,12 +23,14 @@ class Step11LiveClosureContract(unittest.TestCase):
         self.assertNotIn("rm -rf", text)
         self.assertNotIn("sudo ", text)
 
-    def test_gateway_exposes_only_exact_step11_operation(self):
+    def test_gateway_retains_exact_step11_operation(self):
         text = GATEWAY.read_text()
         self.assertIn("'step11-live-closure': {", text)
         self.assertIn("'script': 'scripts/lifeos-step11-live-closure.sh'", text)
         self.assertIn("'privileged': True", text)
         self.assertIn("if len(sys.argv) != 2 or sys.argv[1] not in OPS", text)
+        self.assertNotIn("shell=True", text)
+        self.assertNotIn("eval(", text)
 
     def test_self_hosted_workflow_refreshes_gateway_then_closes_step11(self):
         text = WORKFLOW.read_text()
@@ -36,15 +38,10 @@ class Step11LiveClosureContract(unittest.TestCase):
         closure = text.index("lifeos-deploy-gateway step11-live-closure")
         self.assertLess(refresh, closure)
         for marker in (
-            "STEP_11=PASS",
-            "LIVE_MODULE_SYNC=PASS",
-            "PASS_STOP=PASS",
-            "GENUINE_BLOCKED_STOP=PASS",
-            "REPEATED_FAILURE_STOP=PASS",
-            "ITERATION_LIMIT_STOP=PASS",
-            "NON_TERMINAL_RETRY=PASS",
-            "AUTONOMOUS_AGENT_HEALTH=PASS",
-            "NEXT_REQUIRED=step11_closed",
+            "STEP_11=PASS", "LIVE_MODULE_SYNC=PASS", "PASS_STOP=PASS",
+            "GENUINE_BLOCKED_STOP=PASS", "REPEATED_FAILURE_STOP=PASS",
+            "ITERATION_LIMIT_STOP=PASS", "NON_TERMINAL_RETRY=PASS",
+            "AUTONOMOUS_AGENT_HEALTH=PASS", "NEXT_REQUIRED=step11_closed",
         ):
             self.assertIn(marker, text)
 
