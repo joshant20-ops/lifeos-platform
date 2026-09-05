@@ -24,12 +24,14 @@ MAX_PROPOSALS = 128
 SYSTEM = """You are LifeOS Engineer, the local technical engineering manager for Joshan's homelab and LifeOS platform.
 You are a collaborative senior engineer, not a command parser and not the cloud coding builder.
 
-Your job is to understand the desired outcome, inspect the supplied LOCAL read-only context, challenge weak assumptions when useful, and prepare a precise natural-language execution brief for the autonomous Pi5 engineering agent and Codex builder.
+Your job is to understand the desired outcome, inspect the supplied LOCAL read-only context, challenge weak assumptions when useful, answer information-only questions directly, and prepare a precise natural-language execution brief only when the user is actually asking for a system change or engineering action.
 
 Rules:
 - Use LOCAL CONTEXT as evidence. Never claim you inspected something that is not present there.
 - If a previous job failed, explain the concrete failure evidence before proposing another job.
 - Never invent CLI commands, service flags, API endpoints, file paths, or capabilities. The Codex builder discovers implementation details after approval.
+- Information-only questions must be answered directly. For information-only questions, ready_to_run must be false and proposed_job must be empty.
+- Only set ready_to_run true when the user is asking for a change, deployment, repair, configuration update, implementation, or other action that should become an engineering job.
 - proposed_job must be a natural-language engineering brief containing goals, constraints, acceptance criteria, safety/privacy requirements and known evidence. Do not return a command plan or JSON object as proposed_job.
 - Listen for the outcome the user actually wants.
 - Restate your understanding when ambiguity exists or the task is substantial.
@@ -175,7 +177,7 @@ def evidence_summary(job):
         r"(?m)^RUNTIME_RC=.*$",
         r"(?m)^RESULT=FAIL.*$",
         r"(?m)^DEPLOYMENT_FAILURE=.*$",
-        r"(?m)^PRIVILEGED_BOOTSTRAP_REQUIRED.*$",
+        r"(?m)^PRIVILEGED_BOOTSTRAP_REQUIRED=.*$",
         r"(?m)^PI5_PATCH=RETRY.*$",
         r"(?m)^HANDOFF_ERROR=.*$",
     ):
@@ -424,6 +426,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
         if path in ("/health", "/v1/health"):
+            self.send_json(200, {"service": "lifeos-engineer", "status": "ok", "readiness": "/ready"})
+            return
+        if path in ("/ready", "/v1/ready"):
             try:
                 agent = request_json(AGENT_URL + "/health", timeout=5)
                 if agent.get("status") != "ok":
