@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=prove-sdb-live-read-write-and-usage-status
-requested_commit=b48b70a3e421d7e9a13df51f860dd39a37b311ea
-nonce=2026-09-05T10:00+01:00
+reason=preserve-control-entity-and-verify-sdb
+requested_commit=0c143d1c81d5baa4dd3770f7e18d9ef950c961ce
+nonce=2026-09-05T10:09+01:00
