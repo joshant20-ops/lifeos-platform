@@ -27,22 +27,21 @@ items = shlex.split(
 )
 unit = subprocess.check_output(['systemctl', 'cat', svc], text=True)
 for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
-    path = rawpath.strip('"\'')
+    path = Path(rawpath.strip('"\''))
     try:
-        fh = open(path)
+        lines = path.read_text().splitlines()
     except OSError:
         continue
-    with fh:
-        for rawline in fh:
-            line = rawline.strip()
-            if not line or line.startswith('#'):
-                continue
-            if line.startswith('export '):
-                line = line[7:].lstrip()
-            try:
-                items.extend(shlex.split(line, comments=True, posix=True))
-            except ValueError:
-                continue
+    for rawline in lines:
+        line = rawline.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith('export '):
+            line = line[7:].lstrip()
+        try:
+            items.extend(shlex.split(line, comments=True, posix=True))
+        except ValueError:
+            continue
 env = os.environ.copy()
 for item in items:
     if allow.match(item):
