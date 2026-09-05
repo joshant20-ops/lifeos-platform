@@ -25,7 +25,9 @@ for item in items:
     if allow.match(item): os.write(1,item.encode()+b'\0')
 PY
 )
-if ! printf '%s\n' "${restic_env[@]}" | grep -q '^RESTIC_REPOSITORY='; then echo 'RESTORE_REHEARSAL=FAIL reason=repository_contract_missing'; exit 1; fi
+repo_found=0
+for assignment in "${restic_env[@]}"; do [[ "$assignment" == RESTIC_REPOSITORY=* ]] && repo_found=1; done
+[[ "$repo_found" -eq 1 ]] || { echo 'RESTORE_REHEARSAL=FAIL reason=repository_contract_missing'; exit 1; }
 run_restic() { env "${restic_env[@]}" restic "$@"; }
 latest="$(run_restic snapshots --latest 1 --json)"
 python3 - "$latest" <<'PY'
