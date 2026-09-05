@@ -8,8 +8,19 @@ svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
 while IFS= read -r -d '' assignment; do
   key="${assignment%%=*}"; value="${assignment#*=}"
-  [[ "$key" =~ ^(RESTIC|AWS|B2|AZURE)_[A-Z0-9_]+$ ]] || continue
-  declare -gx "$key=$value"
+  case "$key" in
+    RESTIC_REPOSITORY) RESTIC_REPOSITORY="$value"; export RESTIC_REPOSITORY ;;
+    RESTIC_PASSWORD) RESTIC_PASSWORD="$value"; export RESTIC_PASSWORD ;;
+    RESTIC_PASSWORD_FILE) RESTIC_PASSWORD_FILE="$value"; export RESTIC_PASSWORD_FILE ;;
+    RESTIC_REPOSITORY_FILE) RESTIC_REPOSITORY_FILE="$value"; export RESTIC_REPOSITORY_FILE ;;
+    AWS_ACCESS_KEY_ID) AWS_ACCESS_KEY_ID="$value"; export AWS_ACCESS_KEY_ID ;;
+    AWS_SECRET_ACCESS_KEY) AWS_SECRET_ACCESS_KEY="$value"; export AWS_SECRET_ACCESS_KEY ;;
+    AWS_DEFAULT_REGION) AWS_DEFAULT_REGION="$value"; export AWS_DEFAULT_REGION ;;
+    B2_ACCOUNT_ID) B2_ACCOUNT_ID="$value"; export B2_ACCOUNT_ID ;;
+    B2_ACCOUNT_KEY) B2_ACCOUNT_KEY="$value"; export B2_ACCOUNT_KEY ;;
+    AZURE_ACCOUNT_NAME) AZURE_ACCOUNT_NAME="$value"; export AZURE_ACCOUNT_NAME ;;
+    AZURE_ACCOUNT_KEY) AZURE_ACCOUNT_KEY="$value"; export AZURE_ACCOUNT_KEY ;;
+  esac
 done < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
 svc=sys.argv[1]; items=shlex.split(subprocess.check_output(['systemctl','show',svc,'-p','Environment','--value'],text=True)); unit=subprocess.check_output(['systemctl','cat',svc],text=True)
