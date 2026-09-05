@@ -1,0 +1,13 @@
+[Unit]
+Description=LifeOS Energy Opportunity -> PA attention projection
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=joshan
+Group=joshan
+WorkingDirectory=/home/joshan/lifeos-platform
+ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/scripts/run-wave-a-energy-attention.py
+NoNewPrivileges=true
+PrivateTmp=true
