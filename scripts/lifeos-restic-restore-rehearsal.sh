@@ -9,7 +9,7 @@ svc=lifeos-restic-backup.service
 while IFS= read -r -d '' assignment; do
   key="${assignment%%=*}"; value="${assignment#*=}"
   [[ "$key" =~ ^(RESTIC|AWS|B2|AZURE)_[A-Z0-9_]+$ ]] || continue
-  printf -v "$key" '%s' "$value"; export "$key"
+  declare -gx "$key=$value"
 done < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
 svc=sys.argv[1]; items=shlex.split(subprocess.check_output(['systemctl','show',svc,'-p','Environment','--value'],text=True)); unit=subprocess.check_output(['systemctl','cat',svc],text=True)
