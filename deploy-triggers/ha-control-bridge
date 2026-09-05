@@ -1,4 +1,4 @@
 operation=deploy-ha-control-bridge
-reason=render-z97-masonry-ha-only
-requested_commit=31ef9d3273089364b10d50d249c828aaaafc8931
-nonce=2026-09-05T04:08+01:00
+reason=render-z97-masonry-after-verifier-order-fix
+requested_commit=c94aa700326e623dc5bf265c1770fd16a70625cc
+nonce=2026-09-05T04:14+01:00
