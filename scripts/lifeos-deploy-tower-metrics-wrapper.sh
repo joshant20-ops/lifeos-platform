@@ -4,6 +4,7 @@ set -Eeuo pipefail
 PLATFORM=/home/joshan/lifeos-platform
 DEPLOY="$PLATFORM/scripts/lifeos-deploy-tower-metrics.sh"
 BASE_DASHBOARD="$PLATFORM/scripts/lifeos-adapt-ha-lifeos-dashboard.sh"
+DIAGNOSTICS="$PLATFORM/scripts/lifeos-tower-metrics-live-diagnostics.sh"
 EXPECTED_MAC=40:8d:5c:84:41:64
 EXPECTED_HOST=TowerPC.Tailor
 REMOTE_USER=joshan
@@ -41,6 +42,7 @@ trap rollback_package ERR
 [[ ${EUID:-$(id -u)} -eq 0 ]] || { echo 'ERROR=must_run_as_root'; exit 1; }
 [[ -f "$DEPLOY" && ! -L "$DEPLOY" ]] || { echo 'ERROR=canonical_tower_metrics_deploy_missing'; exit 1; }
 [[ -f "$BASE_DASHBOARD" && ! -L "$BASE_DASHBOARD" ]] || { echo 'ERROR=canonical_lifeos_dashboard_adapter_missing'; exit 1; }
+[[ -f "$DIAGNOSTICS" && ! -L "$DIAGNOSTICS" ]] || { echo 'ERROR=canonical_tower_metrics_diagnostics_missing'; exit 1; }
 
 find_tower_by_mac() {
   python3 - "$EXPECTED_MAC" <<'PY'
@@ -135,6 +137,7 @@ bash "$BASE_DASHBOARD"
 echo 'TOWER_DASHBOARD_BASELINE=PASS'
 
 bash "$DEPLOY"
+bash "$DIAGNOSTICS"
 
 INSTALLED_HERE=0
 echo 'TOWER_MQTT_CLIENT_PREREQ=PASS'
