@@ -38,18 +38,14 @@ PY
 run_restic check --read-data-subset=1/100 >/dev/null
 echo 'RESTIC_CHECK=PASS'
 run_restic restore latest --target "$TMP/restore" >/dev/null
-count="$(python3 - "$TMP/restore" <<'PY'
-import pathlib,sys
-print(sum(1 for p in pathlib.Path(sys.argv[1]).rglob('*') if p.is_file()))
-PY
-)"
-[[ "$count" -gt 0 ]] || { echo 'RESTORE_REHEARSAL=FAIL reason=no_files_restored'; exit 1; }
-echo "RESTORED_FILE_COUNT=$count"
-python3 - "$STATE_DIR" "$count" <<'PY'
+python3 - "$TMP/restore" "$STATE_DIR" <<'PY'
 import json,os,sys,tempfile
 from datetime import datetime,timezone
 from pathlib import Path
-p=Path(sys.argv[1]); count=int(sys.argv[2]); r={'schema_version':1,'timestamp':datetime.now(timezone.utc).isoformat(),'result':'PASS','repository_check':'PASS','actual_restore':'PASS','restored_file_count':count,'production_overwrite':False,'secrets_emitted':False}
+root=Path(sys.argv[1]); p=Path(sys.argv[2]); count=sum(1 for f in root.rglob('*') if f.is_file())
+if count <= 0: raise SystemExit('no files restored')
+print(f'RESTORED_FILE_COUNT={count}')
+r={'schema_version':1,'timestamp':datetime.now(timezone.utc).isoformat(),'result':'PASS','repository_check':'PASS','actual_restore':'PASS','restored_file_count':count,'production_overwrite':False,'secrets_emitted':False}
 fd,tmp=tempfile.mkstemp(prefix='.restore-rehearsal-',dir=p); os.close(fd); Path(tmp).write_text(json.dumps(r,indent=2,sort_keys=True)+'\n'); os.replace(tmp,p/'latest.json')
 PY
 echo 'PRODUCTION_OVERWRITE=NO'; echo 'SECRETS_EMITTED=NO'; echo 'RESTORE_REHEARSAL=PASS'
