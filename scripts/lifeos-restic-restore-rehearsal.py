@@ -9,22 +9,28 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SERVICE = "lifeos-restic-backup.service"
-SYSTEMCTL = "/usr/bin/systemctl"
-RESTIC = "/usr/bin/restic"
 ALLOWED = re.compile(r"^(RESTIC_|AWS_|B2_|AZURE_)[A-Z0-9_]+=")
 
 
-def run(argv, *, env=None, capture=False):
-    if not argv or argv[0] not in {SYSTEMCTL, RESTIC}:
-        raise ValueError("unapproved executable")
+def systemctl(*args):
+    proc = subprocess.run(  # nosec B603
+        ["/usr/bin/systemctl", *args],
+        text=True,
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    return proc.stdout
+
+
+def restic(env, *args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
     return subprocess.run(  # nosec B603
-        argv, env=env, text=True, check=True, stdout=stdout, shell=False
+        ["/usr/bin/restic", *args],
+        env=env,
+        text=True,
+        check=True,
+        stdout=stdout,
     )
-
-
-def systemctl(*args):
-    return run([SYSTEMCTL, *args], capture=True).stdout
 
 
 def restic_env():
@@ -58,10 +64,6 @@ def restic_env():
     if "RESTIC_REPOSITORY" not in env:
         raise RuntimeError("repository contract missing")
     return env
-
-
-def restic(env, *args, capture=False):
-    return run([RESTIC, *args], env=env, capture=capture)
 
 
 def main():
