@@ -1,0 +1,62 @@
+name: LifeOS Stage 12 Live Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-stage12-live-acceptance.yml'
+      - 'scripts/run-stage12-complete.py'
+      - 'scripts/run-stage11-complete.py'
+      - 'scripts/run-stage10-exit-gate.py'
+      - 'scripts/run-stage10-gates.py'
+      - 'governor/application-platform/stage12-outcomes.json'
+      - 'homeassistant/verify-lifeos-dashboard.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-stage12-live-acceptance
+  cancel-in-progress: false
+
+jobs:
+  stage12:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Run Stage 12 final gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          set +e
+          out=$(python3 scripts/run-stage12-complete.py 2>&1)
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          echo "STAGE12_GATE_RC=$rc"
+          test "$rc" -eq 0
+          grep -qx 'STAGE12_EXIT=PASS' <<<"$out"
+          grep -qx 'STAGE12=COMPLETE' <<<"$out"
+          grep -qx 'ROADMAP=12/12 COMPLETE' <<<"$out"
+          echo 'STAGE12_WORKFLOW_ACCEPTANCE=PASS'
+
+      - name: Prove repository remains synchronized
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'STAGE12_REPOSITORY_FINAL=PASS'
