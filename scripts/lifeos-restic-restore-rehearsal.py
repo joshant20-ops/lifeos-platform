@@ -3,7 +3,7 @@ import json
 import os
 import re
 import shlex
-import subprocess  # nosec
+import subprocess
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
