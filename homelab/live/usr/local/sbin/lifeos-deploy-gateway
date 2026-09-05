@@ -13,6 +13,7 @@ GIT = '/usr/bin/git'
 RUNUSER = '/usr/sbin/runuser'
 ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
+PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
     'audit-dispatcher-retirement': {
         'script': 'scripts/lifeos-worker-dispatcher-split-audit.sh',
@@ -54,12 +55,9 @@ def fail(msg: str, code: int = 1) -> None:
 def as_joshan(
     *args: str, capture: bool = False
 ) -> subprocess.CompletedProcess[str]:
-    path_env = (
-        'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
-    )
     cmd = [
         RUNUSER, '-u', 'joshan', '--', ENV, '-i',
-        'HOME=/home/joshan', path_env, 'LANG=C.UTF-8', *args,
+        'HOME=/home/joshan', PATH_ENV, 'LANG=C.UTF-8', *args,
     ]
     stdout = subprocess.PIPE if capture else None
     stderr = subprocess.STDOUT if capture else None
@@ -119,9 +117,7 @@ def main():
     print(f'GATEWAY_PLATFORM_HEAD={head}')
     if spec['privileged']:
         cp = subprocess.run(  # nosec B603
-            [BASH, str(script)],
-            cwd=REPO,
-            text=True,
+            [BASH, str(script)], cwd=REPO, text=True
         )
     else:
         cp = as_joshan(BASH, str(script))
