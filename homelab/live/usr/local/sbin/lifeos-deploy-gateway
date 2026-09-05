@@ -31,6 +31,10 @@ OPS = {
         'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh',
         'privileged': True,
     },
+    'deploy-wave-a-energy-attention': {
+        'script': 'scripts/lifeos-deploy-wave-a-energy-attention.sh',
+        'privileged': True,
+    },
     'capability-stage3-systemd-cleanup': {
         'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
         'privileged': True,
@@ -60,27 +64,14 @@ def fail(msg: str, code: int = 1) -> None:
     raise SystemExit(code)
 
 
-def as_joshan(
-    *args: str, capture: bool = False
-) -> subprocess.CompletedProcess[str]:
-    cmd = [
-        RUNUSER, '-u', 'joshan', '--', ENV, '-i',
-        'HOME=/home/joshan', PATH_ENV, 'LANG=C.UTF-8', *args,
-    ]
+def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
+    cmd = [RUNUSER, '-u', 'joshan', '--', ENV, '-i', 'HOME=/home/joshan', PATH_ENV, 'LANG=C.UTF-8', *args]
     stdout = subprocess.PIPE if capture else None
     stderr = subprocess.STDOUT if capture else None
-    return subprocess.run(  # nosec B603
-        cmd,
-        text=True,
-        check=False,
-        stdout=stdout,
-        stderr=stderr,
-    )
+    return subprocess.run(cmd, text=True, check=False, stdout=stdout, stderr=stderr)  # nosec B603
 
 
-def git(
-    *args: str, capture: bool = True
-) -> subprocess.CompletedProcess[str]:
+def git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
     return as_joshan(GIT, '-C', str(REPO), *args, capture=capture)
 
 
@@ -120,15 +111,11 @@ def main():
     script = REPO / str(spec['script'])
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
-    print('LIFEOS_DEPLOY_GATEWAY_VERSION=5')
+    print('LIFEOS_DEPLOY_GATEWAY_VERSION=6')
     print(f'GATEWAY_OPERATION={operation}')
     print(f'GATEWAY_PLATFORM_HEAD={head}')
     if spec['privileged']:
-        cp = subprocess.run(  # nosec B603
-            [BASH, str(script)],
-            cwd=REPO,
-            text=True,
-        )
+        cp = subprocess.run([BASH, str(script)], cwd=REPO, text=True)  # nosec B603
     else:
         cp = as_joshan(BASH, str(script))
     print(f'GATEWAY_CHILD_RC={cp.returncode}')
