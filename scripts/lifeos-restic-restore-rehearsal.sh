@@ -94,7 +94,10 @@ record = {
     'production_overwrite': False,
     'secrets_emitted': False,
 }
-fd, tmp = tempfile.mkstemp(prefix='.restore-rehearsal-', dir=state_dir)
+fd, tmp = tempfile.mkstemp(
+    prefix='.restore-rehearsal-',
+    dir=state_dir,
+)
 os.close(fd)
 Path(tmp).write_text(json.dumps(record, indent=2, sort_keys=True) + '\n')
 os.replace(tmp, state_dir / 'latest.json')
