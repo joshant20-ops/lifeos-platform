@@ -1,117 +1,59 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-python3 - <<'PY'
-import json
-import os
-import re
-import shlex
-import subprocess
-import tempfile
-from datetime import datetime, timezone
+STATE_DIR="${HOME}/.local/state/lifeos/restore-rehearsal"
+mkdir -p "$STATE_DIR"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+echo 'RESTORE_REHEARSAL=START'
+command -v restic >/dev/null
+svc=lifeos-restic-backup.service
+systemctl show "$svc" -p LoadState --value >"$TMP/loadstate"
+read -r loadstate <"$TMP/loadstate"
+[[ "$loadstate" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
+# Root-owned service environment file contract; no values are emitted.
+systemctl cat "$svc" >"$TMP/unit"
+python3 - "$TMP/unit" "$TMP/env" <<'PY'
+import re, shlex, sys
 from pathlib import Path
-
-print('RESTORE_REHEARSAL=START')
-svc = 'lifeos-restic-backup.service'
-systemctl = '/usr/bin/systemctl'
-
-
-def systemctl_text(*args):
-    proc = subprocess.run(  # nosec B603,B607
-        [systemctl, *args],
-        text=True,
-        check=True,
-        stdout=subprocess.PIPE,
-    )
-    return proc.stdout
-
-
-state = systemctl_text('show', svc, '-p', 'LoadState', '--value').strip()
-if state != 'loaded':
-    raise SystemExit('backup service missing')
-pattern = (
-    r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|'
-    r'B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)='
-)
-allow = re.compile(pattern)
-env_text = systemctl_text('show', svc, '-p', 'Environment', '--value')
-items = shlex.split(env_text)
-unit = systemctl_text('cat', svc)
-for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
-    path = Path(rawpath.strip('"\''))
-    try:
-        lines = path.read_text(encoding='utf-8').splitlines()
-    except OSError:
-        continue
-    for rawline in lines:
-        line = rawline.strip()
-        if not line or line.startswith('#'):
-            continue
-        if line.startswith('export '):
-            line = line[7:].lstrip()
-        try:
-            items.extend(shlex.split(line, comments=True, posix=True))
-        except ValueError:
-            continue
-env = os.environ.copy()
-for item in items:
-    if allow.match(item):
-        key, value = item.split('=', 1)
-        env[key] = value
-if 'RESTIC_REPOSITORY' not in env:
-    raise SystemExit('repository contract missing')
-
-
-def restic(*args, capture=False):
-    stdout = subprocess.PIPE if capture else subprocess.DEVNULL
-    return subprocess.run(  # nosec B603,B607
-        ['/usr/bin/restic', *args],
-        env=env,
-        text=True,
-        check=True,
-        stdout=stdout,
-    )
-
-
-snap_run = restic('snapshots', '--latest', '1', '--json', capture=True)
-snaps = json.loads(snap_run.stdout)
-if not snaps:
-    raise SystemExit('no snapshots')
-snapshot = snaps[0]
-print('SNAPSHOT_PRESENT=YES')
-print('SNAPSHOT_TIME=' + str(snapshot.get('time', '')))
-print('SNAPSHOT_HOST=' + str(snapshot.get('hostname', '')))
-print('SNAPSHOT_PATH_COUNT=' + str(len(snapshot.get('paths') or [])))
-restic('check', '--read-data-subset=1/100')
-print('RESTIC_CHECK=PASS')
-with tempfile.TemporaryDirectory() as td:
-    target = Path(td) / 'restore'
-    restic('restore', 'latest', '--target', str(target))
-    count = 0
-    for file_path in target.rglob('*'):
-        if file_path.is_file():
-            count += 1
-    if count <= 0:
-        raise SystemExit('no files restored')
-    print(f'RESTORED_FILE_COUNT={count}')
-state_dir = Path.home() / '.local' / 'state' / 'lifeos'
-state_dir = state_dir / 'restore-rehearsal'
-state_dir.mkdir(parents=True, exist_ok=True)
-record = {
-    'schema_version': 1,
-    'timestamp': datetime.now(timezone.utc).isoformat(),
-    'result': 'PASS',
-    'repository_check': 'PASS',
-    'actual_restore': 'PASS',
-    'restored_file_count': count,
-    'production_overwrite': False,
-    'secrets_emitted': False,
-}
-fd, tmp = tempfile.mkstemp(prefix='.restore-rehearsal-', dir=state_dir)
-os.close(fd)
-encoded = json.dumps(record, indent=2, sort_keys=True) + '\n'
-Path(tmp).write_text(encoded, encoding='utf-8')
-os.replace(tmp, state_dir / 'latest.json')
-print('PRODUCTION_OVERWRITE=NO')
-print('SECRETS_EMITTED=NO')
-print('RESTORE_REHEARSAL=PASS')
+unit=Path(sys.argv[1]).read_text(encoding='utf-8')
+out=[]
+for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)',unit,re.M):
+    path=Path(rawpath.strip('"\''))
+    try: lines=path.read_text(encoding='utf-8').splitlines()
+    except OSError: continue
+    for raw in lines:
+        line=raw.strip()
+        if not line or line.startswith('#'): continue
+        if line.startswith('export '): line=line[7:].lstrip()
+        try: parts=shlex.split(line,comments=True,posix=True)
+        except ValueError: continue
+        for item in parts:
+            if re.match(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=',item): out.append(item)
+Path(sys.argv[2]).write_text('\n'.join(out)+'\n',encoding='utf-8')
 PY
+set -a
+source "$TMP/env"
+set +a
+[[ -n "${RESTIC_REPOSITORY:-}" ]] || { echo 'RESTORE_REHEARSAL=FAIL reason=repository_contract_missing'; exit 1; }
+restic snapshots --latest 1 --json >"$TMP/latest.json"
+python3 - "$TMP/latest.json" <<'PY'
+import json,sys
+x=json.load(open(sys.argv[1])); assert x; s=x[0]
+print('SNAPSHOT_PRESENT=YES'); print('SNAPSHOT_TIME='+str(s.get('time',''))); print('SNAPSHOT_HOST='+str(s.get('hostname',''))); print('SNAPSHOT_PATH_COUNT='+str(len(s.get('paths') or [])))
+PY
+restic check --read-data-subset=1/100 >/dev/null
+echo 'RESTIC_CHECK=PASS'
+restic restore latest --target "$TMP/restore" >/dev/null
+python3 - "$TMP/restore" "$STATE_DIR" <<'PY'
+import json,os,sys,tempfile
+from datetime import datetime,timezone
+from pathlib import Path
+root=Path(sys.argv[1]); p=Path(sys.argv[2]); count=sum(1 for f in root.rglob('*') if f.is_file())
+assert count>0
+print(f'RESTORED_FILE_COUNT={count}')
+r={'schema_version':1,'timestamp':datetime.now(timezone.utc).isoformat(),'result':'PASS','repository_check':'PASS','actual_restore':'PASS','restored_file_count':count,'production_overwrite':False,'secrets_emitted':False}
+fd,tmp=tempfile.mkstemp(prefix='.restore-rehearsal-',dir=p); os.close(fd); Path(tmp).write_text(json.dumps(r,indent=2)+'\n'); os.replace(tmp,p/'latest.json')
+PY
+echo 'PRODUCTION_OVERWRITE=NO'
+echo 'SECRETS_EMITTED=NO'
+echo 'RESTORE_REHEARSAL=PASS'
