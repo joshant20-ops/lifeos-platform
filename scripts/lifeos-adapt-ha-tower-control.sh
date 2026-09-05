@@ -35,7 +35,6 @@ views=config.setdefault('views',[])
 marker='LifeOS Tower managed dependency'
 metrics_marker='LifeOS Z97 metrics managed view'
 
-# Resolve MQTT-discovered entities by unique_id rather than guessed entity IDs.
 registry={}
 reg_path=Path('/config/.storage/core.entity_registry')
 if reg_path.exists():
@@ -127,7 +126,6 @@ def unknown_card():
       'card':{'type':'markdown','content':'**Tower power control is not configured yet.** LifeOS will not guess the MAC, power signal, or shutdown method.'}
     }
 
-# Replace previously managed Tower controls so new navigation is idempotent.
 for view in views:
     if str(view.get('title') or '') not in {'Overview','Hosts'}:
         continue
@@ -142,7 +140,6 @@ for view in views:
     insert_at=2 if str(view.get('title'))=='Overview' else 1
     view['cards']=cards[:insert_at]+tower+cards[insert_at:]
 
-# Build dedicated Z97 view.
 activity=eid('lifeos_tower_activity_v1')
 cpu=eid('lifeos_tower_cpu_util_v1')
 ram=eid('lifeos_tower_ram_util_v1')
@@ -190,8 +187,6 @@ for card in [
     if card:
         cards.append(card)
 
-# Discover every physical disk published by the metrics agent and create one
-# live card + one 24h read/write graph per disk.
 disks={}
 pattern=re.compile(r'^lifeos_tower_disk_(.+)_(read|write|used)_v1$')
 for uid,value in registry.items():
@@ -215,10 +210,12 @@ for disk in sorted(disks):
     if graph:
         cards.append(graph)
 
-# Keep controls accessible from the detail page too.
 cards += [wake_card(), shutdown_card()]
 
-z97_view={'title':'Z97','path':'z97','icon':'mdi:desktop-tower-monitor','cards':cards}
+# Explicitly pin the view to masonry. Newer HA frontends otherwise default newly
+# created views to Sections, where top-level `cards` are not rendered and the UI
+# presents an empty "New section" instead.
+z97_view={'title':'Z97','path':'z97','icon':'mdi:desktop-tower-monitor','type':'masonry','cards':cards}
 replaced=False
 for i,view in enumerate(views):
     if str(view.get('path') or '')=='z97' or str(view.get('title') or '')=='Z97':
@@ -254,7 +251,7 @@ done
 code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8123/ 2>/dev/null || true)"
 [[ "$code" =~ ^(200|301|302|401)$ ]] || { echo "ERROR=homeassistant_http_$code"; false; }
 
-docker exec "$CONTAINER" python3 - <<'PY'
+docker exec -i "$CONTAINER" python3 - <<'PY'
 import json
 from pathlib import Path
 p=Path('/config/.storage/lovelace.lifeos_control')
@@ -265,8 +262,20 @@ assert 'sensor.tower_status' in text
 assert 'switch.tower_power' in text
 doc=json.loads(text)
 views=doc.get('data',{}).get('config',{}).get('views',[])
-assert any(v.get('path')=='z97' for v in views)
+z97=next((v for v in views if v.get('path')=='z97'),None)
+assert z97 is not None
+assert z97.get('type')=='masonry', z97.get('type')
+cards=z97.get('cards')
+assert isinstance(cards,list) and len(cards) >= 10, len(cards or [])
+history=[c for c in cards if c.get('type')=='history-graph']
+disk_history=[c for c in history if str(c.get('title') or '').startswith('Disk ')]
+assert len(history) >= 7, len(history)
+assert len(disk_history) >= 2, len(disk_history)
 print('TOWER_DASHBOARD_VALIDATION=PASS')
+print('Z97_VIEW_TYPE=masonry')
+print(f'Z97_RENDERABLE_CARDS={len(cards)}')
+print(f'Z97_HISTORY_GRAPHS={len(history)}')
+print(f'Z97_DISK_GRAPHS={len(disk_history)}')
 PY
 
 echo 'RESULT=PASS'
