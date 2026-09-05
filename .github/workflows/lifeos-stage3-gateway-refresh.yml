@@ -8,6 +8,7 @@ on:
       - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
       - 'scripts/lifeos-step11-live-closure.sh'
       - 'scripts/diagnose-step11-live-terminal-policy.sh'
+      - 'scripts/lifeos-verify-transaction-core.sh'
       - 'governor/job_records.py'
   workflow_dispatch:
 
@@ -51,7 +52,24 @@ jobs:
           test "$rc" -eq 64
           grep -q 'capability-stage3-systemd-cleanup' <<<"$out"
           grep -q 'step11-live-closure' <<<"$out"
+          grep -q 'verify-transaction-core' <<<"$out"
           echo 'STAGE3_GATEWAY_REFRESH=PASS'
+
+      - name: Verify transaction core through governed root path
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway verify-transaction-core 2>&1)
+          printf '%s\n' "$out"
+          grep -qx 'TRANSACTION_CORE_VERIFY=PASS' <<<"$out"
+          grep -qx 'PROTECTED_CORE=PASS' <<<"$out"
+          grep -qx 'WATCHDOG=PASS' <<<"$out"
+          grep -qx 'WATCHDOG_DEADLINE=2h' <<<"$out"
+          grep -qx 'WATCHDOG_PERSISTENT=true' <<<"$out"
+          grep -qx 'SCOPED_TRANSACTION_TESTS=PASS' <<<"$out"
+          grep -qx 'BARRIER=none' <<<"$out"
+          grep -qx 'GATEWAY_RESULT=PASS' <<<"$out"
+          echo 'TRANSACTION_ROOT_PATH_ACCEPTANCE=PASS'
 
       - name: Complete Step 11 live terminal policy
         shell: bash
