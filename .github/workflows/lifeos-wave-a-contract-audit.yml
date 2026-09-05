@@ -1,0 +1,70 @@
+name: LifeOS Wave A Contract Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-wave-a-contract-audit.yml'
+      - 'scripts/audit-wave-a-contract.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Run structural contract audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-wave-a-contract.py
+
+      - name: Emit safe contract projection
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path.home()/'.local/state/lifeos/wave-a-contract-audit.json'
+          d=json.loads(p.read_text())
+          for f,item in d['files'].items():
+              print(f'===== {f} =====')
+              print('exists=', item.get('exists'))
+              print('sha256=', item.get('sha256'))
+              print('top_level=', ','.join(item.get('top_level_keys',[])))
+              for x in item.get('safe_scalars',[]):
+                  print(f"{x['path']}={x['value']}")
+          assert not d['states_emitted']
+          assert not d['template_bodies_emitted']
+          assert not d['commands_emitted']
+          assert not d['secrets_emitted']
+          assert not d['mutation_performed']
+          print('WAVE_A_SAFE_CONTRACT_PROJECTION=PASS')
+          PY
+
+      - name: Prove repository non-mutation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'WAVE_A_CONTRACT_REPOSITORY_FINAL=PASS'
