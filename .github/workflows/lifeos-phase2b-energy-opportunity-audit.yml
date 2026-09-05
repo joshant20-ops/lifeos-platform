@@ -1,0 +1,69 @@
+name: LifeOS Phase 2B Energy Opportunity Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-phase2b-energy-opportunity-audit.yml'
+      - 'scripts/audit-energy-opportunity-live.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Audit Energy Opportunity inputs and notification paths
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-energy-opportunity-live.py
+
+      - name: Emit sanitized audit detail
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path.home()/'.local/state/lifeos/energy-opportunity-audit.json'
+          d=json.loads(p.read_text())
+          print('===== HA OCTOPUS ENTITY IDS =====')
+          for x in d['ha_octopus_entity_ids']: print(x)
+          print('===== HA NOTIFICATION ENTITY IDS =====')
+          for x in d['ha_notification_entity_ids']: print(x)
+          print('===== NOTIFICATION CONFIG FILES =====')
+          for x in d['ha_notification_config_files']: print(x)
+          print('===== LIFEOS ENERGY OCTOPUS CONTRACT =====')
+          for x in d['lifeos_energy_octopus_env_names']: print('ENV_NAME='+x)
+          for x in d['lifeos_energy_octopus_mounts']: print('MOUNT='+str(x))
+          print('===== POWERDOWN FEED FILES =====')
+          for x in d['powerdown_feed_files']: print(x)
+          print('ENERGY_OPPORTUNITY_AUDIT_DETAIL=PASS')
+          PY
+
+      - name: Prove non-mutation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'ENERGY_OPPORTUNITY_REPOSITORY_FINAL=PASS'
