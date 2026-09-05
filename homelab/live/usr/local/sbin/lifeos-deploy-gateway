@@ -14,30 +14,12 @@ RUNUSER = '/usr/sbin/runuser'
 ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 OPS = {
-    'audit-dispatcher-retirement': {
-        'script': 'scripts/lifeos-worker-dispatcher-split-audit.sh',
-        'privileged': False,
-    },
-    'retire-engineer-dispatcher': {
-        'script': 'scripts/lifeos-retire-engineer-dispatcher.sh',
-        'privileged': True,
-    },
-    'deploy-ha-control-bridge': {
-        'script': 'scripts/lifeos-deploy-ha-control-bridge.sh',
-        'privileged': True,
-    },
-    'deploy-tower-metrics': {
-        'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh',
-        'privileged': True,
-    },
-    'capability-stage3-systemd-cleanup': {
-        'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
-        'privileged': True,
-    },
-    'restore-rehearsal': {
-        'script': 'scripts/lifeos-restic-restore-rehearsal.sh',
-        'privileged': True,
-    },
+    'audit-dispatcher-retirement': {'script': 'scripts/lifeos-worker-dispatcher-split-audit.sh', 'privileged': False},
+    'retire-engineer-dispatcher': {'script': 'scripts/lifeos-retire-engineer-dispatcher.sh', 'privileged': True},
+    'deploy-ha-control-bridge': {'script': 'scripts/lifeos-deploy-ha-control-bridge.sh', 'privileged': True},
+    'deploy-tower-metrics': {'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh', 'privileged': True},
+    'capability-stage3-systemd-cleanup': {'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh', 'privileged': True},
+    'restore-rehearsal': {'script': 'scripts/lifeos-restic-restore-rehearsal.sh', 'privileged': True},
     'step11-live-closure': {
         'script': 'scripts/lifeos-step11-live-closure.sh',
         'privileged': True,
@@ -64,7 +46,11 @@ def as_joshan(
     stdout = subprocess.PIPE if capture else None
     stderr = subprocess.STDOUT if capture else None
     return subprocess.run(
-        cmd, text=True, check=False, stdout=stdout, stderr=stderr
+        cmd,
+        text=True,
+        check=False,
+        stdout=stdout,
+        stderr=stderr,
     )
 
 
