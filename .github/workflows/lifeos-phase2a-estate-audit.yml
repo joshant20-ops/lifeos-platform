@@ -1,0 +1,75 @@
+name: LifeOS Phase 2A Estate Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-phase2a-estate-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  estate-audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Run canonical OTS rationalisation audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/run-capability-stage1-ots-audit.py
+
+      - name: Emit machine-readable rationalisation evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import collections,json,pathlib
+          p=pathlib.Path.home()/'.local/state/lifeos/capability-stage1-ots-report.json'
+          d=json.loads(p.read_text())
+          print('PHASE2A_REPORT_SCHEMA='+str(d['schema_version']))
+          print('PHASE2A_REPOSITORY_HEAD='+d['repository_head'])
+          print('PHASE2A_CUSTOM_SURFACE='+str(d['custom_surface_count']))
+          print('PHASE2A_CLASSIFICATION='+json.dumps(d['classification_counts'],sort_keys=True,separators=(',',':')))
+          print('PHASE2A_OTS_LIVE='+str(len(d['live_ots_components'])))
+          print('PHASE2A_SYSTEMD_UNITS='+str(len(d['custom_systemd_units'])))
+          print('===== RETIRE_OBSOLETE =====')
+          for x in d['items']:
+              if x['classification']=='RETIRE_OBSOLETE': print(x['path'])
+          print('===== REVIEW_UNIQUE DIRECTORY BUCKETS =====')
+          c=collections.Counter()
+          for x in d['items']:
+              if x['classification']=='REVIEW_UNIQUE':
+                  parts=x['path'].split('/')
+                  c['/'.join(parts[:2]) if len(parts)>1 else parts[0]]+=1
+          for k,v in c.most_common(): print(f'{v:4d} {k}')
+          print('===== CUSTOM SYSTEMD =====')
+          for x in d['custom_systemd_units']: print(x['unit'],x['state'])
+          print('PHASE2A_AUDIT=PASS')
+          PY
+
+      - name: Prove repository remains synchronized
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'PHASE2A_REPOSITORY_FINAL=PASS'
