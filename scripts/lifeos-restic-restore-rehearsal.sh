@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-# Variables are populated below from the root-owned backup service contract.
-RESTIC_REPOSITORY="${RESTIC_REPOSITORY-}"; RESTIC_PASSWORD="${RESTIC_PASSWORD-}"; RESTIC_PASSWORD_FILE="${RESTIC_PASSWORD_FILE-}"; RESTIC_REPOSITORY_FILE="${RESTIC_REPOSITORY_FILE-}"
-AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID-}"; AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY-}"; AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION-}"
-B2_ACCOUNT_ID="${B2_ACCOUNT_ID-}"; B2_ACCOUNT_KEY="${B2_ACCOUNT_KEY-}"; AZURE_ACCOUNT_NAME="${AZURE_ACCOUNT_NAME-}"; AZURE_ACCOUNT_KEY="${AZURE_ACCOUNT_KEY-}"
 STATE_DIR="${HOME}/.local/state/lifeos/restore-rehearsal"; mkdir -p "$STATE_DIR"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 echo 'RESTORE_REHEARSAL=START'
@@ -43,7 +39,7 @@ for item in items:
     if '=' in item: os.write(1,item.encode()+b'\0')
 PY
 )
-: "${RESTIC_REPOSITORY:?backup service contract does not expose RESTIC_REPOSITORY}"
+if [[ -z "${RESTIC_REPOSITORY:-}" ]]; then echo 'RESTORE_REHEARSAL=FAIL reason=repository_contract_missing'; exit 1; fi
 latest="$(restic snapshots --latest 1 --json)"
 python3 - "$latest" <<'PY'
 import json,sys
