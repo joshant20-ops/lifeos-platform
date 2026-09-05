@@ -5,7 +5,7 @@ import json
 import os
 import re
 import shlex
-import subprocess
+import subprocess  # nosec B404 - fixed argv only; no shell execution
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,7 +13,7 @@ from pathlib import Path
 print('RESTORE_REHEARSAL=START')
 svc = 'lifeos-restic-backup.service'
 cmd = ['systemctl', 'show', svc, '-p', 'LoadState', '--value']
-state = subprocess.check_output(cmd, text=True).strip()
+state = subprocess.check_output(cmd, text=True).strip()  # nosec B603
 if state != 'loaded':
     raise SystemExit('backup service missing')
 pattern = (
@@ -22,8 +22,10 @@ pattern = (
 )
 allow = re.compile(pattern)
 cmd = ['systemctl', 'show', svc, '-p', 'Environment', '--value']
-items = shlex.split(subprocess.check_output(cmd, text=True))
-unit = subprocess.check_output(['systemctl', 'cat', svc], text=True)
+items = shlex.split(subprocess.check_output(cmd, text=True))  # nosec B603
+unit = subprocess.check_output(  # nosec B603
+    ['systemctl', 'cat', svc], text=True
+)
 for rawpath in re.findall(r'^\s*EnvironmentFile=-?([^\s]+)', unit, re.M):
     path = Path(rawpath.strip('"\''))
     try:
@@ -51,8 +53,8 @@ if 'RESTIC_REPOSITORY' not in env:
 
 def restic(*args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
-    return subprocess.run(
-        ['restic', *args],
+    return subprocess.run(  # nosec B603 B607 - fixed executable, argv list
+        ['/usr/bin/restic', *args],
         env=env,
         text=True,
         check=True,
