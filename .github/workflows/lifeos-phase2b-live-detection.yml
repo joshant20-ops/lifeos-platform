@@ -1,0 +1,34 @@
+name: LifeOS Phase 2B Live Detection
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/run-energy-opportunity-detection.py','.github/workflows/lifeos-phase2b-live-detection.yml','energy/app/opportunities.py']
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  detect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Sync
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Detect negative-price windows
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/run-energy-opportunity-detection.py
+      - name: Non-mutation
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo ENERGY_OPPORTUNITY_DETECTION_REPOSITORY=PASS
