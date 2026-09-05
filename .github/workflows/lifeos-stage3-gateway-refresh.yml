@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-stage3-gateway-refresh.yml'
+      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
+      - 'scripts/lifeos-step11-live-closure.sh'
+      - 'scripts/diagnose-step11-live-terminal-policy.sh'
+      - 'governor/job_records.py'
   workflow_dispatch:
 
 permissions:
@@ -46,7 +50,25 @@ jobs:
           printf '%s\n' "$out"
           test "$rc" -eq 64
           grep -q 'capability-stage3-systemd-cleanup' <<<"$out"
+          grep -q 'step11-live-closure' <<<"$out"
           echo 'STAGE3_GATEWAY_REFRESH=PASS'
+
+      - name: Complete Step 11 live terminal policy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway step11-live-closure)
+          printf '%s\n' "$out"
+          grep -qx 'STEP_11=PASS' <<<"$out"
+          grep -qx 'LIVE_MODULE_SYNC=PASS' <<<"$out"
+          grep -qx 'PASS_STOP=PASS' <<<"$out"
+          grep -qx 'GENUINE_BLOCKED_STOP=PASS' <<<"$out"
+          grep -qx 'REPEATED_FAILURE_STOP=PASS' <<<"$out"
+          grep -qx 'ITERATION_LIMIT_STOP=PASS' <<<"$out"
+          grep -qx 'NON_TERMINAL_RETRY=PASS' <<<"$out"
+          grep -qx 'AUTONOMOUS_AGENT_HEALTH=PASS' <<<"$out"
+          grep -qx 'NEXT_REQUIRED=step11_closed' <<<"$out"
+          echo 'STEP11_WORKFLOW_ACCEPTANCE=PASS'
 
       - name: Prove canonical LifeOS dashboard survived deployment
         shell: bash
