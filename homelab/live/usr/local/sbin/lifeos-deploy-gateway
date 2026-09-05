@@ -32,6 +32,10 @@ OPS = {
         'script': 'scripts/lifeos-deploy-ha-control-bridge.sh',
         'privileged': True,
     },
+    'deploy-tower-metrics': {
+        'script': 'scripts/lifeos-deploy-tower-metrics.sh',
+        'privileged': True,
+    },
     'capability-stage3-systemd-cleanup': {
         'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
         'privileged': True,
