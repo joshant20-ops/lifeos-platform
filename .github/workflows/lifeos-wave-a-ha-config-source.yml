@@ -1,0 +1,35 @@
+name: LifeOS Wave A HA Config Source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-wave-a-ha-config-source.yml'
+      - 'scripts/read-safe-wave-a-ha-config.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  read:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Sync
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Read safe HA sources
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/read-safe-wave-a-ha-config.py
+      - name: Clean proof
+        run: |
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
