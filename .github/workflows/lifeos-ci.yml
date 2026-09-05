@@ -57,11 +57,18 @@ jobs:
       - name: Validate Tower metrics deployment boundary
         run: |
           bash -n scripts/lifeos-deploy-tower-metrics.sh
+          bash -n scripts/lifeos-deploy-tower-metrics-wrapper.sh
           python3 -m py_compile \
             governor/tower_metrics.py \
             homelab/live/usr/local/sbin/lifeos-deploy-gateway
           grep -F "'deploy-tower-metrics'" \
             homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
+          grep -F "scripts/lifeos-deploy-tower-metrics-wrapper.sh" \
+            homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
+          grep -F 'PACKAGE=mosquitto-clients' \
+            scripts/lifeos-deploy-tower-metrics-wrapper.sh >/dev/null
+          grep -F "apt-get install -y --no-install-recommends" \
+            scripts/lifeos-deploy-tower-metrics-wrapper.sh >/dev/null
           grep -F "sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-tower-metrics" \
             .github/workflows/lifeos-tower-metrics-deploy.yml >/dev/null
 
