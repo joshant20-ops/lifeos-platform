@@ -1,4 +1,4 @@
 operation=deploy-ha-control-bridge
-reason=refresh-gateway-for-tower-metrics
-requested_commit=583e62c6e8e13432549537901e5ed549e82cec8a
-nonce=2026-09-05T02:00Z
+reason=render-z97-masonry-ha-only
+requested_commit=31ef9d3273089364b10d50d249c828aaaafc8931
+nonce=2026-09-05T04:08+01:00
