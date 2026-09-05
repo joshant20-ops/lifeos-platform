@@ -5,7 +5,11 @@ TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
-systemctl show "$svc" -p LoadState --value | grep -qx loaded || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
+python3 - "$svc" <<'PY'
+import subprocess,sys
+state=subprocess.check_output(['systemctl','show',sys.argv[1],'-p','LoadState','--value'],text=True).strip()
+if state!='loaded': raise SystemExit('backup service missing')
+PY
 python3 - "$svc" "$TMP/env.json" <<'PY'
 import json,re,shlex,subprocess,sys
 allow=re.compile(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=')
