@@ -43,14 +43,27 @@ ORIGIN=$(runuser -u joshan -- git -C "$PLATFORM" rev-parse origin/main)
 [[ -z "$(runuser -u joshan -- git -C "$PLATFORM" status --porcelain)" ]] || fail platform_dirty
 runuser -u joshan -- git -C "$PLATFORM" ls-files --error-unmatch -- governor/job_records.py >/dev/null
 
-SOURCE_MODE=$(stat -c '%a' "$SOURCE")
 SOURCE_UID=$(stat -c '%u' "$SOURCE")
 [[ "$SOURCE_UID" -eq 1000 ]] || fail canonical_helper_owner_unexpected
-(( (8#$SOURCE_MODE & 8#022) == 0 )) || fail canonical_helper_group_or_other_writable
 
+# Verify canonical bytes against the exact Git commit before repairing checkout
+# metadata. Git does not track group/other write bits, so a checkout may carry
+# unsafe mode bits even while its bytes are canonical. Only chmod this one
+# verified tracked helper, then revalidate both mode and checksum.
 GIT_SHA=$(runuser -u joshan -- git -C "$PLATFORM" show "$HEAD:governor/job_records.py" | sha256sum | awk '{print $1}')
 SOURCE_SHA=$(sha256sum "$SOURCE" | awk '{print $1}')
 [[ "$GIT_SHA" == "$SOURCE_SHA" ]] || fail canonical_helper_checksum_mismatch
+
+SOURCE_MODE=$(stat -c '%a' "$SOURCE")
+if (( (8#$SOURCE_MODE & 8#022) != 0 )); then
+  chmod 0644 "$SOURCE"
+  echo "CANONICAL_HELPER_MODE_REPAIRED=YES"
+fi
+SOURCE_MODE=$(stat -c '%a' "$SOURCE")
+(( (8#$SOURCE_MODE & 8#022) == 0 )) || fail canonical_helper_group_or_other_writable
+[[ $(sha256sum "$SOURCE" | awk '{print $1}') == "$GIT_SHA" ]] || fail canonical_helper_checksum_changed_after_mode_repair
+
+echo "CANONICAL_HELPER_SOURCE_SAFETY=PASS"
 
 install -d -o root -g root -m 0750 "$AUDIT_DIR"
 if [[ -f "$LIVE" && ! -L "$LIVE" ]]; then
