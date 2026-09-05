@@ -1,0 +1,25 @@
+[Unit]
+Description=LifeOS TowerPC metrics publisher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/lifeos/tower_metrics.py
+Restart=on-failure
+RestartSec=5
+Environment=LIFEOS_MQTT_HOST=127.0.0.1
+Environment=LIFEOS_TOWER_METRICS_INTERVAL=15
+Environment=LIFEOS_TOWER_IDLE_SECONDS=600
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target
