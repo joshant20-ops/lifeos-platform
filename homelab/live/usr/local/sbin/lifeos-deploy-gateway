@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Root-owned allow-listed deployment gateway for GitHub/Semaphore automation.
-
-The caller supplies exactly one operation name. No arbitrary command, path or
-shell fragment is accepted. The gateway verifies the canonical platform checkout
-is clean and exactly matches origin/main before invoking a reviewed script.
-"""
+"""Root-owned allow-listed deployment gateway for GitHub/Semaphore automation."""
 from __future__ import annotations
 
 import os
@@ -18,14 +13,31 @@ GIT = '/usr/bin/git'
 RUNUSER = '/usr/sbin/runuser'
 ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
-
 OPS = {
-    'audit-dispatcher-retirement': {'script': 'scripts/lifeos-worker-dispatcher-split-audit.sh', 'privileged': False},
-    'retire-engineer-dispatcher': {'script': 'scripts/lifeos-retire-engineer-dispatcher.sh', 'privileged': True},
-    'deploy-ha-control-bridge': {'script': 'scripts/lifeos-deploy-ha-control-bridge.sh', 'privileged': True},
-    'deploy-tower-metrics': {'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh', 'privileged': True},
-    'capability-stage3-systemd-cleanup': {'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh', 'privileged': True},
-    'restore-rehearsal': {'script': 'scripts/lifeos-restic-restore-rehearsal.sh', 'privileged': True},
+    'audit-dispatcher-retirement': {
+        'script': 'scripts/lifeos-worker-dispatcher-split-audit.sh',
+        'privileged': False,
+    },
+    'retire-engineer-dispatcher': {
+        'script': 'scripts/lifeos-retire-engineer-dispatcher.sh',
+        'privileged': True,
+    },
+    'deploy-ha-control-bridge': {
+        'script': 'scripts/lifeos-deploy-ha-control-bridge.sh',
+        'privileged': True,
+    },
+    'deploy-tower-metrics': {
+        'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh',
+        'privileged': True,
+    },
+    'capability-stage3-systemd-cleanup': {
+        'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
+        'privileged': True,
+    },
+    'restore-rehearsal': {
+        'script': 'scripts/lifeos-restic-restore-rehearsal.sh',
+        'privileged': True,
+    },
     'step11-live-closure': {
         'script': 'scripts/lifeos-step11-live-closure.sh',
         'privileged': True,
@@ -33,36 +45,64 @@ OPS = {
 }
 
 def fail(msg: str, code: int = 1) -> None:
-    print('GATEWAY_RESULT=FAIL'); print(f'GATEWAY_ERROR={msg}'); raise SystemExit(code)
+    print('GATEWAY_RESULT=FAIL')
+    print(f'GATEWAY_ERROR={msg}')
+    raise SystemExit(code)
 
 def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    cmd=[RUNUSER,'-u','joshan','--',ENV,'-i','HOME=/home/joshan','PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin','LANG=C.UTF-8',*args]
-    return subprocess.run(cmd,text=True,check=False,stdout=subprocess.PIPE if capture else None,stderr=subprocess.STDOUT if capture else None)
+    cmd = [RUNUSER, '-u', 'joshan', '--', ENV, '-i', 'HOME=/home/joshan', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LANG=C.UTF-8', *args]
+    return subprocess.run(cmd, text=True, check=False, stdout=subprocess.PIPE if capture else None, stderr=subprocess.STDOUT if capture else None)
 
-def git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]: return as_joshan(GIT,'-C',str(REPO),*args,capture=capture)
-def one_line(cp,label):
-    if cp.returncode != 0: fail(f'{label}_failed_rc_{cp.returncode}')
+def git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
+    return as_joshan(GIT, '-C', str(REPO), *args, capture=capture)
+
+def one_line(cp, label):
+    if cp.returncode != 0:
+        fail(f'{label}_failed_rc_{cp.returncode}')
     return (cp.stdout or '').strip()
+
 def preflight():
-    if os.geteuid()!=0: fail('must_run_as_root')
-    try: pw=pwd.getpwnam('joshan')
-    except KeyError: fail('joshan_user_missing')
-    if pw.pw_uid<=0: fail('invalid_joshan_uid')
-    if not (REPO/'.git').is_dir(): fail('platform_repo_missing')
-    if git('fetch','--prune','origin','main').returncode!=0: fail('git_fetch_failed')
-    head=one_line(git('rev-parse','HEAD'),'head'); origin=one_line(git('rev-parse','origin/main'),'origin_main'); status=one_line(git('status','--porcelain'),'status')
-    if status: fail('platform_worktree_dirty')
-    if head!=origin: fail('platform_head_not_origin_main')
+    if os.geteuid() != 0:
+        fail('must_run_as_root')
+    try:
+        pw = pwd.getpwnam('joshan')
+    except KeyError:
+        fail('joshan_user_missing')
+    if pw.pw_uid <= 0 or not (REPO / '.git').is_dir():
+        fail('invalid_platform')
+    if git('fetch', '--prune', 'origin', 'main').returncode != 0:
+        fail('git_fetch_failed')
+    head = one_line(git('rev-parse', 'HEAD'), 'head')
+    origin = one_line(git('rev-parse', 'origin/main'), 'origin_main')
+    status = one_line(git('status', '--porcelain'), 'status')
+    if status or head != origin:
+        fail('platform_not_clean_origin_main')
     return head
 
 def main():
     if len(sys.argv) != 2 or sys.argv[1] not in OPS:
-        print('USAGE=lifeos-deploy-gateway <operation>'); print('ALLOWLIST='+','.join(sorted(OPS))); return 64
-    operation=sys.argv[1]; spec=OPS[operation]; head=preflight(); script=REPO/str(spec['script'])
-    if not script.is_file() or script.is_symlink(): fail('allowlisted_script_missing_or_symlink')
-    print('LIFEOS_DEPLOY_GATEWAY_VERSION=3'); print(f'GATEWAY_OPERATION={operation}'); print(f'GATEWAY_PLATFORM_HEAD={head}'); print(f'GATEWAY_PRIVILEGED={"YES" if spec["privileged"] else "NO"}')
-    cp=subprocess.run([BASH,str(script)],cwd=REPO,text=True) if spec['privileged'] else as_joshan(BASH,str(script))
+        print('USAGE=lifeos-deploy-gateway <operation>')
+        print('ALLOWLIST=' + ','.join(sorted(OPS)))
+        return 64
+    operation = sys.argv[1]
+    spec = OPS[operation]
+    head = preflight()
+    script = REPO / str(spec['script'])
+    if not script.is_file() or script.is_symlink():
+        fail('allowlisted_script_missing_or_symlink')
+    print('LIFEOS_DEPLOY_GATEWAY_VERSION=3')
+    print(f'GATEWAY_OPERATION={operation}')
+    print(f'GATEWAY_PLATFORM_HEAD={head}')
+    if spec['privileged']:
+        cp = subprocess.run([BASH, str(script)], cwd=REPO, text=True)
+    else:
+        cp = as_joshan(BASH, str(script))
     print(f'GATEWAY_CHILD_RC={cp.returncode}')
-    if cp.returncode!=0: print('GATEWAY_RESULT=RETRY'); return cp.returncode
-    print('GATEWAY_RESULT=PASS'); return 0
-if __name__=='__main__': raise SystemExit(main())
+    if cp.returncode != 0:
+        print('GATEWAY_RESULT=RETRY')
+        return cp.returncode
+    print('GATEWAY_RESULT=PASS')
+    return 0
+
+if __name__ == '__main__':
+    raise SystemExit(main())
