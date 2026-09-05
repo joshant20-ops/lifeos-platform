@@ -8,7 +8,7 @@ svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
 while IFS= read -r -d '' assignment; do
   key="${assignment%%=*}"; value="${assignment#*=}"
-  case "$key" in RESTIC_*|AWS_*|B2_*|AZURE_*) ;; *) continue ;; esac
+  [[ "$key" =~ ^(RESTIC|AWS|B2|AZURE)_[A-Z0-9_]+$ ]] || continue
   printf -v "$key" '%s' "$value"; export "$key"
 done < <(python3 - "$svc" <<'PY'
 import os,re,shlex,subprocess,sys
