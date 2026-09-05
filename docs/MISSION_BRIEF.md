@@ -291,3 +291,71 @@ LifeOS succeeds when it is a boringly reliable personal infrastructure layer tha
 - measurably saves time, money or cognitive effort without creating equivalent maintenance burden.
 
 **The governing question for every proposed component or change is: does this make LifeOS more useful, reliable, private or maintainable than the system we already have — and can we prove it?**
+
+---
+
+## Work log — 2026-09-05 — capability roadmap regrouping
+
+### Decision
+
+Following completion of the foundation and capability Stages 1–3, the remaining numbered capability stages should be delivered as **integrated capability waves** where they share data models, integrations and user-facing workflows. The original stage numbers remain for traceability; the wave model controls delivery sequencing and prevents duplicate subsystems.
+
+### Wave A — Household Intelligence — NEXT
+
+Combines **Stage 4 Personal Assistant + Stage 8 Infrastructure/Smart Home + Stage 9 Energy**.
+
+Target outcome: establish the first complete LifeOS operational loop:
+
+**observe → understand → decide → surface/approve when needed → act through the authoritative specialist system → verify → record.**
+
+Responsibilities remain separated:
+
+- Stage 4 / PA owns attention, conversation, decisions, approvals, explanations and household-facing delivery.
+- Stage 8 owns higher-level infrastructure/home coordination while Home Assistant remains the authoritative device automation platform.
+- Stage 9 owns energy opportunity/intelligence events while Predbat, Enphase, Octopus and Home Assistant retain their specialist control roles.
+- Stage 9 must not create a separate notification framework; energy events are presented through the common PA attention/delivery model.
+- Stage 4 must not absorb smart-home or energy control logic into a monolith.
+- Pull forward only the EV/energy interface from Stage 11 when required; do not build the full vehicle/travel capability prematurely.
+
+This wave should prove the reusable event/action/decision model with high-value household cases such as negative/cheap electricity opportunities, infrastructure exceptions and verified household actions.
+
+### Wave B — Personal Administration
+
+Combines **Stage 5 Calendar + Stage 6 Email + Stage 7 Documents/Paperless**.
+
+Build a shared **event / obligation / action / evidence** model rather than separate reminder/deadline systems for each source.
+
+Examples include email creating an actionable obligation, Paperless retaining authoritative supporting evidence, Calendar representing time commitments/deadlines, and the PA presenting only the resulting decision/action that needs attention.
+
+### Wave C — Finance & Assets
+
+Combines **Stage 10 Finance/Rental/MTD + the vehicle ownership/EV economics portion of Stage 11**.
+
+Finance should consume the document/email/calendar capabilities from Wave B rather than duplicating them. Vehicle costs, mileage, charging/fuel, insurance and maintenance should feed the same financial/provenance model where appropriate. Rental-property accounting remains part of the finance stream. Full travel planning remains separate/continuous rather than blocking this wave.
+
+A mature OTS accounting/MTD core remains mandatory unless a proven gap justifies otherwise; LifeOS provides orchestration, evidence linking, provenance, review and user experience rather than replacing the ledger.
+
+### Wave D — Intelligence & Autonomy
+
+Combines **Stage 12 Knowledge/Provenance/Ask LifeOS + Stage 13 Proactive Cross-Domain Assistant + Stage 14 Mature Governed Self-Maintenance**.
+
+Treat these as progressive maturity of one intelligence architecture:
+
+1. **Ask:** what does LifeOS know, with source/confidence provenance?
+2. **Anticipate:** what does the user need to know or decide without asking?
+3. **Act/improve safely:** what can LifeOS repair or improve autonomously through governed, recoverable mechanisms?
+
+They must share provenance, confidence, policy, audit and reasoning infrastructure rather than creating separate AI frameworks. Existing #26 transactional-root/governance work continues in parallel now; Wave D is the mature system-wide use of those safety foundations, not a reason to defer them.
+
+### Continuous / cross-wave work
+
+- Genuine maintenance, security, restore/recovery and governance defects continue independently and do not wait for a capability wave.
+- Stage 11 travel capability can be added when useful without blocking Finance & Assets.
+- OTS rationalisation remains a permanent engineering doctrine after Stage 1 completion: periodically re-evaluate retained custom code and services as mature native/OTS alternatives improve.
+- Human/account/policy boundaries such as WhatsApp/Alexa authorisation and positive cheap-energy thresholds remain explicit boundaries rather than fabricated defaults.
+
+### Delivery order
+
+**Foundation + capability Stages 1–3 COMPLETE → Wave A Household Intelligence → Wave B Personal Administration → Wave C Finance & Assets → Wave D Intelligence & Autonomy.**
+
+Each wave should leave behind reusable capability for the next rather than implementing parallel point solutions. The objective is four progressively more capable versions of one LifeOS, not eleven loosely connected feature projects.
