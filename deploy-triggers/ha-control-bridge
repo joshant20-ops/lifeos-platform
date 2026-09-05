@@ -1,3 +1,4 @@
 operation=deploy-ha-control-bridge
 reason=z97-metrics-dashboard
-requested_commit=98f1668db0cda2b3771084541bca064bb0e280e6
+requested_commit=c1b48bcd4170f4aaecb53b336a055539c50ed9de
+nonce=2026-09-05T01:50Z
