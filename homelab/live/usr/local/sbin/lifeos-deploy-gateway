@@ -117,7 +117,9 @@ def main():
     print(f'GATEWAY_PLATFORM_HEAD={head}')
     if spec['privileged']:
         cp = subprocess.run(  # nosec B603
-            [BASH, str(script)], cwd=REPO, text=True
+            [BASH, str(script)],
+            cwd=REPO,
+            text=True,
         )
     else:
         cp = as_joshan(BASH, str(script))
