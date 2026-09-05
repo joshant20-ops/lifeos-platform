@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Emit selected small HA package sources after a conservative credential scan."""
+"""Emit selected small HA package sources after a conservative credential scan.
+Read-only Wave A source capture.
+"""
 import subprocess
 code=r'''
 import pathlib,re
