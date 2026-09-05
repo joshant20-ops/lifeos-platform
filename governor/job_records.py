@@ -9,7 +9,7 @@ import subprocess
 from typing import Any, Callable
 
 
-RECORD_VERSION = 1
+RECORD_VERSION = 2
 SENSITIVE_KEY = re.compile(
     r"(?i)(?:password|passwd|secret|token|api[_-]?key|authorization|cookie|session|credential|private[_-]?key)"
 )
@@ -49,6 +49,42 @@ def _summary(job: dict[str, Any]) -> str:
     return request[:500]
 
 
+def _terminal_outcome(job: dict[str, Any], iterations: list[dict[str, Any]]) -> dict[str, Any]:
+    """Expose the authoritative reason an autonomous repair loop stopped."""
+    status = str(job.get("status") or "UNKNOWN").upper()
+    stage = str(job.get("stage") or "unknown")
+    reason = str(job.get("blocked_reason") or job.get("failure_reason") or "")
+    lowered = reason.lower()
+
+    if status == "PASS":
+        kind = "PASS"
+        retry_allowed = False
+    elif "repeated deterministic failure" in lowered or stage == "blocked_repeated_failure":
+        kind = "REPEATED_FAILURE"
+        retry_allowed = False
+    elif "maximum iterations reached" in lowered:
+        kind = "ITERATION_LIMIT"
+        retry_allowed = False
+    elif status == "BLOCKED":
+        kind = "BLOCKED"
+        retry_allowed = False
+    else:
+        kind = "NON_TERMINAL"
+        retry_allowed = True
+
+    last = iterations[-1] if iterations else {}
+    return {
+        "kind": kind,
+        "terminal": kind != "NON_TERMINAL",
+        "retry_allowed": retry_allowed,
+        "reason": reason,
+        "iteration_count": len(iterations),
+        "last_failure_signature": (
+            last.get("failure_signature") or job.get("last_failure_signature")
+        ),
+    }
+
+
 def make_record(job: dict[str, Any], publication_state: str = "UNPUBLISHED") -> dict[str, Any]:
     """Convert mutable runtime state into the stable public record schema."""
     iterations = list(job.get("iterations") or [])
@@ -71,6 +107,7 @@ def make_record(job: dict[str, Any], publication_state: str = "UNPUBLISHED") -> 
         "stage": str(job.get("stage") or "unknown"),
         "final_status": str(job.get("status") or "UNKNOWN"),
         "iteration_count": len(iterations),
+        "terminal_outcome": _terminal_outcome(job, iterations),
         "implementation_summary": job.get("implementation_summary") or "",
         "changed_files": sorted(set(job.get("changed_files") or [])),
         "canonical_commits": sorted(set(job.get("canonical_commits") or [])),
