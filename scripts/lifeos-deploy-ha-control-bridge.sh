@@ -24,8 +24,11 @@ python3 "$PLATFORM/homeassistant/verify-lifeos-dashboard.py"
 echo 'CANONICAL_LIFEOS_DASHBOARD=PASS'
 
 # Only after the canonical /lifeos verifier has passed, create the intentional
-# control-plane dashboard and its Z97 masonry detail view.
+# control-plane dashboard and its Z97 masonry detail view. Resolve the control-state
+# entity from MQTT discovery unique_id rather than assuming Home Assistant assigned
+# the canonical entity_id; restored registries may legitimately suffix that ID.
 bash "$PLATFORM/scripts/lifeos-adapt-ha-lifeos-dashboard.sh"
+bash "$PLATFORM/scripts/lifeos-resolve-ha-control-entity.sh"
 bash "$PLATFORM/scripts/lifeos-adapt-ha-tower-control.sh"
 
 for _ in $(seq 1 60); do
