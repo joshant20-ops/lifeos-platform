@@ -1,0 +1,55 @@
+name: LifeOS Restore Rehearsal
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-restic-restore-rehearsal.sh'
+      - '.github/workflows/lifeos-restore-rehearsal.yml'
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  rehearse:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Run non-destructive restore rehearsal
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          bash scripts/lifeos-restic-restore-rehearsal.sh
+      - name: Verify durable evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json,pathlib
+          p=pathlib.Path.home()/'.local/state/lifeos/restore-rehearsal/latest.json'
+          d=json.loads(p.read_text())
+          assert d['result']=='PASS'
+          assert d['repository_check']=='PASS'
+          assert d['actual_restore']=='PASS'
+          assert d['restored_file_count']>0
+          assert d['production_overwrite'] is False
+          assert d['secrets_emitted'] is False
+          print('DURABLE_RESTORE_EVIDENCE=PASS')
+          PY
+      - name: Prove repository non-mutation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'RESTORE_REHEARSAL_REPOSITORY=PASS'
