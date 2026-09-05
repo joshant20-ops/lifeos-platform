@@ -196,13 +196,18 @@ for uid,value in registry.items():
     disk,metric=m.groups()
     disks.setdefault(disk,{})[metric]=value
 
+# Disk capacity is derived only from mounted filesystems. A physical disk can be
+# perfectly healthy and produce I/O while having no mounted filesystem, so the
+# dashboard intentionally presents the requested physical-disk activity only.
+# This prevents an unmounted disk's null `used_percent` from looking like failed
+# telemetry. Read/write are always numeric (including 0.000 MB/s when idle).
 for disk in sorted(disks):
     d=disks[disk]
     rows=[]
-    for metric,label in [('used','Used'),('read','Read rate'),('write','Write rate')]:
+    for metric,label in [('read','Read rate'),('write','Write rate')]:
         if d.get(metric):
             rows.append({'entity':d[metric],'name':label})
-    cards.append({'type':'entities','title':f'Disk {disk}','show_header_toggle':False,'entities':rows})
+    cards.append({'type':'entities','title':f'Disk {disk} activity','show_header_toggle':False,'entities':rows})
     graph=history(f'Disk {disk} read / write — 24 hours',[
         {'entity':d['read'],'name':'Read'} if d.get('read') else None,
         {'entity':d['write'],'name':'Write'} if d.get('write') else None,
@@ -239,6 +244,7 @@ print('TOWER_POWER_ENTITY=switch.tower_power')
 print('TOWER_ACCESS_ENTITY=binary_sensor.tower_accessible')
 print(f'TOWER_METRICS_ENTITIES={len([x for x in registry if x.startswith("lifeos_tower_")])}')
 print(f'TOWER_METRICS_DISKS={len(disks)}')
+print('Z97_DISK_CARDS=READ_WRITE_ONLY')
 PY
 
 docker restart "$CONTAINER" >/dev/null
@@ -269,13 +275,19 @@ cards=z97.get('cards')
 assert isinstance(cards,list) and len(cards) >= 10, len(cards or [])
 history=[c for c in cards if c.get('type')=='history-graph']
 disk_history=[c for c in history if str(c.get('title') or '').startswith('Disk ')]
+disk_cards=[c for c in cards if c.get('type')=='entities' and str(c.get('title') or '').startswith('Disk ')]
 assert len(history) >= 7, len(history)
 assert len(disk_history) >= 2, len(disk_history)
+assert len(disk_cards) >= 2, len(disk_cards)
+for card in disk_cards:
+    names=[str(e.get('name') or '') for e in card.get('entities',[]) if isinstance(e,dict)]
+    assert names == ['Read rate','Write rate'], (card.get('title'), names)
 print('TOWER_DASHBOARD_VALIDATION=PASS')
 print('Z97_VIEW_TYPE=masonry')
 print(f'Z97_RENDERABLE_CARDS={len(cards)}')
 print(f'Z97_HISTORY_GRAPHS={len(history)}')
 print(f'Z97_DISK_GRAPHS={len(disk_history)}')
+print(f'Z97_DISK_ACTIVITY_CARDS={len(disk_cards)}')
 PY
 
 echo 'RESULT=PASS'
@@ -283,6 +295,7 @@ echo 'TOWER_CONTROL_DASHBOARD_ADAPTED=YES'
 echo 'TOWER_METRICS_VIEW=Z97'
 echo 'TOWER_METRICS_HISTORY_HOURS=24'
 echo 'TOWER_METRICS_DISKS=PER_PHYSICAL_DEVICE'
+echo 'TOWER_DISK_CARDS=READ_WRITE_ACTIVITY_ONLY'
 echo 'TOWER_IDLE_STATE=CPU_GPU_DISK_NETWORK'
 echo 'TOWER_LIGHT=GRAY_OFF_YELLOW_INACCESSIBLE_GREEN_ACCESSIBLE'
 echo 'TOWER_SHUTDOWN_CONFIRMATION=YES'
