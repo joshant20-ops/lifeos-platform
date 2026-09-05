@@ -1,0 +1,49 @@
+name: LifeOS Tower Metrics Deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - deploy-triggers/tower-metrics
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on:
+      - self-hosted
+      - linux
+      - ARM64
+      - lifeos-pi5
+    timeout-minutes: 30
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ARCH" = ARM64
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
+          echo "OPERATION=deploy-tower-metrics"
+
+      - name: Execute fixed Tower metrics deployment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-tower-metrics
