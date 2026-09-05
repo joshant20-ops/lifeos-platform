@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Emit safe PA lifecycle helper source and structural producer references."""
+"""Emit safe PA lifecycle helper source and structural producer/scheduler references."""
 import subprocess
 code=r'''
 import pathlib,re
@@ -10,7 +10,6 @@ if any(re.search(x,raw) for x in patterns):
  print('SAFE_SOURCE=REFUSED'); raise SystemExit(2)
 print('SAFE_SOURCE=PASS')
 print('---BEGIN---'); print(raw,end='' if raw.endswith('\n') else '\n'); print('---END---')
-# Emit only filenames that reference lifecycle output names; never contents.
 needles=('open_loops_attention.json','open_loops_active.json','pa_dashboard_summary.json')
 for root in ('/config/scripts','/config/packages'):
  for q in pathlib.Path(root).rglob('*'):
@@ -22,6 +21,8 @@ for root in ('/config/scripts','/config/packages'):
 r=subprocess.run(['docker','exec','homeassistant','python3','-c',code],text=True,capture_output=True)
 print(r.stdout,end='')
 if r.returncode: raise SystemExit(r.returncode)
-# Host unit references: unit names only.
 s=subprocess.run(['sh','-lc',"grep -RIlE 'open_loops_attention\\.json|pa_dashboard_summary\\.json' /etc/systemd/system /usr/local/lib/systemd/system 2>/dev/null | sed 's#^.*/##' | sort -u"],text=True,capture_output=True)
 for x in s.stdout.splitlines(): print('SYSTEMD_REFERENCE='+x)
+# Unit names only; enough to prove whether an existing scheduler can be reused.
+u=subprocess.run(['sh','-lc',"systemctl list-unit-files --no-legend 2>/dev/null | awk '{print $1}' | grep -Ei 'energy|opportun|negative|octopus' | sort -u"],text=True,capture_output=True)
+for x in u.stdout.splitlines(): print('ENERGY_UNIT='+x)
