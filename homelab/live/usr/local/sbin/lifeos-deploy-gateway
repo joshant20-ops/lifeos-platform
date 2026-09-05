@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Root-owned allow-listed deployment gateway for GitHub/Semaphore automation."""
 from __future__ import annotations
-
 import os
 import pathlib
 import pwd
 import subprocess
 import sys
-
 REPO = pathlib.Path('/home/joshan/lifeos-platform')
 GIT = '/usr/bin/git'
 RUNUSER = '/usr/sbin/runuser'
@@ -50,8 +48,15 @@ def fail(msg: str, code: int = 1) -> None:
     raise SystemExit(code)
 
 def as_joshan(*args: str, capture: bool = False) -> subprocess.CompletedProcess[str]:
-    cmd = [RUNUSER, '-u', 'joshan', '--', ENV, '-i', 'HOME=/home/joshan', 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'LANG=C.UTF-8', *args]
-    return subprocess.run(cmd, text=True, check=False, stdout=subprocess.PIPE if capture else None, stderr=subprocess.STDOUT if capture else None)
+    cmd = [
+        RUNUSER, '-u', 'joshan', '--', ENV, '-i',
+        'HOME=/home/joshan',
+        'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
+        'LANG=C.UTF-8', *args,
+    ]
+    stdout = subprocess.PIPE if capture else None
+    stderr = subprocess.STDOUT if capture else None
+    return subprocess.run(cmd, text=True, check=False, stdout=stdout, stderr=stderr)
 
 def git(*args: str, capture: bool = True) -> subprocess.CompletedProcess[str]:
     return as_joshan(GIT, '-C', str(REPO), *args, capture=capture)
