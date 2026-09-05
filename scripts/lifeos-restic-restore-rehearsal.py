@@ -15,12 +15,9 @@ ALLOWED = re.compile(r"^(RESTIC_|AWS_|B2_|AZURE_)[A-Z0-9_]+=")
 
 
 def run(argv, *, env=None, capture=False):
+    stdout = subprocess.PIPE if capture else subprocess.DEVNULL
     return subprocess.run(  # nosec B603
-        argv,
-        env=env,
-        text=True,
-        check=True,
-        stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+        argv, env=env, text=True, check=True, stdout=stdout
     )
 
 
