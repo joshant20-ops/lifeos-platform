@@ -16,9 +16,11 @@ cmd = ['systemctl', 'show', svc, '-p', 'LoadState', '--value']
 state = subprocess.check_output(cmd, text=True).strip()
 if state != 'loaded':
     raise SystemExit('backup service missing')
-allow = re.compile(
-    r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)='
+pattern = (
+    r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|'
+    r'B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)='
 )
+allow = re.compile(pattern)
 cmd = ['systemctl', 'show', svc, '-p', 'Environment', '--value']
 items = shlex.split(subprocess.check_output(cmd, text=True))
 unit = subprocess.check_output(['systemctl', 'cat', svc], text=True)
@@ -50,13 +52,16 @@ if 'RESTIC_REPOSITORY' not in env:
 def restic(*args, capture=False):
     stdout = subprocess.PIPE if capture else subprocess.DEVNULL
     return subprocess.run(
-        ['restic', *args], env=env, text=True, check=True, stdout=stdout
+        ['restic', *args],
+        env=env,
+        text=True,
+        check=True,
+        stdout=stdout,
     )
 
 
-snaps = json.loads(
-    restic('snapshots', '--latest', '1', '--json', capture=True).stdout
-)
+snap_run = restic('snapshots', '--latest', '1', '--json', capture=True)
+snaps = json.loads(snap_run.stdout)
 if not snaps:
     raise SystemExit('no snapshots')
 snapshot = snaps[0]
