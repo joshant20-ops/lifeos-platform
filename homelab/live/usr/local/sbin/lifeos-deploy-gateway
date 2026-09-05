@@ -36,6 +36,10 @@ OPS = {
         'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
         'privileged': True,
     },
+    'step11-live-closure': {
+        'script': 'scripts/lifeos-step11-live-closure.sh',
+        'privileged': True,
+    },
 }
 
 
