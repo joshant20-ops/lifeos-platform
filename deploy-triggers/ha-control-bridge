@@ -1,4 +1,4 @@
 operation=deploy-ha-control-bridge
-reason=deploy-z97-read-write-only-disk-cards
-requested_commit=10cf45fd2ad9cc7636a16c1cf96b54e24f60c287
-nonce=2026-09-05T10:21+01:00
+reason=resolve-live-tower-status-and-ha-entity-ids
+requested_commit=fcfe2c5130239eb0da8ec5faa71955ed07eac9bd
+nonce=2026-09-05T11:15+01:00
