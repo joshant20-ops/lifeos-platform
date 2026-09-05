@@ -9,6 +9,7 @@ on:
       - 'scripts/lifeos-step11-live-closure.sh'
       - 'scripts/diagnose-step11-live-terminal-policy.sh'
       - 'scripts/lifeos-verify-transaction-core.sh'
+      - 'scripts/lifeos-resume-issue26-after-root-proof.sh'
       - 'governor/job_records.py'
   workflow_dispatch:
 
@@ -53,6 +54,7 @@ jobs:
           grep -q 'capability-stage3-systemd-cleanup' <<<"$out"
           grep -q 'step11-live-closure' <<<"$out"
           grep -q 'verify-transaction-core' <<<"$out"
+          grep -q 'resume-issue26-after-root-proof' <<<"$out"
           echo 'STAGE3_GATEWAY_REFRESH=PASS'
 
       - name: Verify transaction core through governed root path
@@ -70,6 +72,20 @@ jobs:
           grep -qx 'BARRIER=none' <<<"$out"
           grep -qx 'GATEWAY_RESULT=PASS' <<<"$out"
           echo 'TRANSACTION_ROOT_PATH_ACCEPTANCE=PASS'
+
+      - name: Resume issue 26 after independent root proof
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway resume-issue26-after-root-proof 2>&1)
+          printf '%s\n' "$out"
+          grep -qx 'ISSUE26_STATE_RECONCILED=PASS' <<<"$out"
+          grep -qx 'ISSUE26_RESUME=PASS' <<<"$out"
+          grep -qx 'ROOT_BARRIER_CLEARED=PASS' <<<"$out"
+          grep -qx 'BACKLOG_RUNNER_RESUMED=PASS' <<<"$out"
+          grep -qx 'GATEWAY_RESULT=PASS' <<<"$out"
+          ! grep -q 'CONTROL_BLOCKER_AFTER_RESUME=must_run_as_root_via_Watchman' <<<"$out"
+          echo 'ISSUE26_ROOT_BLOCKER_ACCEPTANCE=PASS'
 
       - name: Complete Step 11 live terminal policy
         shell: bash
