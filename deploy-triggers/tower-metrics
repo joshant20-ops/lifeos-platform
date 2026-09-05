@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=retry-after-dashboard-baseline-fix
-requested_commit=97623c30a714f5f0cd99e8ec1295c263db1841fe
-nonce=2026-09-05T03:18+01:00
+reason=rerender-z97-masonry
+requested_commit=b4d79592ca6ec3e559b2a2f1ca3370c476bee31b
+nonce=2026-09-05T03:55+01:00
