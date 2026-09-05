@@ -2,7 +2,8 @@
   "schema_version": 1,
   "capability_stage": 3,
   "name": "Production operations",
-  "status": "IN_PROGRESS",
+  "status": "COMPLETE",
+  "completed_at": "2026-09-05",
   "principle": "Use mature OTS operational tooling; LifeOS only aggregates policy/evidence.",
   "required_capabilities": {
     "container_health": ["Docker", "Uptime Kuma"],
@@ -17,5 +18,6 @@
   "custom_code_rule": "No bespoke generic monitor. Custom code may only produce a bounded audit/report from OTS evidence.",
   "disk_warning_percent": 80,
   "disk_critical_percent": 90,
+  "closure_evidence": "Issue #53 closed completed on 2026-09-05 after live OTS operations audit. Durable restore rehearsal continues independently under #106 and does not reopen the base Stage 3 audit.",
   "exit_condition": "Required operational surfaces are present, healthy, and gaps are explicit rather than hidden."
 }
