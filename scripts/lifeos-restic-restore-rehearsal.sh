@@ -80,7 +80,7 @@ with tempfile.TemporaryDirectory() as td:
     if count <= 0:
         raise SystemExit('no files restored')
     print(f'RESTORED_FILE_COUNT={count}')
-state_dir = Path.home() / '.local/state/lifeos/restore-rehearsal'
+state_dir = Path.home() / '.local' / 'state' / 'lifeos' / 'restore-rehearsal'
 state_dir.mkdir(parents=True, exist_ok=True)
 record = {
     'schema_version': 1,
