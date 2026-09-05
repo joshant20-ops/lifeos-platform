@@ -1,9 +1,4 @@
-import importlib.machinery
-import json
 import pathlib
-import threading
-import urllib.error
-import urllib.request
 
 
 BACKEND = pathlib.Path("governor/engineer_backend.py")
@@ -31,9 +26,11 @@ def test_system_prompt_forbids_job_proposals_for_information_only_requests():
 
 
 def test_activation_uses_fresh_job_and_checks_ready_separately():
-    text = pathlib.Path('scripts/activate-current-engineer-runtime.sh').read_text()
+    text = pathlib.Path('scripts/activate-current-engineer-runtime-v4.sh').read_text()
     assert 'engineer-current-20260905-v4' in text
     assert 'http://127.0.0.1:8793/health' in text
     assert 'http://127.0.0.1:8793/ready' in text
     assert 'METADATA_REPAIR=' not in text
+    assert 'Proposal ref' in text
+    assert '391' in text
     assert 'NEXT_REQUIRED=phase1_closure_review' in text
