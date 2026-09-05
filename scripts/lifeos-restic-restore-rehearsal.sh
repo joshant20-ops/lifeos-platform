@@ -39,7 +39,7 @@ run_restic check --read-data-subset=1/100 >/dev/null
 echo 'RESTIC_CHECK=PASS'
 run_restic restore latest --target "$TMP/restore" >/dev/null
 count=0
-while IFS= read -r -d '' _; do ((count+=1)); done < <(find "$TMP/restore" -type f -print0 2>/dev/null)
+while IFS= read -r -d '' restored_file; do [[ -n "$restored_file" ]] && ((count+=1)); done < <(find "$TMP/restore" -type f -print0 2>/dev/null)
 [[ "$count" -gt 0 ]] || { echo 'RESTORE_REHEARSAL=FAIL reason=no_files_restored'; exit 1; }
 echo "RESTORED_FILE_COUNT=$count"
 python3 - "$STATE_DIR" "$count" <<'PY'
