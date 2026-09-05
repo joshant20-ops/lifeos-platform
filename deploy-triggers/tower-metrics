@@ -1,4 +1,4 @@
 operation=deploy-tower-metrics
-reason=rerender-z97-masonry
-requested_commit=b4d79592ca6ec3e559b2a2f1ca3370c476bee31b
-nonce=2026-09-05T03:55+01:00
+reason=rerender-z97-masonry-after-wol-discovery-fix
+requested_commit=dc10f8915d657179ad0ab5623f4096ec503aa860
+nonce=2026-09-05T04:03+01:00
