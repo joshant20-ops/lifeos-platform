@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 python3 - <<'PY'
-import json, os, re, shlex, subprocess, sys, tempfile
+import json, os, re, shlex, subprocess, tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 print('RESTORE_REHEARSAL=START')
