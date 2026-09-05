@@ -29,9 +29,9 @@ if 'RESTIC_REPOSITORY' not in env: raise SystemExit('repository contract missing
 Path(sys.argv[2]).write_text(json.dumps(env),encoding='utf-8')
 PY
 python3 - "$TMP/env" "$TMP/latest.json" <<'PY'
-import json,os,subprocess,sys
+import json,os,subprocess,sys  # nosec B404
 env=os.environ.copy(); env.update(json.load(open(sys.argv[1])))
-p=subprocess.run(['/usr/bin/restic','snapshots','--latest','1','--json'],env=env,text=True,check=True,stdout=subprocess.PIPE)
+p=subprocess.run(['/usr/bin/restic','snapshots','--latest','1','--json'],env=env,text=True,check=True,stdout=subprocess.PIPE)  # nosec B603
 open(sys.argv[2],'w').write(p.stdout)
 PY
 python3 - "$TMP/latest.json" <<'PY'
@@ -40,11 +40,11 @@ x=json.load(open(sys.argv[1])); assert x; s=x[0]
 print('SNAPSHOT_PRESENT=YES'); print('SNAPSHOT_TIME='+str(s.get('time',''))); print('SNAPSHOT_HOST='+str(s.get('hostname',''))); print('SNAPSHOT_PATH_COUNT='+str(len(s.get('paths') or [])))
 PY
 python3 - "$TMP/env" "$TMP/restore" <<'PY'
-import json,os,subprocess,sys
+import json,os,subprocess,sys  # nosec B404
 env=os.environ.copy(); env.update(json.load(open(sys.argv[1])))
-subprocess.run(['/usr/bin/restic','check','--read-data-subset=1/100'],env=env,check=True,stdout=subprocess.DEVNULL)
+subprocess.run(['/usr/bin/restic','check','--read-data-subset=1/100'],env=env,check=True,stdout=subprocess.DEVNULL)  # nosec B603
 print('RESTIC_CHECK=PASS')
-subprocess.run(['/usr/bin/restic','restore','latest','--target',sys.argv[2]],env=env,check=True,stdout=subprocess.DEVNULL)
+subprocess.run(['/usr/bin/restic','restore','latest','--target',sys.argv[2]],env=env,check=True,stdout=subprocess.DEVNULL)  # nosec B603
 PY
 python3 - "$TMP/restore" "$STATE_DIR" <<'PY'
 import json,os,sys,tempfile
