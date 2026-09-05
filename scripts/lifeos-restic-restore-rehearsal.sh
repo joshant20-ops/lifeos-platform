@@ -6,7 +6,6 @@ echo 'RESTORE_REHEARSAL=START'
 command -v restic >/dev/null || { echo 'RESTORE_REHEARSAL=BLOCKED reason=restic_missing'; exit 2; }
 svc=lifeos-restic-backup.service
 [[ "$(systemctl show "$svc" -p LoadState --value)" == loaded ]] || { echo 'RESTORE_REHEARSAL=BLOCKED reason=backup_service_missing'; exit 2; }
-# Import Environment= values in-memory. Never print them.
 while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$svc" <<'PY'
 import os,shlex,subprocess,sys
 raw=subprocess.check_output(['systemctl','show',sys.argv[1],'-p','Environment','--value'],text=True)
@@ -14,20 +13,16 @@ for item in shlex.split(raw):
     if '=' in item: os.write(1,item.encode()+b'\0')
 PY
 )
-# Import any EnvironmentFile= entries declared by the actual installed unit.
 while IFS= read -r f; do
   [[ -r "$f" ]] || continue
   set -a
-  # shellcheck disable=SC1090
   source "$f"
   set +a
 done < <(systemctl cat "$svc" | sed -nE 's/^[[:space:]]*EnvironmentFile=-?([^[:space:]]+).*/\1/p')
-# Some backup units place the restic environment directly on ExecStart via env(1).
 execstart="$(systemctl show "$svc" -p ExecStart --value)"
 while IFS= read -r -d '' assignment; do export "$assignment"; done < <(python3 - "$execstart" <<'PY'
 import os,re,shlex,sys
-raw=sys.argv[1]
-for tok in shlex.split(raw):
+for tok in shlex.split(sys.argv[1]):
     if re.match(r'^(RESTIC_[A-Z0-9_]+|AWS_[A-Z0-9_]+|B2_[A-Z0-9_]+|AZURE_[A-Z0-9_]+)=',tok): os.write(1,tok.encode()+b'\0')
 PY
 )
