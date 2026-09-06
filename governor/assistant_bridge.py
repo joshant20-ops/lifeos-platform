@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
+import hmac
 import json
 import os
 import pathlib
+import stat
+import time
 import urllib.request
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ai_broker import BrokerError, generate
@@ -11,6 +15,9 @@ from autonomous_agent import classify_privacy
 PORT = int(os.environ.get("LIFEOS_ASSISTANT_PORT", "8791"))
 AGENT_URL = os.environ.get("LIFEOS_AGENT_URL", "http://127.0.0.1:8790")
 UI_PATH = pathlib.Path(os.environ.get("LIFEOS_ASSISTANT_UI", "/home/joshan/lifeos-platform/governor/assistant_ui.html"))
+BROKER_TOKEN_FILE = pathlib.Path(
+    os.environ.get("LIFEOS_AI_BROKER_TOKEN_FILE", pathlib.Path.home() / ".config/lifeos/ai-broker.token")
+)
 
 SYSTEM = """You are the conversational front door to the LifeOS autonomous engineering agent.
 Your job is to understand what Joshan wants before creating an engineering job.
@@ -77,6 +84,70 @@ def analyse(messages, privacy_domain=None):
     }
 
 
+def _broker_token():
+    try:
+        if not BROKER_TOKEN_FILE.is_file() or BROKER_TOKEN_FILE.is_symlink():
+            return ""
+        if stat.S_IMODE(BROKER_TOKEN_FILE.stat().st_mode) != 0o600:
+            return ""
+        return BROKER_TOKEN_FILE.read_text().strip()
+    except OSError:
+        return ""
+
+
+def _broker_authorized(headers):
+    expected = _broker_token()
+    supplied = str(headers.get("Authorization", ""))
+    return bool(
+        expected
+        and supplied.startswith("Bearer ")
+        and hmac.compare_digest(supplied[7:].encode(), expected.encode())
+    )
+
+
+def broker_chat(body):
+    messages = body.get("messages", [])
+    if not isinstance(messages, list) or not messages:
+        raise ValueError("messages_required")
+    lines = []
+    raw = []
+    for item in messages[-24:]:
+        if not isinstance(item, dict):
+            continue
+        role = str(item.get("role", "user"))[:16]
+        content = item.get("content", "")
+        if isinstance(content, list):
+            content = " ".join(
+                str(part.get("text", ""))
+                for part in content
+                if isinstance(part, dict) and part.get("type") in {"text", "input_text"}
+            )
+        content = str(content)[:12000]
+        lines.append(f"{role.upper()}: {content}")
+        raw.append(content)
+    if not lines:
+        raise ValueError("messages_required")
+    requested_model = str(body.get("model", "lifeos-normal"))
+    requested_privacy = "local-only" if "local-only" in requested_model else "normal"
+    detected = classify_privacy("\n".join(raw))
+    privacy = "local-only" if detected == "local-only" else requested_privacy
+    routed = generate("\n".join(lines), privacy=privacy, task_class="normal")
+    return {
+        "id": "chatcmpl-" + uuid.uuid4().hex[:20],
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": routed["model"],
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": routed["text"]},
+            "finish_reason": "stop",
+        }],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+        "lifeos_provider": routed["provider"],
+        "lifeos_privacy": privacy,
+    }
+
+
 class Handler(BaseHTTPRequestHandler):
     def send_bytes(self, code, data, content_type):
         self.send_response(code)
@@ -109,6 +180,7 @@ class Handler(BaseHTTPRequestHandler):
                     "agent": agent.get("status"),
                     "inference": "governor-routed",
                     "cloud_requires_engineer": False,
+                    "broker_api": "/v1/chat/completions",
                 })
             except Exception as exc:
                 self.send_json(503, {"service": "lifeos-assistant", "status": "degraded", "detail": type(exc).__name__})
@@ -128,6 +200,19 @@ class Handler(BaseHTTPRequestHandler):
         self.send_json(404, {"error": "not_found"})
 
     def do_POST(self):
+        if self.path == "/v1/chat/completions":
+            if not _broker_authorized(self.headers):
+                self.send_json(401, {"error": "broker_capability_required"})
+                return
+            try:
+                self.send_json(200, broker_chat(self.read_json()))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except BrokerError as exc:
+                self.send_json(503, {"error": "inference_unavailable", "detail": str(exc)})
+            except Exception as exc:
+                self.send_json(502, {"error": "broker_unavailable", "detail": type(exc).__name__})
+            return
         if self.path == "/assist":
             try:
                 body = self.read_json()
