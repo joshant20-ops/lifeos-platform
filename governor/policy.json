@@ -35,7 +35,7 @@
       "cost": "free-tier",
       "capability": 4,
       "priority": 10,
-      "api_model": "gemini-2.5-flash",
+      "api_model": "gemini-3.6-flash",
       "task_classes": ["normal", "substantial", "review"]
     },
     {
