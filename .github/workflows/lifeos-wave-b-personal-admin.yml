@@ -1,0 +1,132 @@
+name: LifeOS Wave B Personal Administration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-wave-b-personal-admin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  governor-delivery:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 120
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'WAVE_B_CHECKPOINT=checkout-synchronized'
+
+      - name: Prove Governor and tool-aware broker gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          systemctl is-active --quiet lifeos-autonomous-agent.service
+          curl -fsS --max-time 5 http://127.0.0.1:8790/health | python3 -c 'import json,sys; j=json.load(sys.stdin); assert j["status"]=="ok" and j["runtime_controller"]=="pi5"'
+          TOKEN="$HOME/.config/lifeos/ai-broker.token"
+          test -f "$TOKEN" && test ! -L "$TOKEN" && test "$(stat -c '%a' "$TOKEN")" = 600
+          REQ=$(python3 - <<'PY'
+          import json
+          print(json.dumps({
+              "model":"lifeos-normal",
+              "messages":[{"role":"user","content":"Call marker with value WAVE_B_TOOL_GATE"}],
+              "tools":[{"type":"function","function":{"name":"marker","description":"Return a marker value","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}}],
+              "tool_choice":"required"
+          }))
+          PY
+          )
+          OUT=$(curl -fsS --max-time 120 -H 'Content-Type: application/json' -H "Authorization: Bearer $(cat "$TOKEN")" -d "$REQ" http://127.0.0.1:8790/v1/chat/completions)
+          python3 - "$OUT" <<'PY'
+          import json,sys
+          j=json.loads(sys.argv[1])
+          calls=j["choices"][0]["message"].get("tool_calls") or []
+          assert calls and calls[0]["function"]["name"]=="marker", j
+          assert j["lifeos_privacy"]=="normal", j
+          print("WAVE_B_TOOL_PROVIDER="+j["lifeos_provider"])
+          PY
+          echo 'WAVE_B_CHECKPOINT=governor-gate-proven'
+
+      - name: Deliver Wave B through Governor
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          BASE=http://127.0.0.1:8790
+
+          run_job() {
+            local label="$1"
+            local request="$2"
+            local payload response id state last='' deadline
+            payload=$(python3 - "$request" <<'PY'
+          import json,sys
+          print(json.dumps({"request":sys.argv[1]}))
+          PY
+          )
+            response=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' -d "$payload" "$BASE/jobs?async=1")
+            id=$(python3 - "$response" <<'PY'
+          import json,sys
+          print(json.loads(sys.argv[1])["id"])
+          PY
+          )
+            echo "WAVE_B_JOB=${label}:${id}"
+            deadline=$(( $(date +%s) + 2100 ))
+            while (( $(date +%s) < deadline )); do
+              response=$(curl -fsS --max-time 10 "$BASE/jobs/$id")
+              state=$(python3 - "$response" <<'PY'
+          import json,sys
+          j=json.loads(sys.argv[1])
+          print("%s:%s" % (j.get("status") or "unknown", j.get("stage") or "unknown"))
+          PY
+          )
+              if [[ "$state" != "$last" ]]; then
+                echo "WAVE_B_CHECKPOINT=${label}:${state}"
+                last="$state"
+              fi
+              case "$state" in
+                PASS:*) return 0 ;;
+                BLOCKED:*|FAILED:*|ERROR:*)
+                  python3 - "$response" <<'PY'
+          import json,sys
+          j=json.loads(sys.argv[1])
+          print("WAVE_B_BLOCKED_REASON="+str(j.get("blocked_reason") or "unspecified")[:500])
+          PY
+                  return 1
+                  ;;
+              esac
+              sleep 20
+            done
+            echo "WAVE_B_TIMEOUT=${label}:${id}"
+            return 1
+          }
+
+          run_job contract 'Wave B sanitized engineering package A. Inspect the current repository and live integration hooks before mutation. Reuse deployed/native/established components first. Deliver the smallest shared event, obligation, action and evidence contract needed to coordinate the existing scheduling system, mail system and document archive with the existing assistant attention surface. Do not access runtime user content. Add focused tests and documentation, avoid a new always-on service unless a distinct responsibility is proven, and leave material changes for governed Pi publication.'
+
+          run_job integrations 'Wave B sanitized engineering package B. Starting from the current main branch after package A, implement or reuse the production integration paths for scheduling context, actionable mail follow-up, attachment/evidence routing, document-derived obligations and the existing assistant attention/action surface. Keep authoritative source systems authoritative, perform all runtime user-content reasoning through the existing local-only policy path, and never add cloud fallback for that data path. Inspect before mutation, add focused tests, and provide bounded runtime verification through the governed handoff.'
+
+          run_job acceptance 'Wave B sanitized engineering package C. Inspect the current main branch and live runtime after packages A and B. Close remaining gaps for the Personal Administration capability, then run focused integration/privacy/regression checks proving the scheduling, mail and document-archive paths share the event/obligation/action/evidence model and reach the existing assistant attention surface. Prove the local-only privacy boundary remains fail-closed for runtime user content. Consolidate or delete redundant glue where appropriate, update canonical delivery documentation/evidence to mark this programme complete only if the proof is real, and stop before beginning the next Finance and Assets programme.'
+
+          echo 'WAVE_B_CHECKPOINT=governor-delivery-complete'
+
+      - name: Verify clean canonical result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          systemctl is-active --quiet lifeos-autonomous-agent.service
+          curl -fsS --max-time 5 http://127.0.0.1:8790/health | python3 -c 'import json,sys; j=json.load(sys.stdin); assert j["status"]=="ok"'
+          echo 'WAVE_B_PIPELINE=PASS'
+          echo 'WAVE_B_CHECKPOINT=complete'
