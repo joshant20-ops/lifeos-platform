@@ -7,7 +7,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "engineer"))
 
 from cleanup_audit import classify
-from provider_router import PolicyError, load_policy, load_secret_names, openhands_environment, route
+from provider_router import PolicyError, load_policy, load_secret_names, route
 from review_packet import build
 
 
@@ -20,7 +20,7 @@ def test_missing_credentials_are_reported_and_next_free_provider_selected():
         policy(),
         "normal",
         {"GROQ_API_KEY"},
-        available_adapters={"openhands", "codex"},
+        available_adapters={"direct-cloud", "codex"},
     )
     assert result["selected_provider"] == "groq"
     gemini = next(x for x in result["considered"] if x["provider"] == "gemini")
@@ -35,7 +35,7 @@ def test_cooldown_routes_without_retry_storm():
         {"GEMINI_API_KEY", "GROQ_API_KEY"},
         {"gemini": 101},
         now=100,
-        available_adapters={"openhands", "codex"},
+        available_adapters={"direct-cloud", "codex"},
     )
     assert result["selected_provider"] == "groq"
     gemini = next(x for x in result["considered"] if x["provider"] == "gemini")
@@ -46,12 +46,15 @@ def test_local_only_never_selects_cloud_or_codex():
     result = route(
         policy(),
         "normal",
-        {"GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY"},
+        {"GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"},
         privacy="local-only",
-        available_adapters={"local-builder", "openhands", "codex"},
+        available_adapters={"local-builder", "direct-cloud", "codex"},
     )
     assert result["selected_provider"] == "ollama"
-    forbidden = [x for x in result["considered"] if x["provider"] in {"gemini", "groq", "openrouter", "codex"}]
+    forbidden = [
+        x for x in result["considered"]
+        if x["provider"] in {"gemini", "groq", "openrouter", "cloudflare", "codex"}
+    ]
     assert forbidden and all(x["status"] == "PRIVACY_FORBIDDEN" for x in forbidden)
 
 
@@ -67,7 +70,7 @@ def test_review_requires_capable_provider():
         policy(),
         "review",
         {"GEMINI_API_KEY"},
-        available_adapters={"openhands", "codex"},
+        available_adapters={"direct-cloud", "codex"},
     )
     assert result["selected_provider"] == "gemini"
     assert result["considered"][0]["capability"] >= 4
@@ -86,26 +89,15 @@ def test_secret_file_requires_exact_0600_and_never_returns_values(tmp_path):
     assert load_secret_names(secret) == {"GEMINI_API_KEY"}
 
 
-def test_openhands_environment_maps_governor_model_and_selected_secret(tmp_path):
-    secret = tmp_path / "providers.env"
-    secret.write_text("GEMINI_API_KEY=selected-secret\nGROQ_API_KEY=must-not-leak\n")
-    secret.chmod(0o600)
-    provider = next(item for item in policy()["providers"] if item["id"] == "gemini")
-    env = openhands_environment(provider, secret)
-    assert env["LLM_MODEL"].startswith("gemini/")
-    assert env["LLM_API_KEY"] == "selected-secret"
-    assert env["GEMINI_API_KEY"] == "selected-secret"
-    assert "GROQ_API_KEY" not in env
-
-
-def test_everyday_cloud_providers_have_explicit_openhands_models():
-    providers = [item for item in policy()["providers"] if item.get("adapter") == "openhands"]
+def test_cloud_providers_are_direct_and_have_api_models():
+    providers = [item for item in policy()["providers"] if item.get("adapter") == "direct-cloud"]
     assert {item["id"] for item in providers} == {"gemini", "groq", "openrouter", "cloudflare"}
-    assert all(item.get("openhands_model") for item in providers)
+    assert all(item.get("api_model") for item in providers)
     assert all(item.get("privacy") == "sanitized-cloud" for item in providers)
+    assert all(not item.get("openhands_model") for item in providers)
 
 
-def test_worker_retries_then_fails_over_without_mutating_main(tmp_path):
+def test_openhands_worker_uses_only_governor_broker_capability(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "init", "-b", "main", repo], check=True, capture_output=True)
@@ -116,48 +108,64 @@ def test_worker_retries_then_fails_over_without_mutating_main(tmp_path):
     subprocess.run(["git", "-C", repo, "commit", "-m", "fixture"], check=True, capture_output=True)
     subprocess.run(["git", "-C", repo, "switch", "-c", "engineer/test"], check=True, capture_output=True)
     main_before = subprocess.check_output(["git", "-C", repo, "rev-parse", "main"], text=True).strip()
+
     task = tmp_path / "task.txt"
-    task.write_text("Make no changes; validate routing only.\n")
-    secrets = tmp_path / "providers.env"
-    secrets.write_text("GEMINI_API_KEY=gemini-secret\nGROQ_API_KEY=groq-secret\n")
-    secrets.chmod(0o600)
+    task.write_text("Make no changes; validate broker routing only.\n")
+    broker = tmp_path / "broker.env"
+    broker.write_text(
+        "LIFEOS_GOVERNOR_BROKER_URL=http://192.0.2.1:8791/v1\n"
+        "LIFEOS_GOVERNOR_BROKER_TOKEN=broker-only-secret\n"
+    )
+    broker.chmod(0o600)
+
     fake = tmp_path / "openhands"
     fake.write_text(
         "#!/usr/bin/env python3\n"
         "import os,sys\n"
         "assert '--headless' in sys.argv and '--override-with-envs' in sys.argv and '-t' in sys.argv\n"
-        "sys.exit(7 if os.environ['LIFEOS_PROVIDER'] == 'gemini' else 0)\n"
+        "assert os.environ['LIFEOS_PROVIDER'] == 'governor-broker'\n"
+        "assert os.environ['LLM_MODEL'] == 'openai/lifeos-normal'\n"
+        "assert os.environ['LLM_BASE_URL'] == 'http://192.0.2.1:8791/v1'\n"
+        "assert os.environ['LLM_API_KEY'] == 'broker-only-secret'\n"
+        "assert 'GEMINI_API_KEY' not in os.environ and 'GROQ_API_KEY' not in os.environ\n"
+        "sys.exit(0)\n"
     )
     fake.chmod(0o755)
+
     done = subprocess.run(
         [
             sys.executable,
             ROOT / "engineer/openhands_worker.py",
-            "--repo",
-            repo,
-            "--task",
-            task,
-            "--secrets",
-            secrets,
+            "--repo", repo,
+            "--task", task,
+            "--broker-config", broker,
             "--execute",
-            "--openhands-command",
-            fake,
+            "--openhands-command", fake,
         ],
         check=True,
         text=True,
         capture_output=True,
     )
     evidence = json.loads(done.stdout)
-    assert [(x["provider"], x["attempt"]) for x in evidence["attempts"]] == [
-        ("gemini", 1),
-        ("gemini", 2),
-        ("groq", 1),
-    ]
-    assert evidence["attempts"][1]["cooldown_seconds"] == 900
-    assert evidence["selected_provider"] == "groq" and evidence["result"] == "PASS"
+    assert evidence["selected_provider"] == "governor-broker"
+    assert evidence["inference_authority"] == "pi5-governor"
+    assert evidence["result"] == "PASS"
     assert evidence["concurrent_main_unchanged"] is True
     assert subprocess.check_output(["git", "-C", repo, "rev-parse", "main"], text=True).strip() == main_before
-    assert "gemini-secret" not in done.stdout and "groq-secret" not in done.stdout
+    assert "broker-only-secret" not in done.stdout
+
+
+def test_openhands_private_job_requests_local_only_broker_model(tmp_path):
+    from openhands_worker import broker_environment
+
+    broker = tmp_path / "broker.env"
+    broker.write_text(
+        "LIFEOS_GOVERNOR_BROKER_URL=http://192.0.2.1:8791/v1\n"
+        "LIFEOS_GOVERNOR_BROKER_TOKEN=secret\n"
+    )
+    broker.chmod(0o600)
+    env = broker_environment(broker, "local-only")
+    assert env["LLM_MODEL"] == "openai/lifeos-local-only"
 
 
 def test_cleanup_is_dry_run_and_never_classifies_safe_to_remove(tmp_path):
