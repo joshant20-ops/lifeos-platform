@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import json, re, subprocess
+import json, pathlib, pwd, re, subprocess
 
 SECRET = re.compile(r"(?i)(token|password|secret|api[_-]?key|authorization)\s*[:=]\s*[^\s,}]+")
 IP = re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")
@@ -60,7 +60,44 @@ for x in cat.splitlines():
     if x.startswith(('ExecStart=','Description=','User=','Group=','After=','Requires=','Wants=')):
         cat_lines.append(redact(x))
 
-print("TOWER_SHUTDOWN_AUDIT_V2=PASS")
+# Inspect only the structural shutdown contract. Never emit host, user or key paths.
+config_path = pathlib.Path('/etc/lifeos/tower.json')
+config = json.loads(config_path.read_text()) if config_path.is_file() else {}
+shutdown = config.get('shutdown') if isinstance(config.get('shutdown'), dict) else {}
+shutdown_type = str(shutdown.get('type') or 'disabled')
+shutdown_host = str(shutdown.get('host') or config.get('host') or '')
+shutdown_user = str(shutdown.get('user') or '')
+shutdown_key = pathlib.Path(str(shutdown.get('key_file') or ''))
+shutdown_complete = bool(
+    shutdown_type in {'linux_ssh', 'windows_ssh'}
+    and shutdown_host and shutdown_user and str(shutdown_key)
+    and shutdown_key.is_file()
+)
+try:
+    service_uid = pwd.getpwnam('joshan').pw_uid
+    service_gid = pwd.getpwnam('joshan').pw_gid
+    key_readable = shutdown_key.is_file() and subprocess.run(
+        ['runuser', '-u', 'joshan', '--', 'test', '-r', str(shutdown_key)]
+    ).returncode == 0
+    config_readable = subprocess.run(
+        ['runuser', '-u', 'joshan', '--', 'test', '-r', str(config_path)]
+    ).returncode == 0
+except KeyError:
+    service_uid = service_gid = -1
+    key_readable = config_readable = False
+
+# Prove the configured remote privilege without issuing a shutdown.
+ssh_preflight = 'NOT_CONFIGURED'
+if shutdown_complete and shutdown_type == 'linux_ssh':
+    cp = subprocess.run([
+        'runuser', '-u', 'joshan', '--', 'ssh', '-i', str(shutdown_key),
+        '-o', 'BatchMode=yes', '-o', 'IdentitiesOnly=yes',
+        '-o', 'StrictHostKeyChecking=yes', '-o', 'ConnectTimeout=5',
+        f'{shutdown_user}@{shutdown_host}', 'sudo -n /usr/bin/true',
+    ], text=True, capture_output=True, timeout=15)
+    ssh_preflight = 'PASS' if cp.returncode == 0 else f'FAIL_RC_{cp.returncode}'
+
+print("TOWER_SHUTDOWN_AUDIT_V3=PASS")
 print(f"HA_CONTAINER={ha}")
 print(f"YAML_MATCH_COUNT={len(yaml_lines)}")
 print("ENTITY_REGISTRY_BEGIN")
@@ -73,6 +110,13 @@ print("TOWER_CONTROL_UNIT_BEGIN")
 print(unit.strip())
 for x in cat_lines: print(x)
 print("TOWER_CONTROL_UNIT_END")
+print('TOWER_SHUTDOWN_PROFILE=' + shutdown_type)
+print('TOWER_SHUTDOWN_CONFIG_COMPLETE=' + ('YES' if shutdown_complete else 'NO'))
+print('TOWER_SHUTDOWN_KEY_PRESENT=' + ('YES' if shutdown_key.is_file() else 'NO'))
+print('TOWER_SHUTDOWN_KEY_READABLE_BY_AUDITOR=' + ('YES' if key_readable else 'NO'))
+print('TOWER_CONFIG_READABLE_BY_AUDITOR=' + ('YES' if config_readable else 'NO'))
+print('TOWER_SERVICE_UID_RESOLVED=' + ('YES' if service_uid >= 0 and service_gid >= 0 else 'NO'))
+print('TOWER_SHUTDOWN_SSH_SUDO_PREFLIGHT=' + ssh_preflight)
 print("POWERDOWN_PACKAGE_MATCHES_BEGIN")
 for x in yaml_lines:
     if 'lifeos_powerdown.yaml' in x or 'tower' in x.lower() or 'shutdown' in x.lower(): print(x)
