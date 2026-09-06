@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Single-process LifeOS Governor server with authenticated AI broker endpoint.
 
-This is the service entrypoint.  It reuses the existing autonomous-agent HTTP
+This is the service entrypoint. It reuses the existing autonomous-agent HTTP
 handler and adds only the OpenAI-compatible inference surface required by
 OpenHands on Engineer. Provider credentials remain on Pi5 inside ai_broker.
 """
 from __future__ import annotations
 
 import hmac
+import importlib.machinery
 import importlib.util
 import json
 import os
@@ -27,11 +28,12 @@ BROKER_TOKEN_FILE = pathlib.Path(
 
 
 def _load(name: str, path: pathlib.Path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    if spec is None or spec.loader is None:
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_loader(name, loader)
+    if spec is None:
         raise RuntimeError(f"unable to load {name}")
     module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
+    loader.exec_module(module)
     return module
 
 
