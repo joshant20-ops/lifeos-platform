@@ -11,6 +11,7 @@ Environment=LIFEOS_AGENT_PORT=8790
 Environment=LIFEOS_AGENT_STATE=/var/lib/lifeos-agent
 Environment=LIFEOS_AGENT_MAX_ITERATIONS=8
 Environment=LIFEOS_AGENT_BUILDER=/usr/local/libexec/lifeos-cloud-builder
+Environment=LIFEOS_PRIVACY_DOMAIN_POLICY=/usr/local/libexec/privacy-domain-policy.json
 Environment=LIFEOS_LOCAL_VERIFIER_URL=http://192.168.0.201:11434/api/generate
 Environment=LIFEOS_LOCAL_VERIFIER_MODEL=qwen2.5-coder:7b-instruct
 Environment=LIFEOS_PLATFORM_REPO=/home/joshan/lifeos-platform
@@ -26,6 +27,10 @@ ReadWritePaths=/var/lib/lifeos-agent /home/joshan/lifeos-platform
 # bounded deployment bundle installs that dependency directly, expose the
 # canonical published copy read-only at the expected runtime path.
 BindReadOnlyPaths=/home/joshan/lifeos-platform/governor/job_records.py:/usr/local/libexec/job_records.py
+# Privacy policy is canonical Git state but must not be writable by the agent.
+# Bind the published policy read-only at a fixed runtime path so the governed
+# autonomous-agent deployment can update code + unit without widening root.
+BindReadOnlyPaths=/home/joshan/lifeos-platform/governor/privacy-domain-policy.json:/usr/local/libexec/privacy-domain-policy.json
 
 [Install]
 WantedBy=multi-user.target
