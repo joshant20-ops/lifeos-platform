@@ -1,0 +1,63 @@
+name: LifeOS Energy Opportunity Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-energy-opportunity-deploy.yml'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py'
+      - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_energy_attention.yaml'
+      - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py'
+      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
+      - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
+      - 'tests/test_energy_opportunity_service.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - name: Synchronize canonical checkout
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Refresh governed gateway through existing proven boundary
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge || true
+          set +e
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway __not_allowlisted__ 2>&1)
+          rc=$?
+          set -e
+          test "$rc" -eq 64
+          grep -q 'deploy-energy-opportunity-api' <<<"$out"
+          echo ENERGY_OPPORTUNITY_GATEWAY_REFRESH=PASS
+      - name: Deploy specialist Energy Opportunity API
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-energy-opportunity-api
+      - name: Run live Energy Opportunity acceptance
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-wave-a-live-acceptance.py
+      - name: Clean canonical proof
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo ENERGY_OPPORTUNITY_DEPLOY_REPOSITORY=PASS

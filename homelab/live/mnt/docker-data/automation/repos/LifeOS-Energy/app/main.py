@@ -12,6 +12,7 @@ from app.logging_setup import configure_logging
 from app.routers.enphase import router as enphase_router
 from app.routers.energy import router as energy_router
 from app.routers.home_assistant import router as home_assistant_router
+from app.routers.opportunities import router as opportunities_router
 from app.services.history import (
     start_history_collector,
     stop_history_collector,
@@ -19,6 +20,10 @@ from app.services.history import (
 from app.services.scheduler import (
     start_planner_scheduler,
     stop_planner_scheduler,
+)
+from app.services.opportunities import (
+    start_opportunity_scheduler,
+    stop_opportunity_scheduler,
 )
 
 CONFIG = load_config()
@@ -43,6 +48,7 @@ app = FastAPI(
 app.include_router(enphase_router)
 app.include_router(energy_router)
 app.include_router(home_assistant_router)
+app.include_router(opportunities_router)
 
 app.mount(
     "/static",
@@ -65,10 +71,12 @@ async def startup() -> None:
 
     await start_history_collector()
     await start_planner_scheduler(CONFIG)
+    await start_opportunity_scheduler(str(SITE["timezone"]))
 
 
 @app.on_event("shutdown")
 async def shutdown() -> None:
+    await stop_opportunity_scheduler()
     await stop_planner_scheduler()
     await stop_history_collector()
 
@@ -124,6 +132,7 @@ async def status() -> dict:
             "weather_solar": "ready",
             "optimiser": "ready",
             "daily_2000_scheduler": "ready",
+            "energy_opportunities": "ready",
         },
     }
 
@@ -195,4 +204,3 @@ async def energy_powerdown() -> dict:
             "baseline_numeric": watcher.get("baseline_numeric"),
         },
     }
-
