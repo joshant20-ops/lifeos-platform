@@ -34,7 +34,7 @@ def test_authority_and_execution_contract_is_explicit():
     architecture = prose("docs/architecture_overview.md")
     assert "canonical source of truth" in read("README.md").lower()
     assert "Pi5 is the permanent, always-on Governor and control plane" in architecture
-    assert "Watchman is the sole runtime execution gatekeeper" in architecture
+    assert "root-broker socket is the sole runtime execution gatekeeper" in architecture
     assert "Z97" in architecture and "migration-only" in architecture
 
 
@@ -50,16 +50,12 @@ def test_worker_boundaries_and_communication_are_consistent():
     assert "repository state" in communication
 
 
-def test_open_source_and_unresolved_decision_policy_is_documented():
+def test_open_source_and_foundational_policy_is_documented():
     assert "Prefer maintained open-source components" in read("AGENTS.md")
-    for relative in (
-        "docs/architecture_overview.md",
-        "docs/roadmap.md",
-        "docs/migration_strategy.md",
-        "bootstrap/README.md",
-        "governance/communication.md",
-    ):
-        assert "TODO" in read(relative), relative
+    roadmap = read("docs/roadmap.md")
+    assert "operations/records-retention.md" in roadmap
+    assert "operations/control-plane-slos.md" in roadmap
+    assert "operations/z97-retirement.md" in roadmap
 
 
 def test_foundation_bootstrap_scope_contains_no_executable_content():
