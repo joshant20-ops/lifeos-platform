@@ -63,7 +63,7 @@ jobs:
           fi
           echo 'ENGINEER_VM_REACHABLE=PASS'
 
-      - name: Diagnose Tower local AI and GPU path
+      - name: Prove Tower local AI and GPU path
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -104,35 +104,41 @@ jobs:
           size=int(row.get('size') or 0)
           print('LOCAL_AI_SIZE_BYTES='+str(size))
           print('LOCAL_AI_VRAM_BYTES='+str(vram))
-          print('LOCAL_AI_GPU_OFFLOAD=' + ('PASS' if vram > 0 else 'FAIL'))
-          if vram <= 0: raise SystemExit(22)
+          assert vram > 0, row
+          print('LOCAL_AI_GPU_OFFLOAD=PASS')
           PY
 
-      - name: Diagnose Codex inference
+      - name: Prove Codex with production invocation
         shell: bash
         run: |
           set -Eeuo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
-          set -u
+          set -Eeuo pipefail
           if command -v codex >/dev/null 2>&1; then c=$(command -v codex); elif test -x "$HOME/.local/bin/codex"; then c="$HOME/.local/bin/codex"; else echo 'CODEX_MISSING'; exit 21; fi
           "$c" --version
-          tmp=$(mktemp -d)
-          trap 'rm -rf "$tmp"' EXIT
-          cd "$tmp"
-          git init -q
+          repo=/home/joshan/workspace/lifeos-platform
+          test -d "$repo/.git"
+          git -C "$repo" fetch origin main >/dev/null
+          root="$HOME/.local/share/lifeos-agent/smoke"
+          rm -rf "$root"
+          git -C "$repo" worktree add --detach "$root" origin/main >/dev/null
+          cleanup(){ git -C "$repo" worktree remove --force "$root" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          cd "$root"
+          help=$($c exec --help 2>&1 || true)
           set +e
-          timeout 180s "$c" exec --skip-git-repo-check 'Reply with exactly CODEX_SMOKE_OK' >out.txt 2>&1
+          if grep -q -- '--full-auto' <<<"$help"; then
+            timeout 180s "$c" exec --full-auto 'Reply with exactly CODEX_SMOKE_OK and make no file changes.' </dev/null >out.txt 2>&1
+          else
+            timeout 180s "$c" exec 'Reply with exactly CODEX_SMOKE_OK and make no file changes.' </dev/null >out.txt 2>&1
+          fi
           rc=$?
           set -e
           sed -n '1,160p' out.txt
           echo "CODEX_RC=$rc"
-          if test "$rc" -ne 0; then
-            if grep -Eqi 'auth|login|credential|unauthor|token|401|403' out.txt; then echo 'CODEX_FAILURE_CLASS=AUTH';
-            elif grep -Eqi 'network|connect|dns|timeout|timed out' out.txt; then echo 'CODEX_FAILURE_CLASS=NETWORK';
-            else echo 'CODEX_FAILURE_CLASS=OTHER'; fi
-            exit "$rc"
-          fi
+          test "$rc" -eq 0
           grep -q 'CODEX_SMOKE_OK' out.txt
+          test -z "$(git status --porcelain --untracked-files=all)"
           echo 'CODEX_INFERENCE=PASS'
           REMOTE
 
