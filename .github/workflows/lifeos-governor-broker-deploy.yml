@@ -38,13 +38,66 @@ jobs:
           git reset --hard origin/main
           test -z "$(git status --porcelain --untracked-files=all)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'DEPLOY_CHECKPOINT=checkout-synchronized'
 
-      - name: Deploy canonical Governor service
+      - name: Deploy Governor with live phase checkpoints
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          bash governor/scripts/deploy-autonomous-agent-pi5.sh
+          LOG=$(mktemp)
+          cleanup() { rm -f "$LOG"; }
+          trap cleanup EXIT
+
+          # Run the canonical deploy unchanged, but surface state transitions while
+          # long agent work is in flight. This prevents a healthy AI iteration from
+          # being indistinguishable from a hung runner.
+          bash governor/scripts/deploy-autonomous-agent-pi5.sh > >(tee "$LOG") 2>&1 &
+          DEPLOY_PID=$!
+          LAST_CHECKPOINT=''
+
+          checkpoint() {
+            local value=$1
+            if [[ "$value" != "$LAST_CHECKPOINT" ]]; then
+              printf 'DEPLOY_CHECKPOINT=%s\n' "$value"
+              LAST_CHECKPOINT=$value
+            fi
+          }
+
+          while kill -0 "$DEPLOY_PID" 2>/dev/null; do
+            # Prefer the canonical script's own numbered phase when visible.
+            PHASE=$(grep -E '^===== [0-9]+/8 — ' "$LOG" | tail -1 | sed -E 's/^===== ([0-9]+\/8 — [^=]+) =====$/\1/' || true)
+            if [[ -n "$PHASE" ]]; then
+              checkpoint "phase:${PHASE}"
+            fi
+
+            # During the long autonomous E2E phase, expose the Governor job's
+            # stage/status only when it changes. No private request/evidence is logged.
+            if grep -q '^===== 7/8 — TRUE END-TO-END AUTONOMOUS SMOKE =====$' "$LOG"; then
+              JOB_STATE=$(curl -fsS --max-time 3 http://127.0.0.1:8790/jobs 2>/dev/null | python3 -c '
+import json,sys
+try:
+    jobs=json.load(sys.stdin).get("jobs", [])
+    if not jobs:
+        raise SystemExit(0)
+    j=max(jobs, key=lambda x: str(x.get("created_at") or ""))
+    print("e2e-job:%s:%s" % (j.get("status") or "unknown", j.get("stage") or "unknown"))
+except Exception:
+    pass
+' || true)
+              if [[ -n "$JOB_STATE" ]]; then
+                checkpoint "$JOB_STATE"
+              fi
+            fi
+            sleep 15
+          done
+
+          set +e
+          wait "$DEPLOY_PID"
+          RC=$?
+          set -e
+          checkpoint "deploy-process-exit:${RC}"
+          exit "$RC"
 
       - name: Capture sanitized Governor diagnostics on failure
         if: failure()
@@ -80,6 +133,7 @@ jobs:
           test ! -L "$HOME/.config/lifeos/ai-broker.token"
           test "$(stat -c '%a' "$HOME/.config/lifeos/ai-broker.token")" = 600
           echo 'BROKER_CAPABILITY_PROTECTION=PASS'
+          echo 'DEPLOY_CHECKPOINT=broker-contract-proven'
 
       - name: Prove repository clean
         shell: bash
@@ -90,3 +144,4 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo 'GOVERNOR_BROKER_DEPLOY=PASS'
           echo 'REPOSITORY_FINAL=PASS'
+          echo 'DEPLOY_CHECKPOINT=complete'
