@@ -64,8 +64,10 @@ jobs:
           echo ENERGY_OPPORTUNITY_DEPLOY_REPOSITORY=PASS
       - name: Record governed deployment result
         if: always()
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
+          retries: 3
           script: |
             const result = '${{ job.status }}';
             const icon = result === 'success' ? '✅' : '❌';
