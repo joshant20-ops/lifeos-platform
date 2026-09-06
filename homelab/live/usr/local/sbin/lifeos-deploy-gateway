@@ -31,8 +31,8 @@ OPS = {
         'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh',
         'privileged': True,
     },
-    'deploy-wave-a-energy-attention': {
-        'script': 'scripts/lifeos-deploy-wave-a-energy-attention.sh',
+    'deploy-energy-opportunity-api': {
+        'script': 'scripts/lifeos-deploy-energy-opportunity-api.sh',
         'privileged': True,
     },
     'capability-stage3-systemd-cleanup': {

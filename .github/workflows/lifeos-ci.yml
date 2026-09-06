@@ -72,6 +72,21 @@ jobs:
           grep -F "sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-tower-metrics" \
             .github/workflows/lifeos-tower-metrics-deploy.yml >/dev/null
 
+      - name: Validate specialist Energy Opportunity integration
+        run: |
+          python3 tests/test_energy_opportunity_service.py
+          python3 -m py_compile \
+            homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py \
+            homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py \
+            homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py \
+            scripts/audit-wave-a-live-acceptance.py \
+            homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py
+          bash -n scripts/lifeos-deploy-energy-opportunity-api.sh
+          grep -F "'deploy-energy-opportunity-api'" \
+            homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
+          grep -F 'deploy-energy-opportunity-api' \
+            .github/workflows/lifeos-energy-opportunity-deploy.yml >/dev/null
+
       - name: Validate desired Compose YAML
         run: |
           python3 - <<'PY'
