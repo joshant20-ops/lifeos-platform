@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministic LifeOS AI broker.
-
-The broker owns provider policy and secrets on Pi5. It sends local-only work only
-to Ollama and sends cloud-safe work directly to approved cloud APIs without
-requiring OpenHands or Engineer to be online.
-"""
+"""Deterministic LifeOS AI broker."""
 from __future__ import annotations
 
 import importlib.util
@@ -19,12 +14,8 @@ import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 POLICY_PATH = pathlib.Path(os.environ.get("LIFEOS_AI_POLICY", ROOT / "governor" / "policy.json"))
-SECRETS_PATH = pathlib.Path(
-    os.environ.get("LIFEOS_PROVIDER_SECRETS", pathlib.Path.home() / ".config/lifeos/provider-secrets.env")
-)
-CONFIG_PATH = pathlib.Path(
-    os.environ.get("LIFEOS_AI_BROKER_CONFIG", pathlib.Path.home() / ".config/lifeos/ai-broker.env")
-)
+SECRETS_PATH = pathlib.Path(os.environ.get("LIFEOS_PROVIDER_SECRETS", pathlib.Path.home() / ".config/lifeos/provider-secrets.env"))
+CONFIG_PATH = pathlib.Path(os.environ.get("LIFEOS_AI_BROKER_CONFIG", pathlib.Path.home() / ".config/lifeos/ai-broker.env"))
 OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://192.168.0.201:11434/api/generate")
 OLLAMA_MODEL = os.environ.get("LIFEOS_LOCAL_AI_MODEL", "qwen2.5-coder:7b-instruct")
 HTTP_TIMEOUT = int(os.environ.get("LIFEOS_AI_HTTP_TIMEOUT", "120"))
@@ -144,12 +135,7 @@ def _ollama(prompt: str, model: str) -> str:
 
 
 def _gemini_url(provider: dict, secrets: dict[str, str]) -> str:
-    return (
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-        + urllib.parse.quote(_provider_model(provider), safe="-._")
-        + ":generateContent?key="
-        + urllib.parse.quote(secrets["GEMINI_API_KEY"], safe="")
-    )
+    return "https://generativelanguage.googleapis.com/v1beta/models/" + urllib.parse.quote(_provider_model(provider), safe="-._") + ":generateContent?key=" + urllib.parse.quote(secrets["GEMINI_API_KEY"], safe="")
 
 
 def _gemini(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
@@ -162,121 +148,27 @@ def _gemini(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     return text
 
 
-def _jsonish_tool_response(value):
-    if isinstance(value, (dict, list, int, float, bool)) or value is None:
-        return {"result": value}
-    text = str(value)
-    try:
-        return {"result": json.loads(text)}
-    except Exception:
-        return {"result": text}
-
-
-def _gemini_chat(messages: list[dict], tools: list[dict], provider: dict, secrets: dict[str, str], tool_choice=None) -> dict:
-    system_parts: list[str] = []
-    contents: list[dict] = []
-    call_names: dict[str, str] = {}
-
-    for message in messages:
-        if not isinstance(message, dict):
-            continue
-        role = str(message.get("role") or "user")
-        if role == "system":
-            content = message.get("content")
-            if content:
-                system_parts.append(str(content))
-            continue
-        if role == "assistant":
-            parts: list[dict] = []
-            content = message.get("content")
-            if content:
-                parts.append({"text": str(content)})
-            for call in message.get("tool_calls") or []:
-                if not isinstance(call, dict):
-                    continue
-                fn = call.get("function") or {}
-                name = str(fn.get("name") or "")
-                if not name:
-                    continue
-                raw_args = fn.get("arguments") or "{}"
-                try:
-                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-                except Exception:
-                    args = {}
-                call_id = str(call.get("id") or "")
-                if call_id:
-                    call_names[call_id] = name
-                part = {"functionCall": {"name": name, "args": args if isinstance(args, dict) else {}}}
-                if call_id:
-                    part["functionCall"]["id"] = call_id
-                parts.append(part)
-            if parts:
-                contents.append({"role": "model", "parts": parts})
-            continue
-        if role == "tool":
-            call_id = str(message.get("tool_call_id") or "")
-            name = call_names.get(call_id) or str(message.get("name") or "tool")
-            response = {"name": name, "response": _jsonish_tool_response(message.get("content"))}
-            if call_id:
-                response["id"] = call_id
-            contents.append({"role": "user", "parts": [{"functionResponse": response}]})
-            continue
-        content = message.get("content")
-        if isinstance(content, list):
-            content = " ".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
-        contents.append({"role": "user", "parts": [{"text": str(content or "")}]})
-
-    declarations = []
-    for tool in tools or []:
-        if not isinstance(tool, dict) or tool.get("type") != "function":
-            continue
-        fn = tool.get("function") or {}
-        name = str(fn.get("name") or "")
-        if not name:
-            continue
-        declarations.append({
-            "name": name,
-            "description": str(fn.get("description") or "")[:4000],
-            "parameters": fn.get("parameters") or {"type": "object", "properties": {}},
-        })
-    if not declarations:
-        raise BrokerError("tool-aware chat requires function declarations")
-
-    payload: dict = {"contents": contents, "tools": [{"functionDeclarations": declarations}]}
-    if system_parts:
-        payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
-    if tool_choice == "required":
-        payload["toolConfig"] = {"functionCallingConfig": {"mode": "ANY"}}
-
-    result = _post_json(_gemini_url(provider, secrets), payload)
-    candidates = result.get("candidates") or []
-    if not candidates:
-        raise BrokerError("gemini returned no candidate")
-    parts = ((candidates[0].get("content") or {}).get("parts") or [])
-    texts: list[str] = []
-    tool_calls: list[dict] = []
-    for index, part in enumerate(parts):
-        if not isinstance(part, dict):
-            continue
-        if part.get("text"):
-            texts.append(str(part["text"]))
-        call = part.get("functionCall")
-        if isinstance(call, dict) and call.get("name"):
-            call_id = str(call.get("id") or f"call_gemini_{index}")
-            tool_calls.append({
-                "id": call_id,
-                "type": "function",
-                "function": {
-                    "name": str(call["name"]),
-                    "arguments": json.dumps(call.get("args") or {}, separators=(",", ":")),
-                },
-            })
-    message: dict = {"role": "assistant", "content": "\n".join(texts).strip() or None}
-    if tool_calls:
-        message["tool_calls"] = tool_calls
-    if not tool_calls and not message["content"]:
-        raise BrokerError("gemini returned empty tool-aware response")
-    return {"message": message, "finish_reason": "tool_calls" if tool_calls else "stop"}
+def _gemini_openai_chat(messages: list[dict], tools: list[dict], provider: dict, secrets: dict[str, str], tool_choice=None) -> dict:
+    payload: dict = {
+        "model": _provider_model(provider),
+        "messages": messages,
+        "tools": tools,
+        "tool_choice": tool_choice if tool_choice is not None else "auto",
+    }
+    result = _post_json(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        payload,
+        headers={"Authorization": f"Bearer {secrets['GEMINI_API_KEY']}"},
+    )
+    choices = result.get("choices") or []
+    if not choices or not isinstance(choices[0], dict):
+        raise BrokerError("gemini OpenAI endpoint returned no choice")
+    message = choices[0].get("message")
+    if not isinstance(message, dict):
+        raise BrokerError("gemini OpenAI endpoint returned no message")
+    if not message.get("content") and not message.get("tool_calls"):
+        raise BrokerError("gemini OpenAI endpoint returned empty message")
+    return {"message": message, "finish_reason": str(choices[0].get("finish_reason") or ("tool_calls" if message.get("tool_calls") else "stop"))}
 
 
 def _openai_compatible(url: str, prompt: str, model: str, token: str) -> str:
@@ -333,7 +225,6 @@ def candidates(*, privacy: str = "normal", task_class: str = "normal") -> tuple[
 
 
 def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=None, privacy: str = "normal", task_class: str = "normal") -> dict:
-    """Preserve OpenAI tool-calling semantics for agentic cloud-safe requests."""
     if privacy != "normal":
         raise BrokerError("tool-enabled private inference is not permitted")
     eligible, considered = candidates(privacy=privacy, task_class=task_class)
@@ -342,14 +233,8 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
         raise BrokerError("no eligible tool-capable cloud provider")
     secrets = _strict_env(SECRETS_PATH)
     provider = eligible[0]
-    response = _gemini_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
-    return {
-        "provider": provider["id"],
-        "model": _provider_model(provider),
-        "privacy": privacy,
-        "considered": considered,
-        **response,
-    }
+    response = _gemini_openai_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
+    return {"provider": provider["id"], "model": _provider_model(provider), "privacy": privacy, "considered": considered, **response}
 
 
 def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None) -> dict:
