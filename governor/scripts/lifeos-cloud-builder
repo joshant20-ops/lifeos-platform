@@ -9,6 +9,7 @@ JOB_ID=${LIFEOS_JOB_ID:-unknown}
 TASK_CLASS=${LIFEOS_JOB_TASK_CLASS:-normal}
 ENGINEER=${LIFEOS_ENGINEER_SSH:-Engineer}
 REPO=${LIFEOS_ENGINEER_REPO:-/home/joshan/workspace/lifeos-platform}
+BROKER_TOKEN_FILE=${LIFEOS_AI_BROKER_TOKEN_FILE:-$HOME/.config/lifeos/ai-broker.token}
 
 if [[ "$PRIVACY" == "local-only" ]]; then
   echo "RESULT=BLOCKED"
@@ -75,6 +76,66 @@ EOF
 )
 PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
 
+# OpenHands receives a bounded Governor broker capability, never provider keys.
+# Self-heal the capability on Engineer when absent, but only after proving the
+# Pi5 broker is reachable from Engineer. Never print the token or file content.
+provision_governor_broker_capability() {
+  local lan_ip broker_url tmp_cfg
+  [[ -f "$BROKER_TOKEN_FILE" && ! -L "$BROKER_TOKEN_FILE" ]] || return 1
+  [[ "$(stat -c '%a' "$BROKER_TOKEN_FILE")" == 600 ]] || return 1
+  [[ -s "$BROKER_TOKEN_FILE" ]] || return 1
+
+  lan_ip=$(hostname -I 2>/dev/null | tr ' ' '\n' | python3 -c '
+import ipaddress,sys
+for raw in sys.stdin:
+    raw=raw.strip()
+    if not raw:
+        continue
+    try:
+        ip=ipaddress.ip_address(raw)
+    except ValueError:
+        continue
+    if ip.version == 4 and ip.is_private and not ip.is_loopback:
+        print(raw)
+        break
+')
+  [[ -n "$lan_ip" ]] || return 1
+  broker_url="http://${lan_ip}:8790/v1"
+
+  ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$lan_ip" <<'REMOTE'
+set -euo pipefail
+PI_IP=${1:?pi ip required}
+curl -fsS --max-time 5 "http://${PI_IP}:8790/health" >/dev/null
+REMOTE
+
+  tmp_cfg=$(mktemp)
+  trap 'rm -f "$tmp_cfg"' RETURN
+  umask 077
+  {
+    printf 'LIFEOS_GOVERNOR_BROKER_URL=%s\n' "$broker_url"
+    printf 'LIFEOS_GOVERNOR_BROKER_TOKEN=%s\n' "$(cat "$BROKER_TOKEN_FILE")"
+  } >"$tmp_cfg"
+  chmod 0600 "$tmp_cfg"
+
+  scp -q -o BatchMode=yes -o ConnectTimeout=8 "$tmp_cfg" "$ENGINEER:~/.config/lifeos/governor-broker.env.new"
+  ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s <<'REMOTE'
+set -euo pipefail
+install -d -m 0700 "$HOME/.config/lifeos"
+src="$HOME/.config/lifeos/governor-broker.env.new"
+dst="$HOME/.config/lifeos/governor-broker.env"
+test -f "$src"
+test ! -L "$src"
+chmod 0600 "$src"
+mv -f "$src" "$dst"
+test -f "$dst"
+test ! -L "$dst"
+test "$(stat -c '%a' "$dst")" = 600
+grep -q '^LIFEOS_GOVERNOR_BROKER_URL=' "$dst"
+grep -q '^LIFEOS_GOVERNOR_BROKER_TOKEN=' "$dst"
+REMOTE
+  echo 'GOVERNOR_BROKER_CAPABILITY=PROVISIONED'
+}
+
 DISCOVERY=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s <<'REMOTE'
 set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
@@ -104,6 +165,14 @@ OPENHANDS=$(sed -n 's/^OPENHANDS=//p' <<<"$DISCOVERY" | tail -1)
 CODEX=$(sed -n 's/^CODEX=//p' <<<"$DISCOVERY" | tail -1)
 GOVERNOR_BROKER=$(sed -n 's/^GOVERNOR_BROKER=//p' <<<"$DISCOVERY" | tail -1)
 
+if [[ "$OPENHANDS" == present && "$GOVERNOR_BROKER" != present ]]; then
+  if provision_governor_broker_capability; then
+    GOVERNOR_BROKER=present
+  else
+    echo 'GOVERNOR_BROKER_CAPABILITY=UNAVAILABLE'
+  fi
+fi
+
 AGENTS=()
 if [[ "$TASK_CLASS" != "escalation" && "$OPENHANDS" == present && "$GOVERNOR_BROKER" == present ]]; then
   AGENTS+=("governor-broker|openhands|openai/lifeos-${TASK_CLASS}")
@@ -128,8 +197,8 @@ for spec in "${AGENTS[@]}"; do
       "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" \
       "$PROVIDER" "$ADAPTER" "$MODEL" "" <<'REMOTE'
 set -euo pipefail
-REPO=$1; PROMPT_B64=$2; JOB_ID=$3; ITERATION=$4; RUNTIME_PATH=$5
-PROVIDER=$6; ADAPTER=$7; MODEL=$8; CREDENTIALS=$9
+REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}
+PROVIDER=${6:?provider required}; ADAPTER=${7:?adapter required}; MODEL=${8-}; CREDENTIALS=${9-}
 git -C "$REPO" fetch origin main >/dev/null
 HELPER=$(mktemp)
 trap 'rm -f "$HELPER"' EXIT
