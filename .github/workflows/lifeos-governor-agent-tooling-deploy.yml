@@ -54,12 +54,7 @@ jobs:
           uv --version
 
           if command -v openhands >/dev/null 2>&1; then
-            current=$(python3 - <<'PY'
-import importlib.metadata
-try: print(importlib.metadata.version('openhands'))
-except Exception: print('unknown')
-PY
-)
+            current=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('openhands'))" 2>/dev/null || echo unknown)
             if [[ "$current" != 1.16.0 ]]; then
               uv tool install --force 'openhands==1.16.0' --python 3.12
             fi
