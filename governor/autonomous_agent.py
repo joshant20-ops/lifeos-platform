@@ -42,6 +42,12 @@ DISPATCH_TOKEN_FILE = os.environ.get("LIFEOS_BACKLOG_DISPATCH_TOKEN_FILE", "")
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
+PRIVACY_DOMAIN_POLICY_PATH = pathlib.Path(
+    os.environ.get(
+        "LIFEOS_PRIVACY_DOMAIN_POLICY",
+        str(pathlib.Path(__file__).with_name("privacy-domain-policy.json")),
+    )
+)
 UI_PATH = PLATFORM_REPO / "governor" / "agent_ui.html"
 RUNTIME_PREFIX = "governor/runtime_jobs/"
 JOB_ID_PATTERN = re.compile(r"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\Z")
@@ -250,9 +256,45 @@ def stuck_jobs(jobs=None, at=None):
     return result
 
 
-def classify_privacy(text):
+def _privacy_domain_policy():
+    """Load the runtime privacy policy; any policy failure must fail closed."""
+    try:
+        policy = json.loads(PRIVACY_DOMAIN_POLICY_PATH.read_text())
+        if policy.get("schema_version") != 1 or policy.get("fail_closed") is not True:
+            return None
+        if not isinstance(policy.get("domains"), dict):
+            return None
+        return policy
+    except Exception:
+        return None
+
+
+def _privacy_term_matches(lower, term):
+    normalized = re.escape(str(term).strip().lower())
+    normalized = normalized.replace(r"\ ", r"[\s_-]+").replace(r"\-", r"[\s_-]+")
+    return bool(normalized and re.search(rf"(?<!\w){normalized}(?!\w)", lower))
+
+
+def classify_privacy(text, domain=None):
     lower = str(text or "").lower()
-    return "local-only" if any(re.search(pattern, lower) for pattern in PRIVATE_PATTERNS) else "normal"
+    if any(re.search(pattern, lower) for pattern in PRIVATE_PATTERNS):
+        return "local-only"
+    policy = _privacy_domain_policy()
+    if policy is None:
+        return "local-only"
+    domains = policy["domains"]
+    if domain:
+        key = re.sub(r"[\s_]+", "-", str(domain).strip().lower())
+        rule = domains.get(key)
+        if not isinstance(rule, dict):
+            return "local-only"
+        return "local-only" if rule.get("privacy") == "local-only" else str(policy.get("default") or "normal")
+    for rule in domains.values():
+        if not isinstance(rule, dict) or rule.get("privacy") != "local-only":
+            continue
+        if any(_privacy_term_matches(lower, term) for term in rule.get("request_terms", ())):
+            return "local-only"
+    return str(policy.get("default") or "normal")
 
 
 def _dispatcher_token():
@@ -318,7 +360,6 @@ def milestone_decision(job, iteration_verdict, evidence):
         "reason": str((iteration_verdict or {}).get("reason") or ""),
         "next_instruction": str((iteration_verdict or {}).get("next_instruction") or ""),
     }
-    # BLOCKED remains an independent verifier decision for an external dependency.
     if verdict != "PASS":
         return result
     fields = list(job.get("mandatory_final_fields") or [])
@@ -460,9 +501,10 @@ def run_builder(job, iteration, verifier_feedback=None):
 
 def builder_route(job):
     """Select a capable builder without weakening the job's privacy class."""
-    route = job.get("dispatch_builder")
-    if route is None:
-        route = "local" if job.get("privacy") == "local-only" else "normal"
+    if job.get("privacy") == "local-only":
+        route = "local"
+    else:
+        route = job.get("dispatch_builder") or "normal"
     if route == "normal":
         return "normal", BUILDER
     if LOCAL_BUILDER and pathlib.Path(LOCAL_BUILDER).is_file() and os.access(LOCAL_BUILDER, os.X_OK):
@@ -559,8 +601,6 @@ def suppress_unpublished_runtime_instructions(evidence):
         if line.startswith(("HUMAN_ACTION_REQUIRED=", "NEXT_RUNTIME_CHECK=")):
             filtered.append("HUMAN_ACTION_REQUIRED_ARTIFACT_NOT_PUBLISHED")
             continue
-        # Builder prose is untrusted evidence too. Never retain a copy/paste sudo
-        # command for a runtime_jobs artifact whose publication did not verify.
         line = re.sub(
             r"sudo\s+\S*governor/runtime_jobs/[A-Za-z0-9._/-]+\.sh",
             "[unpublished runtime command suppressed]",
@@ -705,8 +745,6 @@ def retain_runtime_publication(job, runtime_evidence):
         "published": "PASS",
     }
     job["runtime_artifact"] = facts
-    # Replace the original publication block with freshly validated facts when
-    # possible; otherwise prepend them to an execution-only state.
     if "RUNTIME_ARTIFACT_PUBLISHED=PASS" not in runtime_evidence:
         runtime_evidence = publication + runtime_evidence
     return runtime_evidence
@@ -720,7 +758,7 @@ def _execute_job_locked(job):
     feedback = None
     for iteration in range(1, MAX_ITERATIONS + 1):
         rec = {"iteration": iteration, "started_at": now()}
-        set_stage(job, "builder", f"iteration {iteration}: Codex implementation")
+        set_stage(job, "builder", f"iteration {iteration}: implementation")
         try:
             rc, build_evidence, handoff = run_builder(job, iteration, feedback)
             rec["builder_rc"] = rc
@@ -819,7 +857,6 @@ def continuation_allowed(job):
         return False
     if any(term in request.lower() for term in PROTECTED_CONTINUATION_TERMS):
         return False
-    # BLOCKED and repeated deterministic failure stop before this point.
     return True
 
 
@@ -832,6 +869,7 @@ def spawn_continuation(job):
         continuation_parent=job["id"],
         continuation_depth=int(job.get("continuation_depth") or 0) + 1,
         continuation_reason=str(job.get("continuation_reason") or "explicit bounded continuation"),
+        privacy_domain=job.get("privacy_domain"),
     )
     parent = load(job["id"])
     parent["continuation_child"] = child["id"]
@@ -848,11 +886,15 @@ def execute_job(job):
 
 def new_job(request, retry_of=None, continuation_enabled=False, continuation_parent=None,
             continuation_depth=0, continuation_reason=None, continuation_request=None,
-            deploy_engineer_runtime=False, dispatch_builder=None):
+            deploy_engineer_runtime=False, dispatch_builder=None, privacy_domain=None):
+    normalized_domain = None
+    if privacy_domain:
+        normalized_domain = re.sub(r"[\s_]+", "-", str(privacy_domain).strip().lower())
+    classified_privacy = classify_privacy(request, domain=normalized_domain)
     privacy = (
-        "local-only" if dispatch_builder == "local"
-        else "normal" if dispatch_builder == "normal"
-        else classify_privacy(request)
+        "local-only"
+        if dispatch_builder == "local" or classified_privacy == "local-only"
+        else "normal"
     )
     job = {
         "id": uuid.uuid4().hex[:12],
@@ -869,6 +911,8 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
         "deploy_engineer_runtime": bool(deploy_engineer_runtime),
         "mandatory_final_fields": extract_mandatory_final_fields(request),
     }
+    if normalized_domain:
+        job["privacy_domain"] = normalized_domain
     if retry_of:
         job["retry_of"] = retry_of
     if dispatch_builder in DISPATCH_BUILDER_CLASSES:
@@ -924,6 +968,7 @@ class Handler(BaseHTTPRequestHandler):
                 "continuation_max_depth": CONTINUATION_MAX_DEPTH,
                 "runtime_controller": "pi5",
                 "git_controller": "pi5",
+                "privacy_domain_policy": str(PRIVACY_DOMAIN_POLICY_PATH),
                 "ui": "/",
             })
             return
@@ -933,7 +978,7 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/jobs":
             jobs = list_jobs()
             keys = (
-                "id", "created_at", "started_at", "completed_at", "request", "privacy", "status",
+                "id", "created_at", "started_at", "completed_at", "request", "privacy", "privacy_domain", "status",
                 "stage", "stage_changed_at", "stage_detail", "retry_of", "repeated_failure_count",
                 "continuation_enabled", "continuation_parent", "continuation_child",
                 "continuation_depth", "continuation_reason",
@@ -966,6 +1011,7 @@ class Handler(BaseHTTPRequestHandler):
             job = create_job(
                 old["request"], async_mode=True, retry_of=job_id,
                 dispatch_builder=old.get("dispatch_builder"),
+                privacy_domain=old.get("privacy_domain"),
             )
             self.send_json(202, job)
             return
@@ -995,6 +1041,7 @@ class Handler(BaseHTTPRequestHandler):
             "continuation_request": body.get("continuation_request"),
             "deploy_engineer_runtime": bool(body.get("deploy_engineer_runtime", False)),
             "dispatch_builder": dispatch_builder,
+            "privacy_domain": body.get("privacy_domain"),
         }
         job = create_job(request, async_mode=async_mode, **continuation)
         self.send_json(202 if async_mode else 200, job)
