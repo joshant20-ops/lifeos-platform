@@ -19,6 +19,7 @@ on:
       - 'tests/test_privacy_classifier.py'
       - 'tests/test_private_domain_policy.py'
       - '.github/workflows/lifeos-governor-ai-routing-ci.yml'
+      - '.github/workflows/lifeos-pi5-ai-broker-migrate.yml'
   pull_request:
     branches: [main]
     paths:
@@ -37,6 +38,7 @@ on:
       - 'tests/test_privacy_classifier.py'
       - 'tests/test_private_domain_policy.py'
       - '.github/workflows/lifeos-governor-ai-routing-ci.yml'
+      - '.github/workflows/lifeos-pi5-ai-broker-migrate.yml'
 
 permissions:
   contents: read
@@ -65,6 +67,14 @@ jobs:
           bash -n governor/scripts/deploy-autonomous-agent-pi5.sh
           bash -n governor/scripts/lifeos-cloud-builder
           bash -n governor/scripts/lifeos-remote-agent-builder
+          python3 - <<'PY'
+          import pathlib
+          p=pathlib.Path('.github/workflows/lifeos-pi5-ai-broker-migrate.yml')
+          text=p.read_text()
+          assert 'PI5_DIRECT_CLOUD_INFERENCE=PASS' in text
+          assert 'ENGINEER_SECRET_RETIREMENT=PASS' in text
+          print('MIGRATION_WORKFLOW_STATIC=PASS')
+          PY
 
       - name: Provider routing regressions
         run: |
@@ -86,4 +96,5 @@ jobs:
           grep -F 'GOVERNOR_BROKER' governor/scripts/lifeos-remote-agent-builder >/dev/null
           grep -F 'LIFEOS_PRIVACY_DOMAIN_POLICY' governor/autonomous_agent.py >/dev/null
           grep -F 'privacy-domain-policy.json' governor/scripts/deploy-autonomous-agent-pi5.sh >/dev/null
+          grep -F 'CLOUDFLARE_ACCOUNT_ID' .github/workflows/lifeos-pi5-ai-broker-migrate.yml >/dev/null
           echo 'GOVERNOR_AI_ROUTING_CI=PASS'
