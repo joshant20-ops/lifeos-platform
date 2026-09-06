@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'homelab/tower/ollama/10-lifeos-gpu.conf'
+      - 'homelab/tower/ollama/40-lifeos-nvidia-only.conf'
       - '.github/workflows/lifeos-tower-ollama-gpu-default.yml'
 
 permissions:
@@ -20,7 +20,7 @@ jobs:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 12
     steps:
-      - name: Synchronize canonical Pi checkout
+      - name: Sync canonical Pi checkout
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -29,117 +29,78 @@ jobs:
           git reset --hard origin/main
           test -z "$(git status --porcelain --untracked-files=all)"
 
-      - name: Inspect Tower Ollama and NVIDIA runtime
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
-          set -Eeuo pipefail
-          hostname
-          systemctl is-active --quiet ollama.service
-          command -v nvidia-smi >/dev/null
-          nvidia-smi --query-gpu=index,name,driver_version,memory.total --format=csv,noheader
-          command -v ollama >/dev/null
-          ollama --version
-          systemctl show ollama.service -p FragmentPath -p DropInPaths -p Environment
-          for f in /etc/systemd/system/ollama.service.d/*.conf; do
-            [[ -f "$f" ]] || continue
-            echo "--- DROPIN:$f ---"
-            sudo -n cat "$f"
-          done
-          echo 'TOWER_OLLAMA_PREFLIGHT=PASS'
-          REMOTE
-
-      - name: Deploy machine-level GPU policy with rollback
+      - name: Consolidate Tower Ollama policy with rollback
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          cfg=homelab/tower/ollama/10-lifeos-gpu.conf
-          payload=$(base64 -w0 "$cfg")
+          payload=$(base64 -w0 homelab/tower/ollama/40-lifeos-nvidia-only.conf)
           ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' -- "$payload" <<'REMOTE'
           set -Eeuo pipefail
           payload=$1
-          target=/etc/systemd/system/ollama.service.d/10-lifeos-gpu.conf
-          backup=$(mktemp)
-          existed=0
-          if sudo -n test -f "$target"; then
-            sudo -n cat "$target" >"$backup"
-            existed=1
-          fi
-          rollback() {
+          dir=/etc/systemd/system/ollama.service.d
+          target=$dir/40-lifeos-nvidia-only.conf
+          backup=$(mktemp -d)
+          for f in 10-lifeos-gpu.conf 20-lifeos-gpu-worker.conf 30-lifeos-shared-gpu.conf 40-lifeos-nvidia-only.conf; do
+            if sudo -n test -f "$dir/$f"; then sudo -n cat "$dir/$f" >"$backup/$f"; fi
+          done
+          rollback(){
             set +e
-            if [[ "$existed" == 1 ]]; then
-              sudo -n install -d -m 0755 "$(dirname "$target")"
-              sudo -n install -m 0644 "$backup" "$target"
-            else
-              sudo -n rm -f "$target"
-            fi
+            sudo -n rm -f "$dir"/10-lifeos-gpu.conf "$dir"/20-lifeos-gpu-worker.conf "$dir"/30-lifeos-shared-gpu.conf "$dir"/40-lifeos-nvidia-only.conf
+            for f in "$backup"/*; do [[ -f "$f" ]] && sudo -n install -m 0644 "$f" "$dir/$(basename "$f")"; done
             sudo -n systemctl daemon-reload
             sudo -n systemctl restart ollama.service
           }
           trap rollback ERR
           tmp=$(mktemp)
           printf '%s' "$payload" | base64 -d >"$tmp"
-          grep -q '^Environment="CUDA_VISIBLE_DEVICES=0"$' "$tmp"
-          sudo -n install -d -m 0755 "$(dirname "$target")"
+          grep -q 'CUDA_VISIBLE_DEVICES=0' "$tmp"
+          grep -q 'OLLAMA_VULKAN=0' "$tmp"
+          sudo -n install -d -m 0755 "$dir"
           sudo -n install -m 0644 "$tmp" "$target"
+          sudo -n rm -f "$dir/10-lifeos-gpu.conf" "$dir/20-lifeos-gpu-worker.conf" "$dir/30-lifeos-shared-gpu.conf"
           rm -f "$tmp"
           sudo -n systemctl daemon-reload
           sudo -n systemctl restart ollama.service
-          for i in $(seq 1 30); do
-            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
-            sleep 1
-          done
+          for i in $(seq 1 30); do curl -fsS --max-time 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break; sleep 1; done
           systemctl is-active --quiet ollama.service
-          env_line=$(systemctl show ollama.service -p Environment --value)
-          grep -q 'CUDA_VISIBLE_DEVICES=0' <<<"$env_line"
+          paths=$(systemctl show ollama.service -p DropInPaths --value)
+          [[ "$paths" == "$target" ]]
+          envs=$(systemctl show ollama.service -p Environment --value)
+          grep -q 'CUDA_VISIBLE_DEVICES=0' <<<"$envs"
+          grep -q 'OLLAMA_VULKAN=0' <<<"$envs"
+          grep -q 'OLLAMA_HOST=0.0.0.0:11434' <<<"$envs"
           trap - ERR
-          rm -f "$backup"
-          echo 'TOWER_OLLAMA_GPU_POLICY_DEPLOY=PASS'
+          rm -rf "$backup"
+          echo 'OLLAMA_POLICY_CONSOLIDATED=PASS'
           REMOTE
 
-      - name: Prove default GPU inference without request GPU flags
+      - name: Prove GPU is default without request flags
         shell: bash
         run: |
           set -Eeuo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
           set -Eeuo pipefail
           model=qwen2.5-coder:7b-instruct
-          curl -fsS --max-time 5 http://127.0.0.1:11434/api/tags >/tmp/lifeos-gpu-default-tags.json
-          python3 - /tmp/lifeos-gpu-default-tags.json "$model" <<'PY'
+          python3 - "$model" >/tmp/gpu-default.json <<'PY'
           import json,sys
-          j=json.load(open(sys.argv[1])); model=sys.argv[2]
-          assert any(m.get('name')==model for m in j.get('models',[])), j
-          print('MODEL_PRESENT=PASS')
-          PY
-          python3 - "$model" >/tmp/lifeos-gpu-default-request.json <<'PY'
-          import json,sys
-          # Deliberately no options.num_gpu or CUDA fields. GPU use must come
-          # solely from the Tower Ollama service configuration.
           print(json.dumps({'model':sys.argv[1],'prompt':'Reply with exactly GPU_DEFAULT_OK','stream':False,'keep_alive':'5m'}))
           PY
-          curl -fsS --max-time 120 -H 'Content-Type: application/json' --data-binary @/tmp/lifeos-gpu-default-request.json http://127.0.0.1:11434/api/generate >/tmp/lifeos-gpu-default-response.json
-          python3 - /tmp/lifeos-gpu-default-response.json <<'PY'
+          curl -fsS --max-time 120 -H 'Content-Type: application/json' --data-binary @/tmp/gpu-default.json http://127.0.0.1:11434/api/generate >/tmp/gpu-default-response.json
+          python3 - /tmp/gpu-default-response.json <<'PY'
           import json,sys
-          j=json.load(open(sys.argv[1]))
-          assert 'GPU_DEFAULT_OK' in j.get('response',''), j
+          j=json.load(open(sys.argv[1])); assert 'GPU_DEFAULT_OK' in j.get('response',''), j
           print('DEFAULT_GPU_INFERENCE=PASS')
           PY
-          curl -fsS --max-time 5 http://127.0.0.1:11434/api/ps >/tmp/lifeos-gpu-default-ps.json
-          python3 - /tmp/lifeos-gpu-default-ps.json "$model" <<'PY'
+          curl -fsS --max-time 5 http://127.0.0.1:11434/api/ps >/tmp/gpu-ps.json
+          python3 - /tmp/gpu-ps.json "$model" <<'PY'
           import json,sys
           j=json.load(open(sys.argv[1])); model=sys.argv[2]
-          row=next((x for x in j.get('models',[]) if x.get('name')==model or x.get('model')==model), None)
-          assert row, j
+          row=next(x for x in j['models'] if x.get('name')==model or x.get('model')==model)
           size=int(row.get('size') or 0); vram=int(row.get('size_vram') or 0)
-          print('MODEL_SIZE_BYTES='+str(size))
-          print('MODEL_VRAM_BYTES='+str(vram))
-          assert vram > 0, row
-          if size > 0:
-            ratio=vram/size
-            print('GPU_OFFLOAD_RATIO='+f'{ratio:.3f}')
-            assert ratio >= 0.95, row
+          print('MODEL_SIZE_BYTES='+str(size)); print('MODEL_VRAM_BYTES='+str(vram))
+          assert size > 0 and vram/size >= .95, row
+          print('GPU_OFFLOAD_RATIO='+f'{vram/size:.3f}')
           print('TOWER_OLLAMA_GPU_DEFAULT=PASS')
           PY
           REMOTE
