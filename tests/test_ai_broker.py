@@ -39,18 +39,13 @@ def test_local_only_can_only_obtain_local_provider(monkeypatch, tmp_path):
     eligible, considered = BROKER.candidates(privacy="local-only", task_class="normal")
     assert [p["id"] for p in eligible] == ["ollama"]
     cloud = {"gemini", "groq", "openrouter", "cloudflare", "codex"}
-    assert all(
-        item["status"] == "PRIVACY_FORBIDDEN"
-        for item in considered
-        if item["provider"] in cloud
-    )
+    assert all(item["status"] == "PRIVACY_FORBIDDEN" for item in considered if item["provider"] in cloud)
 
 
 def test_local_failure_never_falls_back_to_cloud(monkeypatch):
     local = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
     monkeypatch.setattr(BROKER, "candidates", lambda **_: ([local], []))
     monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
-
     called = []
 
     def fail(provider, prompt, secrets):
@@ -67,3 +62,34 @@ def test_forced_cloud_provider_must_still_be_policy_eligible(monkeypatch, tmp_pa
     monkeypatch.setattr(BROKER, "SECRETS_PATH", secret_file(tmp_path, {"GEMINI_API_KEY"}))
     with pytest.raises(BROKER.BrokerError, match="no eligible inference provider"):
         BROKER.generate("private task", privacy="local-only", force_provider="gemini")
+
+
+def test_tool_chat_translates_gemini_function_call(monkeypatch):
+    provider = {"id": "gemini", "api_model": "gemini-3.6-flash"}
+    monkeypatch.setattr(BROKER, "candidates", lambda **_: ([provider], []))
+    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {"GEMINI_API_KEY": "test"})
+    monkeypatch.setattr(
+        BROKER,
+        "_post_json",
+        lambda *args, **kwargs: {
+            "candidates": [{"content": {"parts": [{"functionCall": {"id": "call123", "name": "write_file", "args": {"path": "x", "content": "y"}}}]}}]
+        },
+    )
+    result = BROKER.chat(
+        [{"role": "user", "content": "create x"}],
+        tools=[{"type": "function", "function": {"name": "write_file", "description": "write", "parameters": {"type": "object", "properties": {}}}}],
+    )
+    assert result["finish_reason"] == "tool_calls"
+    call = result["message"]["tool_calls"][0]
+    assert call["id"] == "call123"
+    assert call["function"]["name"] == "write_file"
+    assert '"path":"x"' in call["function"]["arguments"]
+
+
+def test_tool_chat_private_fails_closed(monkeypatch):
+    with pytest.raises(BROKER.BrokerError, match="private inference"):
+        BROKER.chat(
+            [{"role": "user", "content": "private task"}],
+            tools=[{"type": "function", "function": {"name": "x", "parameters": {"type": "object"}}}],
+            privacy="local-only",
+        )
