@@ -50,6 +50,7 @@ jobs:
             ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer '
               printf "ENGINEER_ARCH="; uname -m
               printf "ENGINEER_PYTHON="; python3 -c "import sys; print(\"%d.%d\" % sys.version_info[:2])" 2>/dev/null || echo absent
+              printf "ENGINEER_PIP="; if python3 -m pip --version >/dev/null 2>&1; then python3 -m pip --version | awk "{print \$1,\$2}"; else echo absent; fi
               printf "ENGINEER_UV="; if command -v uv >/dev/null 2>&1; then uv --version | head -1; else echo absent; fi
               printf "ENGINEER_NODE="; if command -v node >/dev/null 2>&1; then node --version; else echo absent; fi
               printf "ENGINEER_OPENHANDS="; if command -v openhands >/dev/null 2>&1; then echo present; else echo absent; fi
