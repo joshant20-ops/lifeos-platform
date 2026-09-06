@@ -95,7 +95,7 @@ def wake_card():
       'type':'conditional',
       'conditions':[{'entity':'switch.tower_power','state':'off'}],
       'card':{
-        'type':'button','entity':'switch.tower_power','name':'Wake Tower','icon':'mdi:power','show_state':True,
+        'type':'button','entity':'switch.tower_power','name':'Wake Tower','icon':'mdi:power','show_state':False,
         'tap_action':{'action':'call-service','service':'switch.turn_on','target':{'entity_id':'switch.tower_power'}}
       }
     }
@@ -105,7 +105,7 @@ def shutdown_card():
       'type':'conditional',
       'conditions':[{'entity':'switch.tower_power','state':'on'}],
       'card':{
-        'type':'button','entity':'switch.tower_power','name':'Shut down Tower','icon':'mdi:power','show_state':True,
+        'type':'button','entity':'switch.tower_power','name':'Shut down Tower','icon':'mdi:power','show_state':False,
         'tap_action':{
           'action':'call-service','service':'switch.turn_off','target':{'entity_id':'switch.tower_power'},
           'confirmation':{'text':'Shut down Tower and its hosted workloads gracefully?'}
