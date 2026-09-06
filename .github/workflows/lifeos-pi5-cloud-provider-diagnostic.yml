@@ -1,0 +1,57 @@
+name: LifeOS Pi5 Cloud Provider Diagnostic
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pi5-cloud-provider-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Diagnose direct cloud providers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 - <<'PY'
+          import importlib.util, pathlib, re
+          path=pathlib.Path('governor/ai_broker.py')
+          spec=importlib.util.spec_from_file_location('lifeos_ai_broker', path)
+          b=importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+          marker='LIFEOS_PI5_PROVIDER_DIAGNOSTIC_OK'
+          failures=[]
+          for provider in ('gemini','groq','openrouter','cloudflare'):
+              try:
+                  result=b.generate('Reply with exactly '+marker, privacy='normal', task_class='normal', force_provider=provider)
+                  text=str(result.get('text','')).strip()
+                  if marker not in text:
+                      print(provider.upper()+'_DIAGNOSTIC=FAIL reason=SEMANTIC_MARKER')
+                      failures.append(provider+':SEMANTIC_MARKER')
+                  else:
+                      print(provider.upper()+'_DIAGNOSTIC=PASS')
+              except Exception as exc:
+                  match=re.search(r'provider HTTP ([0-9]{3})', str(exc))
+                  reason='HTTP_'+match.group(1) if match else type(exc).__name__
+                  print(provider.upper()+'_DIAGNOSTIC=FAIL reason='+reason)
+                  failures.append(provider+':'+reason)
+          if failures:
+              print('PI5_CLOUD_PROVIDER_DIAGNOSTIC=FAIL '+','.join(failures))
+              raise SystemExit(1)
+          print('PI5_CLOUD_PROVIDER_DIAGNOSTIC=PASS')
+          PY
