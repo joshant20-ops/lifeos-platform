@@ -31,6 +31,21 @@ jobs:
           git fetch --prune origin main
           git reset --hard origin/main
           test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Ensure Tower is awake before deployment
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 60); do
+            if timeout 2 bash -c '</dev/tcp/TowerPC.Tailor/22' 2>/dev/null; then
+              echo TOWER_PREFLIGHT_ACCESS=PASS
+              exit 0
+            fi
+            if (( attempt % 5 == 1 )); then
+              wakeonlan 40:8d:5c:84:41:64 >/dev/null
+            fi
+            sleep 2
+          done
+          echo ERROR=tower_not_recovered_by_proven_wol_path
+          exit 1
       - name: Deploy bounded Tower control
         run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge
       - name: Prove shutdown and Wake-on-LAN recovery
@@ -64,4 +79,3 @@ jobs:
               issue_number: 122,
               body: `### Tower shutdown correction — **${result}**\n\n\`\`\`text\n${markers.join('\n')}\n\`\`\`\n\n[Governed run evidence](${runUrl})`,
             });
-
