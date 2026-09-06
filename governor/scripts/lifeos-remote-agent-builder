@@ -112,9 +112,10 @@ run_agent 2>&1 | tee "$AGENT_LOG"
 AGENT_RC=${PIPESTATUS[0]}
 set -e
 (( AGENT_RC == 0 )) || { echo "HANDOFF_ERROR=agent_exit_${AGENT_RC}"; exit "$AGENT_RC"; }
-# The builder prompt explicitly requires RESULT=PASS|RETRY|BLOCKED. A model that
-# exits cleanly without declaring PASS has not completed the engineering task.
-if ! grep -Eq '^RESULT=PASS[[:space:]]*$' "$AGENT_LOG"; then
+# OpenHands/Codex may decorate final output with ANSI or TUI frame characters.
+# Require a real explicit RESULT=PASS after normalisation; do not match the
+# prompt's literal RESULT=PASS|RETRY|BLOCKED contract text.
+if ! python3 "$WORKTREE/governor/agent_contract.py" "$AGENT_LOG"; then
   echo "HANDOFF_ERROR=agent_did_not_declare_pass"
   exit 64
 fi
