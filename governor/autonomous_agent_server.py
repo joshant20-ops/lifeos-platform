@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import re
 import stat
 import time
 import urllib.parse
@@ -66,6 +67,53 @@ def _privacy_text(messages: list[dict]) -> str:
         if content:
             parts.append(str(content)[:12000])
     return "\n".join(parts)
+
+
+def _request_shape(body: dict) -> str:
+    """Return non-content structural metadata safe for service logs."""
+    messages = body.get("messages") if isinstance(body.get("messages"), list) else []
+    roles = []
+    content_kinds = []
+    tool_calls = 0
+    for item in messages[-64:]:
+        if not isinstance(item, dict):
+            continue
+        roles.append(str(item.get("role") or "unknown")[:16])
+        content = item.get("content")
+        content_kinds.append("list" if isinstance(content, list) else type(content).__name__[:12])
+        calls = item.get("tool_calls")
+        if isinstance(calls, list):
+            tool_calls += len(calls)
+    tools = body.get("tools") if isinstance(body.get("tools"), list) else []
+    choice = body.get("tool_choice")
+    choice_kind = type(choice).__name__
+    choice_value = str(choice)[:32] if isinstance(choice, str) else choice_kind
+    return (
+        f"messages={len(messages)} roles={','.join(roles[-16:]) or 'none'} "
+        f"content_kinds={','.join(content_kinds[-16:]) or 'none'} tools={len(tools)} "
+        f"assistant_tool_calls={tool_calls} tool_choice={choice_value}"
+    )
+
+
+def _safe_broker_error(exc: Exception) -> str:
+    text = str(exc)
+    if text.startswith("tool-capable providers exhausted:"):
+        return re.sub(r"[^A-Za-z0-9:_,-]+", "_", text)[:240]
+    if text.startswith("eligible providers exhausted:"):
+        return re.sub(r"[^A-Za-z0-9:_,-]+", "_", text)[:240]
+    if text.startswith("provider HTTP "):
+        match = re.match(r"provider HTTP (\d+)", text)
+        return f"provider_http_{match.group(1)}" if match else "provider_http_error"
+    known = {
+        "no eligible tool-capable cloud provider": "no_tool_provider",
+        "tool-enabled private inference is not permitted": "private_tool_blocked",
+        "gemini returned no candidate": "gemini_no_candidate",
+        "gemini returned empty tool-aware response": "gemini_empty_tool_response",
+        "provider returned no tool-aware choice": "openai_no_tool_choice",
+        "provider returned no tool-aware message": "openai_no_tool_message",
+        "provider returned empty tool-aware response": "openai_empty_tool_response",
+    }
+    return known.get(text, type(exc).__name__)
 
 
 def _broker_chat(body: dict) -> dict:
@@ -137,14 +185,17 @@ class Handler(CORE.Handler):
             self.send_json(401, {"error": "broker_capability_required"})
             return
         length = int(self.headers.get("Content-Length", "0"))
+        body = {}
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
             self.send_json(200, _broker_chat(body))
         except ValueError as exc:
             self.send_json(400, {"error": str(exc)})
-        except BROKER.BrokerError:
+        except BROKER.BrokerError as exc:
+            print(f"BROKER_FAILURE={_safe_broker_error(exc)} {_request_shape(body)}", flush=True)
             self.send_json(503, {"error": "inference_unavailable"})
         except Exception as exc:
+            print(f"BROKER_RUNTIME_FAILURE={type(exc).__name__} {_request_shape(body)}", flush=True)
             self.send_json(502, {"error": "broker_unavailable", "detail": type(exc).__name__})
 
 
