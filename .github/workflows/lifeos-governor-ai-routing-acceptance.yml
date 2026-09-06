@@ -114,7 +114,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           units=$(systemctl list-unit-files --no-legend --no-pager | awk 'tolower($1) ~ /watchman/ {n++} END {print n+0}')
-          processes=$(pgrep -af '[Ww]atchman' 2>/dev/null | wc -l)
+          processes=$(ps -eo comm= | awk 'tolower($1) ~ /^watchman/ {n++} END {print n+0}')
+          echo "WATCHMAN_UNITS=$units"
+          echo "WATCHMAN_PROCESSES=$processes"
           test "$units" -eq 0
           test "$processes" -eq 0
           systemctl is-active --quiet lifeos-root-broker.socket
