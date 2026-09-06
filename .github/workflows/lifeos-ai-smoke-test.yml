@@ -63,37 +63,75 @@ jobs:
           fi
           echo 'ENGINEER_VM_REACHABLE=PASS'
 
-      - name: Ping local AI and perform inference
+      - name: Diagnose Tower local AI and GPU path
         shell: bash
         run: |
           set -Eeuo pipefail
-          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
-          set -Eeuo pipefail
-          command -v ollama >/dev/null
-          ollama list >/tmp/lifeos-ollama-models
-          model=$(awk 'NR==2 {print $1}' /tmp/lifeos-ollama-models)
-          test -n "$model"
-          echo "LOCAL_AI_MODEL=$model"
-          out=$(timeout 120s ollama run "$model" 'Reply with exactly LOCAL_AI_SMOKE_OK')
-          printf '%s\n' "$out"
-          printf '%s' "$out" | grep -q 'LOCAL_AI_SMOKE_OK'
-          echo 'LOCAL_AI_INFERENCE=PASS'
-          REMOTE
+          AI=http://192.168.0.201:11434
+          curl -fsS --max-time 5 "$AI/api/tags" >/tmp/lifeos-ai-tags.json
+          python3 - /tmp/lifeos-ai-tags.json <<'PY'
+          import json,sys
+          j=json.load(open(sys.argv[1]))
+          names=[m.get('name','') for m in j.get('models',[])]
+          assert names, j
+          preferred='qwen2.5-coder:7b-instruct'
+          model=preferred if preferred in names else names[0]
+          print('LOCAL_AI_MODEL='+model)
+          open('/tmp/lifeos-ai-model','w').write(model)
+          PY
+          model=$(cat /tmp/lifeos-ai-model)
+          python3 - "$model" >/tmp/lifeos-ai-request.json <<'PY'
+          import json,sys
+          print(json.dumps({'model':sys.argv[1],'prompt':'Reply with exactly LOCAL_AI_SMOKE_OK','stream':False,'keep_alive':'5m'}))
+          PY
+          curl -fsS --max-time 120 -H 'Content-Type: application/json' --data-binary @/tmp/lifeos-ai-request.json "$AI/api/generate" >/tmp/lifeos-ai-response.json
+          python3 - /tmp/lifeos-ai-response.json <<'PY'
+          import json,sys
+          j=json.load(open(sys.argv[1]))
+          r=j.get('response','')
+          print('LOCAL_AI_RESPONSE='+r.strip().replace('\n',' ')[:200])
+          assert 'LOCAL_AI_SMOKE_OK' in r, j
+          print('LOCAL_AI_INFERENCE=PASS')
+          PY
+          curl -fsS --max-time 5 "$AI/api/ps" >/tmp/lifeos-ai-ps.json
+          python3 - /tmp/lifeos-ai-ps.json "$model" <<'PY'
+          import json,sys
+          j=json.load(open(sys.argv[1])); model=sys.argv[2]
+          rows=j.get('models',[])
+          assert rows, j
+          row=next((x for x in rows if x.get('name')==model or x.get('model')==model), rows[0])
+          vram=int(row.get('size_vram') or 0)
+          size=int(row.get('size') or 0)
+          print('LOCAL_AI_SIZE_BYTES='+str(size))
+          print('LOCAL_AI_VRAM_BYTES='+str(vram))
+          print('LOCAL_AI_GPU_OFFLOAD=' + ('PASS' if vram > 0 else 'FAIL'))
+          if vram <= 0: raise SystemExit(22)
+          PY
 
-      - name: Perform Codex inference
+      - name: Diagnose Codex inference
         shell: bash
         run: |
           set -Eeuo pipefail
           ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
-          set -Eeuo pipefail
-          if command -v codex >/dev/null 2>&1; then c=$(command -v codex); elif test -x "$HOME/.local/bin/codex"; then c="$HOME/.local/bin/codex"; else exit 21; fi
+          set -u
+          if command -v codex >/dev/null 2>&1; then c=$(command -v codex); elif test -x "$HOME/.local/bin/codex"; then c="$HOME/.local/bin/codex"; else echo 'CODEX_MISSING'; exit 21; fi
           "$c" --version
           tmp=$(mktemp -d)
           trap 'rm -rf "$tmp"' EXIT
           cd "$tmp"
           git init -q
+          set +e
           timeout 180s "$c" exec --skip-git-repo-check 'Reply with exactly CODEX_SMOKE_OK' >out.txt 2>&1
-          cat out.txt
+          rc=$?
+          set -e
+          sed -n '1,160p' out.txt
+          echo "CODEX_RC=$rc"
+          if test "$rc" -ne 0; then
+            if grep -Eqi 'auth|login|credential|unauthor|token|401|403' out.txt; then echo 'CODEX_FAILURE_CLASS=AUTH';
+            elif grep -Eqi 'network|connect|dns|timeout|timed out' out.txt; then echo 'CODEX_FAILURE_CLASS=NETWORK';
+            else echo 'CODEX_FAILURE_CLASS=OTHER'; fi
+            exit "$rc"
+          fi
           grep -q 'CODEX_SMOKE_OK' out.txt
           echo 'CODEX_INFERENCE=PASS'
           REMOTE
