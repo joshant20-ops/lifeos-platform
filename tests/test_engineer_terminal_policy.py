@@ -76,7 +76,7 @@ class EngineerTerminalPolicyTests(unittest.TestCase):
     def test_continuation_requires_pass_so_terminal_blocks_cannot_spawn_children(self):
         text = pathlib.Path("governor/autonomous_agent.py").read_text()
         self.assertIn('if str(job.get("status") or "").upper() != "PASS":', text)
-        self.assertIn("# BLOCKED and repeated deterministic failure stop before this point.", text)
+        self.assertIn("def continuation_allowed(job):", text)
 
 
 if __name__ == "__main__":
