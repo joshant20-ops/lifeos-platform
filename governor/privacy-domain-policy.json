@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "default": "normal",
+  "domains": {
+    "personal-administration": {
+      "privacy": "local-only",
+      "cloud_fallback": false,
+      "sources": ["calendar", "email", "paperless", "personal-documents"],
+      "public_reference_queries": "sanitized-general-question-only"
+    },
+    "finance-assets": {
+      "privacy": "local-only",
+      "cloud_fallback": false,
+      "sources": ["transactions", "balances", "banking", "rental", "receipts", "invoices", "tax-records", "vehicle-costs", "mileage"],
+      "public_reference_queries": "sanitized-general-question-only"
+    }
+  },
+  "fail_closed": true,
+  "rules": [
+    "Private source content never enters a cloud prompt.",
+    "Failure or incapacity of local AI never triggers automatic cloud fallback.",
+    "A public-reference subquery must be separated from private context before cloud/web use.",
+    "Authoritative records and calculations remain in deterministic local or selected OTS systems."
+  ]
+}
