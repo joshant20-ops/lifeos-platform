@@ -34,6 +34,31 @@ PY
 
 timeout 3 bash -c "</dev/tcp/$TOWER_IP/22" 2>/dev/null || { echo "ERROR=tower_ssh_probe_failed:$TOWER_IP"; exit 1; }
 
+AS_JOSHAN=(
+  /usr/sbin/runuser -u joshan -- /usr/bin/env -i
+  HOME=/home/joshan
+  PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+  LANG=C.UTF-8
+)
+SSH_OPTS=(
+  -o BatchMode=yes -o IdentitiesOnly=no -o StrictHostKeyChecking=yes
+  -o ConnectTimeout=5 -o ServerAliveInterval=5 -o ServerAliveCountMax=2
+)
+SSH_TARGET=''
+for candidate in TowerPC.Tailor "$TOWER_IP"; do
+  target="joshan@$candidate"
+  if "${AS_JOSHAN[@]}" ssh "${SSH_OPTS[@]}" "$target" 'printf READY' 2>/dev/null | grep -qx READY; then
+    SSH_TARGET="$target"
+    break
+  fi
+done
+[[ -n "$SSH_TARGET" ]] || { echo 'ERROR=tower_existing_trusted_ssh_path_unavailable'; exit 1; }
+"${AS_JOSHAN[@]}" ssh "${SSH_OPTS[@]}" "$SSH_TARGET" 'sudo -n /usr/bin/true' || {
+  echo 'ERROR=tower_noninteractive_sudo_unavailable'
+  exit 1
+}
+echo 'TOWER_SHUTDOWN_SSH_SUDO_PREFLIGHT=PASS'
+
 BACKUP="$(mktemp /tmp/lifeos-tower-config.XXXXXX)"
 cp -a "$CONFIG" "$BACKUP"
 rollback() {
@@ -58,6 +83,11 @@ probe=value.get('access_probe') if isinstance(value.get('access_probe'),dict) el
 probe['host']=ip
 probe['port']=int(probe.get('port') or 22)
 value['access_probe']=probe
+value['shutdown']={
+    'type':'linux_ssh',
+    'host':ip,
+    'user':'joshan',
+}
 fd,tmp=tempfile.mkstemp(prefix='.tower.',dir=str(path.parent),text=True)
 try:
     with os.fdopen(fd,'w') as fh:
@@ -96,6 +126,8 @@ print('TOWER_RUNTIME_ACCESS_HOST=' + ip)
 print('TOWER_RUNTIME_ACCESS_PORT=22')
 print('TOWER_RUNTIME_STATE=' + v['state'])
 print('TOWER_RUNTIME_POWER=' + str(v.get('physical_power') or 'UNKNOWN'))
+print('TOWER_SHUTDOWN_PROFILE=linux_ssh')
+print('TOWER_SHUTDOWN_KEY_SOURCE=existing_service_account_identity')
 PY
 
 trap - EXIT
