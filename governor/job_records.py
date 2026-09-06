@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -135,15 +136,39 @@ def serialise_record(record: dict[str, Any]) -> str:
     return json.dumps(record, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
 
 
+def _stage_runtime_record(job: dict[str, Any], state_root: pathlib.Path) -> dict[str, Any]:
+    """Stage a sanitised record outside the protected Git checkout.
+
+    The always-on Governor is intentionally unable to mutate its source tree.
+    Runtime records therefore live under LIFEOS_AGENT_STATE until a separate
+    Pi-owned publication boundary consumes them.
+    """
+    job_id = str(job.get("id") or "")
+    path = state_root / "job_records" / f"{job_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(serialise_record(make_record(job, "STAGED")), encoding="utf-8")
+    return {"state": "STAGED", "path": str(path)}
+
+
 def publish_record(
     repo: pathlib.Path,
     job: dict[str, Any],
     run: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
 ) -> dict[str, Any]:
-    """Commit and push one record; leave a truthful local UNPUBLISHED record on failure."""
+    """Stage in hardened runtime; otherwise retain legacy explicit Git publication.
+
+    The service sets LIFEOS_AGENT_STATE and must never mutate its Git checkout.
+    Explicit tooling without that runtime marker keeps the historical publication
+    contract while the runtime/publication boundary is migrated independently.
+    """
     job_id = str(job.get("id") or "")
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}", job_id):
         return {"state": "UNPUBLISHED", "reason": "invalid_job_id"}
+
+    runtime_state = os.environ.get("LIFEOS_AGENT_STATE", "").strip()
+    if runtime_state:
+        return _stage_runtime_record(job, pathlib.Path(runtime_state))
+
     path = repo / "governor" / "job_records" / f"{job_id}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(serialise_record(make_record(job, "PUBLISHED")))
@@ -169,7 +194,5 @@ def publish_record(
         head = command("rev-parse", "HEAD")
         return {"state": "PUBLISHED", "commit": head.stdout.strip() if head.returncode == 0 else None}
     except Exception as exc:
-        # The working-tree copy is authoritative about failed publication. This
-        # deliberately does not reset or discard a possibly valid local commit.
         path.write_text(serialise_record(make_record(job, "UNPUBLISHED")))
         return {"state": "UNPUBLISHED", "reason": str(exc)}
