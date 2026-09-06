@@ -1,0 +1,95 @@
+name: LifeOS Governor Agent Tooling Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-governor-agent-tooling-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-engineer-tooling
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Provision OpenHands headless on Engineer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          before_uv=absent
+          before_openhands=absent
+          command -v uv >/dev/null 2>&1 && before_uv=$(uv --version | head -1)
+          command -v openhands >/dev/null 2>&1 && before_openhands=$(openhands --version 2>/dev/null | head -1 || echo present)
+          echo "BEFORE_UV=$before_uv"
+          echo "BEFORE_OPENHANDS=$before_openhands"
+
+          free_kb=$(df -Pk "$HOME" | awk 'NR==2 {print $4}')
+          (( free_kb >= 2097152 )) || { echo 'RESULT=BLOCKED'; echo 'REASON=engineer_home_free_space_under_2GiB'; exit 20; }
+          python3 -m pip --version >/dev/null
+
+          if ! command -v uv >/dev/null 2>&1; then
+            python3 -m pip install --user --disable-pip-version-check uv
+          fi
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          uv --version
+
+          if command -v openhands >/dev/null 2>&1; then
+            current=$(python3 - <<'PY'
+import importlib.metadata
+try: print(importlib.metadata.version('openhands'))
+except Exception: print('unknown')
+PY
+)
+            if [[ "$current" != 1.16.0 ]]; then
+              uv tool install --force 'openhands==1.16.0' --python 3.12
+            fi
+          else
+            uv tool install 'openhands==1.16.0' --python 3.12
+          fi
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          command -v openhands
+          help=$(openhands --help 2>&1)
+          grep -q -- '--headless' <<<"$help"
+          grep -q -- '--override-with-envs' <<<"$help"
+          echo 'OPENHANDS_HEADLESS=PASS'
+          echo 'OPENHANDS_ENV_OVERRIDE=PASS'
+          echo 'ENGINEER_AGENT_TOOLING_DEPLOY=PASS'
+          REMOTE
+
+      - name: Verify Codex remains available
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer '
+            test -x "$HOME/.local/bin/codex" || command -v codex >/dev/null
+            echo CODEX_REGRESSION=PASS
+          '
+
+      - name: Prove Pi repository clean
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'REPOSITORY_FINAL=PASS'
