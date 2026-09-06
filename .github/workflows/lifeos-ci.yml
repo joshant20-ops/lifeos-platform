@@ -87,6 +87,13 @@ jobs:
           grep -F 'deploy-energy-opportunity-api' \
             .github/workflows/lifeos-energy-opportunity-deploy.yml >/dev/null
 
+      - name: Validate bounded Tower shutdown integration
+        run: |
+          python3 tests/test_tower_control_shutdown.py
+          python3 -m py_compile governor/tower_control.py
+          bash -n scripts/lifeos-configure-tower-access-runtime.sh
+          bash -n scripts/lifeos-prove-tower-shutdown.sh
+
       - name: Validate desired Compose YAML
         run: |
           python3 - <<'PY'

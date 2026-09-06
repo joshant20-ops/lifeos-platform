@@ -156,14 +156,21 @@ def graceful_shutdown(cfg: dict) -> None:
     host = str(shutdown.get("host") or cfg.get("host") or "")
     user = str(shutdown.get("user") or "")
     key = str(shutdown.get("key_file") or "")
-    if not host or not user or not key or not Path(key).is_file():
-        raise RuntimeError("Tower shutdown SSH endpoint/key is incomplete")
+    if not host or not user:
+        raise RuntimeError("Tower shutdown SSH endpoint is incomplete")
+    if key and not Path(key).is_file():
+        raise RuntimeError("Tower shutdown SSH identity is missing")
     remote = "sudo -n /sbin/poweroff" if stype == "linux_ssh" else "shutdown.exe /s /t 0"
-    args = [
-        "ssh", "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
+    args = ["ssh"]
+    if key:
+        args.extend(["-i", key, "-o", "IdentitiesOnly=yes"])
+    else:
+        args.extend(["-o", "IdentitiesOnly=no"])
+    args.extend([
+        "-o", "BatchMode=yes",
         "-o", "StrictHostKeyChecking=yes", "-o", "ConnectTimeout=5",
         f"{user}@{host}", remote,
-    ]
+    ])
     run(*args, check=True, timeout=20)
 
 
