@@ -1,17 +1,22 @@
 #!/usr/bin/env python3
-"""Dry-run-first OpenHands adapter; never publishes, merges, deploys, or uses SSH."""
+"""Dry-run-first OpenHands adapter using the Pi5 Governor AI broker.
+
+OpenHands remains an execution agent on Engineer/Z97. It never receives cloud
+provider credentials; it receives only a bounded broker token and endpoint.
+"""
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
 import os
+import stat
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-from provider_router import eligible_providers, load_policy, load_secret_names, openhands_environment
+from provider_router import load_policy
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -41,12 +46,39 @@ def packet(task_file, repo, maximum=16000):
             "constraints": [
                 "branch/PR only",
                 "no production SSH mutation",
-                "cloud context must be sanitized",
                 "Pi execution via relay",
+                "AI inference must pass through Pi5 Governor broker",
+                "private/local-only jobs must never cloud-fallback",
             ],
         },
         sort_keys=True,
     )
+
+
+def broker_environment(path: Path, privacy: str) -> dict[str, str]:
+    if not path.is_file() or path.is_symlink() or stat.S_IMODE(path.stat().st_mode) != 0o600:
+        raise RuntimeError("broker config must be regular non-symlink mode-0600")
+    values = {}
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        name, sep, value = line.partition("=")
+        if sep and value and name in {"LIFEOS_GOVERNOR_BROKER_URL", "LIFEOS_GOVERNOR_BROKER_TOKEN"}:
+            values[name] = value
+    url = values.get("LIFEOS_GOVERNOR_BROKER_URL", "")
+    token = values.get("LIFEOS_GOVERNOR_BROKER_TOKEN", "")
+    if not url.startswith("http://") and not url.startswith("https://"):
+        raise RuntimeError("broker URL unavailable")
+    if not token:
+        raise RuntimeError("broker token unavailable")
+    model = "openai/lifeos-local-only" if privacy == "local-only" else "openai/lifeos-normal"
+    return {
+        "LIFEOS_PROVIDER": "governor-broker",
+        "LLM_MODEL": model,
+        "LLM_BASE_URL": url.rstrip("/"),
+        "LLM_API_KEY": token,
+    }
 
 
 def main():
@@ -59,15 +91,21 @@ def main():
         default="normal",
     )
     p.add_argument("--privacy", choices=("normal", "local-only"), default="normal")
-    p.add_argument("--secrets", type=Path)
+    p.add_argument("--secrets", type=Path, help="deprecated; provider secrets are Pi5-only")
+    p.add_argument(
+        "--broker-config",
+        type=Path,
+        default=Path.home() / ".config/lifeos/governor-broker.env",
+    )
     p.add_argument("--execute", action="store_true")
     p.add_argument("--openhands-command", default="openhands")
     a = p.parse_args()
     evidence = {
-        "schema_version": 2,
+        "schema_version": 3,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "dry_run": not a.execute,
         "privacy": a.privacy,
+        "inference_authority": "pi5-governor",
     }
     try:
         branch = git(a.repo, "branch", "--show-current")
@@ -76,85 +114,63 @@ def main():
         before = git(a.repo, "rev-parse", "refs/heads/main")
         context = packet(a.task, a.repo)
         policy = load_policy(ROOT / "governor/policy.json")
-        providers, considered = eligible_providers(
-            policy,
-            a.task_class,
-            load_secret_names(a.secrets),
-            privacy=a.privacy,
-            available_adapters={"openhands"},
-        )
+        broker_env = broker_environment(a.broker_config, a.privacy)
         evidence.update(
-            considered=considered,
             max_attempts=policy["routing"]["max_attempts_per_provider"],
-            cooldown_seconds=policy["routing"]["cooldown_seconds"],
             branch=branch,
             main_before=before,
             context_sha256=hashlib.sha256(context.encode()).hexdigest(),
+            selected_provider="governor-broker",
+            selected_role="inference-policy-authority",
             attempts=[],
         )
-        if not providers:
-            evidence["result"] = (
-                "CREDENTIAL_REQUIRED"
-                if any(x["status"] == "CREDENTIAL_REQUIRED" for x in considered)
-                else "NO_PROVIDER"
-            )
-            print(json.dumps(evidence, sort_keys=True))
-            return 20
         if not a.execute:
-            evidence.update(
-                selected_provider=providers[0]["id"],
-                selected_role=providers[0]["role"],
-                result="DRY_RUN_PASS",
-            )
+            evidence["result"] = "DRY_RUN_PASS"
             print(json.dumps(evidence, sort_keys=True))
             return 0
 
-        max_attempts = policy["routing"]["max_attempts_per_provider"]
-        for provider in providers:
-            env = {
-                "PATH": os.environ.get("PATH", ""),
-                "HOME": os.environ.get("HOME", ""),
-                **openhands_environment(provider, a.secrets),
-            }
-            for attempt in range(1, max_attempts + 1):
-                done = subprocess.run(
-                    [
-                        a.openhands_command,
-                        "--headless",
-                        "--override-with-envs",
-                        "-t",
-                        context,
-                    ],
-                    cwd=a.repo,
-                    env=env,
-                    timeout=1800,
-                    check=False,
+        env = {
+            "PATH": os.environ.get("PATH", ""),
+            "HOME": os.environ.get("HOME", ""),
+            **broker_env,
+        }
+        max_attempts = int(policy["routing"].get("max_attempts_per_provider", 1))
+        for attempt in range(1, max_attempts + 1):
+            done = subprocess.run(
+                [
+                    a.openhands_command,
+                    "--headless",
+                    "--override-with-envs",
+                    "-t",
+                    context,
+                ],
+                cwd=a.repo,
+                env=env,
+                timeout=1800,
+                check=False,
+            )
+            evidence["attempts"].append(
+                {"provider": "governor-broker", "attempt": attempt, "exit_code": done.returncode}
+            )
+            after = git(a.repo, "rev-parse", "refs/heads/main")
+            if before != after:
+                evidence.update(
+                    main_after=after,
+                    concurrent_main_unchanged=False,
+                    result="FAIL_CLOSED",
                 )
-                evidence["attempts"].append(
-                    {"provider": provider["id"], "attempt": attempt, "exit_code": done.returncode}
+                print(json.dumps(evidence, sort_keys=True))
+                return 1
+            if done.returncode == 0:
+                evidence.update(
+                    main_after=after,
+                    concurrent_main_unchanged=True,
+                    result="PASS",
                 )
-                after = git(a.repo, "rev-parse", "refs/heads/main")
-                if before != after:
-                    evidence.update(
-                        main_after=after,
-                        concurrent_main_unchanged=False,
-                        result="FAIL_CLOSED",
-                    )
-                    print(json.dumps(evidence, sort_keys=True))
-                    return 1
-                if done.returncode == 0:
-                    evidence.update(
-                        selected_provider=provider["id"],
-                        selected_role=provider["role"],
-                        main_after=after,
-                        concurrent_main_unchanged=True,
-                        result="PASS",
-                    )
-                    print(json.dumps(evidence, sort_keys=True))
-                    return 0
-            evidence["attempts"][-1]["cooldown_seconds"] = policy["routing"]["cooldown_seconds"]
+                print(json.dumps(evidence, sort_keys=True))
+                return 0
 
-        evidence.update(main_after=before, concurrent_main_unchanged=True, result="PROVIDERS_EXHAUSTED")
+        evidence.update(main_after=before, concurrent_main_unchanged=True, result="BROKER_EXECUTION_EXHAUSTED")
         print(json.dumps(evidence, sort_keys=True))
         return 21
     except Exception as exc:
