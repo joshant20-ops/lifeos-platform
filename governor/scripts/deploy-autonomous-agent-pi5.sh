@@ -6,6 +6,7 @@ REPO=/home/joshan/lifeos-platform
 AGENT_CORE="$REPO/governor/autonomous_agent.py"
 AGENT_SERVER="$REPO/governor/autonomous_agent_server.py"
 AI_BROKER="$REPO/governor/ai_broker.py"
+JOB_RECORDS="$REPO/governor/job_records.py"
 PRIVACY_POLICY="$REPO/governor/privacy-domain-policy.json"
 BUILDER_SRC="$REPO/governor/scripts/lifeos-cloud-builder"
 UI="$REPO/governor/agent_ui.html"
@@ -25,7 +26,7 @@ git -C "$REPO" reset --hard origin/main
 printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 
 printf '\n===== 2/8 — PREFLIGHT =====\n'
-python3 -m py_compile "$AGENT_CORE" "$AGENT_SERVER" "$AI_BROKER"
+python3 -m py_compile "$AGENT_CORE" "$AGENT_SERVER" "$AI_BROKER" "$JOB_RECORDS"
 python3 -m json.tool "$PRIVACY_POLICY" >/dev/null
 bash -n "$BUILDER_SRC"
 test -s "$UI"
@@ -58,6 +59,7 @@ printf 'BROKER_CAPABILITY=PASS\n'
 printf '\n===== 4/8 — INSTALL =====\n'
 sudo install -m 0755 "$AGENT_CORE" /usr/local/libexec/lifeos-autonomous-agent-core
 sudo install -m 0755 "$AGENT_SERVER" /usr/local/libexec/lifeos-autonomous-agent
+sudo install -m 0644 "$JOB_RECORDS" /usr/local/libexec/job_records.py
 sudo install -m 0644 "$PRIVACY_POLICY" /usr/local/libexec/privacy-domain-policy.json
 sudo install -m 0755 "$BUILDER_SRC" /usr/local/libexec/lifeos-cloud-builder
 sudo install -d -m 0750 -o joshan -g joshan /var/lib/lifeos-agent
@@ -160,8 +162,10 @@ j=json.loads(sys.argv[1])
 assert j['privacy']=='local-only'
 assert j['privacy_domain']=='personal-administration'
 assert j['status']=='BLOCKED'
+assert j.get('record_publication',{}).get('state')=='STAGED'
 assert not any('PI5_PATCH=APPLIED' in x.get('evidence','') for x in j.get('iterations',[]))
 print('PRIVACY_BOUNDARY=PASS')
+print('JOB_RECORD_RUNTIME_STAGE=PASS')
 PY
 
 printf '\n===== 7/8 — TRUE END-TO-END AUTONOMOUS SMOKE =====\n'
