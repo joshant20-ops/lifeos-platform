@@ -107,10 +107,10 @@ for spec in "${AGENTS[@]}"; do
   for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
     echo "AGENT_ATTEMPT=$ADAPTER provider=$PROVIDER attempt=$attempt"
     set +e
-    OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$MODEL" "" "$REMOTE_SNAPSHOT" <<'REMOTE'
+    OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE'
 set -euo pipefail
 REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}
-PROVIDER=${6:?provider required}; ADAPTER=${7:?adapter required}; MODEL=${8-}; CREDENTIALS=${9-}; SNAPSHOT_REL=${10:?snapshot required}
+PROVIDER=${6:?provider required}; ADAPTER=${7:?adapter required}; SNAPSHOT_REL=${8:?snapshot required}; MODEL=${9-}; CREDENTIALS=""
 SNAPSHOT="$HOME/$SNAPSHOT_REL"
 trap 'rm -f "$SNAPSHOT"' EXIT
 test -s "$SNAPSHOT"
