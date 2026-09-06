@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-governor-broker-deploy.yml'
-      - 'governor/service_entrypoint.py'
+      - 'governor/autonomous_agent_server.py'
       - 'governor/autonomous_agent.py'
       - 'governor/ai_broker.py'
       - 'governor/policy.json'
