@@ -8,6 +8,7 @@ on:
       - 'governor/autonomous_agent_server.py'
       - 'governor/autonomous_agent.py'
       - 'governor/ai_broker.py'
+      - 'governor/openai_compat.py'
       - 'governor/job_records.py'
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
