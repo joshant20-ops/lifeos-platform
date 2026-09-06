@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO=${1:?repo required}
+PROMPT_B64=${2:?prompt required}
+JOB_ID=${3:?job id required}
+ITERATION=${4:?iteration required}
+RUNTIME_PATH=${5:?runtime path required}
+PROVIDER=${6:?provider required}
+ADAPTER=${7:?adapter required}
+MODEL=${8:-}
+CREDENTIAL_NAMES=${9:-}
+SECRET_FILE=${LIFEOS_PROVIDER_SECRETS_FILE:-$HOME/.config/lifeos/provider-secrets.env}
+
+PROMPT=$(printf '%s' "$PROMPT_B64" | base64 -d)
+
+load_selected_credentials() {
+  [[ -n "$CREDENTIAL_NAMES" ]] || return 0
+  [[ -f "$SECRET_FILE" && ! -L "$SECRET_FILE" ]] || {
+    echo "PROVIDER_ERROR=credential_file_missing"
+    return 20
+  }
+  mode=$(stat -c '%a' "$SECRET_FILE")
+  [[ "$mode" == 600 ]] || {
+    echo "PROVIDER_ERROR=credential_file_mode_${mode}"
+    return 20
+  }
+  IFS=',' read -r -a requested <<<"$CREDENTIAL_NAMES"
+  for name in "${requested[@]}"; do
+    [[ "$name" =~ ^[A-Za-z][A-Za-z0-9_]*$ ]] || {
+      echo "PROVIDER_ERROR=invalid_credential_name"
+      return 20
+    }
+    value=$(python3 - "$SECRET_FILE" "$name" <<'PY'
+import pathlib, sys
+path=pathlib.Path(sys.argv[1]); wanted=sys.argv[2]
+for raw in path.read_text(encoding='utf-8').splitlines():
+    line=raw.strip()
+    if not line or line.startswith('#'):
+        continue
+    if line.startswith('export '):
+        line=line[7:].lstrip()
+    key, sep, value=line.partition('=')
+    if sep and key == wanted:
+        print(value, end='')
+        raise SystemExit(0)
+raise SystemExit(3)
+PY
+) || {
+      echo "PROVIDER_ERROR=credential_required name=$name"
+      return 20
+    }
+    [[ -n "$value" ]] || {
+      echo "PROVIDER_ERROR=credential_required name=$name"
+      return 20
+    }
+    export "$name=$value"
+  done
+  if (( ${#requested[@]} == 1 )); then
+    export LLM_API_KEY="${!requested[0]}"
+  fi
+}
+
+resolve_agent() {
+  case "$ADAPTER" in
+    codex)
+      AGENT="${LIFEOS_CODEX_BIN:-$HOME/.local/bin/codex}"
+      [[ -x "$AGENT" ]] || AGENT=$(command -v codex 2>/dev/null || true)
+      [[ -n "$AGENT" && -x "$AGENT" ]] || {
+        echo "PROVIDER_ERROR=codex_missing"
+        return 50
+      }
+      ;;
+    openhands)
+      AGENT="${LIFEOS_OPENHANDS_BIN:-$HOME/.local/bin/openhands}"
+      [[ -x "$AGENT" ]] || AGENT=$(command -v openhands 2>/dev/null || true)
+      [[ -n "$AGENT" && -x "$AGENT" ]] || {
+        echo "PROVIDER_ERROR=openhands_missing"
+        return 50
+      }
+      [[ -n "$MODEL" ]] || {
+        echo "PROVIDER_ERROR=openhands_model_missing"
+        return 51
+      }
+      load_selected_credentials
+      export LLM_MODEL="$MODEL"
+      export LIFEOS_PROVIDER="$PROVIDER"
+      ;;
+    *)
+      echo "PROVIDER_ERROR=unsupported_adapter adapter=$ADAPTER"
+      return 52
+      ;;
+  esac
+}
+
+run_agent() {
+  case "$ADAPTER" in
+    codex)
+      HELP=$($AGENT exec --help 2>&1 || true)
+      if grep -q -- '--full-auto' <<<"$HELP"; then
+        "$AGENT" exec --full-auto "$PROMPT" </dev/null
+      elif "$AGENT" --help 2>&1 | grep -q -- '--full-auto'; then
+        "$AGENT" --full-auto exec "$PROMPT" </dev/null
+      else
+        "$AGENT" exec "$PROMPT" </dev/null
+      fi
+      ;;
+    openhands)
+      "$AGENT" --headless --override-with-envs -t "$PROMPT" </dev/null
+      ;;
+  esac
+}
+
+resolve_agent
+
+echo "PROVIDER_SELECTED=$PROVIDER"
+echo "PROVIDER_ADAPTER=$ADAPTER"
+[[ -n "$MODEL" ]] && echo "PROVIDER_MODEL=$MODEL"
+
+cd "$REPO"
+git fetch origin main
+
+WORKROOT="$HOME/.local/share/lifeos-agent/worktrees"
+WORKTREE="$WORKROOT/${JOB_ID}-${ITERATION}-${PROVIDER}"
+mkdir -p "$WORKROOT"
+git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+rm -rf "$WORKTREE"
+git worktree add --detach "$WORKTREE" origin/main >/dev/null
+
+cleanup() {
+  git -C "$REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+cd "$WORKTREE"
+BASE=$(git rev-parse HEAD)
+echo "WORKTREE_BASE=$BASE"
+
+run_agent
+
+# Normalize any staged, unstaged, untracked, or local-commit changes into one
+# complete binary patch against the immutable worktree base.
+git reset --mixed "$BASE" >/dev/null 2>&1 || true
+git add -A
+PATCH_FILE=$(mktemp)
+git diff --cached --binary "$BASE" -- . >"$PATCH_FILE"
+PATCH_BYTES=$(wc -c <"$PATCH_FILE")
+if (( PATCH_BYTES > 1048576 )); then
+  rm -f "$PATCH_FILE"
+  echo "HANDOFF_ERROR=patch_exceeds_1MiB"
+  exit 61
+fi
+
+echo "HANDOFF_BASE=$BASE"
+echo "HANDOFF_PATCH_BYTES=$PATCH_BYTES"
+if (( PATCH_BYTES > 0 )); then
+  echo "HANDOFF_PATCH_B64=$(base64 -w0 <"$PATCH_FILE")"
+fi
+rm -f "$PATCH_FILE"
+
+if [[ -f "$RUNTIME_PATH" ]]; then
+  RUNTIME_BYTES=$(wc -c <"$RUNTIME_PATH")
+  if (( RUNTIME_BYTES > 65536 )); then
+    echo "HANDOFF_ERROR=runtime_script_exceeds_64KiB"
+    exit 62
+  fi
+  echo "RUN_SCRIPT=$RUNTIME_PATH"
+  echo "HANDOFF_RUNTIME_B64=$(base64 -w0 <"$RUNTIME_PATH")"
+fi
+
+echo "WORKTREE_STATUS_BEGIN"
+git status --short
+echo "WORKTREE_STATUS_END"
