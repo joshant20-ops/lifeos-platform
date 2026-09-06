@@ -17,6 +17,7 @@ from http.server import ThreadingHTTPServer
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
 CORE_PATH = pathlib.Path(os.environ.get("LIFEOS_AGENT_CORE", "/usr/local/libexec/lifeos-autonomous-agent-core"))
 BROKER_PATH = PLATFORM_REPO / "governor" / "ai_broker.py"
+COMPAT_PATH = PLATFORM_REPO / "governor" / "openai_compat.py"
 BROKER_TOKEN_FILE = pathlib.Path(
     os.environ.get("LIFEOS_AI_BROKER_TOKEN_FILE", pathlib.Path.home() / ".config/lifeos/ai-broker.token")
 )
@@ -34,6 +35,7 @@ def _load(name: str, path: pathlib.Path):
 
 CORE = _load("lifeos_autonomous_agent_core", CORE_PATH)
 BROKER = _load("lifeos_ai_broker_runtime", BROKER_PATH)
+COMPAT = _load("lifeos_openai_compat_runtime", COMPAT_PATH)
 
 
 def _token() -> str:
@@ -87,6 +89,9 @@ def _broker_chat(body: dict) -> dict:
     if tools:
         if not isinstance(tools, list):
             raise ValueError("tools_must_be_list")
+        tools = COMPAT.sanitize_tools(tools)
+        if not tools:
+            raise ValueError("function_tools_required")
         routed = BROKER.chat(
             messages,
             tools=tools,
