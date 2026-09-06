@@ -9,7 +9,7 @@ JOB_ID=${LIFEOS_JOB_ID:-unknown}
 TASK_CLASS=${LIFEOS_JOB_TASK_CLASS:-normal}
 ENGINEER=${LIFEOS_ENGINEER_SSH:-Engineer}
 REPO=${LIFEOS_ENGINEER_REPO:-/home/joshan/workspace/lifeos-platform}
-BROKER_TOKEN_FILE=${LIFEOS_AI_BROKER_TOKEN_FILE:-$HOME/.config/lifeos/ai-broker.token}
+CONTROLLER_REPO=${LIFEOS_PLATFORM_REPO:-/home/joshan/lifeos-platform}
 
 if [[ "$PRIVACY" == "local-only" ]]; then
   echo "RESULT=BLOCKED"
@@ -23,7 +23,6 @@ case "$TASK_CLASS" in
 esac
 
 RUNTIME_PATH="governor/runtime_jobs/${JOB_ID}.sh"
-
 SAFE_REQUEST=$(printf '%s' "$REQUEST" | python3 -c '
 import re,sys
 s=sys.stdin.read()
@@ -31,9 +30,7 @@ s=re.sub(r"(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY
 s=re.sub(r"(?i)\b(api[_ -]?key|access[_ -]?token|bearer|password|secret)\s*[:=]\s*[^\s,;]+", lambda m: m.group(1)+"=[REDACTED]", s)
 print(s, end="")
 ')
-if [[ "$SAFE_REQUEST" != "$REQUEST" ]]; then
-  echo "CLOUD_REQUEST_REDACTED=YES"
-fi
+[[ "$SAFE_REQUEST" == "$REQUEST" ]] || echo "CLOUD_REQUEST_REDACTED=YES"
 
 PROMPT=$(cat <<EOF
 You are an engineering builder for LifeOS autonomous job $JOB_ID.
@@ -42,7 +39,7 @@ Work toward the user's original goal until this iteration has produced a concret
 ARCHITECTURE AND SAFETY:
 - Pi5/Docker is the central controller, canonical Git writer, runtime executor, AI policy authority, and cloud credential owner.
 - OpenHands runs on Engineer/Z97 only when agentic execution is required.
-- OpenHands receives only a Pi5 Governor broker capability; it never receives provider API keys.
+- OpenHands receives only a pre-provisioned Pi5 Governor broker capability; it never receives provider API keys.
 - Do not require the user to run commands on secondary machines.
 - Do NOT commit, push, fetch, clone, or otherwise depend on GitHub/network access from inside the coding agent. Pi5 owns Git publication.
 - If runtime inspection/change is required on Pi5, Engineer, TowerPC, Home Assistant, or another LAN host, create exactly one Pi5 launcher at: $RUNTIME_PATH
@@ -53,7 +50,7 @@ ARCHITECTURE AND SAFETY:
 - The local verifier, not you, decides final completion.
 
 REPOSITORY WORK:
-- You are working in a clean disposable worktree based on origin/main.
+- You are working in a clean disposable worktree based on the Pi5 controller's canonical main snapshot.
 - Make any repository changes needed for this iteration and leave them in the worktree; the wrapper will package them for Pi5.
 - If you create $RUNTIME_PATH, make it safe and self-verifying: it should print clear PASS/FAIL evidence for the requested outcome.
 - Run focused tests for files you changed.
@@ -76,116 +73,33 @@ EOF
 )
 PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
 
-# OpenHands receives a bounded Governor broker capability, never provider keys.
-# Self-heal the capability on Engineer when absent, but only after proving the
-# Pi5 broker is reachable from Engineer. Never print the token or file content.
-provision_governor_broker_capability() {
-  local lan_ip broker_url tmp_cfg
-  [[ -f "$BROKER_TOKEN_FILE" && ! -L "$BROKER_TOKEN_FILE" ]] || return 1
-  [[ "$(stat -c '%a' "$BROKER_TOKEN_FILE")" == 600 ]] || return 1
-  [[ -s "$BROKER_TOKEN_FILE" ]] || return 1
-
-  lan_ip=$(hostname -I 2>/dev/null | tr ' ' '\n' | python3 -c '
-import ipaddress,sys
-for raw in sys.stdin:
-    raw=raw.strip()
-    if not raw:
-        continue
-    try:
-        ip=ipaddress.ip_address(raw)
-    except ValueError:
-        continue
-    if ip.version == 4 and ip.is_private and not ip.is_loopback:
-        print(raw)
-        break
-')
-  [[ -n "$lan_ip" ]] || return 1
-  broker_url="http://${lan_ip}:8790/v1"
-
-  ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$lan_ip" <<'REMOTE'
-set -euo pipefail
-PI_IP=${1:?pi ip required}
-curl -fsS --max-time 5 "http://${PI_IP}:8790/health" >/dev/null
-REMOTE
-
-  tmp_cfg=$(mktemp)
-  trap 'rm -f "$tmp_cfg"' RETURN
-  umask 077
-  {
-    printf 'LIFEOS_GOVERNOR_BROKER_URL=%s\n' "$broker_url"
-    printf 'LIFEOS_GOVERNOR_BROKER_TOKEN=%s\n' "$(cat "$BROKER_TOKEN_FILE")"
-  } >"$tmp_cfg"
-  chmod 0600 "$tmp_cfg"
-
-  scp -q -o BatchMode=yes -o ConnectTimeout=8 "$tmp_cfg" "$ENGINEER:~/.config/lifeos/governor-broker.env.new"
-  ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s <<'REMOTE'
-set -euo pipefail
-install -d -m 0700 "$HOME/.config/lifeos"
-src="$HOME/.config/lifeos/governor-broker.env.new"
-dst="$HOME/.config/lifeos/governor-broker.env"
-test -f "$src"
-test ! -L "$src"
-chmod 0600 "$src"
-mv -f "$src" "$dst"
-test -f "$dst"
-test ! -L "$dst"
-test "$(stat -c '%a' "$dst")" = 600
-grep -q '^LIFEOS_GOVERNOR_BROKER_URL=' "$dst"
-grep -q '^LIFEOS_GOVERNOR_BROKER_TOKEN=' "$dst"
-REMOTE
-  echo 'GOVERNOR_BROKER_CAPABILITY=PROVISIONED'
-}
-
 DISCOVERY=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s <<'REMOTE'
 set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-if command -v openhands >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/openhands" ]]; then
-  echo 'OPENHANDS=present'
-else
-  echo 'OPENHANDS=absent'
-fi
-if command -v codex >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/codex" ]]; then
-  echo 'CODEX=present'
-else
-  echo 'CODEX=absent'
-fi
+if command -v openhands >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/openhands" ]]; then echo 'OPENHANDS=present'; else echo 'OPENHANDS=absent'; fi
+if command -v codex >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/codex" ]]; then echo 'CODEX=present'; else echo 'CODEX=absent'; fi
 cfg="$HOME/.config/lifeos/governor-broker.env"
-if [[ -f "$cfg" && ! -L "$cfg" && "$(stat -c '%a' "$cfg")" == 600 ]] \
-   && grep -q '^LIFEOS_GOVERNOR_BROKER_URL=' "$cfg" \
-   && grep -q '^LIFEOS_GOVERNOR_BROKER_TOKEN=' "$cfg"; then
-  echo 'GOVERNOR_BROKER=present'
-else
-  echo 'GOVERNOR_BROKER=absent'
-fi
+if [[ -f "$cfg" && ! -L "$cfg" && "$(stat -c '%a' "$cfg")" == 600 ]] && grep -q '^LIFEOS_GOVERNOR_BROKER_URL=' "$cfg" && grep -q '^LIFEOS_GOVERNOR_BROKER_TOKEN=' "$cfg"; then echo 'GOVERNOR_BROKER=present'; else echo 'GOVERNOR_BROKER=absent'; fi
 REMOTE
 )
 printf '%s\n' "$DISCOVERY"
-
 OPENHANDS=$(sed -n 's/^OPENHANDS=//p' <<<"$DISCOVERY" | tail -1)
 CODEX=$(sed -n 's/^CODEX=//p' <<<"$DISCOVERY" | tail -1)
 GOVERNOR_BROKER=$(sed -n 's/^GOVERNOR_BROKER=//p' <<<"$DISCOVERY" | tail -1)
 
-if [[ "$OPENHANDS" == present && "$GOVERNOR_BROKER" != present ]]; then
-  if provision_governor_broker_capability; then
-    GOVERNOR_BROKER=present
-  else
-    echo 'GOVERNOR_BROKER_CAPABILITY=UNAVAILABLE'
-  fi
-fi
-
 AGENTS=()
-if [[ "$TASK_CLASS" != "escalation" && "$OPENHANDS" == present && "$GOVERNOR_BROKER" == present ]]; then
-  AGENTS+=("governor-broker|openhands|openai/lifeos-${TASK_CLASS}")
-fi
-if [[ "$CODEX" == present ]]; then
-  AGENTS+=("codex|codex|")
-fi
+if [[ "$TASK_CLASS" != "escalation" && "$OPENHANDS" == present && "$GOVERNOR_BROKER" == present ]]; then AGENTS+=("governor-broker|openhands|openai/lifeos-${TASK_CLASS}"); fi
+if [[ "$CODEX" == present ]]; then AGENTS+=("codex|codex|"); fi
+if (( ${#AGENTS[@]} == 0 )); then echo "RESULT=BLOCKED"; echo "REASON=no_eligible_engineering_agent"; exit 43; fi
 
-if (( ${#AGENTS[@]} == 0 )); then
-  echo "RESULT=BLOCKED"
-  echo "REASON=no_eligible_engineering_agent"
-  exit 43
-fi
+# Export the Pi5 canonical HEAD across the LAN. Engineer never contacts GitHub.
+SNAPSHOT=$(mktemp --suffix=.bundle)
+trap 'rm -f "$SNAPSHOT"' EXIT
+git -C "$CONTROLLER_REPO" bundle create "$SNAPSHOT" HEAD
+test -s "$SNAPSHOT"
+REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
+ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
+scp -q -o BatchMode=yes -o ConnectTimeout=8 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
 
 MAX_ATTEMPTS=2
 for spec in "${AGENTS[@]}"; do
@@ -193,29 +107,25 @@ for spec in "${AGENTS[@]}"; do
   for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
     echo "AGENT_ATTEMPT=$ADAPTER provider=$PROVIDER attempt=$attempt"
     set +e
-    OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- \
-      "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" \
-      "$PROVIDER" "$ADAPTER" "$MODEL" "" <<'REMOTE'
+    OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$MODEL" "" "$REMOTE_SNAPSHOT" <<'REMOTE'
 set -euo pipefail
 REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}
-PROVIDER=${6:?provider required}; ADAPTER=${7:?adapter required}; MODEL=${8-}; CREDENTIALS=${9-}
-git -C "$REPO" fetch origin main >/dev/null
+PROVIDER=${6:?provider required}; ADAPTER=${7:?adapter required}; MODEL=${8-}; CREDENTIALS=${9-}; SNAPSHOT_REL=${10:?snapshot required}
+SNAPSHOT="$HOME/$SNAPSHOT_REL"
+trap 'rm -f "$SNAPSHOT"' EXIT
+test -s "$SNAPSHOT"
+git -C "$REPO" fetch "$SNAPSHOT" HEAD:refs/remotes/origin/main >/dev/null
 HELPER=$(mktemp)
-trap 'rm -f "$HELPER"' EXIT
+trap 'rm -f "$HELPER" "$SNAPSHOT"' EXIT
 git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$HELPER"
 chmod 700 "$HELPER"
-"$HELPER" \
-  "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" \
-  "$PROVIDER" "$ADAPTER" "$MODEL" "$CREDENTIALS"
+"$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$MODEL" "$CREDENTIALS"
 REMOTE
     )
     RC=$?
     set -e
     printf '%s\n' "$OUTPUT"
-    if (( RC == 0 )); then
-      echo "AGENT_RESULT=$ADAPTER PASS"
-      exit 0
-    fi
+    if (( RC == 0 )); then echo "AGENT_RESULT=$ADAPTER PASS"; exit 0; fi
     echo "AGENT_RESULT=$ADAPTER RETRY exit=$RC"
   done
 done
