@@ -178,7 +178,11 @@ PY
 SMOKE=$(curl -fsS --max-time 1100 -H 'Content-Type: application/json' \
   -d "$SMOKE_JSON" http://127.0.0.1:8790/jobs)
 python3 - "$SMOKE" <<'PY'
-import json,sys
+import importlib.util
+import json
+import pathlib
+import sys
+
 j=json.loads(sys.argv[1])
 print('JOB_ID='+j['id'])
 print('STATUS='+j['status'])
@@ -195,6 +199,17 @@ for x in j.get('iterations',[]):
         print('PI5_RUNTIME_EVIDENCE=PASS')
 if j['status'] != 'PASS':
     print('BLOCKED_REASON='+str(j.get('blocked_reason')))
+    spec=importlib.util.spec_from_file_location('lifeos_job_records', pathlib.Path('/usr/local/libexec/job_records.py'))
+    records=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(records)
+    for index, iteration in enumerate(j.get('iterations',[]), start=1):
+        safe=records.sanitise({
+            'stage': iteration.get('stage'),
+            'failure_signature': iteration.get('failure_signature'),
+            'evidence': str(iteration.get('evidence') or '')[:1200],
+        })
+        rendered=json.dumps(safe, sort_keys=True, ensure_ascii=True)
+        print(f'ITERATION_{index}_SUMMARY='+rendered[:1800])
     raise SystemExit('AUTONOMOUS_E2E_SMOKE_DID_NOT_PASS')
 assert published, 'missing Pi5-owned Git publication evidence'
 assert runtime, 'missing Pi5 runtime evidence'
