@@ -49,7 +49,6 @@ ROUTER = _router_module()
 
 
 def _strict_env(path: pathlib.Path) -> dict[str, str]:
-    """Read a mode-0600 regular env file without ever logging values."""
     if not path.exists():
         return {}
     ROUTER.load_secret_names(path)
@@ -82,12 +81,7 @@ def _broker_config() -> dict[str, str]:
 
 def _post_json(url: str, payload: dict, headers: dict[str, str] | None = None, timeout: int = HTTP_TIMEOUT) -> dict:
     data = json.dumps(payload, separators=(",", ":")).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={"Content-Type": "application/json", **(headers or {})},
-        method="POST",
-    )
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", **(headers or {})}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as response:
             return json.load(response)
@@ -125,11 +119,7 @@ def _wake_local_ai() -> bool:
 
 
 def _ollama_once(prompt: str, model: str) -> str:
-    result = _post_json(
-        OLLAMA_URL,
-        {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m"},
-        timeout=HTTP_TIMEOUT,
-    )
+    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m"}, timeout=HTTP_TIMEOUT)
     text = str(result.get("response", "")).strip()
     if not text:
         raise BrokerError("ollama returned empty response")
@@ -153,16 +143,17 @@ def _ollama(prompt: str, model: str) -> str:
         raise BrokerError("local AI did not become ready after Wake-on-LAN") from last
 
 
-def _gemini(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
-    key = secrets["GEMINI_API_KEY"]
-    model = _provider_model(provider)
-    url = (
+def _gemini_url(provider: dict, secrets: dict[str, str]) -> str:
+    return (
         "https://generativelanguage.googleapis.com/v1beta/models/"
-        + urllib.parse.quote(model, safe="-._")
+        + urllib.parse.quote(_provider_model(provider), safe="-._")
         + ":generateContent?key="
-        + urllib.parse.quote(key, safe="")
+        + urllib.parse.quote(secrets["GEMINI_API_KEY"], safe="")
     )
-    result = _post_json(url, {"contents": [{"parts": [{"text": prompt}]}]})
+
+
+def _gemini(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
+    result = _post_json(_gemini_url(provider, secrets), {"contents": [{"parts": [{"text": prompt}]}]})
     candidates = result.get("candidates") or []
     parts = ((candidates[0].get("content") or {}).get("parts") or []) if candidates else []
     text = "".join(str(p.get("text", "")) for p in parts if isinstance(p, dict)).strip()
@@ -171,12 +162,125 @@ def _gemini(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     return text
 
 
+def _jsonish_tool_response(value):
+    if isinstance(value, (dict, list, int, float, bool)) or value is None:
+        return {"result": value}
+    text = str(value)
+    try:
+        return {"result": json.loads(text)}
+    except Exception:
+        return {"result": text}
+
+
+def _gemini_chat(messages: list[dict], tools: list[dict], provider: dict, secrets: dict[str, str], tool_choice=None) -> dict:
+    system_parts: list[str] = []
+    contents: list[dict] = []
+    call_names: dict[str, str] = {}
+
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "user")
+        if role == "system":
+            content = message.get("content")
+            if content:
+                system_parts.append(str(content))
+            continue
+        if role == "assistant":
+            parts: list[dict] = []
+            content = message.get("content")
+            if content:
+                parts.append({"text": str(content)})
+            for call in message.get("tool_calls") or []:
+                if not isinstance(call, dict):
+                    continue
+                fn = call.get("function") or {}
+                name = str(fn.get("name") or "")
+                if not name:
+                    continue
+                raw_args = fn.get("arguments") or "{}"
+                try:
+                    args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                except Exception:
+                    args = {}
+                call_id = str(call.get("id") or "")
+                if call_id:
+                    call_names[call_id] = name
+                part = {"functionCall": {"name": name, "args": args if isinstance(args, dict) else {}}}
+                if call_id:
+                    part["functionCall"]["id"] = call_id
+                parts.append(part)
+            if parts:
+                contents.append({"role": "model", "parts": parts})
+            continue
+        if role == "tool":
+            call_id = str(message.get("tool_call_id") or "")
+            name = call_names.get(call_id) or str(message.get("name") or "tool")
+            response = {"name": name, "response": _jsonish_tool_response(message.get("content"))}
+            if call_id:
+                response["id"] = call_id
+            contents.append({"role": "user", "parts": [{"functionResponse": response}]})
+            continue
+        content = message.get("content")
+        if isinstance(content, list):
+            content = " ".join(str(part.get("text", "")) for part in content if isinstance(part, dict))
+        contents.append({"role": "user", "parts": [{"text": str(content or "")}]})
+
+    declarations = []
+    for tool in tools or []:
+        if not isinstance(tool, dict) or tool.get("type") != "function":
+            continue
+        fn = tool.get("function") or {}
+        name = str(fn.get("name") or "")
+        if not name:
+            continue
+        declarations.append({
+            "name": name,
+            "description": str(fn.get("description") or "")[:4000],
+            "parameters": fn.get("parameters") or {"type": "object", "properties": {}},
+        })
+    if not declarations:
+        raise BrokerError("tool-aware chat requires function declarations")
+
+    payload: dict = {"contents": contents, "tools": [{"functionDeclarations": declarations}]}
+    if system_parts:
+        payload["systemInstruction"] = {"parts": [{"text": "\n".join(system_parts)}]}
+    if tool_choice == "required":
+        payload["toolConfig"] = {"functionCallingConfig": {"mode": "ANY"}}
+
+    result = _post_json(_gemini_url(provider, secrets), payload)
+    candidates = result.get("candidates") or []
+    if not candidates:
+        raise BrokerError("gemini returned no candidate")
+    parts = ((candidates[0].get("content") or {}).get("parts") or [])
+    texts: list[str] = []
+    tool_calls: list[dict] = []
+    for index, part in enumerate(parts):
+        if not isinstance(part, dict):
+            continue
+        if part.get("text"):
+            texts.append(str(part["text"]))
+        call = part.get("functionCall")
+        if isinstance(call, dict) and call.get("name"):
+            call_id = str(call.get("id") or f"call_gemini_{index}")
+            tool_calls.append({
+                "id": call_id,
+                "type": "function",
+                "function": {
+                    "name": str(call["name"]),
+                    "arguments": json.dumps(call.get("args") or {}, separators=(",", ":")),
+                },
+            })
+    message: dict = {"role": "assistant", "content": "\n".join(texts).strip() or None}
+    if tool_calls:
+        message["tool_calls"] = tool_calls
+    if not tool_calls and not message["content"]:
+        raise BrokerError("gemini returned empty tool-aware response")
+    return {"message": message, "finish_reason": "tool_calls" if tool_calls else "stop"}
+
+
 def _openai_compatible(url: str, prompt: str, model: str, token: str) -> str:
-    result = _post_json(
-        url,
-        {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0},
-        headers={"Authorization": f"Bearer {token}"},
-    )
+    result = _post_json(url, {"model": model, "messages": [{"role": "user", "content": prompt}], "temperature": 0}, headers={"Authorization": f"Bearer {token}"})
     choices = result.get("choices") or []
     text = str(((choices[0].get("message") or {}).get("content") or "") if choices else "").strip()
     if not text:
@@ -185,37 +289,18 @@ def _openai_compatible(url: str, prompt: str, model: str, token: str) -> str:
 
 
 def _groq(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
-    return _openai_compatible(
-        "https://api.groq.com/openai/v1/chat/completions",
-        prompt,
-        _provider_model(provider),
-        secrets["GROQ_API_KEY"],
-    )
+    return _openai_compatible("https://api.groq.com/openai/v1/chat/completions", prompt, _provider_model(provider), secrets["GROQ_API_KEY"])
 
 
 def _openrouter(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
-    return _openai_compatible(
-        "https://openrouter.ai/api/v1/chat/completions",
-        prompt,
-        _provider_model(provider),
-        secrets["OPENROUTER_API_KEY"],
-    )
+    return _openai_compatible("https://openrouter.ai/api/v1/chat/completions", prompt, _provider_model(provider), secrets["OPENROUTER_API_KEY"])
 
 
 def _cloudflare(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     account = secrets["CLOUDFLARE_ACCOUNT_ID"]
     model = _provider_model(provider)
-    url = (
-        "https://api.cloudflare.com/client/v4/accounts/"
-        + urllib.parse.quote(account, safe="")
-        + "/ai/run/"
-        + model
-    )
-    result = _post_json(
-        url,
-        {"messages": [{"role": "user", "content": prompt}], "temperature": 0},
-        headers={"Authorization": f"Bearer {secrets['CLOUDFLARE_API_TOKEN']}"},
-    )
+    url = "https://api.cloudflare.com/client/v4/accounts/" + urllib.parse.quote(account, safe="") + "/ai/run/" + model
+    result = _post_json(url, {"messages": [{"role": "user", "content": prompt}], "temperature": 0}, headers={"Authorization": f"Bearer {secrets['CLOUDFLARE_API_TOKEN']}"})
     if result.get("success") is False:
         raise BrokerError("cloudflare returned unsuccessful response")
     payload = result.get("result")
@@ -244,27 +329,30 @@ def candidates(*, privacy: str = "normal", task_class: str = "normal") -> tuple[
     policy = ROUTER.load_policy(POLICY_PATH)
     secret_names = ROUTER.load_secret_names(SECRETS_PATH)
     adapters = {"local-builder"} if privacy == "local-only" else {"direct-cloud"}
-    return ROUTER.eligible_providers(
-        policy,
-        task_class,
-        secret_names,
-        privacy=privacy,
-        available_adapters=adapters,
-    )
+    return ROUTER.eligible_providers(policy, task_class, secret_names, privacy=privacy, available_adapters=adapters)
 
 
-def generate(
-    prompt: str,
-    *,
-    privacy: str = "normal",
-    task_class: str = "normal",
-    force_provider: str | None = None,
-) -> dict:
-    """Route and execute one inference request.
+def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=None, privacy: str = "normal", task_class: str = "normal") -> dict:
+    """Preserve OpenAI tool-calling semantics for agentic cloud-safe requests."""
+    if privacy != "normal":
+        raise BrokerError("tool-enabled private inference is not permitted")
+    eligible, considered = candidates(privacy=privacy, task_class=task_class)
+    eligible = [p for p in eligible if p.get("id") == "gemini"]
+    if not eligible:
+        raise BrokerError("no eligible tool-capable cloud provider")
+    secrets = _strict_env(SECRETS_PATH)
+    provider = eligible[0]
+    response = _gemini_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
+    return {
+        "provider": provider["id"],
+        "model": _provider_model(provider),
+        "privacy": privacy,
+        "considered": considered,
+        **response,
+    }
 
-    local-only jobs can never obtain a cloud candidate. Normal jobs use direct
-    cloud providers and therefore do not wake Engineer/Z97 merely for inference.
-    """
+
+def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None) -> dict:
     if privacy not in {"normal", "local-only"}:
         raise BrokerError("unsupported privacy class")
     prompt = str(prompt)
@@ -281,13 +369,7 @@ def generate(
         pid = provider["id"]
         try:
             text = _invoke(provider, prompt, secrets)
-            return {
-                "provider": pid,
-                "model": _provider_model(provider),
-                "privacy": privacy,
-                "text": text,
-                "considered": considered,
-            }
+            return {"provider": pid, "model": _provider_model(provider), "privacy": privacy, "text": text, "considered": considered}
         except (BrokerError, KeyError) as exc:
             failures.append(f"{pid}:{type(exc).__name__}")
             if privacy == "local-only":
