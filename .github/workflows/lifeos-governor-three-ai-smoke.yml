@@ -59,7 +59,6 @@ jobs:
           PY
           REMOTE
           AI=http://192.168.0.201:11434
-          model=qwen2.5-coder:7b-instruct
           printf '%s' '{"model":"qwen2.5-coder:7b-instruct","prompt":"Reply with exactly GOVERNOR_LOCAL_SMOKE_OK","stream":false,"keep_alive":"5m"}' >/tmp/governor-local-request.json
           curl -fsS --max-time 120 -H 'Content-Type: application/json' --data-binary @/tmp/governor-local-request.json "$AI/api/generate" >/tmp/governor-local-response.json
           python3 - /tmp/governor-local-response.json <<'PY'
@@ -91,6 +90,17 @@ jobs:
           assert result['selected_provider'] == 'gemini', result
           print('GEMINI_ROUTE=PASS')
           PY
+          if command -v openhands >/dev/null 2>&1; then
+            oh=$(command -v openhands)
+          elif test -x "$HOME/.local/bin/openhands"; then
+            oh="$HOME/.local/bin/openhands"
+          elif test -x "$HOME/.local/share/uv/tools/openhands/bin/openhands"; then
+            oh="$HOME/.local/share/uv/tools/openhands/bin/openhands"
+          else
+            echo 'OPENHANDS_MISSING'
+            exit 22
+          fi
+          echo "OPENHANDS_PATH=$oh"
           root="$HOME/.local/share/lifeos-agent/governor-gemini-smoke"
           branch=smoke/governor-gemini
           task=/tmp/governor-gemini-smoke.txt
@@ -104,7 +114,7 @@ jobs:
           Do not modify files or use tools. Reply with exactly GOVERNOR_GEMINI_SMOKE_OK.
           EOF
           set +e
-          python3 "$root/engineer/openhands_worker.py" --repo "$root" --task "$task" --task-class normal --privacy normal --secrets "$HOME/.config/lifeos/provider-secrets.env" --execute >"$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out" 2>&1
+          python3 "$root/engineer/openhands_worker.py" --repo "$root" --task "$task" --task-class normal --privacy normal --secrets "$HOME/.config/lifeos/provider-secrets.env" --openhands-command "$oh" --execute >"$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out" 2>&1
           rc=$?
           set -e
           sed -n '1,220p' "$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out"
