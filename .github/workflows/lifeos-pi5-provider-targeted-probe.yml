@@ -24,46 +24,59 @@ jobs:
           git reset --hard origin/main
           test -z "$(git status --porcelain --untracked-files=all)"
 
-      - name: Probe Gemini and Groq safely
+      - name: Probe Gemini and Groq access safely
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           python3 - <<'PY'
-          import importlib.util, pathlib, re
+          import importlib.util, json, pathlib, re, urllib.error, urllib.request
           p=pathlib.Path('governor/ai_broker.py')
           s=importlib.util.spec_from_file_location('b',p)
           b=importlib.util.module_from_spec(s); s.loader.exec_module(b)
           secrets=b._strict_env(b.SECRETS_PATH)
           marker='LIFEOS_TARGETED_PROBE_OK'
-          failures=[]
 
-          try:
-              result=b._post_json(
-                  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
-                  {'contents':[{'parts':[{'text':'Reply with exactly '+marker}]}]},
-                  headers={'x-goog-api-key':secrets['GEMINI_API_KEY']},
-              )
-              text=''.join(str(x.get('text','')) for x in (((result.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []) if isinstance(x,dict))
-              ok=marker in text
-              print('GEMINI_HEADER_PROBE='+('PASS' if ok else 'FAIL_SEMANTIC'))
-              if not ok: failures.append('gemini:semantic')
-          except Exception as exc:
-              m=re.search(r'provider HTTP ([0-9]{3})',str(exc))
-              reason='HTTP_'+m.group(1) if m else type(exc).__name__
-              print('GEMINI_HEADER_PROBE=FAIL reason='+reason)
-              failures.append('gemini:'+reason)
-
-          groq_url='https://api.groq.com/openai/v1/chat/completions'
-          for model in ('openai/gpt-oss-120b','openai/gpt-oss-20b','llama-3.3-70b-versatile'):
-              label=model.replace('/','_').replace('.','_').replace('-','_').upper()
+          gemini_pass=[]
+          for model in ('gemini-2.5-flash','gemini-3.5-flash','gemini-3.6-flash'):
+              label=model.replace('.','_').replace('-','_').upper()
               try:
-                  text=b._openai_compatible(groq_url,'Reply with exactly '+marker,model,secrets['GROQ_API_KEY'])
-                  print('GROQ_'+label+'_PROBE='+('PASS' if marker in text else 'FAIL_SEMANTIC'))
+                  result=b._post_json(
+                      'https://generativelanguage.googleapis.com/v1beta/models/'+model+':generateContent',
+                      {'contents':[{'parts':[{'text':'Reply with exactly '+marker}]}]},
+                      headers={'x-goog-api-key':secrets['GEMINI_API_KEY']},
+                  )
+                  text=''.join(str(x.get('text','')) for x in (((result.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []) if isinstance(x,dict))
+                  if marker in text:
+                      print('GEMINI_'+label+'_PROBE=PASS')
+                      gemini_pass.append(model)
+                  else:
+                      print('GEMINI_'+label+'_PROBE=FAIL reason=SEMANTIC')
               except Exception as exc:
                   m=re.search(r'provider HTTP ([0-9]{3})',str(exc))
                   reason='HTTP_'+m.group(1) if m else type(exc).__name__
-                  print('GROQ_'+label+'_PROBE=FAIL reason='+reason)
-          if failures:
+                  print('GEMINI_'+label+'_PROBE=FAIL reason='+reason)
+          print('GEMINI_USABLE_MODEL='+(gemini_pass[0] if gemini_pass else 'NONE'))
+
+          req=urllib.request.Request(
+              'https://api.groq.com/openai/v1/models',
+              headers={'Authorization':'Bearer '+secrets['GROQ_API_KEY']},
+          )
+          try:
+              with urllib.request.urlopen(req,timeout=30) as response:
+                  data=json.load(response)
+              ids=sorted(str(x.get('id','')) for x in data.get('data',[]) if isinstance(x,dict) and x.get('id'))
+              wanted=('openai/gpt-oss-120b','openai/gpt-oss-20b','llama-3.3-70b-versatile')
+              accessible=[x for x in wanted if x in ids]
+              print('GROQ_MODELS_ENDPOINT=PASS')
+              print('GROQ_CONFIGURED_CANDIDATES='+(','.join(accessible) if accessible else 'NONE'))
+          except urllib.error.HTTPError as exc:
+              print('GROQ_MODELS_ENDPOINT=FAIL reason=HTTP_'+str(exc.code))
+              accessible=[]
+          except Exception as exc:
+              print('GROQ_MODELS_ENDPOINT=FAIL reason='+type(exc).__name__)
+              accessible=[]
+
+          if not gemini_pass or not accessible:
               raise SystemExit(1)
           PY
