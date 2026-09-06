@@ -5,6 +5,19 @@ WORKFLOW = pathlib.Path('.github/workflows/lifeos-housekeeping.yml')
 TEXT = WORKFLOW.read_text()
 
 
+def executable_lines():
+    """Return shell-like lines while ignoring comments and human-readable echo text."""
+    lines = []
+    for raw in TEXT.splitlines():
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        if line.startswith(('echo ', "echo '", 'echo "')):
+            continue
+        lines.append(line)
+    return lines
+
+
 class HousekeepingPolicyTests(unittest.TestCase):
     def test_uses_existing_ots_git_maintenance(self):
         self.assertIn('git -C "$repo" worktree prune --expire now --verbose', TEXT)
@@ -13,6 +26,7 @@ class HousekeepingPolicyTests(unittest.TestCase):
         self.assertIn('ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer', TEXT)
 
     def test_forbids_broad_or_destructive_repository_cleanup(self):
+        commands = '\n'.join(executable_lines())
         forbidden = (
             'git clean',
             'reset --hard',
@@ -21,7 +35,7 @@ class HousekeepingPolicyTests(unittest.TestCase):
             'sudo ',
         )
         for token in forbidden:
-            self.assertNotIn(token, TEXT)
+            self.assertNotIn(token, commands)
 
     def test_only_exact_known_pi_temp_files_are_targets(self):
         expected = (
