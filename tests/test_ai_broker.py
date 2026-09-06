@@ -18,11 +18,7 @@ def secret_file(tmp_path, names):
 
 
 def test_normal_inference_uses_direct_cloud_not_local(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        BROKER,
-        "SECRETS_PATH",
-        secret_file(tmp_path, {"GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"}),
-    )
+    monkeypatch.setattr(BROKER, "SECRETS_PATH", secret_file(tmp_path, {"GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"}))
     eligible, _ = BROKER.candidates(privacy="normal", task_class="normal")
     assert eligible
     assert eligible[0]["id"] == "gemini"
@@ -31,11 +27,7 @@ def test_normal_inference_uses_direct_cloud_not_local(monkeypatch, tmp_path):
 
 
 def test_local_only_can_only_obtain_local_provider(monkeypatch, tmp_path):
-    monkeypatch.setattr(
-        BROKER,
-        "SECRETS_PATH",
-        secret_file(tmp_path, {"GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"}),
-    )
+    monkeypatch.setattr(BROKER, "SECRETS_PATH", secret_file(tmp_path, {"GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"}))
     eligible, considered = BROKER.candidates(privacy="local-only", task_class="normal")
     assert [p["id"] for p in eligible] == ["ollama"]
     cloud = {"gemini", "groq", "openrouter", "cloudflare", "codex"}
@@ -64,29 +56,31 @@ def test_forced_cloud_provider_must_still_be_policy_eligible(monkeypatch, tmp_pa
         BROKER.generate("private task", privacy="local-only", force_provider="gemini")
 
 
-def test_tool_chat_translates_gemini_function_call(monkeypatch):
+def test_tool_chat_passes_openai_schema_through_gemini_compatibility(monkeypatch):
     provider = {"id": "gemini", "api_model": "gemini-3.6-flash"}
     monkeypatch.setattr(BROKER, "candidates", lambda **_: ([provider], []))
     monkeypatch.setattr(BROKER, "_strict_env", lambda _: {"GEMINI_API_KEY": "test"})
-    monkeypatch.setattr(
-        BROKER,
-        "_post_json",
-        lambda *args, **kwargs: {
-            "candidates": [{"content": {"parts": [{"functionCall": {"id": "call123", "name": "write_file", "args": {"path": "x", "content": "y"}}}]}}]
-        },
-    )
-    result = BROKER.chat(
-        [{"role": "user", "content": "create x"}],
-        tools=[{"type": "function", "function": {"name": "write_file", "description": "write", "parameters": {"type": "object", "properties": {}}}}],
-    )
+    captured = {}
+
+    def fake_post(url, payload, headers=None, timeout=120):
+        captured.update(url=url, payload=payload, headers=headers)
+        return {"choices": [{"finish_reason": "tool_calls", "message": {"role": "assistant", "content": None, "tool_calls": [{"id": "call123", "type": "function", "function": {"name": "write_file", "arguments": '{\"path\":\"x\"}'}}]}}]}
+
+    monkeypatch.setattr(BROKER, "_post_json", fake_post)
+    messages = [{"role": "user", "content": "create x"}]
+    tools = [{"type": "function", "function": {"name": "write_file", "description": "write", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}}]
+    result = BROKER.chat(messages, tools=tools, tool_choice="auto")
+    assert captured["url"].endswith("/v1beta/openai/chat/completions")
+    assert captured["payload"]["model"] == "gemini-3.6-flash"
+    assert captured["payload"]["messages"] is messages
+    assert captured["payload"]["tools"] is tools
+    assert captured["payload"]["tool_choice"] == "auto"
+    assert captured["headers"]["Authorization"] == "Bearer test"
     assert result["finish_reason"] == "tool_calls"
-    call = result["message"]["tool_calls"][0]
-    assert call["id"] == "call123"
-    assert call["function"]["name"] == "write_file"
-    assert '"path":"x"' in call["function"]["arguments"]
+    assert result["message"]["tool_calls"][0]["function"]["name"] == "write_file"
 
 
-def test_tool_chat_private_fails_closed(monkeypatch):
+def test_tool_chat_private_fails_closed():
     with pytest.raises(BROKER.BrokerError, match="private inference"):
         BROKER.chat(
             [{"role": "user", "content": "private task"}],
