@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -53,7 +54,7 @@ if ledger.exists():
 else: records=[]
 if records:
     spec=importlib.util.spec_from_file_location('projector',ROOT/'scripts/project-energy-opportunities-to-ha.py')
-    m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    m=importlib.util.module_from_spec(spec); sys.modules[spec.name]=m; spec.loader.exec_module(m)
     with tempfile.TemporaryDirectory() as td:
         out=Path(td)/'attention.json'
         payload=m.build_projection([records[0]])
