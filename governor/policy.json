@@ -1,20 +1,113 @@
 {
-  "schema_version": 2,
-  "policy": "zero-spend-engineering",
+  "schema_version": 3,
+  "policy": "local-first-cheapest-capable-engineering",
   "providers": [
-    {"id": "deterministic", "role": "tooling", "credential": null, "cost": "free", "task_classes": ["deterministic"]},
-    {"id": "gemini", "role": "everyday-engineer", "credential": "GEMINI_API_KEY", "cost": "free-tier", "openhands_model": "gemini/gemini-2.5-flash", "task_classes": ["normal", "substantial"]},
-    {"id": "groq", "role": "everyday-engineer", "credential": "GROQ_API_KEY", "cost": "free-tier", "openhands_model": "groq/openai/gpt-oss-120b", "task_classes": ["normal", "substantial"]},
-    {"id": "openrouter", "role": "everyday-engineer", "credential": "OPENROUTER_API_KEY", "cost": "free-models-only", "openhands_model": "openrouter/openrouter/free", "task_classes": ["normal", "substantial"]},
-    {"id": "cloudflare", "role": "everyday-engineer", "credential": "CLOUDFLARE_API_TOKEN", "cost": "free-tier", "openhands_model": "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast", "task_classes": ["normal", "substantial"]},
-    {"id": "ollama", "role": "tiny-offline", "credential": null, "cost": "local", "openhands_model": "ollama/qwen2.5-coder:7b", "task_classes": ["tiny", "offline"]},
-    {"id": "codex", "role": "senior-review", "credential": null, "cost": "scarce", "task_classes": ["review", "escalation"]}
+    {
+      "id": "deterministic",
+      "role": "tooling",
+      "adapter": "deterministic",
+      "privacy": "deterministic",
+      "credentials": [],
+      "cost": "deterministic",
+      "capability": 1,
+      "priority": 0,
+      "task_classes": ["deterministic"]
+    },
+    {
+      "id": "ollama",
+      "role": "local-engineer",
+      "adapter": "local-builder",
+      "privacy": "local",
+      "credentials": [],
+      "cost": "local",
+      "capability": 2,
+      "priority": 10,
+      "openhands_model": "ollama/qwen2.5-coder:7b",
+      "task_classes": ["tiny", "offline", "normal"]
+    },
+    {
+      "id": "gemini",
+      "role": "everyday-engineer",
+      "adapter": "openhands",
+      "privacy": "sanitized-cloud",
+      "credentials": ["GEMINI_API_KEY"],
+      "cost": "free-tier",
+      "capability": 4,
+      "priority": 10,
+      "openhands_model": "gemini/gemini-2.5-flash",
+      "task_classes": ["normal", "substantial", "review"]
+    },
+    {
+      "id": "groq",
+      "role": "fast-engineer",
+      "adapter": "openhands",
+      "privacy": "sanitized-cloud",
+      "credentials": ["GROQ_API_KEY"],
+      "cost": "free-tier",
+      "capability": 3,
+      "priority": 20,
+      "openhands_model": "groq/openai/gpt-oss-120b",
+      "task_classes": ["normal", "substantial"]
+    },
+    {
+      "id": "openrouter",
+      "role": "free-model-pool",
+      "adapter": "openhands",
+      "privacy": "sanitized-cloud",
+      "credentials": ["OPENROUTER_API_KEY"],
+      "cost": "free-models-only",
+      "capability": 3,
+      "priority": 30,
+      "openhands_model": "openrouter/openrouter/free",
+      "task_classes": ["normal", "substantial"]
+    },
+    {
+      "id": "cloudflare",
+      "role": "free-edge-engineer",
+      "adapter": "openhands",
+      "privacy": "sanitized-cloud",
+      "credentials": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"],
+      "cost": "free-tier",
+      "capability": 3,
+      "priority": 40,
+      "openhands_model": "cloudflare/@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+      "task_classes": ["normal", "substantial"]
+    },
+    {
+      "id": "codex",
+      "role": "senior-engineer",
+      "adapter": "codex",
+      "privacy": "sanitized-cloud",
+      "credentials": [],
+      "cost": "scarce",
+      "capability": 5,
+      "priority": 10,
+      "task_classes": ["normal", "substantial", "review", "escalation"]
+    }
   ],
-  "routing": {"max_attempts_per_provider": 2, "cooldown_seconds": 900, "allow_paid_fallback": false, "continue_on_credential_required": true},
+  "routing": {
+    "strategy": "cheapest-capable",
+    "minimum_capability": {
+      "default": 1,
+      "deterministic": 1,
+      "tiny": 1,
+      "offline": 1,
+      "normal": 2,
+      "substantial": 3,
+      "review": 4,
+      "escalation": 5
+    },
+    "max_attempts_per_provider": 2,
+    "cooldown_seconds": 900,
+    "allow_paid_fallback": false,
+    "continue_on_credential_required": true
+  },
   "execution": {
     "source_changes": "github-branch-pr-only",
     "pi_execution": "lifeos-pi-control-relay-only",
     "direct_production_ssh_mutation": false,
-    "fail_closed": true
+    "fail_closed": true,
+    "private_jobs": "local-only",
+    "cloud_context": "sanitized-technical-brief-only"
   }
 }
