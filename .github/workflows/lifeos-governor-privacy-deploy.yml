@@ -1,0 +1,119 @@
+name: LifeOS Governor Privacy Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'governor/autonomous_agent.py'
+      - 'governor/privacy-domain-policy.json'
+      - 'governor/systemd/lifeos-autonomous-agent.service'
+      - '.github/workflows/lifeos-governor-privacy-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-governor-privacy-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync canonical Pi5 checkout
+        run: |
+          set -Eeuo pipefail
+          REPO=/home/joshan/lifeos-platform
+          git -C "$REPO" fetch origin main
+          git -C "$REPO" reset --hard origin/main
+          test -z "$(git -C "$REPO" status --porcelain --untracked-files=no)"
+          test "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse origin/main)"
+          echo "CANONICAL_SYNC=PASS"
+
+      - name: Deploy through fixed root broker operation
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, socket
+          from pathlib import Path
+
+          identity = json.loads(Path('/etc/lifeos-control/identity.json').read_text())
+          request = {
+              'operation': 'deploy-autonomous-agent',
+              'job_id': 'privacy-' + '${{ github.run_id }}' + '-' + '${{ github.run_attempt }}',
+              'target': identity['target_id'],
+          }
+          with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+              client.settimeout(180)
+              client.connect('/run/lifeos-root-broker.sock')
+              client.sendall((json.dumps(request, sort_keys=True) + '\n').encode())
+              client.shutdown(socket.SHUT_WR)
+              chunks = []
+              while True:
+                  chunk = client.recv(65536)
+                  if not chunk:
+                      break
+                  chunks.append(chunk)
+          result = json.loads(b''.join(chunks))
+          print('BROKER_STATUS=' + str(result.get('status')))
+          print('BROKER_OPERATION=' + str(result.get('operation')))
+          print('BROKER_ROLLBACK=' + str(result.get('rollback_result')))
+          print('BROKER_SOURCE_COMMIT=' + str(result.get('source_commit')))
+          if result.get('status') != 'PASS' or result.get('operation') != 'deploy-autonomous-agent':
+              raise SystemExit(json.dumps(result, sort_keys=True))
+          print('GOVERNED_DEPLOYMENT=PASS')
+          PY
+
+      - name: Live privacy acceptance
+        run: |
+          set -Eeuo pipefail
+          HEALTH=$(curl -fsS --max-time 5 http://127.0.0.1:8790/health)
+          python3 - "$HEALTH" <<'PY'
+          import json, sys
+          health = json.loads(sys.argv[1])
+          assert health['service'] == 'lifeos-autonomous-agent'
+          assert health['status'] == 'ok'
+          assert health['privacy_domain_policy'] == '/usr/local/libexec/privacy-domain-policy.json'
+          print('LIVE_HEALTH=PASS')
+          print('LIVE_POLICY_PATH=' + health['privacy_domain_policy'])
+          PY
+
+          python3 - <<'PY'
+          import importlib.machinery, os, tempfile
+          from pathlib import Path
+
+          state = tempfile.mkdtemp(prefix='lifeos-privacy-acceptance-')
+          os.environ['LIFEOS_AGENT_STATE'] = state
+          os.environ['LIFEOS_PRIVACY_DOMAIN_POLICY'] = '/usr/local/libexec/privacy-domain-policy.json'
+          agent = importlib.machinery.SourceFileLoader(
+              'lifeos_live_privacy_acceptance', '/usr/local/libexec/lifeos-autonomous-agent'
+          ).load_module()
+
+          checks = {
+              'EXPLICIT_PA': agent.classify_privacy('Summarize upcoming appointments', domain='personal-administration'),
+              'INFERRED_PA': agent.classify_privacy('Summarize my calendar for tomorrow'),
+              'EXPLICIT_FINANCE': agent.classify_privacy('Prepare the monthly overview', domain='finance-assets'),
+              'INFERRED_FINANCE': agent.classify_privacy('Review my vehicle costs this month'),
+              'UNKNOWN_DOMAIN': agent.classify_privacy('Handle this', domain='unknown-private-domain'),
+              'PUBLIC_GENERAL': agent.classify_privacy('Explain Python decorators'),
+          }
+          for name, value in checks.items():
+              print(f'{name}={value}')
+          assert checks['EXPLICIT_PA'] == 'local-only'
+          assert checks['INFERRED_PA'] == 'local-only'
+          assert checks['EXPLICIT_FINANCE'] == 'local-only'
+          assert checks['INFERRED_FINANCE'] == 'local-only'
+          assert checks['UNKNOWN_DOMAIN'] == 'local-only'
+          assert checks['PUBLIC_GENERAL'] == 'normal'
+
+          private = agent.new_job('Check my bank statements', dispatch_builder='normal')
+          assert private['privacy'] == 'local-only'
+          assert agent.builder_route(private)[0] == 'local'
+          print('NORMAL_DISPATCH_DOWNGRADE=BLOCKED')
+          print('PRIVATE_ROUTE=local')
+          print('LIVE_PRIVACY_ACCEPTANCE=PASS')
+          PY
