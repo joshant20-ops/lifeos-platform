@@ -1,0 +1,101 @@
+name: LifeOS Governor AI Routing Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-governor-ai-routing-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Transactionally deploy provider-aware builder
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          source=/home/joshan/lifeos-platform/governor/scripts/lifeos-cloud-builder
+          destination=/usr/local/libexec/lifeos-cloud-builder
+          expected=$(sha256sum "$source" | awk '{print $1}')
+          tx="governor-ai-routing-${GITHUB_RUN_ID}"
+          proposal=$(mktemp)
+          trap 'rm -f "$proposal"' EXIT
+          python3 - "$source" "$destination" "$expected" >"$proposal" <<'PY'
+          import json, sys
+          source, destination, expected = sys.argv[1:]
+          print(json.dumps({
+              "operation": "replace_file",
+              "risk": "LOW",
+              "component": "governor-ai-routing-builder",
+              "source": source,
+              "destination": destination,
+              "sha256": expected,
+              "checks": [
+                  {"type": "file_sha256", "path": destination, "expected": expected},
+                  {"type": "service_active", "unit": "lifeos-autonomous-agent.service"}
+              ]
+          }))
+          PY
+
+          sudo -n /usr/local/sbin/lifeos-transaction-controller begin "$tx" "$proposal"
+          sudo -n /usr/local/sbin/lifeos-transaction-controller apply "$tx"
+          sudo -n /usr/local/sbin/lifeos-transaction-controller verify "$tx"
+          sudo -n /usr/local/sbin/lifeos-transaction-controller commit "$tx"
+
+          test "$(sha256sum "$destination" | awk '{print $1}')" = "$expected"
+          systemctl is-active --quiet lifeos-autonomous-agent.service
+          curl -fsS --max-time 5 http://127.0.0.1:8790/health >/dev/null
+          echo "TRANSACTION_ID=$tx"
+          echo 'GOVERNOR_AI_ROUTING_DEPLOY=PASS'
+
+      - name: Live route contract smoke
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 - <<'PY'
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, 'engineer')
+          from provider_router import load_policy, route
+          p=load_policy(Path('governor/policy.json'))
+          normal=route(p, 'normal', set(), available_adapters={'openhands','codex','local-builder'})
+          private=route(p, 'normal', set(), privacy='local-only', available_adapters={'openhands','codex','local-builder'})
+          assert normal['selected_provider'] == 'ollama', normal
+          assert private['selected_provider'] == 'ollama', private
+          assert all(x['status']=='PRIVACY_FORBIDDEN' for x in private['considered'] if x['provider'] in {'gemini','groq','openrouter','cloudflare','codex'}), private
+          print('NORMAL_ROUTE_WITHOUT_CLOUD_CREDS=' + normal['selected_provider'])
+          print('LOCAL_ONLY_ROUTE=' + private['selected_provider'])
+          print('PRIVACY_FAIL_CLOSED=PASS')
+          PY
+          test "$(sha256sum governor/scripts/lifeos-cloud-builder | awk '{print $1}')" = "$(sha256sum /usr/local/libexec/lifeos-cloud-builder | awk '{print $1}')"
+          echo 'DEPLOYED_HASH_MATCH=PASS'
+
+      - name: Prove repository clean
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'REPOSITORY_FINAL=PASS'
