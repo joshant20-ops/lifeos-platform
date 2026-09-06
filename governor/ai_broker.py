@@ -288,12 +288,42 @@ def _openai_compatible(url: str, prompt: str, model: str, token: str) -> str:
     return text
 
 
+def _openai_chat(url: str, messages: list[dict], tools: list[dict], model: str, token: str, tool_choice=None) -> dict:
+    payload: dict = {"model": model, "messages": messages, "tools": tools, "temperature": 0}
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
+    result = _post_json(url, payload, headers={"Authorization": f"Bearer {token}"})
+    choices = result.get("choices") or []
+    if not choices:
+        raise BrokerError("provider returned no tool-aware choice")
+    choice = choices[0] if isinstance(choices[0], dict) else {}
+    message = choice.get("message") if isinstance(choice.get("message"), dict) else None
+    if not message:
+        raise BrokerError("provider returned no tool-aware message")
+    content = message.get("content")
+    tool_calls = message.get("tool_calls") or []
+    if not content and not tool_calls:
+        raise BrokerError("provider returned empty tool-aware response")
+    return {"message": message, "finish_reason": str(choice.get("finish_reason") or ("tool_calls" if tool_calls else "stop"))}
+
+
 def _groq(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     return _openai_compatible("https://api.groq.com/openai/v1/chat/completions", prompt, _provider_model(provider), secrets["GROQ_API_KEY"])
 
 
 def _openrouter(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     return _openai_compatible("https://openrouter.ai/api/v1/chat/completions", prompt, _provider_model(provider), secrets["OPENROUTER_API_KEY"])
+
+
+def _openrouter_chat(messages: list[dict], tools: list[dict], provider: dict, secrets: dict[str, str], tool_choice=None) -> dict:
+    return _openai_chat(
+        "https://openrouter.ai/api/v1/chat/completions",
+        messages,
+        tools,
+        _provider_model(provider),
+        secrets["OPENROUTER_API_KEY"],
+        tool_choice=tool_choice,
+    )
 
 
 def _cloudflare(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
@@ -337,19 +367,30 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
     if privacy != "normal":
         raise BrokerError("tool-enabled private inference is not permitted")
     eligible, considered = candidates(privacy=privacy, task_class=task_class)
-    eligible = [p for p in eligible if p.get("id") == "gemini"]
+    eligible = [p for p in eligible if p.get("id") in {"gemini", "openrouter"}]
     if not eligible:
         raise BrokerError("no eligible tool-capable cloud provider")
     secrets = _strict_env(SECRETS_PATH)
-    provider = eligible[0]
-    response = _gemini_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
-    return {
-        "provider": provider["id"],
-        "model": _provider_model(provider),
-        "privacy": privacy,
-        "considered": considered,
-        **response,
-    }
+    failures: list[str] = []
+    for provider in eligible:
+        pid = provider["id"]
+        try:
+            if pid == "gemini":
+                response = _gemini_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
+            elif pid == "openrouter":
+                response = _openrouter_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
+            else:
+                continue
+            return {
+                "provider": pid,
+                "model": _provider_model(provider),
+                "privacy": privacy,
+                "considered": considered,
+                **response,
+            }
+        except (BrokerError, KeyError) as exc:
+            failures.append(f"{pid}:{type(exc).__name__}")
+    raise BrokerError("tool-capable providers exhausted: " + ",".join(failures))
 
 
 def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None) -> dict:
