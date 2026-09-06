@@ -1,0 +1,200 @@
+name: LifeOS Housekeeping
+
+on:
+  workflow_dispatch:
+    inputs:
+      depth:
+        description: Housekeeping depth
+        required: true
+        default: daily
+        type: choice
+        options:
+          - daily
+          - weekly
+  schedule:
+    - cron: '17 3 * * *'
+    - cron: '47 3 * * 0'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-housekeeping
+  cancel-in-progress: false
+
+jobs:
+  housekeeping:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Select housekeeping depth
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          depth=daily
+          if [[ "${{ github.event.schedule }}" == '47 3 * * 0' ]]; then
+            depth=weekly
+          fi
+          if [[ "${{ github.event_name }}" == workflow_dispatch ]]; then
+            depth="${{ inputs.depth }}"
+          fi
+          case "$depth" in daily|weekly) ;; *) echo "INVALID_DEPTH=$depth"; exit 64 ;; esac
+          echo "HOUSEKEEPING_DEPTH=$depth" >> "$GITHUB_ENV"
+          echo "HOUSEKEEPING_DEPTH=$depth"
+
+      - name: Checkout source for evidence only
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Pi5 safe Git and temporary-file hygiene
+        id: pi
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          test -d "$repo/.git"
+          git -C "$repo" fetch --prune origin main
+
+          head=$(git -C "$repo" rev-parse HEAD)
+          origin=$(git -C "$repo" rev-parse origin/main)
+          echo "PI_HEAD=$head"
+          echo "PI_ORIGIN_MAIN=$origin"
+          [[ "$head" == "$origin" ]] || { echo 'PI_REPOSITORY_SYNC=FAIL'; exit 20; }
+
+          before=$(git -C "$repo" status --porcelain --untracked-files=all)
+          if [[ -n "$before" ]]; then
+            echo 'PI_DIRT_BEFORE=YES'
+            printf '%s\n' "$before"
+          else
+            echo 'PI_DIRT_BEFORE=NO'
+          fi
+
+          # Native Git maintenance only. This prunes metadata for worktrees whose
+          # directories are already gone; it does not delete a working tree.
+          git -C "$repo" worktree prune --expire now --verbose
+          if [[ "$HOUSEKEEPING_DEPTH" == weekly ]]; then
+            git -C "$repo" gc --auto
+          fi
+
+          removed=0
+          for path in \
+            /tmp/lifeos-ai-tags.json \
+            /tmp/lifeos-ai-model \
+            /tmp/lifeos-ai-request.json \
+            /tmp/lifeos-ai-response.json \
+            /tmp/lifeos-ai-ps.json
+          do
+            [[ -e "$path" ]] || continue
+            [[ -f "$path" && ! -L "$path" ]] || { echo "PI_TEMP_UNSAFE_PRESERVED=$path"; continue; }
+            [[ "$(stat -c %U "$path")" == "$(id -un)" ]] || { echo "PI_TEMP_OTHER_OWNER_PRESERVED=$path"; continue; }
+            if find "$path" -maxdepth 0 -mmin +180 -print -quit | grep -q .; then
+              rm -f -- "$path"
+              echo "PI_TEMP_REMOVED=$path"
+              removed=$((removed+1))
+            else
+              echo "PI_TEMP_FRESH_PRESERVED=$path"
+            fi
+          done
+          echo "PI_TEMP_REMOVED_COUNT=$removed"
+
+          after=$(git -C "$repo" status --porcelain --untracked-files=all)
+          if [[ -n "$after" ]]; then
+            echo 'PI_REPOSITORY_CLEAN=FAIL'
+            printf '%s\n' "$after"
+            exit 21
+          fi
+          echo 'PI_REPOSITORY_CLEAN=PASS'
+
+      - name: Engineer safe Git and known smoke-residue hygiene
+        id: engineer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ! ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'true' 2>/dev/null; then
+            echo 'ENGINEER_HOUSEKEEPING=SKIP_OFFLINE'
+            echo 'engineer_state=SKIP_OFFLINE' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer "HOUSEKEEPING_DEPTH='$HOUSEKEEPING_DEPTH' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          repo=/home/joshan/workspace/lifeos-platform
+          smoke="$HOME/.local/share/lifeos-agent/smoke"
+          out="$HOME/.local/share/lifeos-agent/codex-smoke.out"
+          test -d "$repo/.git"
+          git -C "$repo" fetch --prune origin main
+
+          git -C "$repo" worktree prune --expire now --verbose
+          if [[ "$HOUSEKEEPING_DEPTH" == weekly ]]; then
+            git -C "$repo" gc --auto
+          fi
+
+          removed=0
+          if [[ -e "$smoke" ]]; then
+            if [[ -L "$smoke" ]]; then
+              echo 'ENGINEER_SMOKE_RESIDUE=UNSAFE_SYMLINK_PRESERVED'
+              exit 30
+            elif git -C "$repo" worktree list --porcelain | grep -Fxq "worktree $smoke"; then
+              echo 'ENGINEER_SMOKE_RESIDUE=ACTIVE_WORKTREE_PRESERVED'
+            elif [[ "$(stat -c %U "$smoke")" != "$(id -un)" ]]; then
+              echo 'ENGINEER_SMOKE_RESIDUE=OTHER_OWNER_PRESERVED'
+              exit 31
+            elif find "$smoke" -maxdepth 0 -mmin +180 -print -quit | grep -q .; then
+              rm -rf -- "$smoke"
+              removed=$((removed+1))
+              echo 'ENGINEER_SMOKE_RESIDUE=REMOVED_STALE_UNREGISTERED'
+            else
+              echo 'ENGINEER_SMOKE_RESIDUE=FRESH_PRESERVED'
+            fi
+          else
+            echo 'ENGINEER_SMOKE_RESIDUE=ABSENT'
+          fi
+
+          if [[ -e "$out" ]]; then
+            if [[ -f "$out" && ! -L "$out" && "$(stat -c %U "$out")" == "$(id -un)" ]] && find "$out" -maxdepth 0 -mmin +180 -print -quit | grep -q .; then
+              rm -f -- "$out"
+              removed=$((removed+1))
+              echo 'ENGINEER_CODEX_OUTPUT=REMOVED_STALE'
+            else
+              echo 'ENGINEER_CODEX_OUTPUT=PRESERVED_NOT_SAFE_OR_FRESH'
+            fi
+          else
+            echo 'ENGINEER_CODEX_OUTPUT=ABSENT'
+          fi
+
+          after=$(git -C "$repo" status --porcelain --untracked-files=all)
+          if [[ -n "$after" ]]; then
+            echo 'ENGINEER_REPOSITORY_CLEAN=FAIL'
+            printf '%s\n' "$after"
+            exit 32
+          fi
+          echo "ENGINEER_RESIDUE_REMOVED_COUNT=$removed"
+          echo 'ENGINEER_REPOSITORY_CLEAN=PASS'
+          REMOTE
+          echo 'engineer_state=PASS' >> "$GITHUB_OUTPUT"
+
+      - name: Storage evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '===== PI5 STORAGE ====='
+          df -h /
+          if [[ -d /mnt/docker-data ]]; then df -h /mnt/docker-data; fi
+
+      - name: Housekeeping summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo '## LifeOS Housekeeping'
+            echo
+            echo "- Depth: ${HOUSEKEEPING_DEPTH:-unknown}"
+            echo "- Pi5 hygiene step: ${{ steps.pi.outcome }}"
+            echo "- Engineer hygiene step: ${{ steps.engineer.outcome }}"
+            echo "- Engineer state: ${{ steps.engineer.outputs.engineer_state || 'not-reached' }}"
+            echo '- Deletion policy: exact known disposable paths only; unknown repository dirt is preserved and fails closed.'
+            echo '- Git maintenance: native `git worktree prune`; weekly `git gc --auto`; no `git clean` and no hard reset.'
+          } >> "$GITHUB_STEP_SUMMARY"
