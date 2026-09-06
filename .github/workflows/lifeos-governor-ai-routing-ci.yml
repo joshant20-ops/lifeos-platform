@@ -7,10 +7,14 @@ on:
       - 'engineer/provider_router.py'
       - 'engineer/openhands_worker.py'
       - 'governor/policy.json'
+      - 'governor/privacy-domain-policy.json'
+      - 'governor/autonomous_agent.py'
+      - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
       - 'tests/test_openhands_integration.py'
       - 'tests/test_privacy_classifier.py'
+      - 'tests/test_private_domain_policy.py'
       - '.github/workflows/lifeos-governor-ai-routing-ci.yml'
   pull_request:
     branches: [main]
@@ -18,10 +22,14 @@ on:
       - 'engineer/provider_router.py'
       - 'engineer/openhands_worker.py'
       - 'governor/policy.json'
+      - 'governor/privacy-domain-policy.json'
+      - 'governor/autonomous_agent.py'
+      - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
       - 'tests/test_openhands_integration.py'
       - 'tests/test_privacy_classifier.py'
+      - 'tests/test_private_domain_policy.py'
       - '.github/workflows/lifeos-governor-ai-routing-ci.yml'
 
 permissions:
@@ -40,15 +48,20 @@ jobs:
       - name: Static validation
         run: |
           set -Eeuo pipefail
-          python3 -m py_compile engineer/provider_router.py engineer/openhands_worker.py
+          python3 -m py_compile engineer/provider_router.py engineer/openhands_worker.py governor/autonomous_agent.py
           python3 -m json.tool governor/policy.json >/dev/null
+          python3 -m json.tool governor/privacy-domain-policy.json >/dev/null
+          bash -n governor/scripts/deploy-autonomous-agent-pi5.sh
           bash -n governor/scripts/lifeos-cloud-builder
           bash -n governor/scripts/lifeos-remote-agent-builder
 
       - name: Provider routing regressions
         run: |
           set -Eeuo pipefail
-          python3 -m pytest -q tests/test_openhands_integration.py tests/test_privacy_classifier.py
+          python3 -m pytest -q \
+            tests/test_openhands_integration.py \
+            tests/test_privacy_classifier.py \
+            tests/test_private_domain_policy.py
 
       - name: Safety contract assertions
         run: |
@@ -58,4 +71,6 @@ jobs:
           grep -F 'PRIVACY_FORBIDDEN' engineer/provider_router.py >/dev/null
           grep -F 'LIFEOS_PROVIDER_SECRETS_FILE' governor/scripts/lifeos-remote-agent-builder >/dev/null
           grep -F -- '--override-with-envs' governor/scripts/lifeos-remote-agent-builder >/dev/null
+          grep -F 'LIFEOS_PRIVACY_DOMAIN_POLICY' governor/autonomous_agent.py >/dev/null
+          grep -F 'privacy-domain-policy.json' governor/scripts/deploy-autonomous-agent-pi5.sh >/dev/null
           echo 'GOVERNOR_AI_ROUTING_CI=PASS'
