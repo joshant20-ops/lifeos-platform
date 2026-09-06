@@ -6,12 +6,36 @@
       "privacy": "local-only",
       "cloud_fallback": false,
       "sources": ["calendar", "email", "paperless", "personal-documents"],
+      "request_terms": [
+        "personal administration",
+        "my calendar",
+        "my appointments",
+        "my email",
+        "my emails",
+        "my inbox",
+        "my documents",
+        "paperless"
+      ],
       "public_reference_queries": "sanitized-general-question-only"
     },
     "finance-assets": {
       "privacy": "local-only",
       "cloud_fallback": false,
       "sources": ["transactions", "balances", "banking", "rental", "receipts", "invoices", "tax-records", "vehicle-costs", "mileage"],
+      "request_terms": [
+        "finance assets",
+        "personal finance",
+        "rental finance",
+        "my transactions",
+        "my balances",
+        "my banking",
+        "my rental",
+        "my receipts",
+        "my invoices",
+        "my tax records",
+        "my vehicle costs",
+        "my mileage"
+      ],
       "public_reference_queries": "sanitized-general-question-only"
     }
   },
