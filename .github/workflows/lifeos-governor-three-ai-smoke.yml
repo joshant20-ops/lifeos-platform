@@ -1,0 +1,174 @@
+name: LifeOS Governor Three-AI Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-governor-three-ai-smoke.yml'
+      - 'engineer/provider_router.py'
+      - 'engineer/openhands_worker.py'
+      - 'governor/policy.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-governor-three-ai-smoke
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Confirm Engineer VM reachable
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'true'
+          echo 'ENGINEER_VM_REACHABLE=PASS'
+
+      - name: Test 1 - Governor routes private normal work to local Ollama
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          cd /home/joshan/workspace/lifeos-platform
+          git fetch origin main >/dev/null
+          git reset --hard origin/main >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          from engineer.provider_router import load_policy, load_secret_names, route
+          policy = load_policy(Path('governor/policy.json'))
+          secrets = load_secret_names(Path.home()/'.config/lifeos/provider-secrets.env')
+          result = route(policy, 'normal', secrets, privacy='local-only', available_adapters={'local-builder','openhands','codex'})
+          print('LOCAL_ROUTE_SELECTED='+str(result['selected_provider']))
+          assert result['selected_provider'] == 'ollama', result
+          print('LOCAL_ROUTE=PASS')
+          PY
+          REMOTE
+          AI=http://192.168.0.201:11434
+          model=qwen2.5-coder:7b-instruct
+          printf '%s' '{"model":"qwen2.5-coder:7b-instruct","prompt":"Reply with exactly GOVERNOR_LOCAL_SMOKE_OK","stream":false,"keep_alive":"5m"}' >/tmp/governor-local-request.json
+          curl -fsS --max-time 120 -H 'Content-Type: application/json' --data-binary @/tmp/governor-local-request.json "$AI/api/generate" >/tmp/governor-local-response.json
+          python3 - /tmp/governor-local-response.json <<'PY'
+          import json,sys
+          j=json.load(open(sys.argv[1]))
+          text=str(j.get('response','')).strip()
+          print('LOCAL_RESPONSE='+text[:160].replace('\n',' '))
+          assert 'GOVERNOR_LOCAL_SMOKE_OK' in text, j
+          print('LOCAL_INFERENCE=PASS')
+          PY
+
+      - name: Test 2 - Governor routes ordinary cloud-safe work to Gemini
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          repo=/home/joshan/workspace/lifeos-platform
+          cd "$repo"
+          git fetch origin main >/dev/null
+          git reset --hard origin/main >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          from engineer.provider_router import load_policy, load_secret_names, route
+          policy = load_policy(Path('governor/policy.json'))
+          secrets = load_secret_names(Path.home()/'.config/lifeos/provider-secrets.env')
+          result = route(policy, 'normal', secrets, privacy='normal', available_adapters={'openhands','codex'})
+          print('GEMINI_ROUTE_SELECTED='+str(result['selected_provider']))
+          assert result['selected_provider'] == 'gemini', result
+          print('GEMINI_ROUTE=PASS')
+          PY
+          root="$HOME/.local/share/lifeos-agent/governor-gemini-smoke"
+          branch=smoke/governor-gemini
+          task=/tmp/governor-gemini-smoke.txt
+          git worktree remove --force "$root" >/dev/null 2>&1 || true
+          git branch -D "$branch" >/dev/null 2>&1 || true
+          git worktree add -b "$branch" "$root" origin/main >/dev/null
+          cleanup(){ git -C "$repo" worktree remove --force "$root" >/dev/null 2>&1 || true; git -C "$repo" branch -D "$branch" >/dev/null 2>&1 || true; rm -f "$task"; }
+          trap cleanup EXIT
+          cat >"$task" <<'EOF'
+          This is a sanitized LifeOS Governor provider smoke test.
+          Do not modify files or use tools. Reply with exactly GOVERNOR_GEMINI_SMOKE_OK.
+          EOF
+          set +e
+          python3 "$root/engineer/openhands_worker.py" --repo "$root" --task "$task" --task-class normal --privacy normal --secrets "$HOME/.config/lifeos/provider-secrets.env" --execute >"$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out" 2>&1
+          rc=$?
+          set -e
+          sed -n '1,220p' "$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out"
+          echo "GEMINI_WORKER_RC=$rc"
+          test "$rc" -eq 0
+          grep -q '"selected_provider": "gemini"\|"selected_provider":"gemini"' "$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out"
+          grep -q '"result": "PASS"\|"result":"PASS"' "$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out"
+          echo 'GEMINI_INFERENCE_PATH=PASS'
+          rm -f "$HOME/.local/share/lifeos-agent/governor-gemini-smoke.out"
+          REMOTE
+
+      - name: Test 3 - Governor routes escalation work to Codex
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          repo=/home/joshan/workspace/lifeos-platform
+          cd "$repo"
+          git fetch origin main >/dev/null
+          git reset --hard origin/main >/dev/null
+          python3 - <<'PY'
+          from pathlib import Path
+          from engineer.provider_router import load_policy, load_secret_names, route
+          policy = load_policy(Path('governor/policy.json'))
+          secrets = load_secret_names(Path.home()/'.config/lifeos/provider-secrets.env')
+          result = route(policy, 'escalation', secrets, privacy='normal', available_adapters={'codex'})
+          print('CODEX_ROUTE_SELECTED='+str(result['selected_provider']))
+          assert result['selected_provider'] == 'codex', result
+          print('CODEX_ROUTE=PASS')
+          PY
+          if command -v codex >/dev/null 2>&1; then c=$(command -v codex); elif test -x "$HOME/.local/bin/codex"; then c="$HOME/.local/bin/codex"; else echo 'CODEX_MISSING'; exit 21; fi
+          root="$HOME/.local/share/lifeos-agent/governor-codex-smoke"
+          out="$HOME/.local/share/lifeos-agent/governor-codex-smoke.out"
+          git -C "$repo" worktree remove --force "$root" >/dev/null 2>&1 || true
+          rm -f "$out"
+          git -C "$repo" worktree add --detach "$root" origin/main >/dev/null
+          cleanup(){ git -C "$repo" worktree remove --force "$root" >/dev/null 2>&1 || true; rm -f "$out"; }
+          trap cleanup EXIT
+          cd "$root"
+          help=$($c exec --help 2>&1 || true)
+          set +e
+          if grep -q -- '--full-auto' <<<"$help"; then
+            timeout 180s "$c" exec --full-auto 'Reply with exactly GOVERNOR_CODEX_SMOKE_OK and make no file changes.' </dev/null >"$out" 2>&1
+          else
+            timeout 180s "$c" exec 'Reply with exactly GOVERNOR_CODEX_SMOKE_OK and make no file changes.' </dev/null >"$out" 2>&1
+          fi
+          rc=$?
+          set -e
+          sed -n '1,180p' "$out"
+          echo "CODEX_RC=$rc"
+          test "$rc" -eq 0
+          grep -q 'GOVERNOR_CODEX_SMOKE_OK' "$out"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'CODEX_INFERENCE=PASS'
+          REMOTE
+
+      - name: Final Governor regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          curl -fsS --max-time 5 http://127.0.0.1:8790/health | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"]=="ok"'
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'GOVERNOR_THREE_AI_SMOKE=PASS'
+          echo 'REPOSITORY_FINAL=PASS'
