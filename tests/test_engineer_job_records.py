@@ -67,7 +67,8 @@ class FakeGit:
         return subprocess.CompletedProcess(args, rc, out, "push rejected" if rc else "")
 
 
-def test_successful_git_publication(tmp_path):
+def test_successful_git_publication(tmp_path, monkeypatch):
+    monkeypatch.delenv("LIFEOS_AGENT_STATE", raising=False)
     fake = FakeGit()
     result = records.publish_record(tmp_path, job(), run=fake)
     assert result == {"state": "PUBLISHED", "commit": "deadbeef"}
@@ -75,10 +76,28 @@ def test_successful_git_publication(tmp_path):
     assert data["record_publication"]["state"] == "PUBLISHED"
 
 
-def test_failed_git_publication_is_truthful_and_retryable(tmp_path):
+def test_failed_git_publication_is_truthful_and_retryable(tmp_path, monkeypatch):
+    monkeypatch.delenv("LIFEOS_AGENT_STATE", raising=False)
     fake = FakeGit(push_rc=1)
     result = records.publish_record(tmp_path, job(), run=fake)
     assert result["state"] == "UNPUBLISHED"
     data = json.loads((tmp_path / "governor/job_records/de629fc4ea87.json").read_text())
     assert data["record_publication"]["state"] == "UNPUBLISHED"
     assert any(call[1] == "commit" for call in fake.calls)
+
+
+def test_runtime_stages_record_outside_git_checkout(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    repo = tmp_path / "readonly-source"
+    repo.mkdir()
+    fake = FakeGit()
+    monkeypatch.setenv("LIFEOS_AGENT_STATE", str(state))
+
+    result = records.publish_record(repo, job(), run=fake)
+
+    staged = state / "job_records/de629fc4ea87.json"
+    assert result == {"state": "STAGED", "path": str(staged)}
+    data = json.loads(staged.read_text())
+    assert data["record_publication"]["state"] == "STAGED"
+    assert not (repo / "governor/job_records/de629fc4ea87.json").exists()
+    assert fake.calls == []
