@@ -44,8 +44,8 @@ ARCHITECTURE AND SAFETY:
 - Do NOT commit, push, fetch, clone, or otherwise depend on GitHub/network access from inside the coding agent. Pi5 owns Git publication.
 - If runtime inspection/change is required on Pi5, Engineer, TowerPC, Home Assistant, or another LAN host, create exactly one Pi5 launcher at: $RUNTIME_PATH
 - That launcher must start with #!/usr/bin/env bash, be non-interactive, timeout-aware, and may SSH to secondary machines itself.
-- Never put secrets or private Paperless/document content in GitHub, prompts, logs, patches, or runtime launchers.
-- Cloud providers are forbidden from processing local-only/private jobs.
+- Never put secrets or protected-source payloads in GitHub, prompts, logs, patches, or runtime launchers.
+- Cloud providers are forbidden from processing protected runtime jobs; the Governor privacy policy is authoritative.
 - Scope tests to the user's requested outcome. Unrelated pre-existing repository failures may be reported but MUST NOT block a scoped job if the requested outcome can still be verified safely.
 - The local verifier, not you, decides final completion.
 
