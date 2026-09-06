@@ -6,8 +6,11 @@ ITERATION=${2:?iteration required}
 FEEDBACK=${3:-}
 PRIVACY=${LIFEOS_JOB_PRIVACY:-normal}
 JOB_ID=${LIFEOS_JOB_ID:-unknown}
+TASK_CLASS=${LIFEOS_JOB_TASK_CLASS:-normal}
 ENGINEER=${LIFEOS_ENGINEER_SSH:-Engineer}
 REPO=${LIFEOS_ENGINEER_REPO:-/home/joshan/workspace/lifeos-platform}
+PLATFORM_REPO=${LIFEOS_PLATFORM_REPO:-/home/joshan/lifeos-platform}
+REMOTE_SECRET_FILE=${LIFEOS_ENGINEER_PROVIDER_SECRETS:-$HOME/.config/lifeos/provider-secrets.env}
 
 if [[ "$PRIVACY" == "local-only" ]]; then
   echo "RESULT=BLOCKED"
@@ -15,20 +18,39 @@ if [[ "$PRIVACY" == "local-only" ]]; then
   exit 42
 fi
 
+case "$TASK_CLASS" in
+  normal|substantial|review|escalation) ;;
+  *) TASK_CLASS=normal ;;
+esac
+
 RUNTIME_PATH="governor/runtime_jobs/${JOB_ID}.sh"
 
+# Defence in depth. The upstream privacy classifier remains authoritative for
+# personal/private content. This redactor prevents obvious credential literals
+# from being copied into any cloud-model prompt if a job brief contains them.
+SAFE_REQUEST=$(printf '%s' "$REQUEST" | python3 -c '
+import re,sys
+s=sys.stdin.read()
+s=re.sub(r"(?is)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", "[REDACTED_PRIVATE_KEY]", s)
+s=re.sub(r"(?i)\b(api[_ -]?key|access[_ -]?token|bearer|password|secret)\s*[:=]\s*[^\s,;]+", lambda m: m.group(1)+"=[REDACTED]", s)
+print(s, end="")
+')
+if [[ "$SAFE_REQUEST" != "$REQUEST" ]]; then
+  echo "CLOUD_REQUEST_REDACTED=YES"
+fi
+
 PROMPT=$(cat <<EOF
-You are the cloud engineering builder for LifeOS autonomous job $JOB_ID.
+You are an engineering builder for LifeOS autonomous job $JOB_ID.
 Work toward the user's original goal until this iteration has produced a concrete, testable improvement.
 
 ARCHITECTURE AND SAFETY:
 - Pi5/Docker is the central controller, canonical Git writer, and runtime executor.
 - Do not require the user to run commands on secondary machines.
-- Do NOT commit, push, fetch, clone, or otherwise depend on GitHub/network access from inside Codex. Pi5 owns Git publication.
+- Do NOT commit, push, fetch, clone, or otherwise depend on GitHub/network access from inside the coding agent. Pi5 owns Git publication.
 - If runtime inspection/change is required on Pi5, Engineer, TowerPC, Home Assistant, or another LAN host, create exactly one Pi5 launcher at: $RUNTIME_PATH
 - That launcher must start with #!/usr/bin/env bash, be non-interactive, timeout-aware, and may SSH to secondary machines itself.
 - Never put secrets or private Paperless/document content in GitHub, prompts, logs, patches, or runtime launchers.
-- This cloud builder is forbidden from processing private document contents.
+- Cloud providers are forbidden from processing local-only/private jobs.
 - Scope tests to the user's requested outcome. Unrelated pre-existing repository failures may be reported but MUST NOT block a scoped job if the requested outcome can still be verified safely.
 - The local verifier, not you, decides final completion.
 
@@ -40,7 +62,7 @@ REPOSITORY WORK:
 - Do not merely explain what should be done: perform all repository engineering work available to you.
 
 USER GOAL:
-$REQUEST
+$SAFE_REQUEST
 
 ITERATION: $ITERATION
 
@@ -54,92 +76,119 @@ TESTS=<concise result>
 NEXT_RUNTIME_CHECK=<concise check or none>
 EOF
 )
-
 PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
 
-ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" \
-  bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" <<'REMOTE'
+# Read only capability/credential NAMES from Engineer. Values never cross this
+# discovery boundary and are loaded only inside the selected remote subprocess.
+DISCOVERY=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REMOTE_SECRET_FILE" <<'REMOTE'
 set -euo pipefail
-REPO=$1
-PROMPT_B64=$2
-JOB_ID=$3
-ITERATION=$4
-RUNTIME_PATH=$5
-PROMPT=$(printf '%s' "$PROMPT_B64" | base64 -d)
-
-CODEX="${LIFEOS_CODEX_BIN:-$HOME/.local/bin/codex}"
-if [[ ! -x "$CODEX" ]]; then
-  CODEX="$(command -v codex 2>/dev/null || true)"
-fi
-if [[ -z "$CODEX" || ! -x "$CODEX" ]]; then
-  echo "RESULT=BLOCKED"
-  echo "REASON=codex_missing_on_engineer"
-  exit 50
-fi
-
-echo "CODEX_BIN=$CODEX"
-
-cd "$REPO"
-git fetch origin main
-
-WORKROOT="$HOME/.local/share/lifeos-agent/worktrees"
-WORKTREE="$WORKROOT/${JOB_ID}-${ITERATION}"
-mkdir -p "$WORKROOT"
-
-git worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
-rm -rf "$WORKTREE"
-git worktree add --detach "$WORKTREE" origin/main >/dev/null
-
-cleanup() {
-  git -C "$REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true
-}
-trap cleanup EXIT
-
-cd "$WORKTREE"
-BASE=$(git rev-parse HEAD)
-echo "WORKTREE_BASE=$BASE"
-
-HELP="$("$CODEX" exec --help 2>&1 || true)"
-if grep -q -- '--full-auto' <<<"$HELP"; then
-  "$CODEX" exec --full-auto "$PROMPT" </dev/null
-elif "$CODEX" --help 2>&1 | grep -q -- '--full-auto'; then
-  "$CODEX" --full-auto exec "$PROMPT" </dev/null
-else
-  "$CODEX" exec "$PROMPT" </dev/null
-fi
-
-# Codex may stage files, leave them unstaged, create untracked files, or even
-# make local commits. Stage the full resulting tree state, then export the
-# complete delta against the immutable starting point. `git diff` alone would
-# omit new untracked files such as per-job runtime launchers.
-git reset --mixed "$BASE" >/dev/null 2>&1 || true
-git add -A
-PATCH_FILE=$(mktemp)
-git diff --cached --binary "$BASE" -- . >"$PATCH_FILE"
-PATCH_BYTES=$(wc -c <"$PATCH_FILE")
-if (( PATCH_BYTES > 1048576 )); then
-  echo "HANDOFF_ERROR=patch_exceeds_1MiB"
-  exit 61
-fi
-
-echo "HANDOFF_BASE=$BASE"
-echo "HANDOFF_PATCH_BYTES=$PATCH_BYTES"
-if (( PATCH_BYTES > 0 )); then
-  echo "HANDOFF_PATCH_B64=$(base64 -w0 <"$PATCH_FILE")"
-fi
-rm -f "$PATCH_FILE"
-
-if [[ -f "$RUNTIME_PATH" ]]; then
-  RUNTIME_BYTES=$(wc -c <"$RUNTIME_PATH")
-  if (( RUNTIME_BYTES > 65536 )); then
-    echo "HANDOFF_ERROR=runtime_script_exceeds_64KiB"
-    exit 62
+SECRET_FILE=$1
+adapters=()
+if command -v openhands >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/openhands" ]]; then adapters+=(openhands); fi
+if command -v codex >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/codex" ]]; then adapters+=(codex); fi
+printf 'ADAPTERS=%s\n' "$(IFS=,; echo "${adapters[*]}")"
+if [[ -e "$SECRET_FILE" ]]; then
+  if [[ -f "$SECRET_FILE" && ! -L "$SECRET_FILE" && "$(stat -c '%a' "$SECRET_FILE")" == 600 ]]; then
+    python3 - "$SECRET_FILE" <<'PY'
+import pathlib, re, sys
+names=[]
+for raw in pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').splitlines():
+    line=raw.strip()
+    if not line or line.startswith('#'): continue
+    if line.startswith('export '): line=line[7:].lstrip()
+    name, sep, value=line.partition('=')
+    if sep and value and re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*', name): names.append(name)
+print('CREDENTIAL_NAMES=' + ','.join(sorted(set(names))))
+print('CREDENTIAL_FILE=valid')
+PY
+  else
+    echo 'CREDENTIAL_NAMES='
+    echo 'CREDENTIAL_FILE=invalid_permissions_or_type'
   fi
-  echo "RUN_SCRIPT=$RUNTIME_PATH"
-  echo "HANDOFF_RUNTIME_B64=$(base64 -w0 <"$RUNTIME_PATH")"
+else
+  echo 'CREDENTIAL_NAMES='
+  echo 'CREDENTIAL_FILE=absent'
+fi
+REMOTE
+)
+printf '%s\n' "$DISCOVERY"
+ADAPTERS=$(sed -n 's/^ADAPTERS=//p' <<<"$DISCOVERY" | tail -1)
+CREDENTIAL_NAMES=$(sed -n 's/^CREDENTIAL_NAMES=//p' <<<"$DISCOVERY" | tail -1)
+
+PLAN=$(ADAPTERS="$ADAPTERS" CREDENTIAL_NAMES="$CREDENTIAL_NAMES" PRIVACY="$PRIVACY" TASK_CLASS="$TASK_CLASS" PLATFORM_REPO="$PLATFORM_REPO" python3 - <<'PY'
+import os, pathlib, sys
+root=pathlib.Path(os.environ['PLATFORM_REPO'])
+sys.path.insert(0, str(root/'engineer'))
+from provider_router import eligible_providers, load_policy
+policy=load_policy(root/'governor/policy.json')
+adapters={x for x in os.environ.get('ADAPTERS','').split(',') if x}
+secrets={x for x in os.environ.get('CREDENTIAL_NAMES','').split(',') if x}
+providers, considered=eligible_providers(
+    policy,
+    os.environ.get('TASK_CLASS','normal'),
+    secrets,
+    privacy=os.environ.get('PRIVACY','normal'),
+    available_adapters=adapters,
+)
+for item in considered:
+    print('EVIDENCE\t%s\t%s\t%s\t%s' % (item['provider'], item['status'], item['adapter'], item['cost']))
+for p in providers:
+    credentials=','.join(p.get('credentials') or ([p['credential']] if p.get('credential') else []))
+    print('PROVIDER\t%s\t%s\t%s\t%s\t%s' % (p['id'], p.get('adapter',''), p.get('openhands_model',''), credentials, p.get('role','')))
+PY
+)
+
+while IFS=$'\t' read -r kind a b c d e; do
+  [[ "$kind" == EVIDENCE ]] || continue
+  echo "PROVIDER_CONSIDERED=$a status=$b adapter=$c cost=$d"
+done <<<"$PLAN"
+
+mapfile -t PROVIDER_LINES < <(awk -F '\t' '$1=="PROVIDER" {print}' <<<"$PLAN")
+if (( ${#PROVIDER_LINES[@]} == 0 )); then
+  echo "RESULT=BLOCKED"
+  echo "REASON=no_eligible_engineering_provider"
+  exit 43
 fi
 
-echo "WORKTREE_STATUS_BEGIN"
-git status --short
-echo "WORKTREE_STATUS_END"
+MAX_ATTEMPTS=$(PLATFORM_REPO="$PLATFORM_REPO" python3 - <<'PY'
+import json, os, pathlib
+p=json.loads((pathlib.Path(os.environ['PLATFORM_REPO'])/'governor/policy.json').read_text())
+print(int(p['routing'].get('max_attempts_per_provider', 1)))
+PY
+)
+
+for line in "${PROVIDER_LINES[@]}"; do
+  IFS=$'\t' read -r _ PROVIDER ADAPTER MODEL CREDENTIALS ROLE <<<"$line"
+  for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
+    echo "PROVIDER_ATTEMPT=$PROVIDER attempt=$attempt role=$ROLE"
+    set +e
+    OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- \
+      "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" \
+      "$PROVIDER" "$ADAPTER" "$MODEL" "$CREDENTIALS" "$REMOTE_SECRET_FILE" <<'REMOTE'
+set -euo pipefail
+REPO=$1; PROMPT_B64=$2; JOB_ID=$3; ITERATION=$4; RUNTIME_PATH=$5
+PROVIDER=$6; ADAPTER=$7; MODEL=$8; CREDENTIALS=$9; SECRET_FILE=${10}
+git -C "$REPO" fetch origin main >/dev/null
+HELPER=$(mktemp)
+trap 'rm -f "$HELPER"' EXIT
+git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$HELPER"
+chmod 700 "$HELPER"
+LIFEOS_PROVIDER_SECRETS_FILE="$SECRET_FILE" "$HELPER" \
+  "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" \
+  "$PROVIDER" "$ADAPTER" "$MODEL" "$CREDENTIALS"
 REMOTE
+    )
+    RC=$?
+    set -e
+    printf '%s\n' "$OUTPUT"
+    if (( RC == 0 )); then
+      echo "PROVIDER_RESULT=$PROVIDER PASS"
+      exit 0
+    fi
+    echo "PROVIDER_RESULT=$PROVIDER RETRY exit=$RC"
+  done
+done
+
+echo "RESULT=RETRY"
+echo "REASON=eligible_providers_exhausted"
+exit 21
