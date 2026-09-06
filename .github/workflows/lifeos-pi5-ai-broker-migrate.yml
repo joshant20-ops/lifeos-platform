@@ -1,0 +1,152 @@
+name: LifeOS Pi5 AI Broker Migration
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-ai-broker-migration
+  cancel-in-progress: false
+
+jobs:
+  migrate-and-prove:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Migrate provider secrets from Engineer to Pi5
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          src='$HOME/.config/lifeos/provider-secrets.env'
+          tmp=$(mktemp)
+          trap 'rm -f "$tmp"' EXIT
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer "
+            set -Eeuo pipefail
+            test -f $src
+            test ! -L $src
+            test \"\$(stat -c '%a' $src)\" = 600
+            cat $src
+          " >"$tmp"
+          chmod 600 "$tmp"
+          python3 - "$tmp" <<'PY'
+          import pathlib,re,sys
+          p=pathlib.Path(sys.argv[1])
+          required={
+              'GEMINI_API_KEY','GROQ_API_KEY','OPENROUTER_API_KEY',
+              'CLOUDFLARE_API_TOKEN','CLOUDFLARE_ACCOUNT_ID',
+          }
+          names=set()
+          for raw in p.read_text().splitlines():
+              line=raw.strip()
+              if not line or line.startswith('#'): continue
+              if line.startswith('export '): line=line[7:].lstrip()
+              name,sep,value=line.partition('=')
+              if sep and value and re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*',name):
+                  names.add(name)
+          missing=required-names
+          if missing:
+              raise SystemExit('MISSING_PROVIDER_SECRET_NAMES='+','.join(sorted(missing)))
+          print('PI5_PROVIDER_SECRET_SET=COMPLETE')
+          PY
+          install -d -m 700 "$HOME/.config/lifeos"
+          install -m 600 "$tmp" "$HOME/.config/lifeos/provider-secrets.env"
+          test "$(stat -c '%a' "$HOME/.config/lifeos/provider-secrets.env")" = 600
+          echo 'PI5_PROVIDER_SECRETS_MIGRATED=PASS'
+
+      - name: Prove all direct cloud providers from Pi5
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 - <<'PY'
+          import importlib.util, pathlib
+          path=pathlib.Path('governor/ai_broker.py')
+          spec=importlib.util.spec_from_file_location('lifeos_ai_broker', path)
+          b=importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+          marker='LIFEOS_PI5_PROVIDER_SMOKE_OK'
+          for provider in ('gemini','groq','openrouter','cloudflare'):
+              r=b.generate('Reply with exactly '+marker, privacy='normal', task_class='normal', force_provider=provider)
+              text=str(r['text']).strip()
+              print(provider.upper()+'_SELECTED='+str(r['provider']))
+              if marker not in text:
+                  raise SystemExit(provider+': semantic smoke marker missing')
+              print(provider.upper()+'_INFERENCE=PASS')
+          print('PI5_DIRECT_CLOUD_INFERENCE=PASS')
+          PY
+
+      - name: Prove private routing remains local-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 - <<'PY'
+          import importlib.util,pathlib
+          path=pathlib.Path('governor/ai_broker.py')
+          spec=importlib.util.spec_from_file_location('lifeos_ai_broker',path)
+          b=importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+          eligible,considered=b.candidates(privacy='local-only',task_class='normal')
+          assert [p['id'] for p in eligible]==['ollama'], eligible
+          cloud={'gemini','groq','openrouter','cloudflare','codex'}
+          forbidden=[x for x in considered if x['provider'] in cloud]
+          assert forbidden and all(x['status']=='PRIVACY_FORBIDDEN' for x in forbidden), considered
+          try:
+              b.generate('private smoke',privacy='local-only',force_provider='gemini')
+          except b.BrokerError:
+              pass
+          else:
+              raise SystemExit('PRIVATE_CLOUD_FORCE_DID_NOT_FAIL_CLOSED')
+          print('PRIVATE_ROUTING_FAIL_CLOSED=PASS')
+          PY
+
+      - name: Remove cloud provider secrets from Engineer
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'python3 - <<'"'"'PY'"'"'
+          from pathlib import Path
+          import os
+          p=Path.home()/".config/lifeos/provider-secrets.env"
+          if not p.exists():
+              print("ENGINEER_PROVIDER_SECRETS=ABSENT")
+              raise SystemExit(0)
+          remove={
+              "GEMINI_API_KEY","GROQ_API_KEY","OPENROUTER_API_KEY",
+              "CLOUDFLARE_API_TOKEN","CLOUDFLARE_ACCOUNT_ID",
+          }
+          kept=[]
+          for raw in p.read_text().splitlines():
+              line=raw.strip()
+              name=line[7:].lstrip().partition("=")[0] if line.startswith("export ") else line.partition("=")[0]
+              if name not in remove:
+                  kept.append(raw)
+          if kept:
+              p.write_text("\n".join(kept)+"\n")
+              os.chmod(p,0o600)
+              print("ENGINEER_CLOUD_PROVIDER_SECRETS=REMOVED")
+          else:
+              p.unlink()
+              print("ENGINEER_PROVIDER_SECRETS_FILE=REMOVED")
+          PY'
+          echo 'ENGINEER_SECRET_RETIREMENT=PASS'
+
+      - name: Final repository regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'PI5_AI_BROKER_MIGRATION=PASS'
+          echo 'REPOSITORY_FINAL=PASS'
