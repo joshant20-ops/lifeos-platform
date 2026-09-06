@@ -19,7 +19,7 @@ import uuid
 from http.server import ThreadingHTTPServer
 
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
-CORE_PATH = pathlib.Path(os.environ.get("LIFEOS_AGENT_CORE", "/usr/local/libexec/lifeos-autonomous-agent-core"))
+CORE_PATH = pathlib.Path(os.environ.get("LIFEOS_AGENT_CORE", "/usr/local/libexec/lifeos-autonomous-agent-core.py"))
 BROKER_PATH = PLATFORM_REPO / "governor" / "ai_broker.py"
 BROKER_TOKEN_FILE = pathlib.Path(
     os.environ.get("LIFEOS_AI_BROKER_TOKEN_FILE", pathlib.Path.home() / ".config/lifeos/ai-broker.token")
