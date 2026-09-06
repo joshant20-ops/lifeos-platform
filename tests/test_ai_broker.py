@@ -71,6 +71,7 @@ def test_tool_chat_passes_openai_schema_through_gemini_compatibility(monkeypatch
     tools = [{"type": "function", "function": {"name": "write_file", "description": "write", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}}]
     result = BROKER.chat(messages, tools=tools, tool_choice="auto")
     assert captured["url"].endswith("/v1beta/openai/chat/completions")
+    assert captured["payload"]["model"] == "gemini-3.6-flash"
     assert captured["payload"]["messages"] is messages
     assert captured["payload"]["tools"] is tools
     assert captured["payload"]["tool_choice"] == "auto"
