@@ -4,6 +4,7 @@ set -euo pipefail
 START=$(date +%s)
 REPO=/home/joshan/lifeos-platform
 AGENT="$REPO/governor/autonomous_agent.py"
+PRIVACY_POLICY="$REPO/governor/privacy-domain-policy.json"
 BUILDER_SRC="$REPO/governor/scripts/lifeos-cloud-builder"
 UI="$REPO/governor/agent_ui.html"
 
@@ -11,7 +12,7 @@ UI="$REPO/governor/agent_ui.html"
 
 printf '===== LIFEOS AUTONOMOUS AGENT DEPLOY =====\n'
 printf 'Controller/Git/runtime: Pi5/Docker\n'
-printf 'Builder: cloud Codex on Engineer\n'
+printf 'Builder: governed Engineer provider routing\n'
 printf 'Verifier: local Qwen on TowerPC\n\n'
 
 printf '===== 1/7 — SYNC =====\n'
@@ -21,20 +22,22 @@ printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 
 printf '\n===== 2/7 — PREFLIGHT =====\n'
 python3 -m py_compile "$AGENT"
+python3 -m json.tool "$PRIVACY_POLICY" >/dev/null
 bash -n "$BUILDER_SRC"
 test -s "$UI"
 grep -q 'LifeOS Autonomous Agent' "$UI"
 ssh -o BatchMode=yes -o ConnectTimeout=5 Engineer '
-CODEX="$HOME/.local/bin/codex"
-test -x "$CODEX"
-echo "$CODEX"
-"$CODEX" --version
+OPENHANDS="$HOME/.local/bin/openhands"
+test -x "$OPENHANDS"
+echo "$OPENHANDS"
+"$OPENHANDS" --version
 ' | head -3
 curl -fsS --max-time 5 http://192.168.0.201:11434/api/tags >/dev/null
 printf 'PREFLIGHT=PASS\n'
 
 printf '\n===== 3/7 — INSTALL =====\n'
 sudo install -m 0755 "$AGENT" /usr/local/libexec/lifeos-autonomous-agent
+sudo install -m 0644 "$PRIVACY_POLICY" /usr/local/libexec/privacy-domain-policy.json
 sudo install -m 0755 "$BUILDER_SRC" /usr/local/libexec/lifeos-cloud-builder
 sudo install -d -m 0750 -o joshan -g joshan /var/lib/lifeos-agent
 
@@ -52,6 +55,7 @@ Environment=LIFEOS_AGENT_PORT=8790
 Environment=LIFEOS_AGENT_STATE=/var/lib/lifeos-agent
 Environment=LIFEOS_AGENT_MAX_ITERATIONS=8
 Environment=LIFEOS_AGENT_BUILDER=/usr/local/libexec/lifeos-cloud-builder
+Environment=LIFEOS_PRIVACY_DOMAIN_POLICY=/usr/local/libexec/privacy-domain-policy.json
 Environment=LIFEOS_LOCAL_VERIFIER_URL=http://192.168.0.201:11434/api/generate
 Environment=LIFEOS_LOCAL_VERIFIER_MODEL=qwen2.5-coder:7b-instruct
 Environment=LIFEOS_PLATFORM_REPO=/home/joshan/lifeos-platform
@@ -101,14 +105,16 @@ PY
 
 printf '\n===== 5/7 — PRIVACY FAIL-CLOSED TEST =====\n'
 PRIVATE_OUT=$(curl -fsS --max-time 60 -H 'Content-Type: application/json' \
-  -d '{"request":"Read my private Paperless documents and summarize them"}' \
+  -d '{"request":"Summarize upcoming appointments","privacy_domain":"personal-administration"}' \
   http://127.0.0.1:8790/jobs)
 python3 - "$PRIVATE_OUT" <<'PY'
 import json,sys
 j=json.loads(sys.argv[1])
 print('PRIVACY='+j['privacy'])
+print('PRIVACY_DOMAIN='+str(j.get('privacy_domain')))
 print('STATUS='+j['status'])
 assert j['privacy']=='local-only'
+assert j['privacy_domain']=='personal-administration'
 assert j['status']=='BLOCKED'
 assert not any('PI5_PATCH=APPLIED' in x.get('evidence','') for x in j.get('iterations',[]))
 print('PRIVACY_BOUNDARY=PASS')
@@ -159,10 +165,11 @@ printf 'INPUT=natural_language_web_or_api\n'
 printf 'CONTROLLER=Pi5\n'
 printf 'GIT_PUBLISHER=Pi5\n'
 printf 'RUNTIME_EXECUTOR=Pi5\n'
-printf 'BUILDER=Engineer_Codex_cloud\n'
+printf 'BUILDER=Engineer_governed_provider_router\n'
 printf 'VERIFIER=TowerPC_Qwen_local\n'
 printf 'ITERATES_TO=PASS_or_external_BLOCKED_or_8_iterations\n'
 printf 'PRIVATE_DOCUMENTS_TO_CLOUD=blocked\n'
+printf 'PRIVATE_DOMAINS_TO_CLOUD=blocked\n'
 printf 'API=http://127.0.0.1:8790/jobs\n'
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
 if [[ -n "${LAN_IP:-}" ]]; then
