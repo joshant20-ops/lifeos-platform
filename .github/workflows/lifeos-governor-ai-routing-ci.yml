@@ -8,9 +8,10 @@ on:
       - 'engineer/openhands_worker.py'
       - 'governor/ai_broker.py'
       - 'governor/assistant_bridge.py'
+      - 'governor/autonomous_agent.py'
+      - 'governor/autonomous_agent_server.py'
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
-      - 'governor/autonomous_agent.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
@@ -27,9 +28,10 @@ on:
       - 'engineer/openhands_worker.py'
       - 'governor/ai_broker.py'
       - 'governor/assistant_bridge.py'
+      - 'governor/autonomous_agent.py'
+      - 'governor/autonomous_agent_server.py'
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
-      - 'governor/autonomous_agent.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
@@ -61,7 +63,8 @@ jobs:
             engineer/openhands_worker.py \
             governor/ai_broker.py \
             governor/assistant_bridge.py \
-            governor/autonomous_agent.py
+            governor/autonomous_agent.py \
+            governor/autonomous_agent_server.py
           python3 -m json.tool governor/policy.json >/dev/null
           python3 -m json.tool governor/privacy-domain-policy.json >/dev/null
           bash -n governor/scripts/deploy-autonomous-agent-pi5.sh
@@ -95,6 +98,9 @@ jobs:
           grep -F 'governor-broker' engineer/openhands_worker.py >/dev/null
           grep -F 'GOVERNOR_BROKER' governor/scripts/lifeos-remote-agent-builder >/dev/null
           grep -F 'LIFEOS_PRIVACY_DOMAIN_POLICY' governor/autonomous_agent.py >/dev/null
-          grep -F 'privacy-domain-policy.json' governor/scripts/deploy-autonomous-agent-pi5.sh >/dev/null
+          grep -F '/v1/chat/completions' governor/autonomous_agent_server.py >/dev/null
+          grep -F 'broker_capability_required' governor/autonomous_agent_server.py >/dev/null
+          grep -F 'lifeos-autonomous-agent-core' governor/scripts/deploy-autonomous-agent-pi5.sh >/dev/null
+          grep -F 'CLOUD_INFERENCE_REQUIRES_ENGINEER=NO' governor/scripts/deploy-autonomous-agent-pi5.sh >/dev/null
           grep -F 'CLOUDFLARE_ACCOUNT_ID' .github/workflows/lifeos-pi5-ai-broker-migrate.yml >/dev/null
           echo 'GOVERNOR_AI_ROUTING_CI=PASS'
