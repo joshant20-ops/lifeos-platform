@@ -129,9 +129,14 @@ def broker_chat(body):
         raise ValueError("messages_required")
     requested_model = str(body.get("model", "lifeos-normal"))
     requested_privacy = "local-only" if "local-only" in requested_model else "normal"
+    task_class = "normal"
+    for candidate in ("substantial", "review", "normal"):
+        if candidate in requested_model:
+            task_class = candidate
+            break
     detected = classify_privacy("\n".join(raw))
     privacy = "local-only" if detected == "local-only" else requested_privacy
-    routed = generate("\n".join(lines), privacy=privacy, task_class="normal")
+    routed = generate("\n".join(lines), privacy=privacy, task_class=task_class)
     return {
         "id": "chatcmpl-" + uuid.uuid4().hex[:20],
         "object": "chat.completion",
@@ -145,6 +150,7 @@ def broker_chat(body):
         "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
         "lifeos_provider": routed["provider"],
         "lifeos_privacy": privacy,
+        "lifeos_task_class": task_class,
     }
 
 
