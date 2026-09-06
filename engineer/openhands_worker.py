@@ -55,7 +55,7 @@ def packet(task_file, repo, maximum=16000):
     )
 
 
-def broker_environment(path: Path, privacy: str) -> dict[str, str]:
+def broker_environment(path: Path, privacy: str, task_class: str = "normal") -> dict[str, str]:
     if not path.is_file() or path.is_symlink() or stat.S_IMODE(path.stat().st_mode) != 0o600:
         raise RuntimeError("broker config must be regular non-symlink mode-0600")
     values = {}
@@ -72,7 +72,8 @@ def broker_environment(path: Path, privacy: str) -> dict[str, str]:
         raise RuntimeError("broker URL unavailable")
     if not token:
         raise RuntimeError("broker token unavailable")
-    model = "openai/lifeos-local-only" if privacy == "local-only" else "openai/lifeos-normal"
+    suffix = task_class if task_class in {"normal", "substantial", "review"} else "normal"
+    model = f"openai/lifeos-local-only-{suffix}" if privacy == "local-only" else f"openai/lifeos-{suffix}"
     return {
         "LIFEOS_PROVIDER": "governor-broker",
         "LLM_MODEL": model,
@@ -114,7 +115,7 @@ def main():
         before = git(a.repo, "rev-parse", "refs/heads/main")
         context = packet(a.task, a.repo)
         policy = load_policy(ROOT / "governor/policy.json")
-        broker_env = broker_environment(a.broker_config, a.privacy)
+        broker_env = broker_environment(a.broker_config, a.privacy, a.task_class)
         evidence.update(
             max_attempts=policy["routing"]["max_attempts_per_provider"],
             branch=branch,
