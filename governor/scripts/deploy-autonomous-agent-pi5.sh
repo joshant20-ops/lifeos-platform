@@ -2,6 +2,8 @@
 set -euo pipefail
 
 START=$(date +%s)
+TMPDIR=$(mktemp -d)
+trap 'rm -rf "$TMPDIR"' EXIT
 REPO=/home/joshan/lifeos-platform
 AGENT_CORE="$REPO/governor/autonomous_agent.py"
 AGENT_SERVER="$REPO/governor/autonomous_agent_server.py"
@@ -116,12 +118,11 @@ assert j['runtime_controller']=='pi5'
 assert j['git_controller']=='pi5'
 print('AGENT_HEALTH=PASS')
 PY
-code=$(curl -sS -o /tmp/lifeos-broker-unauth.json -w '%{http_code}' --max-time 10 \
+code=$(curl -sS -o "$TMPDIR/broker-unauth.json" -w '%{http_code}' --max-time 10 \
   -H 'Content-Type: application/json' \
   -d '{"model":"lifeos-normal","messages":[{"role":"user","content":"test"}]}' \
   http://127.0.0.1:8790/v1/chat/completions)
 test "$code" = 401
-rm -f /tmp/lifeos-broker-unauth.json
 printf 'BROKER_UNAUTHENTICATED_REJECT=PASS\n'
 BROKER_REQ=$(python3 - <<'PY'
 import json
@@ -145,20 +146,22 @@ PY
 
 printf '\n===== 6/8 — UI + PRIVACY FAIL-CLOSED =====\n'
 curl -fsS --max-time 3 http://127.0.0.1:8790/ | grep -q 'LifeOS Autonomous Agent'
-JOBS=$(curl -fsS --max-time 3 http://127.0.0.1:8790/jobs)
-python3 - "$JOBS" <<'PY'
-import json,sys
-j=json.loads(sys.argv[1])
+JOBS_FILE="$TMPDIR/jobs.json"
+curl -fsS --max-time 10 -o "$JOBS_FILE" http://127.0.0.1:8790/jobs
+python3 - "$JOBS_FILE" <<'PY'
+import json,pathlib,sys
+j=json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert isinstance(j.get('jobs'), list)
 print('AGENT_UI=PASS')
 print('JOB_LIST_API=PASS')
 PY
-PRIVATE_OUT=$(curl -fsS --max-time 60 -H 'Content-Type: application/json' \
+PRIVATE_FILE="$TMPDIR/private-job.json"
+curl -fsS --max-time 60 -H 'Content-Type: application/json' \
   -d '{"request":"Summarize upcoming appointments","privacy_domain":"personal-administration"}' \
-  http://127.0.0.1:8790/jobs)
-python3 - "$PRIVATE_OUT" <<'PY'
-import json,sys
-j=json.loads(sys.argv[1])
+  -o "$PRIVATE_FILE" http://127.0.0.1:8790/jobs
+python3 - "$PRIVATE_FILE" <<'PY'
+import json,pathlib,sys
+j=json.loads(pathlib.Path(sys.argv[1]).read_text())
 assert j['privacy']=='local-only'
 assert j['privacy_domain']=='personal-administration'
 assert j['status']=='BLOCKED'
@@ -175,15 +178,16 @@ import json,sys
 print(json.dumps({'request':sys.argv[1]}))
 PY
 )
-SMOKE=$(curl -fsS --max-time 1100 -H 'Content-Type: application/json' \
-  -d "$SMOKE_JSON" http://127.0.0.1:8790/jobs)
-python3 - "$SMOKE" <<'PY'
+SMOKE_FILE="$TMPDIR/e2e-smoke.json"
+curl -fsS --max-time 1100 -H 'Content-Type: application/json' \
+  -d "$SMOKE_JSON" -o "$SMOKE_FILE" http://127.0.0.1:8790/jobs
+python3 - "$SMOKE_FILE" <<'PY'
 import importlib.util
 import json
 import pathlib
 import sys
 
-j=json.loads(sys.argv[1])
+j=json.loads(pathlib.Path(sys.argv[1]).read_text())
 print('JOB_ID='+j['id'])
 print('STATUS='+j['status'])
 print('ITERATIONS='+str(len(j.get('iterations',[]))))
