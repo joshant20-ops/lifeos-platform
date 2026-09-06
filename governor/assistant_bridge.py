@@ -5,10 +5,11 @@ import pathlib
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+from ai_broker import BrokerError, generate
+from autonomous_agent import classify_privacy
+
 PORT = int(os.environ.get("LIFEOS_ASSISTANT_PORT", "8791"))
 AGENT_URL = os.environ.get("LIFEOS_AGENT_URL", "http://127.0.0.1:8790")
-OLLAMA_URL = os.environ.get("LIFEOS_ASSISTANT_MODEL_URL", "http://192.168.0.201:11434/api/generate")
-OLLAMA_MODEL = os.environ.get("LIFEOS_ASSISTANT_MODEL", "qwen2.5-coder:7b-instruct")
 UI_PATH = pathlib.Path(os.environ.get("LIFEOS_ASSISTANT_UI", "/home/joshan/lifeos-platform/governor/assistant_ui.html"))
 
 SYSTEM = """You are the conversational front door to the LifeOS autonomous engineering agent.
@@ -23,7 +24,9 @@ Behave like a capable technical partner rather than a command parser:
 - Distinguish between optional improvements and things required for correctness.
 - Never claim a change has been made until the autonomous job has actually completed.
 - Prefer safe, reversible and observable changes.
-- Preserve the LifeOS privacy boundary. This conversational analysis is local. The final engineering job may use cloud Codex, so do not put secrets, private documents, emails, banking, medical data, credentials, tokens or other private content into proposed_job.
+- Preserve the LifeOS privacy boundary. Private/personal/financial/document context is local-only.
+- Cloud-safe public/general analysis may use Governor-approved cloud inference.
+- Do not put secrets, private documents, emails, banking, medical data, credentials, tokens or other private content into proposed_job.
 - If the request contains private material, produce a safe redacted engineering brief or say that the requested job must remain local-only.
 
 Return JSON only with these keys:
@@ -49,23 +52,18 @@ def get_json(url, timeout=10):
         return json.load(response)
 
 
-def analyse(messages):
+def analyse(messages, privacy_domain=None):
     history = []
+    raw_context = []
     for item in messages[-12:]:
         role = str(item.get("role", "user"))[:16]
         content = str(item.get("content", ""))[:6000]
         history.append(f"{role.upper()}: {content}")
+        raw_context.append(content)
+    privacy = classify_privacy("\n".join(raw_context), domain=privacy_domain)
     prompt = SYSTEM + "\n\nConversation:\n" + "\n".join(history) + "\n\nReturn the JSON now."
-    payload = {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.25, "num_ctx": 8192},
-    }
-    result = post_json(OLLAMA_URL, payload)
-    raw = result.get("response", "{}")
-    parsed = json.loads(raw)
+    routed = generate(prompt, privacy=privacy, task_class="normal")
+    parsed = json.loads(routed["text"])
     return {
         "reply": str(parsed.get("reply", "")),
         "understanding": str(parsed.get("understanding", "")),
@@ -74,6 +72,8 @@ def analyse(messages):
         "improvements": [str(x) for x in parsed.get("improvements", [])[:4]],
         "ready_to_run": bool(parsed.get("ready_to_run", False)),
         "proposed_job": str(parsed.get("proposed_job", "")),
+        "privacy": privacy,
+        "provider": routed["provider"],
     }
 
 
@@ -103,7 +103,13 @@ class Handler(BaseHTTPRequestHandler):
         if self.path == "/health":
             try:
                 agent = get_json(AGENT_URL + "/health")
-                self.send_json(200, {"service": "lifeos-assistant", "status": "ok", "agent": agent.get("status"), "model": OLLAMA_MODEL})
+                self.send_json(200, {
+                    "service": "lifeos-assistant",
+                    "status": "ok",
+                    "agent": agent.get("status"),
+                    "inference": "governor-routed",
+                    "cloud_requires_engineer": False,
+                })
             except Exception as exc:
                 self.send_json(503, {"service": "lifeos-assistant", "status": "degraded", "detail": type(exc).__name__})
             return
@@ -129,7 +135,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(messages, list) or not messages:
                     self.send_json(400, {"error": "messages_required"})
                     return
-                self.send_json(200, analyse(messages))
+                self.send_json(200, analyse(messages, privacy_domain=body.get("privacy_domain")))
+            except BrokerError as exc:
+                self.send_json(503, {"error": "inference_unavailable", "detail": str(exc)})
             except Exception as exc:
                 self.send_json(502, {"error": "assistant_unavailable", "detail": type(exc).__name__})
             return
@@ -140,7 +148,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not request:
                     self.send_json(400, {"error": "request_required"})
                     return
-                result = post_json(AGENT_URL + "/jobs?async=1", {"request": request}, timeout=15)
+                payload = {"request": request}
+                if body.get("privacy_domain"):
+                    payload["privacy_domain"] = body.get("privacy_domain")
+                result = post_json(AGENT_URL + "/jobs?async=1", payload, timeout=15)
                 self.send_json(202, result)
             except Exception as exc:
                 self.send_json(502, {"error": "agent_unavailable", "detail": type(exc).__name__})
