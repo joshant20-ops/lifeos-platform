@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-wave-a-acceptance.yml'
+      - 'scripts/audit-wave-a-live-acceptance.py'
   workflow_dispatch:
 
 permissions:
