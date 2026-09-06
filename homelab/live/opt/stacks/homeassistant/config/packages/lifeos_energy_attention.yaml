@@ -6,6 +6,7 @@ command_line:
       scan_interval: 300
       value_template: "{{ value_json.state }}"
       json_attributes:
+        - available
         - count
         - attention_id
         - opportunity_ids

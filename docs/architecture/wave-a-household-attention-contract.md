@@ -8,15 +8,13 @@ Wave A connects existing household intelligence to one common attention surface 
 
 - **Home Assistant** remains authoritative for devices, home automation and household presentation.
 - **LifeOS Energy / Octopus / Predbat / Enphase** retain their specialist energy roles.
-- `energy/app/opportunities.py` remains the authoritative LifeOS negative-import opportunity model and stable identity/deduplication implementation.
+- LifeOS Energy remains the authoritative negative-import opportunity model and stable identity/deduplication implementation.
 - The **Personal Assistant attention surface** owns presentation of items that need household attention.
 - MQTT remains transport where already appropriate; it is not made a second system of record by Wave A.
 
 ## Energy Opportunity -> attention projection
 
-`run-energy-opportunity-detection.py` continues to detect and persist current `EnergyOpportunity` records. It remains free of notification and energy-control side effects.
-
-`project-energy-opportunities-to-ha.py` is deliberately thin presentation glue. It converts the current records into one deterministic JSON projection consumed by Home Assistant. It does not detect prices, send messages, or control hardware.
+The existing LifeOS Energy process now detects and persists current `EnergyOpportunity` records using its supported Octopus client and persistent `/data` volume. It exposes the deterministic projection at `/api/energy/opportunities/current`. It remains free of notification and energy-control side effects.
 
 The projection contract is:
 
@@ -30,9 +28,9 @@ No generated timestamp is included. Replaying the same input therefore produces 
 
 ## Home Assistant integration
 
-Home Assistant reads the local projection through `lifeos_energy_attention_sensor.py` and exposes `LifeOS Energy Opportunity Attention`. The existing `LifeOS Attention Summary` consumes that sensor. There is no parallel notification framework.
+Home Assistant preserves the stable `sensor.lifeos_energy_opportunity_attention` entity. Its small compatibility adapter reads the LifeOS Energy API directly; it no longer reads a generated JSON interchange file. The existing `LifeOS Attention Summary` consumes that sensor. There is no parallel notification framework.
 
-The local refresh timer runs the existing detector and the projector as the unprivileged `joshan` account every five minutes. Root is needed only to install/manage the native systemd unit and HA configuration through the governed deployment gateway; the recurring workload itself is not privileged.
+LifeOS Energy refreshes opportunities inside its existing application scheduler every five minutes. The separate detector/projector systemd service and timer are retired.
 
 ## Household delivery
 
@@ -44,4 +42,4 @@ Stage 8 is satisfied by retaining Home Assistant as the authoritative device/aut
 
 ## Closure proof
 
-Wave A closes only after live Pi5 evidence proves: detector health, deterministic replay/dedupe, HA entity registration, common attention integration, enabled local scheduler, Home Assistant/Mosquitto/Predbat/LifeOS Energy health, and a clean canonical repository.
+The household Energy integration remains accepted only while live Pi5 evidence proves: specialist API health, deterministic replay/dedupe, HA entity registration, common attention integration, internal scheduler operation, retirement of the legacy JSON/timer bridge, Home Assistant/Mosquitto/Predbat/LifeOS Energy health, and a clean canonical repository.
