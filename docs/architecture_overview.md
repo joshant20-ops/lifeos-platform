@@ -8,8 +8,10 @@ and evidence channel, not an alternative implementation source. The detailed
 repository contract is in `architecture/REPOSITORY_MODEL.md`.
 
 Pi5 is the permanent, always-on Governor and control plane. It owns canonical Git
-publication and coordinates work. Watchman is the sole runtime execution
-gatekeeper: proposals do not become runtime actions without its policy decision.
+publication and coordinates work. The root-broker socket is the sole runtime
+execution gatekeeper; privileged mutations additionally pass through the protected
+transaction controller and its independent rollback watchdog. The retired Watchman
+name may remain in historical evidence, but it is not a live runtime component.
 
 ## Compute roles
 
@@ -40,12 +42,14 @@ their responsibilities or relax the separation rule.
 1. An engineering actor writes a proposal as reviewable repository state.
 2. Independent validation records evidence without mutating the proposal.
 3. Pi5 accepts an immutable revision through the control channel.
-4. Watchman evaluates policy and either rejects the request or permits execution.
+4. The root broker evaluates the bounded request and either rejects it or admits it
+   to the protected transaction controller.
 5. Runtime evidence returns through files or queue state for later review.
 
-## Unresolved decisions
+## Conditional decisions
 
-- TODO: Define objective criteria for restoring a dedicated Engineer or Auditor
-  worker if an established component cannot meet a future workload.
-- TODO: Record the final Z97 retirement evidence and date after every migration
-  gate passes.
+- Restore a dedicated Engineer or Auditor worker only when a measured workload
+  cannot be met by the current OTS-backed path and an architecture decision records
+  ownership, isolation, health, rollback and retirement criteria.
+- Retire Z97 only through the checklist in `operations/z97-retirement.md`; until
+  every gate is evidenced it remains migration-only and has no new authority.

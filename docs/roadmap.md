@@ -3,7 +3,7 @@
 ## Current priorities
 
 1. Keep `lifeos-platform` authoritative and maintain immutable source identity in every runtime request.
-2. Preserve Watchman as the only privileged execution gate and retain auditable result evidence.
+2. Preserve the root broker plus protected transaction controller as the only privileged execution gate and retain auditable result evidence.
 3. Continue user-facing capability delivery on top of the completed foundation and completed OTS/operations baselines.
 4. Prefer established open-source capabilities; add custom components only when a documented gap and maintenance owner exist.
 5. Retire migration-only systems after health, rollback and evidence gates pass.
@@ -24,8 +24,10 @@
 - Documentation and decision records stay aligned with deployed authority.
 - OTS rationalisation is now a standing maintenance policy rather than a perpetually open migration stage.
 
-## TODO
+## Foundational corrections
 
-- Choose and document stable schemas and retention rules for proposal, audit and assistant queue records.
-- Define service-level objectives for Governor and Watchman availability.
-- Publish the Z97 retirement checklist after migration inventory is reconciled.
+- Record schemas and retention: **DEFINED** in `operations/records-retention.md`.
+- Governor and privileged-boundary SLOs: **DEFINED** in `operations/control-plane-slos.md`.
+- Z97 retirement checklist: **PUBLISHED** in `operations/z97-retirement.md`; retirement remains gated on live dependency evidence.
+- System simplification map: **RECORDED** in `architecture/system-simplification-map.md`.
+- Transactional-root first production increment: **COMPLETE**; broader operation types remain fail-closed until separately designed and proven.

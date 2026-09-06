@@ -1,8 +1,8 @@
-# Transactional root changes (increment 1)
+# Transactional root changes
 
-Issue #26 remains valid. The bounded root broker has allowlists, approvals and
-immediate in-process rollback, but that rollback dies with the broker and does
-not provide the required two-hour dead-man guarantee.
+The first production increment of issue #26 is complete. The bounded root broker
+retains allowlists and approvals; privileged file replacement is protected by a
+separate durable controller and two-hour dead-man watchdog.
 
 This increment adds a minimal protected recovery core for `LOW`/`MEDIUM` risk
 atomic file replacement. The root-owned controller creates durable state and a
@@ -25,15 +25,29 @@ The Pi5 launcher performs initial install only when the protected files are
 absent or byte-identical. A changed recovery core fails closed because its next
 upgrade requires an A/B design retaining the known-good copy.
 
-## Trust and remaining scope
+## Production proof
+
+The Governor provider-aware builder is an existing privileged deployment now
+routed through `begin -> apply -> verify -> commit`. Its canonical hash and the
+active Governor service are measured by the protected controller before commit.
+Live transaction `governor-ai-routing-34032013540` committed successfully with
+the watchdog armed before mutation. The harmless canary also proved the forced
+rollback path end-to-end. This satisfies the required incremental deployment
+approach without widening the controller into a generic root shell.
+
+Transaction state is a root-owned durable audit surface. Human-facing progress
+systems may render its state, component, risk, deadline, evidence and rollback
+result, but they do not author commit evidence.
+
+## Trust and bounded scope
 
 Pi5/Watchman remains the runtime authority and canonical Git writer. The model
 has no interactive root shell and cannot write the root-owned state directory.
-The controller does not yet broaden package, database, container, credential or
-network authority. Existing broker deployments have not yet been migrated to
-this API; that is the next increment after the runtime canary proves both commit
-and forced rollback. Higher-risk operations remain denied rather than silently
-receiving insufficient backup depth.
+The controller does not broaden package, database, container, credential,
+systemd-unit or network authority. Those operation types are deliberately denied
+until each has an operation-specific recovery design, independent verification,
+bounded retry policy and live rollback proof. This is fail-closed scope, not an
+unfinished generic authority promise.
 
-Rollback of this increment is an explicit protected-core A/B operation; ordinary
-deployment paths cannot overwrite or remove it.
+Changing the protected recovery core requires an explicit A/B operation retaining
+the known-good path. Ordinary deployment paths cannot overwrite or remove it.
