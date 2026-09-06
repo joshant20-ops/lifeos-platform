@@ -34,22 +34,31 @@ jobs:
           path=pathlib.Path('governor/ai_broker.py')
           spec=importlib.util.spec_from_file_location('lifeos_ai_broker', path)
           b=importlib.util.module_from_spec(spec); spec.loader.exec_module(b)
+          policy=b.ROUTER.load_policy(b.POLICY_PATH)
+          providers={p['id']:p for p in policy['providers']}
+          secrets=b._strict_env(b.SECRETS_PATH)
           marker='LIFEOS_PI5_PROVIDER_DIAGNOSTIC_OK'
           failures=[]
-          for provider in ('gemini','groq','openrouter','cloudflare'):
+          for provider_id in ('gemini','groq','openrouter','cloudflare'):
               try:
-                  result=b.generate('Reply with exactly '+marker, privacy='normal', task_class='normal', force_provider=provider)
-                  text=str(result.get('text','')).strip()
-                  if marker not in text:
-                      print(provider.upper()+'_DIAGNOSTIC=FAIL reason=SEMANTIC_MARKER')
-                      failures.append(provider+':SEMANTIC_MARKER')
+                  text=b._invoke(providers[provider_id], 'Reply with exactly '+marker, secrets)
+                  if marker not in str(text):
+                      reason='SEMANTIC_MARKER'
+                      print(provider_id.upper()+'_DIAGNOSTIC=FAIL reason='+reason)
+                      failures.append(provider_id+':'+reason)
                   else:
-                      print(provider.upper()+'_DIAGNOSTIC=PASS')
+                      print(provider_id.upper()+'_DIAGNOSTIC=PASS')
               except Exception as exc:
-                  match=re.search(r'provider HTTP ([0-9]{3})', str(exc))
-                  reason='HTTP_'+match.group(1) if match else type(exc).__name__
-                  print(provider.upper()+'_DIAGNOSTIC=FAIL reason='+reason)
-                  failures.append(provider+':'+reason)
+                  message=str(exc)
+                  match=re.search(r'provider HTTP ([0-9]{3})', message)
+                  if match:
+                      reason='HTTP_'+match.group(1)
+                  elif 'empty response' in message.lower():
+                      reason='EMPTY_RESPONSE'
+                  else:
+                      reason=type(exc).__name__
+                  print(provider_id.upper()+'_DIAGNOSTIC=FAIL reason='+reason)
+                  failures.append(provider_id+':'+reason)
           if failures:
               print('PI5_CLOUD_PROVIDER_DIAGNOSTIC=FAIL '+','.join(failures))
               raise SystemExit(1)
