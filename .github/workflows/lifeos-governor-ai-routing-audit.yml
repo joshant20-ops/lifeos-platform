@@ -1,0 +1,109 @@
+name: LifeOS Governor AI Routing Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-governor-ai-routing-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "HEAD=$(git rev-parse HEAD)"
+
+      - name: Audit live Governor routes and provider tooling
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '===== GOVERNOR ====='
+          systemctl is-active lifeos-autonomous-agent.service
+          systemctl show lifeos-autonomous-agent.service -p FragmentPath -p ActiveState -p SubState --no-pager
+          printf 'AGENT_HEALTH='
+          curl -fsS --max-time 5 http://127.0.0.1:8790/health | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status","unknown"))'
+          printf 'PI_OPENHANDS='
+          if command -v openhands >/dev/null 2>&1; then echo present; else echo absent; fi
+          printf 'PI_CODEX='
+          if command -v codex >/dev/null 2>&1; then echo present; else echo absent; fi
+
+          echo '===== ENGINEER HOST TOOLING ====='
+          if ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'true' >/dev/null 2>&1; then
+            echo 'ENGINEER_SSH=PASS'
+            ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer '
+              printf "ENGINEER_OPENHANDS="; if command -v openhands >/dev/null 2>&1; then echo present; else echo absent; fi
+              printf "ENGINEER_CODEX="; if command -v codex >/dev/null 2>&1 || test -x "$HOME/.local/bin/codex"; then echo present; else echo absent; fi
+            '
+          else
+            echo 'ENGINEER_SSH=UNAVAILABLE'
+          fi
+
+          echo '===== CURRENT SOURCE ROUTING ====='
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=json.loads(Path('governor/policy.json').read_text())
+          print('POLICY_SCHEMA=' + str(p.get('schema_version')))
+          print('POLICY=' + str(p.get('policy')))
+          print('PROVIDERS=' + ','.join(x['id'] for x in p.get('providers', [])))
+          print('PAID_FALLBACK=' + str(p.get('routing',{}).get('allow_paid_fallback')))
+          PY
+          grep -F 'DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})' governor/autonomous_agent.py >/dev/null
+          echo 'LIVE_AGENT_ROUTE_SHAPE=normal_or_local'
+
+      - name: Audit Watchman versus current privileged boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '===== PRIVILEGED BOUNDARY ====='
+          for unit in lifeos-root-broker.socket lifeos-root-broker.service; do
+            printf '%s=' "$unit"
+            systemctl is-active "$unit" 2>/dev/null || true
+          done
+          for path in /usr/local/sbin/lifeos-root-broker /usr/local/sbin/lifeos-transaction-controller /usr/local/sbin/lifeos-rollback; do
+            printf '%s=' "$path"
+            test -e "$path" && echo present || echo absent
+          done
+
+          mapfile -t watchman_units < <(systemctl list-unit-files --no-legend --no-pager 2>/dev/null | awk 'tolower($1) ~ /watchman/ {print $1}')
+          echo "WATCHMAN_UNIT_COUNT=${#watchman_units[@]}"
+          for unit in "${watchman_units[@]}"; do
+            state=$(systemctl is-active "$unit" 2>/dev/null || true)
+            echo "WATCHMAN_UNIT=$unit state=${state:-unknown}"
+          done
+          if pgrep -af '[Ww]atchman' >/tmp/lifeos-watchman-process-audit.$$ 2>/dev/null; then
+            count=$(wc -l </tmp/lifeos-watchman-process-audit.$$)
+          else
+            count=0
+          fi
+          rm -f /tmp/lifeos-watchman-process-audit.$$
+          echo "WATCHMAN_PROCESS_MATCHES=$count"
+          residue=$(find /opt/stacks/homeassistant/config -maxdepth 3 -type f -iname '*watchman*' 2>/dev/null | wc -l)
+          echo "HA_WATCHMAN_RESIDUE_FILES=$residue"
+          echo 'GOVERNOR_AI_ROUTING_AUDIT=PASS'
+
+      - name: Prove repository non-mutation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'REPOSITORY_FINAL=PASS'
