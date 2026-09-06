@@ -42,6 +42,11 @@ jobs:
           command -v ollama >/dev/null
           ollama --version
           systemctl show ollama.service -p FragmentPath -p DropInPaths -p Environment
+          for f in /etc/systemd/system/ollama.service.d/*.conf; do
+            [[ -f "$f" ]] || continue
+            echo "--- DROPIN:$f ---"
+            sudo -n cat "$f"
+          done
           echo 'TOWER_OLLAMA_PREFLIGHT=PASS'
           REMOTE
 
@@ -51,8 +56,7 @@ jobs:
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           cfg=homelab/tower/ollama/10-lifeos-gpu.conf
-          base64 -w0 "$cfg" >/tmp/lifeos-ollama-gpu-conf.b64
-          payload=$(cat /tmp/lifeos-ollama-gpu-conf.b64)
+          payload=$(base64 -w0 "$cfg")
           ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' -- "$payload" <<'REMOTE'
           set -Eeuo pipefail
           payload=$1
@@ -102,10 +106,10 @@ jobs:
           ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
           set -Eeuo pipefail
           model=qwen2.5-coder:7b-instruct
-          curl -fsS --max-time 5 http://127.0.0.1:11434/api/tags | python3 - "$model" <<'PY'
+          curl -fsS --max-time 5 http://127.0.0.1:11434/api/tags >/tmp/lifeos-gpu-default-tags.json
+          python3 - /tmp/lifeos-gpu-default-tags.json "$model" <<'PY'
           import json,sys
-          model=sys.argv[1]
-          j=json.load(sys.stdin)
+          j=json.load(open(sys.argv[1])); model=sys.argv[2]
           assert any(m.get('name')==model for m in j.get('models',[])), j
           print('MODEL_PRESENT=PASS')
           PY
