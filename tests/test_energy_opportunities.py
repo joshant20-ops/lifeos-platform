@@ -1,4 +1,5 @@
 import importlib.util
+import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -6,7 +7,7 @@ from pathlib import Path
 
 P=Path(__file__).resolve().parents[1]/'energy/app/opportunities.py'
 spec=importlib.util.spec_from_file_location('energy_opportunities',P)
-m=importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+m=importlib.util.module_from_spec(spec); sys.modules[spec.name]=m; spec.loader.exec_module(m)
 
 
 class EnergyOpportunityTests(unittest.TestCase):
