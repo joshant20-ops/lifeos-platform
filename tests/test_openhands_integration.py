@@ -165,7 +165,7 @@ def test_openhands_private_job_requests_local_only_broker_model(tmp_path):
     )
     broker.chmod(0o600)
     env = broker_environment(broker, "local-only")
-    assert env["LLM_MODEL"] == "openai/lifeos-local-only"
+    assert env["LLM_MODEL"] == "openai/lifeos-local-only-normal"
 
 
 def test_cleanup_is_dry_run_and_never_classifies_safe_to_remove(tmp_path):
