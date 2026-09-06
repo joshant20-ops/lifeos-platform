@@ -1,0 +1,110 @@
+name: LifeOS AI Smoke Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-ai-smoke-test.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Confirm Engineer PC and VM, wake if required
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer 'true' 2>/dev/null; then
+            echo 'ENGINEER_VM_INITIAL=ONLINE'
+          else
+            echo 'ENGINEER_VM_INITIAL=OFFLINE'
+            wol_helper=''
+            for c in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
+              if test -x "$c"; then wol_helper="$c"; break; fi
+            done
+            if test -n "$wol_helper"; then
+              "$wol_helper"
+              echo "WAKE_PATH=$wol_helper"
+            elif systemctl list-unit-files --no-legend --no-pager | awk '{print $1}' | grep -Eq '^(lifeos-.*(engineer|tower).*(wake|wol)|.*(wake|wol).*(engineer|tower).*)\.service$'; then
+              unit=$(systemctl list-unit-files --no-legend --no-pager | awk '{print $1}' | grep -E '^(lifeos-.*(engineer|tower).*(wake|wol)|.*(wake|wol).*(engineer|tower).*)\.service$' | head -1)
+              sudo -n systemctl start "$unit"
+              echo "WAKE_PATH=systemd:$unit"
+            else
+              echo 'WAKE_PATH=NOT_DISCOVERED'
+              echo 'LOCAL_AI_SMOKE=BLOCKED_NO_GOVERNED_WAKE_PATH'
+              exit 20
+            fi
+            for i in $(seq 1 36); do
+              if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer 'true' 2>/dev/null; then
+                echo "ENGINEER_VM_WAKE=PASS attempt=$i"
+                break
+              fi
+              sleep 5
+            done
+            ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer 'true'
+          fi
+          echo 'ENGINEER_VM_REACHABLE=PASS'
+
+      - name: Ping local AI and perform inference
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          command -v ollama >/dev/null
+          ollama list >/tmp/lifeos-ollama-models
+          model=$(awk 'NR==2 {print $1}' /tmp/lifeos-ollama-models)
+          test -n "$model"
+          echo "LOCAL_AI_MODEL=$model"
+          out=$(timeout 120s ollama run "$model" 'Reply with exactly LOCAL_AI_SMOKE_OK')
+          printf '%s\n' "$out"
+          printf '%s' "$out" | grep -q 'LOCAL_AI_SMOKE_OK'
+          echo 'LOCAL_AI_INFERENCE=PASS'
+          REMOTE
+
+      - name: Perform Codex inference
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          if command -v codex >/dev/null 2>&1; then c=$(command -v codex); elif test -x "$HOME/.local/bin/codex"; then c="$HOME/.local/bin/codex"; else exit 21; fi
+          "$c" --version
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          cd "$tmp"
+          git init -q
+          timeout 180s "$c" exec --skip-git-repo-check 'Reply with exactly CODEX_SMOKE_OK' >out.txt 2>&1
+          cat out.txt
+          grep -q 'CODEX_SMOKE_OK' out.txt
+          echo 'CODEX_INFERENCE=PASS'
+          REMOTE
+
+      - name: Final regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          curl -fsS --max-time 5 http://127.0.0.1:8790/health | python3 -c 'import json,sys; assert json.load(sys.stdin)["status"]=="ok"'
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'CODEX_LOCAL_AI_SMOKE=PASS'
+          echo 'REPOSITORY_FINAL=PASS'
