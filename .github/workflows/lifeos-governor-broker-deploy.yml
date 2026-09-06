@@ -42,6 +42,16 @@ jobs:
           cd /home/joshan/lifeos-platform
           bash governor/scripts/deploy-autonomous-agent-pi5.sh
 
+      - name: Capture sanitized Governor diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          echo '===== GOVERNOR SERVICE STATUS ====='
+          systemctl status lifeos-autonomous-agent.service --no-pager --full || true
+          echo '===== GOVERNOR SERVICE JOURNAL ====='
+          journalctl -u lifeos-autonomous-agent.service -n 120 --no-pager -o short-iso || true
+
       - name: Prove single-process broker contract
         shell: bash
         run: |
