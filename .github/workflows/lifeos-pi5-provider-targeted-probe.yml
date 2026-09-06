@@ -1,0 +1,69 @@
+name: LifeOS Pi5 Provider Targeted Probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pi5-provider-targeted-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Probe Gemini and Groq safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 - <<'PY'
+          import importlib.util, pathlib, re
+          p=pathlib.Path('governor/ai_broker.py')
+          s=importlib.util.spec_from_file_location('b',p)
+          b=importlib.util.module_from_spec(s); s.loader.exec_module(b)
+          secrets=b._strict_env(b.SECRETS_PATH)
+          marker='LIFEOS_TARGETED_PROBE_OK'
+          failures=[]
+
+          try:
+              result=b._post_json(
+                  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+                  {'contents':[{'parts':[{'text':'Reply with exactly '+marker}]}]},
+                  headers={'x-goog-api-key':secrets['GEMINI_API_KEY']},
+              )
+              text=''.join(str(x.get('text','')) for x in (((result.get('candidates') or [{}])[0].get('content') or {}).get('parts') or []) if isinstance(x,dict))
+              ok=marker in text
+              print('GEMINI_HEADER_PROBE='+('PASS' if ok else 'FAIL_SEMANTIC'))
+              if not ok: failures.append('gemini:semantic')
+          except Exception as exc:
+              m=re.search(r'provider HTTP ([0-9]{3})',str(exc))
+              reason='HTTP_'+m.group(1) if m else type(exc).__name__
+              print('GEMINI_HEADER_PROBE=FAIL reason='+reason)
+              failures.append('gemini:'+reason)
+
+          groq_url='https://api.groq.com/openai/v1/chat/completions'
+          for model in ('openai/gpt-oss-120b','openai/gpt-oss-20b','llama-3.3-70b-versatile'):
+              label=model.replace('/','_').replace('.','_').replace('-','_').upper()
+              try:
+                  text=b._openai_compatible(groq_url,'Reply with exactly '+marker,model,secrets['GROQ_API_KEY'])
+                  print('GROQ_'+label+'_PROBE='+('PASS' if marker in text else 'FAIL_SEMANTIC'))
+              except Exception as exc:
+                  m=re.search(r'provider HTTP ([0-9]{3})',str(exc))
+                  reason='HTTP_'+m.group(1) if m else type(exc).__name__
+                  print('GROQ_'+label+'_PROBE=FAIL reason='+reason)
+          if failures:
+              raise SystemExit(1)
+          PY
