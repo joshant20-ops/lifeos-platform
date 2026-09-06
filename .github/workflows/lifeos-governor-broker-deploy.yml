@@ -12,6 +12,7 @@ on:
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
+      - 'governor/scripts/lifeos-cloud-builder'
   workflow_dispatch:
 
 permissions:
