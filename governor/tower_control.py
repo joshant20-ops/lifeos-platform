@@ -26,11 +26,16 @@ import time
 from pathlib import Path
 
 CONFIG = Path(os.environ.get("LIFEOS_TOWER_CONFIG", "/etc/lifeos/tower.json"))
+STATE_DIR = Path(os.environ.get("LIFEOS_TOWER_STATE", "/var/lib/lifeos-tower"))
+COMPUTE_STATE = STATE_DIR / "compute-lifecycle.json"
 MQTT_HOST = os.environ.get("LIFEOS_MQTT_HOST", "127.0.0.1")
 BASE = "lifeos/tower"
 DISCOVERY = "homeassistant"
 REFRESH = max(5, int(os.environ.get("LIFEOS_TOWER_REFRESH", "15")))
 STOP = threading.Event()
+LEASES: dict[str, dict] = {}
+LEASE_LOCK = threading.Lock()
+IDLE_GRACE = max(60, int(os.environ.get("LIFEOS_TOWER_IDLE_GRACE", "600")))
 
 
 def run(*args: str, check: bool = False, timeout: int = 20) -> subprocess.CompletedProcess:
@@ -219,6 +224,77 @@ def handle_command(payload: str) -> None:
         raise RuntimeError("invalid Tower command")
 
 
+def _save_compute_state(value: dict) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = COMPUTE_STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(value, sort_keys=True) + "\n")
+    os.replace(tmp, COMPUTE_STATE)
+
+
+def _load_compute_state() -> dict:
+    try:
+        value = json.loads(COMPUTE_STATE.read_text())
+        return value if isinstance(value, dict) else {}
+    except (FileNotFoundError, ValueError, OSError):
+        return {}
+
+
+def lease_loop() -> None:
+    proc = subprocess.Popen(
+        ["mosquitto_sub", "-h", MQTT_HOST, "-v", "-t", f"{BASE}/lease/+"],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    try:
+        while not STOP.is_set() and proc.poll() is None:
+            line = proc.stdout.readline() if proc.stdout else ""
+            if not line:
+                time.sleep(0.2)
+                continue
+            topic, _, raw = line.rstrip("\n").partition(" ")
+            lease_id = topic.rsplit("/", 1)[-1]
+            try:
+                payload = json.loads(raw)
+            except ValueError:
+                continue
+            with LEASE_LOCK:
+                if payload.get("state") == "active" and int(payload.get("expires_at") or 0) > int(time.time()):
+                    LEASES[lease_id] = payload
+                else:
+                    LEASES.pop(lease_id, None)
+    finally:
+        proc.terminate()
+
+
+def compute_lifecycle_loop() -> None:
+    state = _load_compute_state()
+    while not STOP.is_set():
+        now_ts = int(time.time())
+        with LEASE_LOCK:
+            for key in list(LEASES):
+                if int(LEASES[key].get("expires_at") or 0) <= now_ts:
+                    LEASES.pop(key, None)
+            active = bool(LEASES)
+        cfg = load_config()
+        observed = observed_state(cfg)
+        if active:
+            state["idle_since"] = None
+            if not observed["accessible"]:
+                last_wake = int(state.get("last_wake_at") or 0)
+                if now_ts - last_wake >= 30:
+                    send_wol(cfg)
+                    state.update({"woke_by_lifeos": True, "last_wake_at": now_ts})
+                    print("TOWER_COMPUTE_WAKE=REQUESTED", flush=True)
+        elif state.get("woke_by_lifeos"):
+            idle_since = int(state.get("idle_since") or now_ts)
+            state["idle_since"] = idle_since
+            if observed["accessible"] and now_ts - idle_since >= IDLE_GRACE:
+                graceful_shutdown(cfg)
+                state.update({"woke_by_lifeos": False, "idle_since": None, "last_shutdown_at": now_ts})
+                print("TOWER_COMPUTE_SHUTDOWN=REQUESTED", flush=True)
+        _save_compute_state(state)
+        STOP.wait(5)
+
+
 def command_loop() -> None:
     while not STOP.is_set():
         proc = subprocess.Popen(["mosquitto_sub", "-h", MQTT_HOST, "-t", f"{BASE}/power/set"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -253,6 +329,8 @@ def main() -> int:
     signal.signal(signal.SIGINT, shutdown_signal)
     publish_discovery()
     threading.Thread(target=command_loop, name="tower-command-listener", daemon=True).start()
+    threading.Thread(target=lease_loop, name="tower-lease-listener", daemon=True).start()
+    threading.Thread(target=compute_lifecycle_loop, name="tower-compute-lifecycle", daemon=True).start()
     while not STOP.is_set():
         try:
             value = publish_state()
