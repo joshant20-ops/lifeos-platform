@@ -19,6 +19,7 @@ PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/josha
 CORE_PATH = pathlib.Path(os.environ.get("LIFEOS_AGENT_CORE", "/usr/local/libexec/lifeos-autonomous-agent-core"))
 BROKER_PATH = PLATFORM_REPO / "governor" / "ai_broker.py"
 COMPAT_PATH = PLATFORM_REPO / "governor" / "openai_compat.py"
+PUBLICATION_PATH = PLATFORM_REPO / "governor" / "publication_boundary.py"
 BROKER_TOKEN_FILE = pathlib.Path(
     os.environ.get("LIFEOS_AI_BROKER_TOKEN_FILE", pathlib.Path.home() / ".config/lifeos/ai-broker.token")
 )
@@ -37,6 +38,8 @@ def _load(name: str, path: pathlib.Path):
 CORE = _load("lifeos_autonomous_agent_core", CORE_PATH)
 BROKER = _load("lifeos_ai_broker_runtime", BROKER_PATH)
 COMPAT = _load("lifeos_openai_compat_runtime", COMPAT_PATH)
+PUBLICATION = _load("lifeos_publication_boundary_runtime", PUBLICATION_PATH)
+PUBLICATION.install(CORE)
 
 
 def _token() -> str:
