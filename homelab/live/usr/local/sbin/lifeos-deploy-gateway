@@ -35,6 +35,10 @@ OPS = {
         'script': 'scripts/lifeos-deploy-energy-opportunity-api.sh',
         'privileged': True,
     },
+    'deploy-governor-managed-engineer': {
+        'script': 'scripts/lifeos-deploy-governor-managed-engineer.sh',
+        'privileged': True,
+    },
     'capability-stage3-systemd-cleanup': {
         'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
         'privileged': True,
