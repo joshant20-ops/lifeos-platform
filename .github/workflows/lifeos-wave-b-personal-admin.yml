@@ -1,9 +1,7 @@
 name: LifeOS Wave B Personal Administration
 
+# Wave B is human/objective initiated only. It must never chain from a deployment.
 on:
-  workflow_run:
-    workflows: ['LifeOS Governor Broker Deploy']
-    types: [completed]
   workflow_dispatch:
 
 permissions:
