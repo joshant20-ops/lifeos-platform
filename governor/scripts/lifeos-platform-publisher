@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+"""Short-lived Pi5 publication worker for staged Governor candidates.
+
+This process is intentionally launched by the execution workflow, not by the
+long-lived Governor service. It owns the narrow Git mutation window while the
+Governor checkout remains read-only.
+"""
+from __future__ import annotations
+
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+import pathlib
+import re
+import subprocess
+import time
+import uuid
+
+SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+SAFE_REQ = re.compile(r"^[A-Za-z0-9_-]+-(?:patch|runtime)-[0-9a-f]{12}$")
+SHA = re.compile(r"^[0-9a-f]{40,64}$")
+RUNTIME_PREFIX = "governor/runtime_jobs/"
+MAX_PATCH = 1048576
+MAX_RUNTIME = 65536
+
+
+def git(repo: pathlib.Path, *args, check=True, timeout=180):
+    return subprocess.run(
+        ["git", *args], cwd=repo, text=True, capture_output=True,
+        check=check, timeout=timeout,
+    )
+
+
+def atomic_json(path: pathlib.Path, value: dict):
+    tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
+    tmp.write_text(json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    os.chmod(tmp, 0o600)
+    os.replace(tmp, path)
+
+
+def clean_repo(repo: pathlib.Path):
+    git(repo, "reset", "--hard", "origin/main", check=False)
+    # The publisher starts only from a proven-clean dedicated canonical checkout;
+    # anything untracked after a failed publication was therefore created here.
+    git(repo, "clean", "-fd", check=False)
+
+
+def validate_request(req: dict, request_id: str, payload: bytes):
+    if req.get("schema_version") != 1 or req.get("request_id") != request_id:
+        raise ValueError("schema_or_request_id")
+    operation = req.get("operation")
+    if operation not in {"patch", "runtime"}:
+        raise ValueError("operation")
+    job_id = str(req.get("job_id") or "")
+    if not SAFE_ID.fullmatch(job_id):
+        raise ValueError("job_id")
+    expected_base = str(req.get("expected_base") or "")
+    if not SHA.fullmatch(expected_base):
+        raise ValueError("expected_base")
+    payload_file = str(req.get("payload_file") or "")
+    if payload_file != request_id + ".bin":
+        raise ValueError("payload_file")
+    expected_digest = str(req.get("payload_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_digest):
+        raise ValueError("payload_sha256")
+    if not hmac_compare(hashlib.sha256(payload).hexdigest(), expected_digest):
+        raise ValueError("payload_hash")
+    if int(req.get("payload_bytes") or -1) != len(payload):
+        raise ValueError("payload_size")
+    limit = MAX_PATCH if operation == "patch" else MAX_RUNTIME
+    if len(payload) > limit:
+        raise ValueError("payload_limit")
+    if operation == "runtime":
+        if req.get("runtime_path") != f"{RUNTIME_PREFIX}{job_id}.sh":
+            raise ValueError("runtime_path")
+        if not payload.startswith(b"#!/usr/bin/env bash"):
+            raise ValueError("runtime_shebang")
+    elif req.get("runtime_path") not in (None, ""):
+        raise ValueError("unexpected_runtime_path")
+    return operation, job_id, expected_base
+
+
+def hmac_compare(a: str, b: str) -> bool:
+    import hmac
+    return hmac.compare_digest(a.encode(), b.encode())
+
+
+def publish(repo: pathlib.Path, req: dict, payload: bytes):
+    operation, job_id, expected_base = validate_request(req, req["request_id"], payload)
+    if git(repo, "status", "--porcelain", check=False).stdout.strip():
+        raise RuntimeError("canonical_checkout_dirty")
+    git(repo, "fetch", "origin", "main")
+    head = git(repo, "rev-parse", "HEAD").stdout.strip()
+    origin = git(repo, "rev-parse", "origin/main").stdout.strip()
+    if head != origin:
+        raise RuntimeError("canonical_not_at_origin_main")
+    if head != expected_base:
+        raise RuntimeError("expected_base_mismatch")
+
+    files = []
+    if operation == "patch":
+        patch = pathlib.Path(req["_payload_path"])
+        git(repo, "apply", "--check", str(patch), timeout=30)
+        git(repo, "apply", str(patch), timeout=30)
+        git(repo, "add", "-A")
+        git(repo, "diff", "--cached", "--check")
+        files = [x for x in git(repo, "diff", "--cached", "--name-only").stdout.splitlines() if x]
+        if not files:
+            return {"status": "PASS", "commit": head, "files": [], "effect": "none"}
+        git(repo, "commit", "-m", f"agent: publish job {job_id} iteration {int(req.get('iteration') or 0)}", timeout=60)
+    else:
+        rel = req["runtime_path"]
+        target = repo / rel
+        if target.is_symlink():
+            raise RuntimeError("runtime_symlink")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
+        tmp.write_bytes(payload)
+        os.chmod(tmp, 0o755)
+        os.replace(tmp, target)
+        git(repo, "add", "--", rel)
+        git(repo, "diff", "--cached", "--check")
+        files = [x for x in git(repo, "diff", "--cached", "--name-only").stdout.splitlines() if x]
+        if files:
+            git(repo, "commit", "-m", f"agent: publish runtime artifact {job_id}", timeout=60)
+
+    commit = git(repo, "rev-parse", "HEAD").stdout.strip()
+    git(repo, "push", "origin", "HEAD:main", timeout=180)
+    return {"status": "PASS", "commit": commit, "files": files}
+
+
+def process_one(repo: pathlib.Path, paths: dict[str, pathlib.Path], request_path: pathlib.Path):
+    request_id = request_path.stem
+    result_path = paths["results"] / f"{request_id}.json"
+    payload_path = paths["payloads"] / f"{request_id}.bin"
+    try:
+        if not SAFE_REQ.fullmatch(request_id) or request_path.is_symlink() or payload_path.is_symlink():
+            raise ValueError("unsafe_request_path")
+        req = json.loads(request_path.read_text(encoding="utf-8"))
+        payload = payload_path.read_bytes()
+        req["_payload_path"] = str(payload_path)
+        result = publish(repo, req, payload)
+    except Exception as exc:
+        clean_repo(repo)
+        result = {"status": "REJECTED", "reason": str(exc)[:200] or type(exc).__name__}
+    atomic_json(result_path, result)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", default="/home/joshan/lifeos-platform")
+    parser.add_argument("--state", default="/var/lib/lifeos-agent")
+    parser.add_argument("--idle-timeout", type=int, default=1800)
+    args = parser.parse_args()
+    repo = pathlib.Path(args.repo).resolve()
+    root = pathlib.Path(args.state).resolve() / "publication_queue"
+    paths = {name: root / name for name in ("requests", "payloads", "results")}
+    for path in paths.values():
+        path.mkdir(parents=True, exist_ok=True, mode=0o750)
+    lock_path = root / "publisher.lock"
+    with open(lock_path, "a+") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        deadline = time.monotonic() + max(1, args.idle_timeout)
+        while time.monotonic() < deadline:
+            requests = sorted(paths["requests"].glob("*.json"), key=lambda p: p.stat().st_mtime)
+            if not requests:
+                time.sleep(0.2)
+                continue
+            for request_path in requests:
+                process_one(repo, paths, request_path)
+                request_path.unlink(missing_ok=True)
+            deadline = time.monotonic() + max(1, args.idle_timeout)
+
+
+if __name__ == "__main__":
+    main()
