@@ -32,6 +32,13 @@ _TARGET_IDENTITY = importlib.util.module_from_spec(_TARGET_IDENTITY_SPEC)
 _TARGET_IDENTITY_SPEC.loader.exec_module(_TARGET_IDENTITY)
 load_target_id = _TARGET_IDENTITY.load_target_id
 
+_AI_BROKER_PATH = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")) / "governor" / "ai_broker.py"
+if not _AI_BROKER_PATH.is_file():
+    _AI_BROKER_PATH = pathlib.Path(__file__).resolve().with_name("ai_broker.py")
+_AI_BROKER_SPEC = importlib.util.spec_from_file_location("lifeos_agent_ai_broker", _AI_BROKER_PATH)
+_AI_BROKER = importlib.util.module_from_spec(_AI_BROKER_SPEC)
+_AI_BROKER_SPEC.loader.exec_module(_AI_BROKER)
+
 ROOT = pathlib.Path(os.environ.get("LIFEOS_AGENT_STATE", "/var/lib/lifeos-agent"))
 ROOT.mkdir(parents=True, exist_ok=True)
 PORT = int(os.environ.get("LIFEOS_AGENT_PORT", "8790"))
@@ -400,17 +407,8 @@ Privacy class: {job['privacy']}
 Iteration: {iteration}
 Evidence:\n{evidence[-18000:]}
 """
-    payload = json.dumps({
-        "model": VERIFIER_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.0, "num_ctx": 8192},
-    }).encode()
-    req = urllib.request.Request(VERIFIER_URL, data=payload, headers={"Content-Type": "application/json"}, method="POST")
-    with urllib.request.urlopen(req, timeout=180) as response:
-        result = json.load(response)
-    raw = result.get("response", "{}")
+    result = _AI_BROKER.generate(prompt, privacy="local-only", task_class="normal", force_provider="ollama")
+    raw = result.get("text", "{}")
     try:
         return json.loads(raw)
     except Exception:
