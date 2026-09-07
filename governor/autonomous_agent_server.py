@@ -56,20 +56,21 @@ def _authorized(headers) -> bool:
     return bool(expected and supplied.startswith("Bearer ") and hmac.compare_digest(supplied[7:].encode(), expected.encode()))
 
 
-def _privacy_text(messages: list[dict]) -> str:
-    """Collect request/runtime content, never provider/system instructions.
+def _privacy_text(messages: list[dict], *, roles: set[str] | None = None) -> str:
+    """Collect only content relevant to the broker privacy decision.
 
-    System prompts contain capability descriptions and policy vocabulary such as
-    "private" or "documents". Treating those instructions as user data causes
-    false local-only routing for already-sanitized engineering jobs. User,
-    assistant and tool content remains classified so actual protected payloads
-    still fail closed if they enter the broker conversation.
+    Generic broker requests classify every non-system conversation turn. The
+    dedicated sanitized-engineering model classifies only user turns because
+    its tool output is restricted to the disposable canonical-repository
+    worktree; repository policy text must not reclassify an already-sanitized
+    engineering session midway through tool use.
     """
     parts: list[str] = []
     for item in messages[-32:]:
         if not isinstance(item, dict):
             continue
-        if str(item.get("role") or "").lower() == "system":
+        role = str(item.get("role") or "").lower()
+        if role == "system" or (roles is not None and role not in roles):
             continue
         content = item.get("content")
         if isinstance(content, list):
@@ -133,13 +134,14 @@ def _broker_chat(body: dict) -> dict:
 
     requested_model = str(body.get("model", "lifeos-normal"))
     requested_privacy = "local-only" if "local-only" in requested_model else "normal"
+    engineering_session = "lifeos-engineering-" in requested_model
     task_class = "normal"
     for candidate in ("substantial", "review", "normal"):
         if candidate in requested_model:
             task_class = candidate
             break
 
-    raw = _privacy_text(messages)
+    raw = _privacy_text(messages, roles={"user"} if engineering_session else None)
     detected = CORE.classify_privacy(raw)
     privacy = "local-only" if detected == "local-only" else requested_privacy
     tools = body.get("tools") or []
