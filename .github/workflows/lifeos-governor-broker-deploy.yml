@@ -51,21 +51,28 @@ jobs:
 
           bash governor/scripts/deploy-autonomous-agent-pi5.sh > >(tee "$LOG") 2>&1 &
           DEPLOY_PID=$!
-          LAST_CHECKPOINT=''
+          LAST_PHASE=''
+          LAST_JOB_STATE=''
 
-          checkpoint() {
+          phase_checkpoint() {
             local value=$1
-            if [[ "$value" != "$LAST_CHECKPOINT" ]]; then
+            if [[ "$value" != "$LAST_PHASE" ]]; then
+              printf 'DEPLOY_CHECKPOINT=phase:%s\n' "$value"
+              LAST_PHASE=$value
+            fi
+          }
+
+          job_checkpoint() {
+            local value=$1
+            if [[ "$value" != "$LAST_JOB_STATE" ]]; then
               printf 'DEPLOY_CHECKPOINT=%s\n' "$value"
-              LAST_CHECKPOINT=$value
+              LAST_JOB_STATE=$value
             fi
           }
 
           while kill -0 "$DEPLOY_PID" 2>/dev/null; do
             PHASE=$(grep -E '^===== [0-9]+/8 — ' "$LOG" | tail -1 | sed -E 's/^===== ([0-9]+\/8 — [^=]+) =====$/\1/' || true)
-            if [[ -n "$PHASE" ]]; then
-              checkpoint "phase:${PHASE}"
-            fi
+            [[ -n "$PHASE" ]] && phase_checkpoint "$PHASE"
 
             if grep -q '^===== 7/8 — TRUE END-TO-END AUTONOMOUS SMOKE =====$' "$LOG"; then
               JOB_STATE=$(curl -fsS --max-time 3 http://127.0.0.1:8790/jobs 2>/dev/null | python3 -c '
@@ -78,9 +85,7 @@ jobs:
           except Exception:
               pass
           ' || true)
-              if [[ -n "$JOB_STATE" ]]; then
-                checkpoint "$JOB_STATE"
-              fi
+              [[ -n "$JOB_STATE" ]] && job_checkpoint "$JOB_STATE"
             fi
             sleep 15
           done
@@ -89,7 +94,7 @@ jobs:
           wait "$DEPLOY_PID"
           RC=$?
           set -e
-          checkpoint "deploy-process-exit:${RC}"
+          printf 'DEPLOY_CHECKPOINT=deploy-process-exit:%s\n' "$RC"
           exit "$RC"
 
       - name: Capture sanitized Governor diagnostics on failure
