@@ -45,6 +45,13 @@ jobs:
       - name: Deploy protected Engineer runtime
         run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
 
+      - name: Capture Engineer diagnostics on deployment failure
+        if: failure()
+        run: |
+          set +e
+          systemctl status lifeos-engineer.service --no-pager --full
+          journalctl -u lifeos-engineer.service -n 120 --no-pager -o short-iso
+
       - name: Prove off to autonomous model-ready recovery
         run: |
           set -Eeuo pipefail
