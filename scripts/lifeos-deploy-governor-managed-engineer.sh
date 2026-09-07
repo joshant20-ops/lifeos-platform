@@ -6,6 +6,9 @@ readonly BROKER_SOCKET=/run/lifeos-root-broker.sock
 readonly IDENTITY=/etc/lifeos-control/identity.json
 readonly APPROVAL_DIR=/var/lib/lifeos-control/engineer-deploy-approvals
 readonly AUDIT_DIR=/var/lib/lifeos-control/engineer-deploy-audit
+readonly DROPIN_SOURCE=$PLATFORM/governor/systemd/lifeos-engineer.service.d/governor-ai-broker.conf
+readonly DROPIN_DIR=/etc/systemd/system/lifeos-engineer.service.d
+readonly DROPIN_DEST=$DROPIN_DIR/governor-ai-broker.conf
 
 fail(){ printf 'ENGINEER_LIFECYCLE_DEPLOY=FAIL\nFAIL_REASON=%s\n' "$*" >&2; exit 1; }
 sha(){ sha256sum "$1" | awk '{print $1}'; }
@@ -13,6 +16,7 @@ sha(){ sha256sum "$1" | awk '{print $1}'; }
 [[ $(id -u) -eq 0 ]] || fail must_run_as_root
 [[ -S "$BROKER_SOCKET" ]] || fail root_broker_socket_missing
 [[ -r "$IDENTITY" ]] || fail control_identity_missing
+[[ -f "$DROPIN_SOURCE" && ! -L "$DROPIN_SOURCE" ]] || fail engineer_broker_dropin_missing
 
 HEAD=$(runuser -u joshan -- git -C "$PLATFORM" rev-parse HEAD)
 MAIN=$(runuser -u joshan -- git -C "$PLATFORM" rev-parse main)
@@ -40,6 +44,13 @@ JOB_ID="governor-managed-engineer-${HEAD:0:12}"
 APPROVAL="$APPROVAL_DIR/$JOB_ID.json"
 AUDIT="$AUDIT_DIR/$JOB_ID.json"
 install -d -o root -g root -m 0750 "$APPROVAL_DIR" "$AUDIT_DIR"
+
+# Keep ProtectHome enabled. Expose only the three immutable Governor inputs the
+# Engineer backend imports, matching the existing autonomous-agent sandbox.
+install -d -o root -g root -m 0755 "$DROPIN_DIR"
+install -o root -g root -m 0644 "$DROPIN_SOURCE" "$DROPIN_DEST"
+systemctl daemon-reload
+echo 'ENGINEER_BROKER_SANDBOX_BINDINGS=PASS'
 
 if [[ -e "$AUDIT" ]]; then
   python3 - "$AUDIT" "$HEAD" "${HASHES[governor/autonomous_agent.py]}" "${HASHES[governor/target_identity.py]}" "${HASHES[governor/engineer_backend.py]}" <<'PY' || fail existing_audit_does_not_match
