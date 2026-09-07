@@ -15,8 +15,9 @@ concurrency:
 
 jobs:
   governor-delivery:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 200
+    timeout-minutes: 180
     steps:
       - name: Synchronize canonical Pi checkout
         shell: bash
@@ -28,33 +29,25 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           echo 'WAVE_B_CHECKPOINT=checkout-synchronized'
 
-      - name: Recover and prove Governor boundary
+      - name: Prove inherited Governor boundary
         shell: bash
         run: |
           set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          for attempt in 1 2; do
-            echo "WAVE_B_CHECKPOINT=governor-deploy-attempt:${attempt}"
-            git fetch --prune origin main
-            git reset --hard origin/main
-            if bash governor/scripts/deploy-autonomous-agent-pi5.sh; then
-              echo 'WAVE_B_CHECKPOINT=governor-deploy-proven'
-              break
-            fi
-            if [[ "$attempt" == 2 ]]; then
-              echo 'WAVE_B_BOUNDARY=governor-deploy-repeated-failure'
-              exit 1
-            fi
-            echo 'WAVE_B_CHECKPOINT=governor-deploy-restart'
-            sleep 10
-          done
+          systemctl is-active --quiet lifeos-autonomous-agent.service
+          HEALTH=$(curl -fsS --max-time 5 http://127.0.0.1:8790/health)
+          python3 - "$HEALTH" <<'PY'
+          import json,sys
+          j=json.loads(sys.argv[1])
+          assert j['status']=='ok', j
+          assert j['runtime_controller']=='pi5', j
+          assert j['git_controller']=='pi5', j
+          PY
+          echo 'WAVE_B_CHECKPOINT=governor-boundary-inherited'
 
       - name: Prove Governor and tool-aware broker gate
         shell: bash
         run: |
           set -Eeuo pipefail
-          systemctl is-active --quiet lifeos-autonomous-agent.service
-          curl -fsS --max-time 5 http://127.0.0.1:8790/health | python3 -c 'import json,sys; j=json.load(sys.stdin); assert j["status"]=="ok" and j["runtime_controller"]=="pi5"'
           TOKEN="$HOME/.config/lifeos/ai-broker.token"
           test -f "$TOKEN" && test ! -L "$TOKEN" && test "$(stat -c '%a' "$TOKEN")" = 600
           REQ=$(python3 - <<'PY'
@@ -82,12 +75,23 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
           BASE=http://127.0.0.1:8790
+          python3 governor/scripts/lifeos-platform-publisher --idle-timeout 10800 &
+          PUBLISHER_PID=$!
+          cleanup() {
+            kill "$PUBLISHER_PID" 2>/dev/null || true
+            wait "$PUBLISHER_PID" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          kill -0 "$PUBLISHER_PID"
+          echo 'WAVE_B_CHECKPOINT=publisher-ready'
 
           run_job_once() {
             local label="$1"
             local request="$2"
             local payload response id state last='' deadline
+            kill -0 "$PUBLISHER_PID" || { echo "WAVE_B_BOUNDARY=${label}:publisher-exited"; return 1; }
             payload=$(python3 - "$request" <<'PY'
           import json,sys
           print(json.dumps({"request":sys.argv[1]}))
@@ -102,6 +106,7 @@ jobs:
             echo "WAVE_B_JOB=${label}:${id}"
             deadline=$(( $(date +%s) + 2100 ))
             while (( $(date +%s) < deadline )); do
+              kill -0 "$PUBLISHER_PID" || { echo "WAVE_B_BOUNDARY=${label}:publisher-exited"; return 1; }
               response=$(curl -fsS --max-time 10 "$BASE/jobs/$id")
               state=$(python3 - "$response" <<'PY'
           import json,sys
@@ -144,7 +149,6 @@ jobs:
                 return 1
               fi
               echo "WAVE_B_CHECKPOINT=${label}:clean-restart"
-              cd /home/joshan/lifeos-platform
               git fetch --prune origin main
               git reset --hard origin/main
               test -z "$(git status --porcelain --untracked-files=all)"
