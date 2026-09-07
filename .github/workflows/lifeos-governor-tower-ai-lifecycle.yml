@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  # Deployment authority remains inside the fixed root gateway.
   contents: read
 
 concurrency:
