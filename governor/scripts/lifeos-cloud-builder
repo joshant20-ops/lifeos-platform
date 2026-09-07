@@ -88,7 +88,7 @@ CODEX=$(sed -n 's/^CODEX=//p' <<<"$DISCOVERY" | tail -1)
 GOVERNOR_BROKER=$(sed -n 's/^GOVERNOR_BROKER=//p' <<<"$DISCOVERY" | tail -1)
 
 AGENTS=()
-if [[ "$TASK_CLASS" != "escalation" && "$OPENHANDS" == present && "$GOVERNOR_BROKER" == present ]]; then AGENTS+=("governor-broker|openhands|openai/lifeos-${TASK_CLASS}"); fi
+if [[ "$TASK_CLASS" != "escalation" && "$OPENHANDS" == present && "$GOVERNOR_BROKER" == present ]]; then AGENTS+=("governor-broker|openhands|openai/lifeos-engineering-${TASK_CLASS}"); fi
 if [[ "$CODEX" == present ]]; then AGENTS+=("codex|codex|"); fi
 if (( ${#AGENTS[@]} == 0 )); then echo "RESULT=BLOCKED"; echo "REASON=no_eligible_engineering_agent"; exit 43; fi
 
