@@ -57,9 +57,19 @@ def _authorized(headers) -> bool:
 
 
 def _privacy_text(messages: list[dict]) -> str:
+    """Collect request/runtime content, never provider/system instructions.
+
+    System prompts contain capability descriptions and policy vocabulary such as
+    "private" or "documents". Treating those instructions as user data causes
+    false local-only routing for already-sanitized engineering jobs. User,
+    assistant and tool content remains classified so actual protected payloads
+    still fail closed if they enter the broker conversation.
+    """
     parts: list[str] = []
     for item in messages[-32:]:
         if not isinstance(item, dict):
+            continue
+        if str(item.get("role") or "").lower() == "system":
             continue
         content = item.get("content")
         if isinstance(content, list):
