@@ -64,6 +64,33 @@ def test_forced_cloud_provider_must_still_be_policy_eligible(monkeypatch, tmp_pa
         BROKER.generate("private task", privacy="local-only", force_provider="gemini")
 
 
+def test_local_inference_acquires_and_releases_tower_lease(monkeypatch):
+    events = []
+    monkeypatch.setattr(BROKER, "_publish_lease", lambda state, **_: events.append(state))
+    monkeypatch.setattr(BROKER, "_ollama_once", lambda prompt, model: "ok")
+    assert BROKER._ollama("hello", "model") == "ok"
+    assert events == ["active", "released"]
+
+
+def test_local_inference_renews_lease_while_waiting_for_wake(monkeypatch):
+    events = []
+    attempts = iter([BROKER.BrokerError("off"), "ok"])
+    monkeypatch.setattr(BROKER, "_publish_lease", lambda state, **_: events.append(state))
+    monkeypatch.setattr(BROKER, "_wake_local_ai", lambda: True)
+    monkeypatch.setattr(BROKER.time, "sleep", lambda _: None)
+    monkeypatch.setattr(BROKER, "_ollama_once", lambda prompt, model: next(attempts))
+
+    original = BROKER._ollama_once
+    def invoke(prompt, model):
+        value = original(prompt, model)
+        if isinstance(value, Exception):
+            raise value
+        return value
+    monkeypatch.setattr(BROKER, "_ollama_once", invoke)
+    assert BROKER._ollama("hello", "model") == "ok"
+    assert events == ["active", "active", "released"]
+
+
 def test_tool_chat_translates_gemini_function_call(monkeypatch):
     provider = {"id": "gemini", "api_model": "gemini-3.6-flash"}
     monkeypatch.setattr(BROKER, "candidates", lambda **_: ([provider], []))

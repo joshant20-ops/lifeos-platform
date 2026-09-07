@@ -9,6 +9,20 @@ only after the named runtime proof and rollback gate pass.
 | Home automation and dashboards | KEEP_OTS / KEEP_NATIVE | Home Assistant; household users and automations | Keep HA as UI/state authority; one-shot Tower actions are buttons, not retained toggles; remove only dependency-free compatibility registrations | Snapshot HA config; config check, restart, three-dashboard audit and action semantics must pass |
 | Energy optimisation | KEEP_OTS + KEEP_THIN_GLUE | Predbat and Enphase remain specialist control; Octopus tariff source; LifeOS Energy publishes one opportunity contract to HA/common attention | Retire the separate opportunity timer/service and generated JSON bridge; no parallel energy planner or notification framework | Preserve prior unit/config rollback; API, stable/deduplicated IDs, HA entity, attention path and Predbat/Enphase non-mutation proved in runs `34027204105` and `34027701388` |
 | Tower power control | KEEP_NATIVE + KEEP_THIN_GLUE | HA momentary buttons -> MQTT -> Pi5 control bridge; Tower user `joshan` executes exact passwordless `/sbin/poweroff`; WOL uses canonical MAC | One governed path for shutdown and WOL; no persistent switch abstraction; retry WOL across NIC transition | Preserve prior bridge/config; exact-command sudo preflight, actual shutdown, bounded wake retries, SSH return, HA health and dashboard regressions |
+
+### Governor-managed local-AI lifecycle
+
+Local inference consumers acquire a retained, expiring compute lease through the
+Pi5 MQTT control plane before calling Ollama. The Tower controller, not the
+consumer, owns Wake-on-LAN and graceful shutdown. It wakes an inaccessible Tower
+while a lease is active, records that LifeOS requested the wake, and performs the
+already-governed operating-system shutdown only after all leases have been
+released or expired and the idle grace period has elapsed. The persisted wake
+ownership and lease TTLs make recovery deterministic across process restarts.
+
+The Open WebUI Engineer and independent Governor verifier must use the Governor
+AI broker rather than call the Tower endpoint directly. Cached monitoring values
+are presentation data and are never accepted as compute readiness evidence.
 | Privileged execution | KEEP_THIN_GLUE | Root-broker socket -> protected transaction controller -> independent rollback | Watchman runtime retired; no second policy daemon and no interactive model root | Fail closed; root-owned state, two-hour watchdog, independent evidence, commit and forced rollback proof |
 | Engineering orchestration | KEEP_OTS + KEEP_THIN_GLUE | Semaphore/Ansible target with LifeOS policy client and bounded root interfaces | Rundeck shadow retired; custom queue/scheduler remains compatibility-only until Semaphore equivalence gates pass | Preserve historical evidence and old path until equivalence/restart/no-duplicate/rollback tests pass |
 | Monitoring and restart | KEEP_OTS | Uptime Kuma, systemd and Docker restart policy | Autoheal/Watchtower absent from active runtime; do not reintroduce overlapping remediation | Live container/unit inventory and health regression |

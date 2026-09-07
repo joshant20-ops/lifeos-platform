@@ -12,6 +12,7 @@ import json
 import os
 import pathlib
 import socket
+import subprocess
 import time
 import urllib.error
 import urllib.parse
@@ -29,10 +30,32 @@ OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://192.168.0.201:11434/a
 OLLAMA_MODEL = os.environ.get("LIFEOS_LOCAL_AI_MODEL", "qwen2.5-coder:7b-instruct")
 HTTP_TIMEOUT = int(os.environ.get("LIFEOS_AI_HTTP_TIMEOUT", "120"))
 WAKE_TIMEOUT = int(os.environ.get("LIFEOS_LOCAL_AI_WAKE_TIMEOUT", "90"))
+LEASE_TTL = int(os.environ.get("LIFEOS_LOCAL_AI_LEASE_TTL", "1200"))
+MQTT_HOST = os.environ.get("LIFEOS_MQTT_HOST", "127.0.0.1")
 
 
 class BrokerError(RuntimeError):
     pass
+
+
+def _lease_topic() -> str:
+    return f"lifeos/tower/lease/{os.getpid()}"
+
+
+def _publish_lease(state: str, *, required: bool = True) -> None:
+    payload = json.dumps({
+        "owner": f"ai-broker:{os.getpid()}",
+        "state": state,
+        "expires_at": int(time.time()) + (LEASE_TTL if state == "active" else 0),
+    }, separators=(",", ":"))
+    try:
+        subprocess.run(
+            ["mosquitto_pub", "-h", MQTT_HOST, "-t", _lease_topic(), "-m", payload, "-r"],
+            check=True, capture_output=True, text=True, timeout=5,
+        )
+    except Exception as exc:
+        if required:
+            raise BrokerError(f"Tower compute lease unavailable: {type(exc).__name__}") from exc
 
 
 def _router_module():
@@ -127,20 +150,28 @@ def _ollama_once(prompt: str, model: str) -> str:
 
 
 def _ollama(prompt: str, model: str) -> str:
+    _publish_lease("active")
     try:
-        return _ollama_once(prompt, model)
-    except BrokerError as first:
-        if not _wake_local_ai():
-            raise first
-        deadline = time.monotonic() + WAKE_TIMEOUT
-        last: Exception = first
-        while time.monotonic() < deadline:
-            time.sleep(3)
-            try:
-                return _ollama_once(prompt, model)
-            except BrokerError as exc:
-                last = exc
-        raise BrokerError("local AI did not become ready after Wake-on-LAN") from last
+        try:
+            return _ollama_once(prompt, model)
+        except BrokerError as first:
+            # The Tower controller consumes the active lease and owns WoL. Keep
+            # the direct packet as a compatibility fallback during deployment.
+            _wake_local_ai()
+            deadline = time.monotonic() + WAKE_TIMEOUT
+            last: Exception = first
+            while time.monotonic() < deadline:
+                time.sleep(3)
+                _publish_lease("active")
+                try:
+                    return _ollama_once(prompt, model)
+                except BrokerError as exc:
+                    last = exc
+            raise BrokerError("local AI did not become ready after Wake-on-LAN") from last
+    finally:
+        # A retained TTL still releases the lease if MQTT disappears after the
+        # request; never replace a useful model result with a cleanup error.
+        _publish_lease("released", required=False)
 
 
 def _gemini_url(provider: dict, secrets: dict[str, str]) -> str:
