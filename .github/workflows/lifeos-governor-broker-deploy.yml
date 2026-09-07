@@ -9,10 +9,12 @@ on:
       - 'governor/autonomous_agent.py'
       - 'governor/ai_broker.py'
       - 'governor/openai_compat.py'
+      - 'governor/publication_boundary.py'
       - 'governor/job_records.py'
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
+      - 'governor/scripts/lifeos-platform-publisher'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
   workflow_dispatch:
@@ -40,14 +42,22 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo 'DEPLOY_CHECKPOINT=checkout-synchronized'
 
-      - name: Deploy Governor with live phase checkpoints
+      - name: Deploy Governor with bounded publisher and live checkpoints
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           LOG=$(mktemp)
-          cleanup() { rm -f "$LOG"; }
+          python3 governor/scripts/lifeos-platform-publisher --idle-timeout 1800 &
+          PUBLISHER_PID=$!
+          cleanup() {
+            kill "$PUBLISHER_PID" 2>/dev/null || true
+            wait "$PUBLISHER_PID" 2>/dev/null || true
+            rm -f "$LOG"
+          }
           trap cleanup EXIT
+          kill -0 "$PUBLISHER_PID"
+          echo 'DEPLOY_CHECKPOINT=publisher-ready'
 
           bash governor/scripts/deploy-autonomous-agent-pi5.sh > >(tee "$LOG") 2>&1 &
           DEPLOY_PID=$!
@@ -71,6 +81,7 @@ jobs:
           }
 
           while kill -0 "$DEPLOY_PID" 2>/dev/null; do
+            kill -0 "$PUBLISHER_PID" || { echo 'DEPLOY_BOUNDARY=publisher-exited'; kill "$DEPLOY_PID" 2>/dev/null || true; wait "$DEPLOY_PID" || true; exit 1; }
             PHASE=$(grep -E '^===== [0-9]+/8 — ' "$LOG" | tail -1 | sed -E 's/^===== ([0-9]+\/8 — [^=]+) =====$/\1/' || true)
             [[ -n "$PHASE" ]] && phase_checkpoint "$PHASE"
 
@@ -138,6 +149,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
           test -z "$(git status --porcelain --untracked-files=all)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo 'GOVERNOR_BROKER_DEPLOY=PASS'
