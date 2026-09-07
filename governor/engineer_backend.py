@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import json
+import importlib.util
 import os
+import pathlib
 import re
 import statistics
 import time
@@ -20,6 +22,21 @@ PROPOSAL_REF_RE = re.compile(r"proposal ref\s*:?\s*`?([a-f0-9]{10})`?", re.I)
 JOB_TEXT_RE = re.compile(r"(?:engineering\s+job|job)\s+`?([a-f0-9]{12})`?", re.I)
 PROPOSALS = {}
 MAX_PROPOSALS = 128
+
+
+def _load_ai_broker():
+    path = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")) / "governor" / "ai_broker.py"
+    if not path.is_file():
+        path = pathlib.Path(__file__).resolve().with_name("ai_broker.py")
+    spec = importlib.util.spec_from_file_location("lifeos_engineer_ai_broker", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("Governor AI broker unavailable")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+AI_BROKER = _load_ai_broker()
 
 SYSTEM = """You are LifeOS Engineer, the local technical engineering manager for Joshan's homelab and LifeOS platform.
 You are a collaborative senior engineer, not a command parser and not the cloud coding builder.
@@ -347,14 +364,8 @@ def analyse(messages):
     context = local_context(messages)
     prompt = SYSTEM + "\n\nLOCAL READ-ONLY CONTEXT:\n" + json.dumps(context, indent=2)[:10000]
     prompt += "\n\nConversation:\n" + "\n".join(transcript) + "\n\nReturn JSON now."
-    result = request_json(OLLAMA_URL, {
-        "model": OLLAMA_MODEL,
-        "prompt": prompt,
-        "stream": False,
-        "format": "json",
-        "options": {"temperature": 0.15, "num_ctx": 12288},
-    })
-    parsed = json.loads(result.get("response", "{}"))
+    routed = AI_BROKER.generate(prompt, privacy="local-only", task_class="normal", force_provider="ollama")
+    parsed = json.loads(routed.get("text", "{}"))
     improvements = [clean_text(x) for x in parsed.get("improvements", []) if clean_text(x)][:4]
     reply = clean_text(parsed.get("reply"))
     question = clean_text(parsed.get("clarifying_question"))

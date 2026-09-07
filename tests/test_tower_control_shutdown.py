@@ -1,5 +1,6 @@
 import importlib.util
 import pathlib
+import tempfile
 import unittest
 from unittest import mock
 
@@ -29,6 +30,17 @@ class TowerShutdownTests(unittest.TestCase):
     def test_graceful_shutdown_rejects_missing_endpoint(self):
         with self.assertRaisesRegex(RuntimeError, "Tower shutdown SSH endpoint is incomplete"):
             tower_control.graceful_shutdown({"shutdown": {"type": "linux_ssh"}})
+
+    def test_compute_state_round_trip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            old_dir, old_state = tower_control.STATE_DIR, tower_control.COMPUTE_STATE
+            try:
+                tower_control.STATE_DIR = pathlib.Path(tmp)
+                tower_control.COMPUTE_STATE = pathlib.Path(tmp) / "compute-lifecycle.json"
+                tower_control._save_compute_state({"woke_by_lifeos": True})
+                self.assertEqual(tower_control._load_compute_state(), {"woke_by_lifeos": True})
+            finally:
+                tower_control.STATE_DIR, tower_control.COMPUTE_STATE = old_dir, old_state
 
 
 if __name__ == "__main__":
