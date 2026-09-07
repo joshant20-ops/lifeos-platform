@@ -1,0 +1,96 @@
+name: LifeOS Governor Tower AI Lifecycle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-governor-tower-ai-lifecycle.yml'
+      - 'scripts/lifeos-deploy-governor-managed-engineer.sh'
+      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-prove:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - name: Synchronize canonical checkout
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+
+      - name: Refresh and verify bounded gateway
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge
+          set +e
+          out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway 2>&1)
+          rc=$?
+          set -e
+          test "$rc" -eq 64
+          grep -q 'deploy-governor-managed-engineer' <<<"$out"
+          echo 'ENGINEER_DEPLOY_GATEWAY=PASS'
+
+      - name: Deploy protected Engineer runtime
+        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
+
+      - name: Prove off to autonomous model-ready recovery
+        run: |
+          set -Eeuo pipefail
+          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
+          for _ in $(seq 1 90); do
+            state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true)
+            if python3 -c 'import json,sys; raise SystemExit(0 if not json.loads(sys.argv[1]).get("accessible") else 1)' "$state" 2>/dev/null; then break; fi
+            sleep 2
+          done
+          python3 - "$state" <<'PY'
+          import json,sys
+          assert json.loads(sys.argv[1]).get('accessible') is False
+          print('TOWER_OFF_BEFORE_MODEL=PASS')
+          PY
+          python3 - <<'PY'
+          import json,time,urllib.request
+          payload={'model':'lifeos-engineer','messages':[{'role':'user','content':'Reply with exactly GOVERNOR_TOWER_WAKE_PASS'}],'stream':False}
+          request=urllib.request.Request('http://127.0.0.1:8793/v1/chat/completions',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'},method='POST')
+          started=time.monotonic()
+          with urllib.request.urlopen(request,timeout=900) as response: value=json.load(response)
+          answer=value['choices'][0]['message']['content']
+          assert 'GOVERNOR_TOWER_WAKE_PASS' in answer, answer
+          print(f'GOVERNOR_MODEL_AFTER_WAKE=PASS elapsed={time.monotonic()-started:.1f}s')
+          PY
+          state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state)
+          python3 -c 'import json,sys; assert json.loads(sys.argv[1]).get("accessible") is True' "$state"
+          echo 'TOWER_ACCESSIBLE_AFTER_WAKE=PASS'
+
+      - name: Prove lease release and automatic shutdown
+        run: |
+          set -Eeuo pipefail
+          lease=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t 'lifeos/tower/lease/+' || true)
+          python3 -c 'import json,sys; assert json.loads(sys.argv[1]).get("state") == "released"' "$lease"
+          echo 'MODEL_LEASE_RELEASE=PASS'
+          stopped=0
+          for _ in $(seq 1 150); do
+            state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true)
+            if python3 -c 'import json,sys; raise SystemExit(0 if not json.loads(sys.argv[1]).get("accessible") else 1)' "$state" 2>/dev/null; then stopped=1; break; fi
+            sleep 5
+          done
+          test "$stopped" -eq 1
+          echo 'GOVERNOR_AUTOMATIC_TOWER_SHUTDOWN=PASS'
+
+      - name: Prove repository clean
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'GOVERNOR_TOWER_AI_LIFECYCLE=PASS'
