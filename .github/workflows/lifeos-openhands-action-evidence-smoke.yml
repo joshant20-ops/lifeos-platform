@@ -46,13 +46,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           marker="OPENHANDS_ACTION_EVIDENCE_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
-          printf -v marker_q '%q' "$marker"
           ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer bash -s -- "$marker" <<'REMOTE'
           set -Eeuo pipefail
           marker=${1:?marker required}
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           cfg="$HOME/.config/lifeos/governor-broker.env"
+          repo="$HOME/workspace/lifeos-platform"
           test -f "$cfg" && test ! -L "$cfg" && test "$(stat -c '%a' "$cfg")" = 600
+          test -d "$repo/.git"
           url=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_URL=//p' "$cfg" | tail -1)
           token=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_TOKEN=//p' "$cfg" | tail -1)
           test -n "$url" && test -n "$token"
@@ -60,18 +61,29 @@ jobs:
           export LLM_API_KEY="$token"
           export LLM_MODEL="openai/lifeos-engineering-substantial"
           export LIFEOS_PROVIDER=governor-broker
-          work=$(mktemp -d)
-          trap 'rm -rf "$work"' EXIT
-          cd "$work"
-          target="$work/action-evidence.txt"
-          prompt="Use an actual shell or file-writing tool now. Create exactly one file at $target whose complete contents are exactly: $marker followed by one newline. Then use a shell tool to read the file back. Do not merely describe or echo commands in prose. Do not access GitHub or any network service other than the already configured model endpoint."
+
+          work="$HOME/.local/share/lifeos-agent/worktrees/smoke-${marker}"
+          git -C "$repo" worktree remove --force "$work" >/dev/null 2>&1 || true
+          rm -rf "$work"
+          git -C "$repo" worktree add --detach "$work" origin/main >/dev/null
           log=$(mktemp)
-          trap 'rm -rf "$work"; rm -f "$log"' EXIT
+          cleanup() {
+            rm -f "$log"
+            git -C "$repo" worktree remove --force "$work" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          cd "$work"
+          target_rel="governor/runtime_jobs/openhands-action-evidence-${marker}.txt"
+          target="$work/$target_rel"
+          prompt="Use an actual shell or file-writing tool now. In the current disposable Git worktree create exactly one file at $target_rel whose complete contents are exactly: $marker followed by one newline. Then use a shell tool to read that file back. Do not merely describe or echo commands in prose. Do not commit, push, fetch, or access GitHub."
           set +e
           openhands --headless --override-with-envs -t "$prompt" </dev/null >"$log" 2>&1
           rc=$?
           set -e
           echo "OPENHANDS_RC=$rc"
+          if [[ "$rc" -ne 0 || ! -f "$target" ]]; then
+            grep -E 'Predicted Security Risk|Summary:|\$ |ServiceUnavailableError|inference_unavailable|Agent initialized|Goodbye' "$log" | tail -40 || true
+          fi
           test "$rc" -eq 0
           test -f "$target"
           test "$(cat "$target")" = "$marker"
