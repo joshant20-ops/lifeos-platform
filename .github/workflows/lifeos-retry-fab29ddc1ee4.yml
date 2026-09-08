@@ -27,6 +27,9 @@ jobs:
           git reset --hard origin/main
           test -z "$(git status --porcelain --untracked-files=all)"
 
+      - name: Deploy current protected Engineer runtime
+        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
+
       - name: Retry blocked job through Engineer interface and follow it
         run: |
           python3 - <<'PY'
@@ -36,7 +39,7 @@ jobs:
           old='fab29ddc1ee4'
           payload={'model':'lifeos-engineer','messages':[{'role':'user','content':f'Retry job {old} and continue autonomously.'}],'stream':False}
           req=urllib.request.Request(engineer,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'},method='POST')
-          with urllib.request.urlopen(req,timeout=30) as response:
+          with urllib.request.urlopen(req,timeout=60) as response:
               answer=json.load(response)['choices'][0]['message']['content']
           match=re.search(r'\b([a-f0-9]{12})\b',answer)
           if not match or match.group(1)==old:
