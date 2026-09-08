@@ -318,6 +318,27 @@ def _dispatcher_token():
         return ""
 
 
+def _ai_broker_token():
+    path = os.environ.get(
+        "LIFEOS_AI_BROKER_TOKEN_FILE",
+        str(pathlib.Path.home() / ".config/lifeos/ai-broker.token"),
+    )
+    try:
+        return pathlib.Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def _authenticated_ai_broker(headers):
+    expected = _ai_broker_token()
+    supplied = str(headers.get("Authorization", ""))
+    return bool(
+        expected
+        and supplied.startswith("Bearer ")
+        and hmac.compare_digest(supplied[7:].encode(), expected.encode())
+    )
+
+
 def authenticated_dispatch_route(headers, body):
     """Validate the backlog dispatcher's bounded, authenticated route assertion."""
     if "dispatch_builder" not in body:
@@ -999,6 +1020,32 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
         path = parsed.path
+        if path == "/v1/chat/completions":
+            if not _authenticated_ai_broker(self.headers):
+                self.send_json(403, {"error": "ai_broker_capability_required"})
+                return
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                body = json.loads(self.rfile.read(length) or b"{}")
+                messages = body.get("messages") or []
+                prompt = "\n".join(
+                    f"{str(item.get('role') or 'user').upper()}: {str(item.get('content') or '')}"
+                    for item in messages if isinstance(item, dict)
+                ).strip()
+                if not prompt:
+                    raise ValueError("messages_required")
+                result = _AI_BROKER.generate(prompt, privacy="local-only", task_class="normal")
+                self.send_json(200, {
+                    "id": "chatcmpl-" + uuid.uuid4().hex,
+                    "object": "chat.completion",
+                    "created": int(time.time()),
+                    "model": result["model"],
+                    "lifeos_provider": result["provider"],
+                    "choices": [{"index": 0, "message": {"role": "assistant", "content": result["text"]}, "finish_reason": "stop"}],
+                })
+            except Exception as exc:
+                self.send_json(502, {"error": "ai_broker_failed", "detail": str(exc)[:500]})
+            return
         if path.startswith("/jobs/") and path.endswith("/retry"):
             job_id = path.split("/")[2]
             try:
