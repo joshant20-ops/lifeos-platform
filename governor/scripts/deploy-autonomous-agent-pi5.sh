@@ -137,22 +137,54 @@ test "$code" = 401
 printf 'BROKER_UNAUTHENTICATED_REJECT=PASS\n'
 BROKER_REQ=$(python3 - <<'PY'
 import json
-print(json.dumps({"model":"lifeos-normal","messages":[{"role":"user","content":"Reply with exactly LIFEOS_GOVERNOR_BROKER_OK"}]}))
+print(json.dumps({
+    "model": "lifeos-engineering-normal",
+    "messages": [{
+        "role": "user",
+        "content": "Call report_test_value with value GOVERNOR_LOCAL_TOOL_OK. Do not answer normally."
+    }],
+    "tools": [{
+        "type": "function",
+        "function": {
+            "name": "report_test_value",
+            "description": "Report a harmless deployment test value.",
+            "parameters": {
+                "type": "object",
+                "properties": {"value": {"type": "string"}},
+                "required": ["value"]
+            }
+        }
+    }],
+    "tool_choice": "required"
+}))
 PY
 )
-BROKER_OUT=$(curl -fsS --max-time 120 \
+BROKER_OUT=$(curl -fsS --max-time 180 \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer $(cat "$BROKER_TOKEN")" \
   -d "$BROKER_REQ" http://127.0.0.1:8790/v1/chat/completions)
 python3 - "$BROKER_OUT" <<'PY'
 import json,sys
 j=json.loads(sys.argv[1])
-text=str(j['choices'][0]['message']['content'])
-assert 'LIFEOS_GOVERNOR_BROKER_OK' in text, text[:200]
-assert j['lifeos_privacy']=='normal'
-assert j['lifeos_provider'] in {'gemini','openrouter','cloudflare'}
-print('BROKER_AUTHENTICATED_INFERENCE=PASS')
-print('BROKER_PROVIDER='+j['lifeos_provider'])
+assert j['lifeos_privacy']=='normal', j
+assert j['lifeos_provider']=='ollama', j
+choice=j['choices'][0]
+assert choice['finish_reason']=='tool_calls', choice
+calls=choice['message'].get('tool_calls') or []
+match=None
+for call in calls:
+    fn=call.get('function') or {}
+    if fn.get('name') != 'report_test_value':
+        continue
+    args=fn.get('arguments') or '{}'
+    if isinstance(args,str):
+        args=json.loads(args)
+    if args.get('value') == 'GOVERNOR_LOCAL_TOOL_OK':
+        match=call
+        break
+assert match is not None, calls
+print('BROKER_AUTHENTICATED_LOCAL_TOOL_CALL=PASS')
+print('BROKER_PROVIDER=ollama')
 PY
 
 printf '\n===== 6/8 — UI + PRIVACY FAIL-CLOSED =====\n'
