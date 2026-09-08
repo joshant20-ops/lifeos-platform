@@ -1,0 +1,98 @@
+name: LifeOS PA Mission Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Runner mode'
+        required: true
+        default: 'run'
+        type: choice
+        options:
+          - run
+          - resume
+          - audit
+          - status
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pa-mission-control
+  cancel-in-progress: false
+
+jobs:
+  control:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 40
+    steps:
+      - name: Safely synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)" || {
+            echo 'RESULT=BLOCKED'
+            echo 'REASON=canonical_checkout_dirty'
+            exit 20
+          }
+          current=$(git rev-parse HEAD)
+          target=$(git rev-parse origin/main)
+          if [[ "$current" != "$target" ]]; then
+            git merge-base --is-ancestor "$current" "$target" || {
+              echo 'RESULT=BLOCKED'
+              echo 'REASON=canonical_checkout_not_fast_forwardable'
+              exit 21
+            }
+            git merge --ff-only origin/main
+          fi
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'CANONICAL_SYNC=PASS'
+
+      - name: Ensure runner is current
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          SRC=governor/scripts/lifeos-pa-mission
+          DEST=/home/joshan/.local/bin/lifeos-pa-mission
+          python3 -m py_compile "$SRC"
+          install -d -m 0755 /home/joshan/.local/bin
+          install -d -m 0700 /home/joshan/.local/state/lifeos-pa-autonomy
+          if [[ ! -x "$DEST" ]] || ! cmp -s "$SRC" "$DEST"; then
+            install -m 0755 "$SRC" "$DEST"
+          fi
+          echo "RUNNER_SHA256=$(sha256sum "$DEST" | awk '{print $1}')"
+
+      - name: Run mission controller
+        shell: bash
+        env:
+          MODE: ${{ inputs.mode }}
+        run: |
+          set -Eeuo pipefail
+          set +e
+          /home/joshan/.local/bin/lifeos-pa-mission "$MODE"
+          rc=$?
+          set -e
+          echo "MISSION_RUNNER_RC=$rc"
+          case "$rc" in
+            0) exit 0 ;;
+            20|30|40) exit "$rc" ;;
+            *) exit "$rc" ;;
+          esac
+
+      - name: Surface consolidated bundle
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          if [[ -f "$STATE/WORK_BUNDLE.md" ]]; then
+            echo '--- WORK_BUNDLE.md ---'
+            cat "$STATE/WORK_BUNDLE.md"
+          fi
+          if [[ -f "$STATE/SUMMARY.md" ]]; then
+            echo '--- SUMMARY.md ---'
+            cat "$STATE/SUMMARY.md"
+          fi
