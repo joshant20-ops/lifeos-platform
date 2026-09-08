@@ -459,8 +459,17 @@ class Handler(BaseHTTPRequestHandler):
                 agent = request_json(AGENT_URL + "/health", timeout=5)
                 if agent.get("status") != "ok":
                     raise RuntimeError("agent_not_ready")
-                request_json(OLLAMA_URL.rsplit("/api/", 1)[0] + "/api/tags", timeout=5)
-                self.send_json(200, {"service": "lifeos-engineer", "status": "ok", "agent": agent.get("status"), "model": OLLAMA_MODEL, "chat_state": "server_side"})
+                with open(BROKER_TOKEN_FILE, encoding="utf-8") as handle:
+                    if not handle.read().strip():
+                        raise RuntimeError("broker_capability_unavailable")
+                self.send_json(200, {
+                    "service": "lifeos-engineer",
+                    "status": "ok",
+                    "agent": agent.get("status"),
+                    "model": OLLAMA_MODEL,
+                    "model_lifecycle": "governor_managed",
+                    "chat_state": "server_side",
+                })
             except Exception as exc:
                 self.send_json(503, {"service": "lifeos-engineer", "status": "degraded", "detail": type(exc).__name__})
             return
