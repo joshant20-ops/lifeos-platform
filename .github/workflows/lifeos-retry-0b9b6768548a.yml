@@ -1,4 +1,5 @@
 name: Retry blocked Engineer job 0b9b6768548a
+# Retrigger after the verifier parser deployment lifecycle gate completes.
 
 on:
   push:
