@@ -29,16 +29,27 @@ jobs:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
     steps:
-      - name: Synchronize canonical Pi checkout
+      - name: Verify canonical Pi checkout
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
-          git reset --hard origin/main
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'DEPLOY_CHECKPOINT=checkout-synchronized'
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo 'CANONICAL_CHECKOUT_NOT_READY=dirty'
+            git status --short
+            exit 20
+          fi
+          head="$(git rev-parse HEAD)"
+          origin="$(git rev-parse origin/main)"
+          if [[ "$head" != "$origin" ]]; then
+            echo 'CANONICAL_CHECKOUT_NOT_READY=not_at_origin_main'
+            echo "PLATFORM_HEAD=$head"
+            echo "ORIGIN_MAIN=$origin"
+            exit 20
+          fi
+          echo 'CANONICAL_CHECKOUT_READY=PASS'
+          echo 'DEPLOY_CHECKPOINT=checkout-verified'
 
       - name: Deploy Governor with live phase checkpoints
         shell: bash
