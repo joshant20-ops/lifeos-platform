@@ -45,6 +45,9 @@ PORT = int(os.environ.get("LIFEOS_AGENT_PORT", "8790"))
 MAX_ITERATIONS = int(os.environ.get("LIFEOS_AGENT_MAX_ITERATIONS", "8"))
 BUILDER = os.environ.get("LIFEOS_AGENT_BUILDER", "/usr/local/libexec/lifeos-cloud-builder")
 LOCAL_BUILDER = os.environ.get("LIFEOS_AGENT_LOCAL_BUILDER", "")
+ENGINEER_HOST = os.environ.get("LIFEOS_ENGINEER_HOST", "192.168.0.204")
+ENGINEER_SSH_PORT = int(os.environ.get("LIFEOS_ENGINEER_SSH_PORT", "22"))
+ENGINEER_WAKE_TIMEOUT = int(os.environ.get("LIFEOS_ENGINEER_WAKE_TIMEOUT", "300"))
 DISPATCH_TOKEN_FILE = os.environ.get("LIFEOS_BACKLOG_DISPATCH_TOKEN_FILE", "")
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
@@ -521,6 +524,30 @@ def update_failure_history(job, signature):
     return count
 
 
+def _prepare_engineer_builder_host():
+    """Acquire Tower compute and wait for the automatically booted Engineer VM."""
+    _AI_BROKER._publish_lease("active")
+    try:
+        _AI_BROKER._wake_local_ai()
+        deadline = time.monotonic() + ENGINEER_WAKE_TIMEOUT
+        last_error = "not attempted"
+        while time.monotonic() < deadline:
+            _AI_BROKER._publish_lease("active")
+            try:
+                with socket.create_connection((ENGINEER_HOST, ENGINEER_SSH_PORT), timeout=3):
+                    return
+            except OSError as exc:
+                last_error = f"{type(exc).__name__}: {exc}"
+                time.sleep(3)
+        raise RuntimeError(
+            f"Engineer VM did not become SSH-ready at {ENGINEER_HOST}:{ENGINEER_SSH_PORT} "
+            f"after Tower wake ({last_error})"
+        )
+    except Exception:
+        _AI_BROKER._publish_lease("released", required=False)
+        raise
+
+
 def run_builder(job, iteration, verifier_feedback=None):
     route, builder = builder_route(job)
     if not builder:
@@ -533,7 +560,14 @@ def run_builder(job, iteration, verifier_feedback=None):
     args = [builder, job["request"], str(iteration)]
     if verifier_feedback:
         args.append(verifier_feedback)
-    cp = subprocess.run(args, text=True, capture_output=True, timeout=1800, env=env)
+    tower_lease = route == "normal"
+    if tower_lease:
+        _prepare_engineer_builder_host()
+    try:
+        cp = subprocess.run(args, text=True, capture_output=True, timeout=1800, env=env)
+    finally:
+        if tower_lease:
+            _AI_BROKER._publish_lease("released", required=False)
     raw = (cp.stdout or "") + "\n" + (cp.stderr or "")
     handoff, evidence = parse_handoff(raw)
     handoff["_builder_route"] = route
