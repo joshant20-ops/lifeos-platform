@@ -1,0 +1,39 @@
+name: LifeOS Tower Current Work Diagnostic
+
+on:
+  push:
+    branches:
+      - diag/tower-current-work
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect current Tower workload
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '===== TOWER STATE ====='
+          timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true
+
+          echo '===== LEASES ====='
+          timeout 5 mosquitto_sub -h 127.0.0.1 -v -C 20 -t 'lifeos/tower/lease/+' || true
+
+          echo '===== OLLAMA ACTIVE MODELS ====='
+          curl -fsS --max-time 10 http://192.168.0.201:11434/api/ps || true
+
+          echo '===== TOWER GPU PROCESSES ====='
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC \
+            "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null || nvidia-smi" || true
+
+          echo '===== TOWER PROCESS TREE ====='
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC \
+            "ps -eo pid,ppid,etimes,%cpu,%mem,cmd --sort=-%cpu | head -40" || true
+
+          echo '===== OLLAMA SERVICE ====='
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC \
+            "systemctl status ollama --no-pager --full 2>/dev/null || true; journalctl -u ollama -n 80 --no-pager -o short-iso 2>/dev/null || true" || true
