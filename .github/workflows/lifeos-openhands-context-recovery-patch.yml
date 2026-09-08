@@ -50,8 +50,7 @@ jobs:
           assert text.count(phase8) == 1
           before, remainder = text.split(phase7, 1)
           body, after = remainder.split(phase8, 1)
-          indented = ''.join(('  ' + line) if line.strip() else line for line in body.splitlines(True))
-          wrapped = phase7 + 'if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then\n' + "  printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\\n'\n" + 'else\n' + indented + 'fi\n' + phase8
+          wrapped = phase7 + 'if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then\n' + "  printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\\n'\n" + 'else\n' + body + 'fi\n' + phase8
           deploy.write_text(before + wrapped + after)
 
           workflow = Path('.github/workflows/lifeos-governor-broker-deploy.yml')
