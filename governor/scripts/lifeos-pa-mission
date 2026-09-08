@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+import argparse, datetime as dt, json, os, pathlib, platform, re, shutil, socket, subprocess, time
+import urllib.error, urllib.request
+
+VERSION='2026.09.08-1'
+REPO=pathlib.Path(os.getenv('LIFEOS_PLATFORM_REPO','/home/joshan/lifeos-platform'))
+STATE=pathlib.Path(os.getenv('LIFEOS_PA_MISSION_STATE',str(pathlib.Path.home()/'.local/state/lifeos-pa-autonomy')))
+GOV=os.getenv('LIFEOS_GOVERNOR_URL','http://127.0.0.1:8790').rstrip('/')
+POLL=int(os.getenv('LIFEOS_PA_POLL_SECONDS','15')); MAXPOLL=int(os.getenv('LIFEOS_PA_MAX_POLL_SECONDS','1800'))
+MAXRETRY=int(os.getenv('LIFEOS_PA_MAX_JOB_RETRIES','3')); MINFREE=float(os.getenv('LIFEOS_PA_MIN_FREE_GIB','2'))
+SF=STATE/'state.json'; AF=STATE/'audit.json'; FJ=STATE/'fault-bundle.json'; FM=STATE/'WORK_BUNDLE.md'; SM=STATE/'SUMMARY.md'; LOCK=STATE/'runner.lock'
+TERMINAL={'PASS','BLOCKED','FAILED','ERROR','CANCELLED','SUPERSEDED'}
+HARD={'CANONICAL_REPO_UNAVAILABLE','CANONICAL_REPO_DIRTY','CANONICAL_REPO_DRIFT','GOVERNOR_UNAVAILABLE','GOVERNOR_API_UNAVAILABLE'}
+
+def now(): return dt.datetime.now().astimezone().isoformat(timespec='seconds')
+def cmd(argv,cwd=None,timeout=30):
+    try:
+        p=subprocess.run(argv,cwd=str(cwd) if cwd else None,text=True,capture_output=True,timeout=timeout)
+        return {'rc':p.returncode,'out':(p.stdout or '').strip(),'err':(p.stderr or '').strip()}
+    except FileNotFoundError:return {'rc':127,'out':'','err':'command_not_found'}
+    except subprocess.TimeoutExpired:return {'rc':124,'out':'','err':'timeout'}
+    except Exception as e:return {'rc':125,'out':'','err':type(e).__name__}
+def write(p,text):
+    p.parent.mkdir(parents=True,exist_ok=True); t=p.with_suffix(p.suffix+'.tmp'); t.write_text(text); os.replace(t,p)
+def state_load():
+    try:return json.loads(SF.read_text())
+    except Exception:return {'schema':1,'version':VERSION,'created_at':now(),'phase':'new','job':{},'retry_count':0,'history':[]}
+def state_save(s): s.update(version=VERSION,updated_at=now()); write(SF,json.dumps(s,indent=2,sort_keys=True)+'\n')
+def http(method,url,body=None,timeout=10):
+    data=json.dumps(body).encode() if body is not None else None; h={'Accept':'application/json'}
+    if data:h['Content-Type']='application/json'
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url,data=data,headers=h,method=method),timeout=timeout) as r:
+            raw=r.read(2000000); return r.status,json.loads(raw or b'{}')
+    except urllib.error.HTTPError as e:
+        try:return e.code,json.loads(e.read(100000) or b'{}')
+        except Exception:return e.code,{'error':'http_error'}
+    except Exception as e:return 0,{'error':type(e).__name__}
+def add(fs,root,severity,component,problem,evidence,action,human=False):
+    txt=evidence if isinstance(evidence,str) else json.dumps(evidence,sort_keys=True)
+    txt=re.sub(r'(?i)(token|password|secret|authorization)[=:]\S+',r'\1=[redacted]',txt)
+    fs.append({'root_cause':root,'severity':severity,'component':component,'problem':problem,'evidence':txt[:1600],'suggested_action':action,'human_boundary':human})
+
+def host_audit(fs):
+    mem=0
+    try:
+        for l in pathlib.Path('/proc/meminfo').read_text().splitlines():
+            if l.startswith('MemTotal:'):mem=int(l.split()[1]);break
+    except Exception:pass
+    base=REPO if REPO.exists() else pathlib.Path.home(); du=shutil.disk_usage(base); arch=platform.machine()
+    r={'hostname':socket.gethostname(),'architecture':arch,'kernel':platform.release(),'cpu_count':os.cpu_count(),'memory_gib':round(mem/1048576,2),'disk_free_gib':round(du.free/1073741824,2)}
+    if arch not in {'aarch64','arm64'}:add(fs,'HOST_ROLE_MISMATCH','warning','pi5','Not running on expected ARM64 Pi control plane.',r,'Run this on the LifeOS Pi 5.')
+    if r['disk_free_gib']<MINFREE:add(fs,'RESOURCE_PRESSURE','high','pi5','Low free disk space.',r,'Free space using existing retention paths; do not delete unknown data.')
+    return r
+
+def repo_audit(fs):
+    if not (REPO/'.git').exists():add(fs,'CANONICAL_REPO_UNAVAILABLE','critical','repository','Canonical checkout missing.',str(REPO),'Restore/locate canonical checkout; do not create another source of truth.');return {'exists':False}
+    st=cmd(['git','status','--porcelain','--untracked-files=all'],REPO); head=cmd(['git','rev-parse','HEAD'],REPO); br=cmd(['git','branch','--show-current'],REPO)
+    fetch=cmd(['git','fetch','--prune','origin','main'],REPO,90); origin=cmd(['git','rev-parse','origin/main'],REPO)
+    dirty=bool(st['out']); aligned=head['out']==origin['out'] and bool(head['out'])
+    r={'exists':True,'branch':br['out'],'head':head['out'],'origin_main':origin['out'],'dirty':dirty,'aligned':aligned,'fetch_rc':fetch['rc']}
+    if dirty:add(fs,'CANONICAL_REPO_DIRTY','critical','repository','Canonical checkout has local changes; runner will not clean/reset it.',{'dirty':True},'Preserve/reconcile bytes safely; never reset --hard or git clean.')
+    if fetch['rc']!=0:add(fs,'GITHUB_SYNC_UNAVAILABLE','high','repository','Could not refresh origin/main.',{'rc':fetch['rc'],'err':fetch['err'][:250]},'Repair GitHub/network auth, then rerun.')
+    elif not aligned:add(fs,'CANONICAL_REPO_DRIFT','critical','repository','Pi HEAD differs from origin/main.',{'head':head['out'],'origin':origin['out']},'Fast-forward only after proving clean worktree.')
+    return r
+
+def docker_audit(fs):
+    p=cmd(['docker','ps','--format','{{json .Names}}\t{{json .Image}}\t{{json .Status}}'],timeout=20)
+    if p['rc']!=0:add(fs,'DOCKER_UNAVAILABLE','high','runtime','Docker inventory failed.',{'rc':p['rc'],'err':p['err'][:300]},'Repair Docker access/service once, then rerun.');return {'available':False,'containers':[]}
+    cs=[]
+    for l in p['out'].splitlines():
+        q=l.split('\t')
+        if len(q)>=3:
+            try:cs.append(dict(zip(('name','image','status'),[json.loads(x) for x in q[:3]])))
+            except Exception:pass
+    def hits(*needles):return sorted(c['name'] for c in cs if any(n in (c['name']+' '+c['image']).lower() for n in needles))
+    d={'homeassistant':hits('homeassistant','home-assistant'),'paperless':hits('paperless-paperless','paperless'),'mosquitto':hits('mosquitto')}
+    if not d['homeassistant']:add(fs,'HOME_ASSISTANT_UNAVAILABLE','high','homeassistant','Existing HA container not found running.',{},'Restore existing HA; do not deploy a second HA.')
+    if not d['paperless']:add(fs,'DOCUMENT_SYSTEM_UNAVAILABLE','high','documents','Existing Paperless app container not found running.',{},'Restore/reuse existing Paperless; do not create duplicate document store.')
+    return {'available':True,'container_count':len(cs),'containers':cs,'discovered':d}
+
+def systemd_audit(fs):
+    a=cmd(['systemctl','is-active','lifeos-autonomous-agent.service'])
+    if a['out']!='active':add(fs,'GOVERNOR_UNAVAILABLE','critical','governor','lifeos-autonomous-agent.service is not active.',{'state':a['out'],'rc':a['rc']},'Repair existing Governor through governed service/deploy path.')
+    return {'agent_active':a['out']=='active'}
+def governor_audit(fs):
+    code,h=http('GET',GOV+'/health'); r={'health_code':code,'health':h}
+    if code!=200 or not isinstance(h,dict) or h.get('status')!='ok':add(fs,'GOVERNOR_API_UNAVAILABLE','critical','governor','Governor health API unavailable/unhealthy.',{'code':code,'response':h},'Repair existing autonomous-agent API.');return r
+    c,s=http('GET',GOV+'/jobs/stuck'); stuck=s.get('stuck_jobs',[]) if c==200 and isinstance(s,dict) else []; r.update(stuck_code=c,stuck_jobs=stuck)
+    if stuck:add(fs,'GOVERNOR_STUCK_JOBS','high','governor','Deterministically stuck jobs exist.',{'jobs':[{k:j.get(k) for k in ('id','status','stage','stage_age_seconds')} for j in stuck[:10]]},'Diagnose/fix their shared root cause as one batch; do not retry individually.')
+    return r
+
+def repo_caps():
+    p=cmd(['git','ls-files'],REPO,30)
+    if p['rc']!=0:return {}
+    paths=p['out'].splitlines(); terms={'calendar':('calendar','caldav','ical'),'email':('email','gmail','imap','smtp','mail'),'documents':('paperless','document'),'attention':('attention','personal-assistant','personal_assistant','inbox'),'autonomy':('governor','autonomous','planner','milestone','openhands','engineer')}
+    out={}
+    for k,ns in terms.items():
+        hs=[x for x in paths if any(n in x.lower() for n in ns) and not re.search(r'(?i)(token|secret|password|credential|\.env$|\.storage|\.db$|sqlite)',x)]
+        out[k+'_count']=len(hs);out[k]=hs[:80]
+    return out
+
+def acceptance(a):
+    d=a['docker'];r=a['repo'];g=a['governor'];c=a['repo_capabilities'];disc=d.get('discovered',{})
+    combined=sum(int(c.get(k+'_count',0)) for k in ('calendar','email','documents','attention'))
+    return {'AC1_INSPECT_EXISTING':'PROVEN' if d.get('available') and r.get('exists') else 'PARTIAL','AC2_SHARED_CONTRACT':'PARTIAL' if combined else 'UNKNOWN','AC3_CALENDAR_CONTEXT':'UNKNOWN','AC4_EMAIL_OBLIGATION':'UNKNOWN','AC5_DOCUMENT_OBLIGATION':'PARTIAL' if disc.get('paperless') else 'UNKNOWN','AC6_E2E_PRIVATE_CASE':'UNKNOWN','AC7_PRIVACY_LOCAL_ONLY':'PARTIAL' if g.get('health_code')==200 else 'UNKNOWN','AC8_TEST_DEPLOY_REGRESS_CLEAN':'PARTIAL' if r.get('aligned') and not r.get('dirty') else 'BLOCKED','AC9_NO_UNJUSTIFIED_SERVICE':'UNKNOWN','AC10_ROADMAP_UPDATE_AFTER_PROOF':'NOT_STARTED'}
+def audit_all(fs):
+    a={'generated_at':now(),'runner_version':VERSION};a['host']=host_audit(fs);a['repo']=repo_audit(fs);a['docker']=docker_audit(fs);a['systemd']=systemd_audit(fs);a['governor']=governor_audit(fs);a['repo_capabilities']=repo_caps() if a['repo'].get('exists') else {};a['acceptance']=acceptance(a);write(AF,json.dumps(a,indent=2,sort_keys=True)+'\n');return a
+
+def mission(a):
+    return f'''LifeOS Personal Administration delivery, canonical issue #164.\n\nPRIMARY OUTCOME\nDeliver Calendar + Email + Paperless -> shared event/obligation/action/evidence -> existing PA attention surface.\n\nPARALLEL AUTONOMY OUTCOME\nUse this real workload to improve Intelligence & Autonomy only where an autonomy defect blocks useful progress. OpenHands/providers/Tower/dashboard/Governor perfection are mechanisms, not objectives.\n\nDETERMINISTIC AUDIT\nrepo_clean_aligned={a['repo'].get('aligned') and not a['repo'].get('dirty')} governor_health={a['governor'].get('health_code')} docker={a['docker'].get('available')} acceptance={json.dumps(a['acceptance'],sort_keys=True)}\n\nRULES\nInspect live state before mutation. OTS/native first; reuse existing Calendar, Email, Paperless and PA surfaces. This is private/local-only: never send personal source content to cloud AI, GitHub or external logs. Work in small resumable milestones; preserve completed progress. Recover/reroute ordinary worker/provider failures. Never bypass Watchman/root/transaction/recovery controls. Never reset/clean canonical checkout. Continue without routine user approval; stop only at a genuine human boundary.\n\nACCEPTANCE\n1 inspect existing capabilities; 2 reuse/implement one shared contract; 3 Calendar updates PA context without duplicated authority; 4 Email produces actionable obligation/follow-up and evidence link; 5 Paperless remains authoritative with obligation/action/evidence links; 6 one local private E2E case crosses >=2 source systems to PA attention; 7 local-only routing and blocked cloud fallback proven; 8 tests/deploy/runtime/regression/clean repo pass; 9 no unjustified always-on service; 10 roadmap/evidence update only after live proof.\n\nFINAL STATUS MUST EXPLICITLY REPORT\nPERSONAL_ADMINISTRATION=COMPLETE|INCOMPLETE\nAUTONOMY_PROGRESS=PASS|INCOMPLETE\nPRIVACY_PROOF=PASS|INCOMPLETE\nRUNTIME_PROOF=PASS|INCOMPLETE\nREGRESSION=PASS|INCOMPLETE\n'''
+
+def job_step(s,a,fs,mode):
+    if {f['root_cause'] for f in fs}&HARD:s['phase']='preflight_blocked';return
+    j=s.setdefault('job',{});jid=j.get('id')
+    if jid:
+        code,cur=http('GET',GOV+'/jobs/'+jid)
+        if code!=200:add(fs,'GOVERNOR_JOB_LOST','high','autonomy','Persisted mission job cannot be read.',{'job':jid,'code':code},'Recover/reconcile Governor state; do not blindly duplicate job.');s['phase']='governor_job_unknown';return
+        j.update({k:cur.get(k) for k in ('id','status','stage','privacy','stage_detail','completed_at','blocked_reason')});status=str(cur.get('status','')).upper()
+        if status=='PASS':s['phase']='governor_job_passed';return
+        if status not in TERMINAL:s['phase']='governor_job_running';return
+        if mode=='resume' and s.get('retry_count',0)<MAXRETRY:
+            rc,n=http('POST',GOV+f'/jobs/{jid}/retry',{})
+            if rc==202 and isinstance(n,dict) and n.get('id'):
+                s['history'].append({'job_id':jid,'status':status,'blocked_reason':cur.get('blocked_reason'),'at':now()});s['job']={'id':n['id'],'status':n.get('status'),'stage':n.get('stage'),'privacy':n.get('privacy')};s['retry_count']=s.get('retry_count',0)+1;s['phase']='governor_job_retried';return
+            add(fs,'GOVERNOR_RETRY_FAILED','high','autonomy','Consolidated retry failed.',{'code':rc,'response':n},'Repair bundled root causes before retry.');return
+        add(fs,'AUTONOMY_MISSION_BLOCKED','high','autonomy','Mission reached terminal non-PASS.',{'job_id':jid,'status':status,'stage':cur.get('stage'),'blocked_reason':cur.get('blocked_reason'),'repeated_failure_count':cur.get('repeated_failure_count')},'Inspect this one job, fix shared/root causes together, then run resume.');s['phase']='governor_job_blocked';return
+    code,n=http('POST',GOV+'/jobs?async=1',{'request':mission(a),'privacy_domain':'personal-administration','continuation_enabled':False},20)
+    if code==202 and isinstance(n,dict) and n.get('id'):
+        s['job']={k:n.get(k) for k in ('id','status','stage','privacy','created_at')};s['phase']='governor_job_submitted'
+        if n.get('privacy')!='local-only':add(fs,'PRIVACY_ROUTING_DEFECT','critical','privacy','Private PA mission did not classify local-only.',{'job':n.get('id'),'privacy':n.get('privacy')},'Stop private execution and repair privacy routing first.')
+    else:add(fs,'GOVERNOR_SUBMISSION_FAILED','critical','autonomy','Could not submit single governed mission.',{'code':code,'response':n},'Repair Governor ingress; do not create parallel manual execution path.');s['phase']='submission_failed'
+
+def poll(s,fs):
+    jid=s.get('job',{}).get('id')
+    if not jid:return
+    end=time.monotonic()+MAXPOLL;last=None
+    while time.monotonic()<end:
+        code,c=http('GET',GOV+'/jobs/'+jid)
+        if code!=200:add(fs,'GOVERNOR_POLL_FAILED','high','autonomy','Mission status became unreadable.',{'job':jid,'code':code},'Repair status API while preserving job ID.');return
+        s['job'].update({k:c.get(k) for k in ('status','stage','privacy','stage_detail','blocked_reason','completed_at')});state_save(s)
+        if c.get('stage')!=last:print(f"JOB={jid} STATUS={c.get('status')} STAGE={c.get('stage')} DETAIL={str(c.get('stage_detail') or '')[:180]}",flush=True);last=c.get('stage')
+        status=str(c.get('status','')).upper()
+        if status in TERMINAL:
+            if status=='PASS':s['phase']='governor_job_passed'
+            else:add(fs,'AUTONOMY_MISSION_BLOCKED','high','autonomy','Mission reached terminal non-PASS.',{'job_id':jid,'status':status,'stage':c.get('stage'),'blocked_reason':c.get('blocked_reason'),'repeated_failure_count':c.get('repeated_failure_count')},'Batch common faults, repair together, then run resume.');s['phase']='governor_job_blocked'
+            return
+        time.sleep(POLL)
+    s['phase']='governor_job_running';print(f'JOB={jid} STILL_RUNNING_AFTER={MAXPOLL}s')
+
+def groups(fs):
+    rank={'info':0,'warning':1,'medium':2,'high':3,'critical':4};d={}
+    for f in fs:
+        g=d.setdefault(f['root_cause'],{'root_cause':f['root_cause'],'severity':f['severity'],'human_boundary':False,'items':[]});g['items'].append(f);g['human_boundary']|=f.get('human_boundary',False)
+        if rank.get(f['severity'],0)>rank.get(g['severity'],0):g['severity']=f['severity']
+    return sorted(d.values(),key=lambda x:(rank.get(x['severity'],0),len(x['items'])),reverse=True)
+def render(fs,s,a):
+    gs=groups(fs);write(FJ,json.dumps({'generated_at':now(),'version':VERSION,'phase':s.get('phase'),'job':s.get('job',{}),'groups':gs},indent=2,sort_keys=True)+'\n')
+    m=['# LifeOS Personal Administration — consolidated Work bundle','',f"Phase: `{s.get('phase')}`",f"Governor job: `{s.get('job',{}).get('id','none')}`",'','## Supervisor instruction','','Treat this as ONE repair batch. Diagnose shared root causes first, fix as many groups as safely possible in one branch/PR/deployment cycle, independently verify, then run lifeos-pa-mission resume. Do not retry each symptom separately. Do not expose private Calendar/Email/Paperless content. Do not reset/clean the canonical checkout. Escalate only a genuine human boundary.','']
+    if not gs:m+=['## Faults','','No bundled technical faults detected.','']
+    for i,g in enumerate(gs,1):
+        m += [f"## {i}. {g['root_cause']} — {g['severity'].upper()}",f"Human boundary: `{str(g['human_boundary']).lower()}`",'']
+        for x in g['items']:m += [f"- **{x['component']}**: {x['problem']}",f"  - Evidence: `{x['evidence'][:900]}`",f"  - Action: {x['suggested_action']}"]
+        m.append('')
+    write(FM,'\n'.join(m)+'\n');write(SM,'# Personal Administration + Intelligence & Autonomy status\n\n'+f"- Generated: `{now()}`\n- Phase: `{s.get('phase')}`\n- Governor job: `{s.get('job',{}).get('id','none')}`\n- Status: `{s.get('job',{}).get('status','none')}`\n- Privacy: `{s.get('job',{}).get('privacy','unknown')}`\n- Fault groups: `{len(gs)}`\n\n## Acceptance\n\n"+'\n'.join(f'- `{k}`: **{v}**' for k,v in a['acceptance'].items())+'\n')
+def print_status(s):
+    j=s.get('job',{});print(f'RUNNER_VERSION={VERSION}\nMISSION_PHASE={s.get("phase","unknown")}\nJOB_ID={j.get("id","none")}\nJOB_STATUS={j.get("status","none")}\nJOB_STAGE={j.get("stage","none")}\nJOB_PRIVACY={j.get("privacy","unknown")}\nRETRY_COUNT={s.get("retry_count",0)}\nSTATE_DIR={STATE}\nWORK_BUNDLE={FM}\nSUMMARY={SM}')
+def lock():
+    STATE.mkdir(parents=True,exist_ok=True);os.chmod(STATE,0o700)
+    try:fd=os.open(LOCK,os.O_CREAT|os.O_EXCL|os.O_WRONLY,0o600);os.write(fd,str(os.getpid()).encode());os.close(fd)
+    except FileExistsError:
+        try:pid=int(LOCK.read_text());os.kill(pid,0);raise SystemExit(f'RUNNER_ALREADY_ACTIVE pid={pid}')
+        except ProcessLookupError:LOCK.unlink(missing_ok=True);lock()
+        except (ValueError,OSError):LOCK.unlink(missing_ok=True);lock()
+def main():
+    ap=argparse.ArgumentParser();ap.add_argument('mode',nargs='?',choices=('run','resume','audit','status'),default='run');a=ap.parse_args();STATE.mkdir(parents=True,exist_ok=True);os.chmod(STATE,0o700)
+    if a.mode=='status':
+        s=state_load();jid=s.get('job',{}).get('id')
+        if jid:
+            c,j=http('GET',GOV+'/jobs/'+jid)
+            if c==200:s['job'].update({k:j.get(k) for k in ('status','stage','privacy','stage_detail','blocked_reason')});state_save(s)
+        print_status(s);return 0
+    lock()
+    try:
+        s=state_load();fs=[];print('STAGE=deterministic_audit',flush=True);au=audit_all(fs)
+        if a.mode!='audit':
+            print('STAGE=governor_handoff',flush=True);job_step(s,au,fs,a.mode);state_save(s)
+            if s.get('phase') in {'governor_job_submitted','governor_job_retried','governor_job_running'}:poll(s,fs);state_save(s)
+            if s.get('phase') in {'governor_job_passed','governor_job_blocked'}:print('STAGE=post_job_audit',flush=True);post=[];au=audit_all(post);fs+=post
+        render(fs,s,au);state_save(s);print_status(s);gs=groups(fs)
+        if s.get('phase')=='governor_job_passed' and not gs:print('RESULT=PASS');return 0
+        if any(g.get('human_boundary') for g in gs):print('RESULT=HUMAN_BOUNDARY');return 30
+        if any(g['root_cause'] in {'CANONICAL_REPO_DIRTY','CANONICAL_REPO_DRIFT','PRIVACY_ROUTING_DEFECT'} for g in gs):print('RESULT=SAFE_STOP');return 40
+        if gs or s.get('phase') in {'preflight_blocked','governor_job_blocked','submission_failed'}:print('RESULT=WORK_BUNDLE_READY');return 20
+        print('RESULT=PROGRESS');return 0
+    finally:LOCK.unlink(missing_ok=True)
+if __name__=='__main__':raise SystemExit(main())
