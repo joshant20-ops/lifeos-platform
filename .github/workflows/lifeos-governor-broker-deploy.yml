@@ -29,7 +29,7 @@ jobs:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
     steps:
-      - name: Verify canonical Pi checkout
+      - name: Reconcile and verify canonical Pi checkout
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -43,11 +43,17 @@ jobs:
           head="$(git rev-parse HEAD)"
           origin="$(git rev-parse origin/main)"
           if [[ "$head" != "$origin" ]]; then
-            echo 'CANONICAL_CHECKOUT_NOT_READY=not_at_origin_main'
-            echo "PLATFORM_HEAD=$head"
-            echo "ORIGIN_MAIN=$origin"
-            exit 20
+            git merge-base --is-ancestor "$head" "$origin" || {
+              echo 'CANONICAL_CHECKOUT_NOT_READY=non_fast_forward'
+              echo "PLATFORM_HEAD=$head"
+              echo "ORIGIN_MAIN=$origin"
+              exit 20
+            }
+            git merge --ff-only origin/main
           fi
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
           echo 'CANONICAL_CHECKOUT_READY=PASS'
           echo 'DEPLOY_CHECKPOINT=checkout-verified'
 
