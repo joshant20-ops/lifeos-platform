@@ -1,4 +1,4 @@
-name: LifeOS Clean Canonical Paste Artifacts
+name: LifeOS Reconcile Canonical Checkout
 
 on:
   push:
@@ -9,54 +9,54 @@ permissions:
   contents: read
 
 jobs:
-  cleanup:
+  reconcile:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 5
     steps:
-      - name: Remove only confirmed untracked paste artifacts
+      - name: Reconcile only the proved local workflow edit and fast-forward
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+
           python3 - <<'PY'
+          import hashlib
           import pathlib
           import subprocess
 
           root = pathlib.Path('/home/joshan/lifeos-platform')
-          allowed = {
-              '-autonomous-agent \\',
-              'ystemctl show -p MainPID --value lifeos-autonomous-agent)',
-          }
+          rel = '.github/workflows/lifeos-pi-auto-smoke.yml'
 
-          out = subprocess.run(
-              ['git', '-C', str(root), 'ls-files', '--others', '--exclude-standard', '-z'],
+          status = subprocess.run(
+              ['git', '-C', str(root), 'status', '--porcelain=v1', '--untracked-files=all'],
+              check=True, capture_output=True, text=True,
+          ).stdout.splitlines()
+          print('STATUS_BEFORE=' + repr(status))
+          expected = {' M ' + rel}
+          if set(status) != expected:
+              raise SystemExit('REFUSE_UNEXPECTED_CANONICAL_STATE')
+
+          local = (root / rel).read_bytes()
+          remote = subprocess.run(
+              ['git', '-C', str(root), 'show', 'origin/main:' + rel],
               check=True, capture_output=True,
-          ).stdout.decode(errors='surrogateescape')
-          untracked = [x for x in out.split('\0') if x]
-          print('UNTRACKED_BEFORE=' + repr(untracked))
-
-          removed = []
-          for name in untracked:
-              if name not in allowed:
-                  continue
-              target = root / name
-              if target.is_symlink() or not target.is_file():
-                  raise SystemExit(f'REFUSE_NON_REGULAR={name!r}')
-              tracked = subprocess.run(
-                  ['git', '-C', str(root), 'ls-files', '--error-unmatch', '--', name],
-                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-              ).returncode == 0
-              if tracked:
-                  raise SystemExit(f'REFUSE_TRACKED={name!r}')
-              target.unlink()
-              removed.append(name)
-
-          print('REMOVED=' + repr(removed))
-          if set(removed) != (set(untracked) & allowed):
-              raise SystemExit('REMOVAL_SET_MISMATCH')
+          ).stdout
+          lsha = hashlib.sha256(local).hexdigest()
+          rsha = hashlib.sha256(remote).hexdigest()
+          print('LOCAL_FILE_SHA256=' + lsha)
+          print('ORIGIN_FILE_SHA256=' + rsha)
+          if lsha != rsha:
+              raise SystemExit('REFUSE_LOCAL_FILE_DOES_NOT_MATCH_PUBLISHED_MAIN')
           PY
 
-          echo '===== CANONICAL STATUS AFTER CLEANUP ====='
-          git status --short
+          # The only dirty file is byte-identical to its now-published origin/main
+          # version. Restore the old-HEAD copy, then fast-forward normally.
+          git restore --source=HEAD --worktree -- .github/workflows/lifeos-pi-auto-smoke.yml
           test -z "$(git status --porcelain --untracked-files=all)"
-          echo 'CANONICAL_PASTE_ARTIFACT_CLEANUP=PASS'
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          grep -q 'CANONICAL_CHECKOUT_NOT_READY=dirty' .github/workflows/lifeos-pi-auto-smoke.yml
+          echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
+          echo 'CANONICAL_RECONCILE=PASS'
