@@ -12,12 +12,12 @@ assert spec and spec.loader
 spec.loader.exec_module(broker)
 
 
-def test_normal_candidates_include_local_builder_adapter():
+def test_normal_generation_candidates_remain_direct_cloud_only():
     with mock.patch.object(broker.ROUTER, "load_policy", return_value={"providers": []}), \
          mock.patch.object(broker.ROUTER, "load_secret_names", return_value=set()), \
          mock.patch.object(broker.ROUTER, "eligible_providers", return_value=([], [])) as eligible:
         broker.candidates(privacy="normal", task_class="normal")
-    assert eligible.call_args.kwargs["available_adapters"] == {"local-builder", "direct-cloud"}
+    assert eligible.call_args.kwargs["available_adapters"] == {"direct-cloud"}
 
 
 def test_ollama_json_tool_fallback_accepts_only_declared_tools():
