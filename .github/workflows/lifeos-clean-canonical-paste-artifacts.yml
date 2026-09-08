@@ -1,0 +1,62 @@
+name: LifeOS Clean Canonical Paste Artifacts
+
+on:
+  push:
+    branches:
+      - ops/cleanup-canonical-paste-artifacts
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Remove only confirmed untracked paste artifacts
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 - <<'PY'
+          import pathlib
+          import subprocess
+
+          root = pathlib.Path('/home/joshan/lifeos-platform')
+          allowed = {
+              '-autonomous-agent \\',
+              'ystemctl show -p MainPID --value lifeos-autonomous-agent)',
+          }
+
+          out = subprocess.run(
+              ['git', '-C', str(root), 'ls-files', '--others', '--exclude-standard', '-z'],
+              check=True, capture_output=True,
+          ).stdout.decode(errors='surrogateescape')
+          untracked = [x for x in out.split('\0') if x]
+          print('UNTRACKED_BEFORE=' + repr(untracked))
+
+          removed = []
+          for name in untracked:
+              if name not in allowed:
+                  continue
+              target = root / name
+              if target.is_symlink() or not target.is_file():
+                  raise SystemExit(f'REFUSE_NON_REGULAR={name!r}')
+              tracked = subprocess.run(
+                  ['git', '-C', str(root), 'ls-files', '--error-unmatch', '--', name],
+                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+              ).returncode == 0
+              if tracked:
+                  raise SystemExit(f'REFUSE_TRACKED={name!r}')
+              target.unlink()
+              removed.append(name)
+
+          print('REMOVED=' + repr(removed))
+          if set(removed) != (set(untracked) & allowed):
+              raise SystemExit('REMOVAL_SET_MISMATCH')
+          PY
+
+          echo '===== CANONICAL STATUS AFTER CLEANUP ====='
+          git status --short
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'CANONICAL_PASTE_ARTIFACT_CLEANUP=PASS'
