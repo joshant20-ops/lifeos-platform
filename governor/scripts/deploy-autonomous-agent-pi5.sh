@@ -22,10 +22,21 @@ printf 'Inference authority: Pi5 Governor broker\n'
 printf 'Agentic executor: OpenHands/Codex on Engineer when required\n'
 printf 'Verifier: local Qwen on TowerPC\n\n'
 
-printf '===== 1/8 — SYNC =====\n'
+printf '===== 1/8 — SOURCE VERIFY =====\n'
 git -C "$REPO" fetch origin main
-git -C "$REPO" reset --hard origin/main
-printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
+if [[ -n "$(git -C "$REPO" status --porcelain --untracked-files=all)" ]]; then
+  printf 'RESULT=BLOCKED\nREASON=canonical_checkout_dirty\n'
+  git -C "$REPO" status --short
+  exit 20
+fi
+HEAD_SHA=$(git -C "$REPO" rev-parse HEAD)
+ORIGIN_SHA=$(git -C "$REPO" rev-parse origin/main)
+if [[ "$HEAD_SHA" != "$ORIGIN_SHA" ]]; then
+  printf 'RESULT=BLOCKED\nREASON=canonical_checkout_not_at_origin_main\n'
+  printf 'HEAD=%s\nORIGIN_MAIN=%s\n' "$HEAD_SHA" "$ORIGIN_SHA"
+  exit 20
+fi
+printf 'CANONICAL_SOURCE=PASS\nHEAD=%s\n' "${HEAD_SHA:0:7}"
 
 printf '\n===== 2/8 — PREFLIGHT =====\n'
 python3 -m py_compile "$AGENT_CORE" "$AGENT_SERVER" "$AI_BROKER" "$JOB_RECORDS"
