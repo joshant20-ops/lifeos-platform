@@ -126,7 +126,10 @@ def _wake_local_ai() -> bool:
     cfg = _broker_config()
     mac = os.environ.get("LIFEOS_LOCAL_AI_MAC") or cfg.get("LIFEOS_LOCAL_AI_MAC")
     if not mac:
-        return False
+        raise BrokerError(
+            "TOWER_WAKE_CONFIGURATION_ERROR: "
+            "LIFEOS_LOCAL_AI_MAC is not configured"
+        )
     compact = mac.replace(":", "").replace("-", "")
     if len(compact) != 12:
         raise BrokerError("invalid local AI MAC")
@@ -171,6 +174,147 @@ def _ollama(prompt: str, model: str) -> str:
     finally:
         # A retained TTL still releases the lease if MQTT disappears after the
         # request; never replace a useful model result with a cleanup error.
+        _publish_lease("released", required=False)
+
+
+def _ollama_tool_call_from_content(content, tools: list[dict]) -> dict | None:
+    if not isinstance(content, str) or not content.strip():
+        return None
+    try:
+        value = json.loads(content)
+    except Exception:
+        return None
+    if not isinstance(value, dict):
+        return None
+    name = value.get("name")
+    arguments = value.get("arguments")
+    if not isinstance(name, str) or not name or not isinstance(arguments, dict):
+        return None
+    allowed = {
+        str((tool.get("function") or {}).get("name") or "")
+        for tool in tools
+        if isinstance(tool, dict) and tool.get("type") == "function"
+    }
+    if name not in allowed:
+        return None
+    return {
+        "id": f"call_ollama_{os.urandom(6).hex()}",
+        "type": "function",
+        "function": {
+            "name": name,
+            "arguments": json.dumps(arguments, separators=(",", ":")),
+        },
+    }
+
+
+def _ollama_chat_once(messages: list[dict], tools: list[dict], model: str) -> dict:
+    ollama_messages: list[dict] = []
+    for message in messages:
+        if not isinstance(message, dict):
+            continue
+        role = str(message.get("role") or "user")
+        if role == "assistant":
+            item: dict = {"role": "assistant", "content": str(message.get("content") or "")}
+            calls = []
+            for call in message.get("tool_calls") or []:
+                if not isinstance(call, dict):
+                    continue
+                fn = call.get("function") or {}
+                name = str(fn.get("name") or "")
+                if not name:
+                    continue
+                raw = fn.get("arguments") or "{}"
+                try:
+                    args = json.loads(raw) if isinstance(raw, str) else raw
+                except Exception:
+                    args = {}
+                calls.append({"function": {"name": name, "arguments": args if isinstance(args, dict) else {}}})
+            if calls:
+                item["tool_calls"] = calls
+            ollama_messages.append(item)
+            continue
+        if role == "tool":
+            ollama_messages.append({"role": "tool", "content": str(message.get("content") or "")})
+            continue
+        ollama_messages.append({"role": role, "content": str(message.get("content") or "")})
+
+    if not tools:
+        raise BrokerError("tool-aware chat requires function declarations")
+    url = OLLAMA_URL.rsplit("/api/", 1)[0] + "/api/chat"
+    result = _post_json(url, {
+        "model": model,
+        "messages": ollama_messages,
+        "tools": tools,
+        "stream": False,
+        "keep_alive": "30m",
+    }, timeout=HTTP_TIMEOUT)
+    raw_message = result.get("message")
+    if not isinstance(raw_message, dict):
+        raise BrokerError("ollama returned no tool-aware message")
+
+    content = raw_message.get("content")
+    normalized_calls: list[dict] = []
+    for index, call in enumerate(raw_message.get("tool_calls") or []):
+        if not isinstance(call, dict):
+            continue
+        fn = call.get("function") or {}
+        name = str(fn.get("name") or "")
+        if not name:
+            continue
+        args = fn.get("arguments") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except Exception:
+                args = {}
+        if not isinstance(args, dict):
+            args = {}
+        normalized_calls.append({
+            "id": str(call.get("id") or f"call_ollama_{index}_{os.urandom(4).hex()}"),
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": json.dumps(args, separators=(",", ":")),
+            },
+        })
+
+    if not normalized_calls:
+        fallback = _ollama_tool_call_from_content(content, tools)
+        if fallback:
+            normalized_calls.append(fallback)
+            content = None
+
+    message: dict = {"role": "assistant", "content": content or None}
+    if normalized_calls:
+        message["tool_calls"] = normalized_calls
+    if not normalized_calls and not message["content"]:
+        raise BrokerError("ollama returned empty tool-aware response")
+    return {
+        "message": message,
+        "finish_reason": "tool_calls" if normalized_calls else "stop",
+    }
+
+
+def _ollama_chat(messages: list[dict], tools: list[dict], provider: dict, tool_choice=None) -> dict:
+    del tool_choice  # Ollama receives the declared tools; model decides the call.
+    model = _provider_model(provider)
+    _publish_lease("active")
+    try:
+        try:
+            return _ollama_chat_once(messages, tools, model)
+        except BrokerError as first:
+            _wake_local_ai()
+            deadline = time.monotonic() + WAKE_TIMEOUT
+            last: Exception = first
+            while time.monotonic() < deadline:
+                time.sleep(3)
+                _publish_lease("active")
+                try:
+                    return _ollama_chat_once(messages, tools, model)
+                except BrokerError as exc:
+                    last = exc
+            raise BrokerError("local AI did not become ready after Wake-on-LAN") from last
+    finally:
         _publish_lease("released", required=False)
 
 
@@ -342,6 +486,17 @@ def _groq(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     return _openai_compatible("https://api.groq.com/openai/v1/chat/completions", prompt, _provider_model(provider), secrets["GROQ_API_KEY"])
 
 
+def _groq_chat(messages: list[dict], tools: list[dict], provider: dict, secrets: dict[str, str], tool_choice=None) -> dict:
+    return _openai_chat(
+        "https://api.groq.com/openai/v1/chat/completions",
+        messages,
+        tools,
+        _provider_model(provider),
+        secrets["GROQ_API_KEY"],
+        tool_choice=tool_choice,
+    )
+
+
 def _openrouter(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     return _openai_compatible("https://openrouter.ai/api/v1/chat/completions", prompt, _provider_model(provider), secrets["OPENROUTER_API_KEY"])
 
@@ -389,7 +544,7 @@ def _invoke(provider: dict, prompt: str, secrets: dict[str, str]) -> str:
 def candidates(*, privacy: str = "normal", task_class: str = "normal") -> tuple[list[dict], list[dict]]:
     policy = ROUTER.load_policy(POLICY_PATH)
     secret_names = ROUTER.load_secret_names(SECRETS_PATH)
-    adapters = {"local-builder"} if privacy == "local-only" else {"direct-cloud"}
+    adapters = {"local-builder"} if privacy == "local-only" else {"local-builder", "direct-cloud"}
     return ROUTER.eligible_providers(policy, task_class, secret_names, privacy=privacy, available_adapters=adapters)
 
 
@@ -398,16 +553,20 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
     if privacy != "normal":
         raise BrokerError("tool-enabled private inference is not permitted")
     eligible, considered = candidates(privacy=privacy, task_class=task_class)
-    eligible = [p for p in eligible if p.get("id") in {"gemini", "openrouter"}]
+    eligible = [p for p in eligible if p.get("id") in {"ollama", "gemini", "groq", "openrouter"}]
     if not eligible:
-        raise BrokerError("no eligible tool-capable cloud provider")
+        raise BrokerError("no eligible tool-capable provider")
     secrets = _strict_env(SECRETS_PATH)
     failures: list[str] = []
     for provider in eligible:
         pid = provider["id"]
         try:
-            if pid == "gemini":
+            if pid == "ollama":
+                response = _ollama_chat(messages, tools or [], provider, tool_choice=tool_choice)
+            elif pid == "gemini":
                 response = _gemini_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
+            elif pid == "groq":
+                response = _groq_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
             elif pid == "openrouter":
                 response = _openrouter_chat(messages, tools or [], provider, secrets, tool_choice=tool_choice)
             else:
@@ -420,8 +579,11 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
                 **response,
             }
         except (BrokerError, KeyError) as exc:
-            failures.append(f"{pid}:{type(exc).__name__}")
-    raise BrokerError("tool-capable providers exhausted: " + ",".join(failures))
+            detail = " ".join(str(exc).split())
+            if len(detail) > 300:
+                detail = detail[:297] + "..."
+            failures.append(f"{pid}:{type(exc).__name__}:{detail}")
+    raise BrokerError("tool-capable providers exhausted: " + " | ".join(failures))
 
 
 def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None) -> dict:
