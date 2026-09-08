@@ -59,7 +59,7 @@ jobs:
           test -n "$url" && test -n "$token"
           export LLM_BASE_URL="${url%/}"
           export LLM_API_KEY="$token"
-          export LLM_MODEL="openai/lifeos-engineering-substantial"
+          export LLM_MODEL="openai/lifeos-engineering-normal"
           export LIFEOS_PROVIDER=governor-broker
 
           work="$HOME/.local/share/lifeos-agent/worktrees/smoke-${marker}"
