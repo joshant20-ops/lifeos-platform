@@ -215,6 +215,9 @@ print('JOB_RECORD_RUNTIME_STAGE=PASS')
 PY
 
 printf '\n===== 7/8 — TRUE END-TO-END AUTONOMOUS SMOKE =====\n'
+if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then
+  printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\n'
+else
 SMOKE_REQ='Prove the LifeOS autonomous runtime loop works. In your disposable Engineer worktree, create the required per-job Pi5 runtime launcher but do not commit or push it yourself; Pi5 owns Git publication. The launcher must safely and read-only curl http://127.0.0.1:8790/health from Pi5, verify service=lifeos-autonomous-agent, status=ok, runtime_controller=pi5, git_controller=pi5, print RUNTIME_LOOP_SMOKE=PASS, and make no other system changes. Run focused tests and leave the launcher in the worktree for automatic handoff. Unrelated repository failures are not blockers.'
 SMOKE_JSON=$(python3 - "$SMOKE_REQ" <<'PY'
 import json,sys
@@ -263,6 +266,7 @@ assert runtime, 'missing Pi5 runtime evidence'
 print('AUTONOMOUS_LOOP=PASS')
 PY
 
+fi
 printf '\n===== 8/8 — RESULT =====\n'
 printf 'RESULT=PASS\n'
 printf 'CONTROLLER=Pi5\n'

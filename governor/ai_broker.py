@@ -28,6 +28,7 @@ CONFIG_PATH = pathlib.Path(
 )
 OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://192.168.0.201:11434/api/generate")
 OLLAMA_MODEL = os.environ.get("LIFEOS_LOCAL_AI_MODEL", "qwen2.5-coder:7b-instruct")
+OLLAMA_CONTEXT_LENGTH = int(os.environ.get("LIFEOS_LOCAL_AI_CONTEXT_LENGTH", "32768"))
 HTTP_TIMEOUT = int(os.environ.get("LIFEOS_AI_HTTP_TIMEOUT", "120"))
 WAKE_TIMEOUT = int(os.environ.get("LIFEOS_LOCAL_AI_WAKE_TIMEOUT", "90"))
 LEASE_TTL = int(os.environ.get("LIFEOS_LOCAL_AI_LEASE_TTL", "1200"))
@@ -145,7 +146,7 @@ def _wake_local_ai() -> bool:
 
 
 def _ollama_once(prompt: str, model: str) -> str:
-    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m"}, timeout=HTTP_TIMEOUT)
+    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}, timeout=HTTP_TIMEOUT)
     text = str(result.get("response", "")).strip()
     if not text:
         raise BrokerError("ollama returned empty response")
@@ -247,6 +248,7 @@ def _ollama_chat_once(messages: list[dict], tools: list[dict], model: str) -> di
         "tools": tools,
         "stream": False,
         "keep_alive": "30m",
+        "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH},
     }, timeout=HTTP_TIMEOUT)
     raw_message = result.get("message")
     if not isinstance(raw_message, dict):
