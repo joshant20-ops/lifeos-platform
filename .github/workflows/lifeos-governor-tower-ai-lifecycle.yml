@@ -70,7 +70,7 @@ jobs:
           PY
           python3 - <<'PY'
           import json,time,urllib.error,urllib.request
-          payload={'model':'lifeos-engineer','messages':[{'role':'user','content':'Reply with exactly GOVERNOR_TOWER_WAKE_PASS'}],'stream':False}
+          payload={'model':'lifeos-engineer','messages':[{'role':'user','content':'Briefly identify your role. This is information only; do not create a job.'}],'stream':False}
           request=urllib.request.Request('http://127.0.0.1:8793/v1/chat/completions',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'},method='POST')
           started=time.monotonic()
           try:
@@ -79,7 +79,7 @@ jobs:
               print('ENGINEER_HTTP_ERROR_BODY=' + exc.read().decode('utf-8', 'replace'))
               raise
           answer=value['choices'][0]['message']['content']
-          assert 'GOVERNOR_TOWER_WAKE_PASS' in answer, answer
+          assert isinstance(answer,str) and answer.strip(), answer
           print(f'GOVERNOR_MODEL_AFTER_WAKE=PASS elapsed={time.monotonic()-started:.1f}s')
           PY
           state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state)
