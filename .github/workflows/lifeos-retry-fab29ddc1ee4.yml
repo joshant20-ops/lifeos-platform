@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   retry-and-follow:
-    if: github.event.head_commit.message == 'Run governed retry for fab29ddc1ee4'
+    if: startsWith(github.event.head_commit.message, 'Run governed retry for fab29ddc1ee4')
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 75
     steps:
