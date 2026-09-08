@@ -1084,20 +1084,37 @@ class Handler(BaseHTTPRequestHandler):
                 length = int(self.headers.get("Content-Length", "0"))
                 body = json.loads(self.rfile.read(length) or b"{}")
                 messages = body.get("messages") or []
-                prompt = "\n".join(
-                    f"{str(item.get('role') or 'user').upper()}: {str(item.get('content') or '')}"
-                    for item in messages if isinstance(item, dict)
-                ).strip()
-                if not prompt:
+                tools = body.get("tools") or []
+                tool_choice = body.get("tool_choice")
+                if not messages:
                     raise ValueError("messages_required")
-                result = _AI_BROKER.generate(prompt, privacy="local-only", task_class="normal")
+                if tools:
+                    result = _AI_BROKER.chat(
+                        messages,
+                        tools=tools,
+                        tool_choice=tool_choice,
+                        privacy="normal",
+                        task_class="normal",
+                    )
+                    message = result["message"]
+                    finish_reason = result["finish_reason"]
+                else:
+                    prompt = "\n".join(
+                        f"{str(item.get('role') or 'user').upper()}: {str(item.get('content') or '')}"
+                        for item in messages if isinstance(item, dict)
+                    ).strip()
+                    if not prompt:
+                        raise ValueError("messages_required")
+                    result = _AI_BROKER.generate(prompt, privacy="local-only", task_class="normal")
+                    message = {"role": "assistant", "content": result["text"]}
+                    finish_reason = "stop"
                 self.send_json(200, {
                     "id": "chatcmpl-" + uuid.uuid4().hex,
                     "object": "chat.completion",
                     "created": int(time.time()),
                     "model": result["model"],
                     "lifeos_provider": result["provider"],
-                    "choices": [{"index": 0, "message": {"role": "assistant", "content": result["text"]}, "finish_reason": "stop"}],
+                    "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
                 })
             except Exception as exc:
                 self.send_json(502, {"error": "ai_broker_failed", "detail": str(exc)[:500]})
