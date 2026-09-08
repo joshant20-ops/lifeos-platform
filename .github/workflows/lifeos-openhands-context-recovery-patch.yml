@@ -36,21 +36,8 @@ jobs:
           assert old in text
           text = text.replace(old, new, 1)
 
-          old = '''    result = _post_json(url, {
-        "model": model,
-        "messages": ollama_messages,
-        "tools": tools,
-        "stream": False,
-        "keep_alive": "30m",
-    }, timeout=HTTP_TIMEOUT)'''
-          new = '''    result = _post_json(url, {
-        "model": model,
-        "messages": ollama_messages,
-        "tools": tools,
-        "stream": False,
-        "keep_alive": "30m",
-        "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH},
-    }, timeout=HTTP_TIMEOUT)'''
+          old = '        "keep_alive": "30m",\n    }, timeout=HTTP_TIMEOUT)'
+          new = '        "keep_alive": "30m",\n        "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH},\n    }, timeout=HTTP_TIMEOUT)'
           assert old in text
           text = text.replace(old, new, 1)
           broker.write_text(text)
@@ -63,15 +50,8 @@ jobs:
           assert text.count(phase8) == 1
           before, remainder = text.split(phase7, 1)
           body, after = remainder.split(phase8, 1)
-          wrapped = (
-              phase7
-              + 'if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then\n'
-              + "  printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\\n'\n"
-              + 'else\n'
-              + ''.join('  ' + line if line.strip() else line for line in body.splitlines(True))
-              + 'fi\n'
-              + phase8
-          )
+          indented = ''.join(('  ' + line) if line.strip() else line for line in body.splitlines(True))
+          wrapped = phase7 + 'if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then\n' + "  printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\\n'\n" + 'else\n' + indented + 'fi\n' + phase8
           deploy.write_text(before + wrapped + after)
 
           workflow = Path('.github/workflows/lifeos-governor-broker-deploy.yml')
@@ -89,8 +69,6 @@ jobs:
 
       - name: Push recovery branch
         shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -Eeuo pipefail
           branch='fix/openhands-ollama-context-recovery'
