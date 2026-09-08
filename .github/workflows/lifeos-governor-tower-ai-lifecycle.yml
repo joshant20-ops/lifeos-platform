@@ -33,10 +33,9 @@ jobs:
           git reset --hard origin/main
           test -z "$(git status --porcelain --untracked-files=all)"
 
-      - name: Refresh and verify bounded gateway
+      - name: Verify bounded Engineer deployment gateway
         run: |
           set -Eeuo pipefail
-          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge
           set +e
           out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway 2>&1)
           rc=$?
