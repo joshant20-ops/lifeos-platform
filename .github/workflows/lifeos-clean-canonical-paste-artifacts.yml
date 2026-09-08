@@ -13,50 +13,33 @@ jobs:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 5
     steps:
-      - name: Reconcile only the proved local workflow edit and fast-forward
+      - name: Fast-forward clean canonical checkout only
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
 
-          python3 - <<'PY'
-          import hashlib
-          import pathlib
-          import subprocess
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo 'CANONICAL_RECONCILE=BLOCKED_DIRTY'
+            git status --short
+            exit 20
+          fi
 
-          root = pathlib.Path('/home/joshan/lifeos-platform')
-          rel = '.github/workflows/lifeos-pi-auto-smoke.yml'
+          head="$(git rev-parse HEAD)"
+          origin="$(git rev-parse origin/main)"
+          echo "HEAD_BEFORE=$head"
+          echo "ORIGIN_MAIN=$origin"
 
-          status = subprocess.run(
-              ['git', '-C', str(root), 'status', '--porcelain=v1', '--untracked-files=all'],
-              check=True, capture_output=True, text=True,
-          ).stdout.splitlines()
-          print('STATUS_BEFORE=' + repr(status))
-          expected = {' M ' + rel}
-          if set(status) != expected:
-              raise SystemExit('REFUSE_UNEXPECTED_CANONICAL_STATE')
+          if [[ "$head" != "$origin" ]]; then
+            git merge-base --is-ancestor "$head" "$origin" || {
+              echo 'CANONICAL_RECONCILE=BLOCKED_NON_FAST_FORWARD'
+              exit 20
+            }
+            git merge --ff-only origin/main
+          fi
 
-          local = (root / rel).read_bytes()
-          remote = subprocess.run(
-              ['git', '-C', str(root), 'show', 'origin/main:' + rel],
-              check=True, capture_output=True,
-          ).stdout
-          lsha = hashlib.sha256(local).hexdigest()
-          rsha = hashlib.sha256(remote).hexdigest()
-          print('LOCAL_FILE_SHA256=' + lsha)
-          print('ORIGIN_FILE_SHA256=' + rsha)
-          if lsha != rsha:
-              raise SystemExit('REFUSE_LOCAL_FILE_DOES_NOT_MATCH_PUBLISHED_MAIN')
-          PY
-
-          # The only dirty file is byte-identical to its now-published origin/main
-          # version. Restore the old-HEAD copy, then fast-forward normally.
-          git restore --source=HEAD --worktree -- .github/workflows/lifeos-pi-auto-smoke.yml
           test -z "$(git status --porcelain --untracked-files=all)"
-          git merge --ff-only origin/main
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          test -z "$(git status --porcelain --untracked-files=all)"
-          grep -q 'CANONICAL_CHECKOUT_NOT_READY=dirty' .github/workflows/lifeos-pi-auto-smoke.yml
           echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
           echo 'CANONICAL_RECONCILE=PASS'
