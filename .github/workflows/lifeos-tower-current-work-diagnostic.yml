@@ -12,48 +12,37 @@ jobs:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 5
     steps:
-      - name: Inspect current Tower workload
+      - name: Trace recent broker workload history
         shell: bash
         run: |
           set -u
-          TOWER=192.168.0.201
-          SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=8"
-
-          echo '===== TOWER STATE ====='
+          echo '===== CURRENT TOWER STATE ====='
           timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true
 
-          echo '===== LEASE EVENTS ====='
-          timeout 4 mosquitto_sub -h 127.0.0.1 -v -W 3 -t 'lifeos/tower/lease/+' | tee /tmp/lifeos-lease-snapshot.txt || true
+          echo '===== RETAINED LEASES ====='
+          timeout 4 mosquitto_sub -h 127.0.0.1 -v -W 3 -t 'lifeos/tower/lease/+' || true
 
-          echo '===== ACTIVE BROKER OWNER(S) ON DOCKER ====='
-          grep '"state":"active"' /tmp/lifeos-lease-snapshot.txt 2>/dev/null | sed -n 's#lifeos/tower/lease/\([0-9][0-9]*\).*#\1#p' | sort -u | while read -r pid; do
-            echo "ACTIVE_BROKER_PID=$pid"
-            ps -o user,pid,ppid,lstart,etimes,%cpu,%mem,cmd -p "$pid" || true
-            ppid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
-            [ -n "$ppid" ] && ps -o user,pid,ppid,lstart,etimes,%cpu,%mem,cmd -p "$ppid" || true
-            ss -tpn 2>/dev/null | grep "pid=$pid," || true
-          done
+          echo '===== RECENT GOVERNOR BROKER JOURNAL ====='
+          journalctl -u lifeos-autonomous-agent.service \
+            --since '2026-09-08 21:20:00' \
+            --until '2026-09-08 21:45:00' \
+            --no-pager -o short-iso | \
+            grep -Ei 'BROKER|chat/completions|inference|ollama|tool|provider|request|failure' | tail -240 || true
 
-          echo '===== RELATED DOCKER PROCESSES ====='
-          ps -eo user,pid,ppid,etimes,%cpu,%mem,cmd --sort=-%cpu | grep -E 'lifeos|openhands|autonomous-agent|cloud-builder|ollama|qwen' | grep -v grep | head -80 || true
+          echo '===== RECENT ENGINEER JOURNAL ====='
+          journalctl -u lifeos-engineer.service \
+            --since '2026-09-08 21:20:00' \
+            --until '2026-09-08 21:45:00' \
+            --no-pager -o short-iso | tail -200 || true
 
-          echo '===== OLLAMA API PS ====='
-          curl -sS --max-time 10 "http://$TOWER:11434/api/ps" || true
-          echo
+          echo '===== RECENT AUTONOMOUS JOB JOURNAL ====='
+          journalctl -u lifeos-autonomous-agent.service \
+            --since '2026-09-08 21:20:00' \
+            --until '2026-09-08 21:45:00' \
+            --no-pager -o short-iso | tail -300 || true
 
-          echo '===== TOWER SSH TEST ====='
-          $SSH "$TOWER" 'hostname; id; uptime' || true
+          echo '===== PROCESS HISTORY HINTS ====='
+          ps -eo user,pid,ppid,lstart,etimes,%cpu,%mem,cmd --sort=-%cpu | \
+            grep -E 'lifeos|openhands|autonomous-agent|cloud-builder|ollama|qwen' | grep -v grep | head -80 || true
 
-          echo '===== GPU PROCESS OWNER ====='
-          $SSH "$TOWER" 'nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null || nvidia-smi' || true
-
-          echo '===== TOWER TOP PROCESSES ====='
-          $SSH "$TOWER" 'ps -eo pid,ppid,etimes,%cpu,%mem,cmd --sort=-%cpu | head -50' || true
-
-          echo '===== OLLAMA PROCESSES ====='
-          $SSH "$TOWER" "pgrep -af 'ollama|qwen' || true" || true
-
-          echo '===== RECENT OLLAMA LOG ====='
-          $SSH "$TOWER" "journalctl -u ollama --since '-20 min' --no-pager -o short-iso 2>/dev/null | tail -120 || true" || true
-
-          echo 'DIAGNOSTIC_COMPLETE'
+          echo 'TRACE_COMPLETE'
