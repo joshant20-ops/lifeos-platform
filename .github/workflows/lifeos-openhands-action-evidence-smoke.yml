@@ -12,7 +12,7 @@ permissions:
 
 concurrency:
   group: lifeos-pi5-control
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   smoke:
