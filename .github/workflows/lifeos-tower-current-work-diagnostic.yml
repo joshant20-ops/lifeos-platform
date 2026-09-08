@@ -17,23 +17,68 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          TOWER=192.168.0.201
+
           echo '===== TOWER STATE ====='
           timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true
 
-          echo '===== LEASES ====='
-          timeout 5 mosquitto_sub -h 127.0.0.1 -v -C 20 -t 'lifeos/tower/lease/+' || true
+          echo '===== CURRENT LEASE SNAPSHOT ====='
+          leases=$(timeout 3 mosquitto_sub -h 127.0.0.1 -v -W 2 -t 'lifeos/tower/lease/+' || true)
+          printf '%s\n' "$leases"
+          active_pid=$(printf '%s\n' "$leases" | python3 -c '
+import json,re,sys
+best=""
+for line in sys.stdin:
+    m=re.match(r"lifeos/tower/lease/(\d+)\s+(.*)", line.strip())
+    if not m: continue
+    try: obj=json.loads(m.group(2))
+    except Exception: continue
+    if obj.get("state") == "active": best=m.group(1)
+print(best)
+')
+          echo "ACTIVE_BROKER_PID=${active_pid:-none}"
+
+          echo '===== BROKER OWNER PROCESS ON DOCKER ====='
+          if [[ -n "${active_pid:-}" ]]; then
+            ps -o user,pid,ppid,lstart,etimes,%cpu,%mem,cmd -p "$active_pid" || true
+            echo '--- parent chain ---'
+            pid="$active_pid"
+            for _ in 1 2 3 4 5 6; do
+              [[ "$pid" =~ ^[0-9]+$ ]] || break
+              ps -o user,pid,ppid,lstart,etimes,%cpu,%mem,cmd -p "$pid" --no-headers || true
+              pid=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+              [[ -n "$pid" && "$pid" != 0 ]] || break
+            done
+            echo '--- broker fd/network summary ---'
+            ls -l "/proc/$active_pid/fd" 2>/dev/null | head -40 || true
+            ss -tpn 2>/dev/null | grep "pid=$active_pid," || true
+          fi
+
+          echo '===== GOVERNOR / BUILDER / OPENHANDS PROCESSES ====='
+          ps -eo user,pid,ppid,etimes,%cpu,%mem,cmd --sort=-%cpu | \
+            grep -E 'lifeos|openhands|ollama|qwen|cloud-builder|autonomous-agent' | \
+            grep -v grep | head -80 || true
 
           echo '===== OLLAMA ACTIVE MODELS ====='
-          curl -fsS --max-time 10 http://192.168.0.201:11434/api/ps || true
+          curl -fsS --max-time 10 "http://$TOWER:11434/api/ps" || true
+          echo
+
+          echo '===== TOWER SSH IDENTITY ====='
+          ssh -o BatchMode=yes -o ConnectTimeout=8 "$TOWER" \
+            'hostname; id; uptime' || true
 
           echo '===== TOWER GPU PROCESSES ====='
-          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC \
+          ssh -o BatchMode=yes -o ConnectTimeout=8 "$TOWER" \
             "nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader,nounits 2>/dev/null || nvidia-smi" || true
 
-          echo '===== TOWER PROCESS TREE ====='
-          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC \
-            "ps -eo pid,ppid,etimes,%cpu,%mem,cmd --sort=-%cpu | head -40" || true
+          echo '===== TOWER TOP PROCESSES ====='
+          ssh -o BatchMode=yes -o ConnectTimeout=8 "$TOWER" \
+            "ps -eo pid,ppid,etimes,%cpu,%mem,cmd --sort=-%cpu | head -50" || true
 
-          echo '===== OLLAMA SERVICE ====='
-          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC \
-            "systemctl status ollama --no-pager --full 2>/dev/null || true; journalctl -u ollama -n 80 --no-pager -o short-iso 2>/dev/null || true" || true
+          echo '===== OLLAMA PROCESS DETAIL ====='
+          ssh -o BatchMode=yes -o ConnectTimeout=8 "$TOWER" \
+            "pgrep -af 'ollama|qwen' || true; systemctl status ollama --no-pager --full 2>/dev/null || true" || true
+
+          echo '===== RECENT OLLAMA REQUESTS ====='
+          ssh -o BatchMode=yes -o ConnectTimeout=8 "$TOWER" \
+            "journalctl -u ollama --since '-30 min' --no-pager -o short-iso 2>/dev/null | tail -160 || true" || true
