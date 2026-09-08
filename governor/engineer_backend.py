@@ -370,6 +370,28 @@ def store_proposal(proposal):
     return ref
 
 
+def parse_model_json(value):
+    """Accept a JSON object with optional model-added prose or code fences."""
+    text = clean_text(value)
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(text):
+        if character != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise json.JSONDecodeError("model did not return a JSON object", text, 0)
+
+
 def analyse(messages):
     transcript = []
     for item in messages[-14:]:
@@ -380,7 +402,7 @@ def analyse(messages):
     prompt = SYSTEM + "\n\nLOCAL READ-ONLY CONTEXT:\n" + json.dumps(context, indent=2)[:10000]
     prompt += "\n\nConversation:\n" + "\n".join(transcript) + "\n\nReturn JSON now."
     routed = governor_local_generate(prompt)
-    parsed = json.loads(routed.get("text", "{}"))
+    parsed = parse_model_json(routed.get("text", "{}"))
     improvements = [clean_text(x) for x in parsed.get("improvements", []) if clean_text(x)][:4]
     reply = clean_text(parsed.get("reply"))
     question = clean_text(parsed.get("clarifying_question"))
