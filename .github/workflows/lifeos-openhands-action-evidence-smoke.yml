@@ -92,6 +92,19 @@ jobs:
           echo 'OPENHANDS_HARMLESS_TOOL_EXECUTION=PASS'
           REMOTE
 
+      - name: Capture Governor inference diagnostics
+        if: failure()
+        run: |
+          set +e
+          echo 'TOWER_STATE_DIAGNOSTIC'
+          timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state
+          echo 'TOWER_LEASE_DIAGNOSTIC'
+          timeout 5 mosquitto_sub -h 127.0.0.1 -v -t 'lifeos/tower/lease/+'
+          echo 'GOVERNOR_BROKER_FAILURES'
+          journalctl -u lifeos-autonomous-agent.service --since '10 minutes ago' --no-pager -o cat | grep -E 'BROKER_FAILURE|BROKER_RUNTIME_FAILURE|inference|ollama|Tower|provider' | tail -80 || true
+          echo 'TOWER_CONTROL_DIAGNOSTIC'
+          journalctl -u lifeos-tower-control.service --since '10 minutes ago' --no-pager -o cat | grep -E 'lease|wake|ready|power|shutdown|accessible|ollama|tower' | tail -80 || true
+
       - name: Release Tower
         if: always()
         run: |
