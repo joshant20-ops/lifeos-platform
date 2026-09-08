@@ -69,11 +69,15 @@ jobs:
           print('TOWER_OFF_BEFORE_MODEL=PASS')
           PY
           python3 - <<'PY'
-          import json,time,urllib.request
+          import json,time,urllib.error,urllib.request
           payload={'model':'lifeos-engineer','messages':[{'role':'user','content':'Reply with exactly GOVERNOR_TOWER_WAKE_PASS'}],'stream':False}
           request=urllib.request.Request('http://127.0.0.1:8793/v1/chat/completions',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'},method='POST')
           started=time.monotonic()
-          with urllib.request.urlopen(request,timeout=900) as response: value=json.load(response)
+          try:
+              with urllib.request.urlopen(request,timeout=900) as response: value=json.load(response)
+          except urllib.error.HTTPError as exc:
+              print('ENGINEER_HTTP_ERROR_BODY=' + exc.read().decode('utf-8', 'replace'))
+              raise
           answer=value['choices'][0]['message']['content']
           assert 'GOVERNOR_TOWER_WAKE_PASS' in answer, answer
           print(f'GOVERNOR_MODEL_AFTER_WAKE=PASS elapsed={time.monotonic()-started:.1f}s')
@@ -81,6 +85,17 @@ jobs:
           state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state)
           python3 -c 'import json,sys; assert json.loads(sys.argv[1]).get("accessible") is True' "$state"
           echo 'TOWER_ACCESSIBLE_AFTER_WAKE=PASS'
+
+      - name: Capture broker lifecycle diagnostics on request failure
+        if: failure()
+        run: |
+          set +e
+          echo 'TOWER_STATE_DIAGNOSTIC'
+          timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state
+          echo 'TOWER_LEASE_DIAGNOSTIC'
+          timeout 5 mosquitto_sub -h 127.0.0.1 -v -t 'lifeos/tower/lease/+'
+          systemctl status lifeos-tower-control.service lifeos-autonomous-agent.service lifeos-engineer.service --no-pager --full
+          journalctl -u lifeos-tower-control.service -u lifeos-autonomous-agent.service -u lifeos-engineer.service -n 160 --no-pager -o short-iso
 
       - name: Prove lease release and automatic shutdown
         run: |
