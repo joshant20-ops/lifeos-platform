@@ -43,10 +43,25 @@ jobs:
           test "$RUNNER_ARCH" = ARM64
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
-          git reset --hard origin/main
-          test -z "$(git status --porcelain)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
+
+          if [[ -n "$(git status --porcelain)" ]]; then
+            echo "CANONICAL_CHECKOUT_NOT_READY=dirty"
+            git status --short
+            exit 20
+          fi
+
+          head="$(git rev-parse HEAD)"
+          origin="$(git rev-parse origin/main)"
+
+          if [[ "$head" != "$origin" ]]; then
+            echo "CANONICAL_CHECKOUT_NOT_READY=not_at_origin_main"
+            echo "PLATFORM_HEAD=$head"
+            echo "ORIGIN_MAIN=$origin"
+            exit 20
+          fi
+
+          echo "CANONICAL_CHECKOUT_READY=PASS"
+          echo "PLATFORM_HEAD=$head"
 
       - name: Execute allow-listed post-retirement health audit
         id: health_audit
