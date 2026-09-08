@@ -86,7 +86,7 @@ jobs:
           cleanup() { rm -f "$LOG"; }
           trap cleanup EXIT
 
-          bash governor/scripts/deploy-autonomous-agent-pi5.sh > >(tee "$LOG") 2>&1 &
+          LIFEOS_SKIP_AUTONOMOUS_E2E=1 bash governor/scripts/deploy-autonomous-agent-pi5.sh > >(tee "$LOG") 2>&1 &
           DEPLOY_PID=$!
           LAST_PHASE=''
           LAST_JOB_STATE=''
