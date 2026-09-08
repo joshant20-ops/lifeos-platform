@@ -6,6 +6,8 @@ on:
     paths:
       - '.github/workflows/lifeos-governor-tower-ai-lifecycle.yml'
       - 'scripts/lifeos-deploy-governor-managed-engineer.sh'
+      - 'governor/engineer_backend.py'
+      - 'governor/systemd/lifeos-engineer.service.d/governor-ai-broker.conf'
       - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
   workflow_dispatch:
 
