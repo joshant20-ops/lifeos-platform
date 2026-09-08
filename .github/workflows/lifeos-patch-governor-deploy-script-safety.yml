@@ -1,0 +1,54 @@
+name: LifeOS Patch Governor Deploy Script Safety
+
+on:
+  push:
+    branches:
+      - fix/governor-deploy-script-canonical-safety
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/governor-deploy-script-canonical-safety
+          fetch-depth: 0
+
+      - name: Replace destructive canonical reset with fail-closed verification
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('governor/scripts/deploy-autonomous-agent-pi5.sh')
+          s = p.read_text()
+          old = '''printf '===== 1/8 — SYNC =====\\n'\ngit -C "$REPO" fetch origin main\ngit -C "$REPO" reset --hard origin/main\nprintf 'HEAD=%s\\n' "$(git -C "$REPO" rev-parse --short HEAD)"\n'''
+          new = '''printf '===== 1/8 — SOURCE VERIFY =====\\n'\ngit -C "$REPO" fetch origin main\nif [[ -n "$(git -C "$REPO" status --porcelain --untracked-files=all)" ]]; then\n  printf 'RESULT=BLOCKED\\nREASON=canonical_checkout_dirty\\n'\n  git -C "$REPO" status --short\n  exit 20\nfi\nHEAD_SHA=$(git -C "$REPO" rev-parse HEAD)\nORIGIN_SHA=$(git -C "$REPO" rev-parse origin/main)\nif [[ "$HEAD_SHA" != "$ORIGIN_SHA" ]]; then\n  printf 'RESULT=BLOCKED\\nREASON=canonical_checkout_not_at_origin_main\\n'\n  printf 'HEAD=%s\\nORIGIN_MAIN=%s\\n' "$HEAD_SHA" "$ORIGIN_SHA"\n  exit 20\nfi\nprintf 'CANONICAL_SOURCE=PASS\\nHEAD=%s\\n' "${HEAD_SHA:0:7}"\n'''
+          if s.count(old) != 1:
+              raise SystemExit(f'expected sync block once, found {s.count(old)}')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
+      - name: Validate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash -n governor/scripts/deploy-autonomous-agent-pi5.sh
+          ! grep -Fq 'git -C "$REPO" reset --hard origin/main' governor/scripts/deploy-autonomous-agent-pi5.sh
+          git diff --check
+          grep -q 'REASON=canonical_checkout_not_at_origin_main' governor/scripts/deploy-autonomous-agent-pi5.sh
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add governor/scripts/deploy-autonomous-agent-pi5.sh
+          git commit -m 'Make Governor deploy script canonical source read-only'
+          git push origin HEAD:fix/governor-deploy-script-canonical-safety
