@@ -407,6 +407,28 @@ def milestone_decision(job, iteration_verdict, evidence):
     return result
 
 
+def _parse_json_object(value):
+    """Extract one valid JSON object from strict, fenced, or prefaced model output."""
+    text = str(value or "").strip()
+    try:
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(text):
+        if character != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise json.JSONDecodeError("model did not return a JSON object", text, 0)
+
+
 def local_verify(job, iteration, evidence):
     prompt = f"""You are the independent LOCAL verifier for LifeOS.
 Decide whether the user's original goal is actually complete from supplied BUILD, PUBLICATION, AND RUNTIME evidence.
@@ -431,8 +453,8 @@ Evidence:\n{evidence[-18000:]}
     result = _AI_BROKER.generate(prompt, privacy="local-only", task_class="normal", force_provider="ollama")
     raw = result.get("text", "{}")
     try:
-        return json.loads(raw)
-    except Exception:
+        return _parse_json_object(raw)
+    except json.JSONDecodeError:
         return {"verdict": "RETRY", "reason": "verifier returned invalid JSON", "next_instruction": "Repeat focused local verification and return valid JSON."}
 
 
