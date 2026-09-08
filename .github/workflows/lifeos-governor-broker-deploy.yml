@@ -51,6 +51,26 @@ jobs:
           echo 'CANONICAL_CHECKOUT_READY=PASS'
           echo 'DEPLOY_CHECKPOINT=checkout-verified'
 
+      - name: Ensure Engineer available for deploy preflight
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
+            echo 'ENGINEER_PREFLIGHT_ALREADY_READY=PASS'
+            exit 0
+          fi
+          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
+          ready=0
+          for _ in $(seq 1 120); do
+            if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" -eq 1
+          echo 'ENGINEER_PREFLIGHT_WAKE=PASS'
+
       - name: Deploy Governor with live phase checkpoints
         shell: bash
         run: |
@@ -154,3 +174,11 @@ jobs:
           echo 'GOVERNOR_BROKER_DEPLOY=PASS'
           echo 'REPOSITORY_FINAL=PASS'
           echo 'DEPLOY_CHECKPOINT=complete'
+
+      - name: Release deploy-time Tower power
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
+          echo 'DEPLOY_TOWER_RELEASE_REQUESTED=PASS'
