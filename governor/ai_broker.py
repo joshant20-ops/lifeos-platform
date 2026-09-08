@@ -544,7 +544,7 @@ def _invoke(provider: dict, prompt: str, secrets: dict[str, str]) -> str:
 def candidates(*, privacy: str = "normal", task_class: str = "normal") -> tuple[list[dict], list[dict]]:
     policy = ROUTER.load_policy(POLICY_PATH)
     secret_names = ROUTER.load_secret_names(SECRETS_PATH)
-    adapters = {"local-builder"} if privacy == "local-only" else {"local-builder", "direct-cloud"}
+    adapters = {"local-builder"} if privacy == "local-only" else {"direct-cloud"}
     return ROUTER.eligible_providers(policy, task_class, secret_names, privacy=privacy, available_adapters=adapters)
 
 
@@ -552,8 +552,16 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
     """Preserve OpenAI tool-calling semantics for agentic cloud-safe requests."""
     if privacy != "normal":
         raise BrokerError("tool-enabled private inference is not permitted")
-    eligible, considered = candidates(privacy=privacy, task_class=task_class)
-    eligible = [p for p in eligible if p.get("id") in {"ollama", "gemini", "groq", "openrouter"}]
+    cloud_eligible, considered = candidates(privacy=privacy, task_class=task_class)
+    local_eligible, local_considered = candidates(privacy="local-only", task_class=task_class)
+    eligible = []
+    seen: set[str] = set()
+    for provider in [*local_eligible, *cloud_eligible]:
+        pid = str(provider.get("id") or "")
+        if pid in {"ollama", "gemini", "groq", "openrouter"} and pid not in seen:
+            eligible.append(provider)
+            seen.add(pid)
+    considered = [*local_considered, *considered]
     if not eligible:
         raise BrokerError("no eligible tool-capable provider")
     secrets = _strict_env(SECRETS_PATH)
