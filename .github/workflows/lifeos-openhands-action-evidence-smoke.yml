@@ -1,0 +1,86 @@
+name: LifeOS OpenHands Action Evidence Smoke
+
+on:
+  push:
+    branches: [test/openhands-action-evidence]
+    paths:
+      - '.github/workflows/lifeos-openhands-action-evidence-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Verify canonical controller checkout
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'CANONICAL_CONTROLLER=PASS'
+
+      - name: Wake Engineer
+        run: |
+          set -Eeuo pipefail
+          if ! ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
+            mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
+            ready=0
+            for _ in $(seq 1 120); do
+              if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then ready=1; break; fi
+              sleep 5
+            done
+            test "$ready" -eq 1
+          fi
+          echo 'ENGINEER_READY=PASS'
+
+      - name: Prove OpenHands filesystem action evidence
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          job_id="openhands-isolated-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          marker="OPENHANDS_ACTION_EVIDENCE_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
+          runtime_path="governor/runtime_jobs/${job_id}.sh"
+          request="Use an actual shell or file-writing tool now. In the disposable worktree create only ${runtime_path} with exactly these three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Then run that script once. Do not edit anything else. Do not commit, push, fetch, or access GitHub. Finish with exactly: RESULT=PASS, TESTS=created-and-ran-marker-script, NEXT_RUNTIME_CHECK=none."
+          log=$(mktemp)
+          runtime=$(mktemp)
+          trap 'rm -f "$log" "$runtime"' EXIT
+          set +e
+          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=normal LIFEOS_JOB_PRIVACY=normal \
+            /usr/local/libexec/lifeos-cloud-builder "$request" 1 '' | tee "$log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "BUILDER_RC=$rc"
+          grep -E '^(PROVIDER_ADAPTER|AGENT_RESULT|HANDOFF_ERROR|HANDOFF_RUNTIME_B64|RESULT=|REASON=)' "$log" || true
+          test "$rc" -eq 0
+          grep -q '^AGENT_RESULT=openhands PASS$' "$log"
+          ! grep -q '^AGENT_RESULT=codex PASS$' "$log"
+          b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
+          test -n "$b64"
+          printf '%s' "$b64" | base64 -d >"$runtime"
+          python3 - "$runtime" "$marker" <<'PY'
+          import pathlib,sys
+          path=pathlib.Path(sys.argv[1]); marker=sys.argv[2]
+          expected=f"#!/usr/bin/env bash\nset -euo pipefail\nprintf '%s\\n' '{marker}'\n"
+          actual=path.read_text()
+          assert actual == expected, repr(actual)
+          print('OPENHANDS_FILESYSTEM_ACTION_EVIDENCE=PASS')
+          PY
+          chmod 700 "$runtime"
+          test "$("$runtime")" = "$marker"
+          echo 'OPENHANDS_HARMLESS_ARTIFACT_EXECUTION=PASS'
+
+      - name: Release Tower
+        if: always()
+        run: |
+          set +e
+          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
+          echo 'TOWER_RELEASE_REQUESTED=PASS'
