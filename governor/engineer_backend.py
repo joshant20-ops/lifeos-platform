@@ -18,6 +18,7 @@ MODEL_ID = "lifeos-engineer"
 APPROVALS = {"run it", "go ahead", "do it", "yes run it", "yes, run it", "approved", "approve", "proceed"}
 PROPOSAL_REF_RE = re.compile(r"proposal ref\s*:?\s*`?([a-f0-9]{10})`?", re.I)
 JOB_TEXT_RE = re.compile(r"(?:engineering\s+job|job)\s+`?([a-f0-9]{12})`?", re.I)
+RETRY_JOB_RE = re.compile(r"\\b(?:retry|resume|continue)\\s+(?:engineering\\s+)?job\\s+`?([a-f0-9]{12})`?", re.I)
 PROPOSALS = {}
 MAX_PROPOSALS = 128
 
@@ -146,6 +147,26 @@ def asks_stuck_jobs(text):
         "is anything stuck", "any job stuck", "any jobs stuck", "stuck jobs",
         "what is stuck", "what's stuck",
     ))
+
+
+def retry_job_id(text):
+    match = RETRY_JOB_RE.search(clean_text(text))
+    return match.group(1) if match else None
+
+
+def retry_job_reply(job_id):
+    try:
+        old = request_json(AGENT_URL + "/jobs/" + job_id, timeout=10)
+    except Exception:
+        return f"Job `{job_id}` was not found, so no retry was created."
+    if clean_text(old.get("status")).upper() not in ("BLOCKED", "FAIL", "FAILED", "ERROR"):
+        return f"Job `{job_id}` is **{clean_text(old.get('status') or 'UNKNOWN')}**; it is not eligible for a blocked-job retry."
+    job = request_json(AGENT_URL + "/jobs/" + job_id + "/retry", {}, timeout=15)
+    return (
+        f"Retry queued as engineering job `{job['id']}`, linked to `{job_id}`. "
+        "The repaired Governor runtime will continue it autonomously. "
+        "Ask for status using the new job ID."
+    )
 
 
 def asks_status(text):
@@ -436,6 +457,9 @@ def engineer_reply(messages):
         job = request_json(AGENT_URL + "/jobs?async=1", {"request": record["proposal"]}, timeout=15)
         return (f"Queued it as engineering job `{job['id']}`. The Pi5 runtime and local verifier are the source of truth. "
                 f"Ask me for status, ETA, what it's doing, or whether it looks stuck.")
+    retry_id = retry_job_id(latest)
+    if retry_id:
+        return retry_job_reply(retry_id)
     if asks_history(latest):
         return jobs_history_reply()
     if asks_queue(latest):
