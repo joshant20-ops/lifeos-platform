@@ -54,12 +54,12 @@ jobs:
           runtime=$(mktemp)
           trap 'rm -f "$log" "$runtime"' EXIT
           set +e
-          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=normal LIFEOS_JOB_PRIVACY=normal \
+          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=substantial LIFEOS_JOB_PRIVACY=normal \
             /usr/local/libexec/lifeos-cloud-builder "$request" 1 '' | tee "$log"
           rc=${PIPESTATUS[0]}
           set -e
           echo "BUILDER_RC=$rc"
-          grep -E '^(PROVIDER_ADAPTER|AGENT_RESULT|HANDOFF_ERROR|HANDOFF_RUNTIME_B64|RESULT=|REASON=)' "$log" || true
+          grep -E '^(PROVIDER_SELECTED|PROVIDER_ADAPTER|PROVIDER_MODEL|AGENT_RESULT|HANDOFF_ERROR|HANDOFF_RUNTIME_B64|RESULT=|REASON=)' "$log" || true
           test "$rc" -eq 0
           grep -q '^AGENT_RESULT=openhands PASS$' "$log"
           ! grep -q '^AGENT_RESULT=codex PASS$' "$log"
