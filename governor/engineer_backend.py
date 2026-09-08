@@ -18,7 +18,7 @@ MODEL_ID = "lifeos-engineer"
 APPROVALS = {"run it", "go ahead", "do it", "yes run it", "yes, run it", "approved", "approve", "proceed"}
 PROPOSAL_REF_RE = re.compile(r"proposal ref\s*:?\s*`?([a-f0-9]{10})`?", re.I)
 JOB_TEXT_RE = re.compile(r"(?:engineering\s+job|job)\s+`?([a-f0-9]{12})`?", re.I)
-RETRY_JOB_RE = re.compile(r"\\b(?:retry|resume|continue)\\s+(?:engineering\\s+)?job\\s+`?([a-f0-9]{12})`?", re.I)
+RETRY_JOB_RE = re.compile(r"\b(?:retry|resume|continue)\s+(?:engineering\s+)?job\s+`?([a-f0-9]{12})`?", re.I)
 PROPOSALS = {}
 MAX_PROPOSALS = 128
 
