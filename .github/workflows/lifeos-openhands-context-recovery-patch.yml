@@ -17,7 +17,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Patch Ollama context and separate deploy from autonomous smoke
+      - name: Patch Ollama context and gate autonomous smoke in deploy script
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -52,18 +52,10 @@ jobs:
           body, after = remainder.split(phase8, 1)
           wrapped = phase7 + 'if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then\n' + "  printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\\n'\n" + 'else\n' + body + 'fi\n' + phase8
           deploy.write_text(before + wrapped + after)
-
-          workflow = Path('.github/workflows/lifeos-governor-broker-deploy.yml')
-          text = workflow.read_text()
-          old = 'bash governor/scripts/deploy-autonomous-agent-pi5.sh > >(tee "$LOG") 2>&1 &'
-          new = 'LIFEOS_SKIP_AUTONOMOUS_E2E=1 bash governor/scripts/deploy-autonomous-agent-pi5.sh > >(tee "$LOG") 2>&1 &'
-          assert old in text
-          workflow.write_text(text.replace(old, new, 1))
           PY
 
           python3 -m py_compile governor/ai_broker.py
           bash -n governor/scripts/deploy-autonomous-agent-pi5.sh
-          grep -q 'LIFEOS_SKIP_AUTONOMOUS_E2E=1 bash governor/scripts/deploy-autonomous-agent-pi5.sh' .github/workflows/lifeos-governor-broker-deploy.yml
           git diff --check
 
       - name: Push recovery branch
@@ -74,7 +66,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git checkout -B "$branch"
-          git add governor/ai_broker.py governor/scripts/deploy-autonomous-agent-pi5.sh .github/workflows/lifeos-governor-broker-deploy.yml
+          git add governor/ai_broker.py governor/scripts/deploy-autonomous-agent-pi5.sh
           git commit -m 'Give OpenHands sufficient Ollama context before Wave B'
           git push --force-with-lease origin "$branch"
           echo "RECOVERY_BRANCH=$branch"
