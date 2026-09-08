@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 import json
-import importlib.util
 import os
-import pathlib
 import re
 import statistics
 import time
@@ -24,19 +22,36 @@ PROPOSALS = {}
 MAX_PROPOSALS = 128
 
 
-def _load_ai_broker():
-    path = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")) / "governor" / "ai_broker.py"
-    if not path.is_file():
-        path = pathlib.Path(__file__).resolve().with_name("ai_broker.py")
-    spec = importlib.util.spec_from_file_location("lifeos_engineer_ai_broker", path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError("Governor AI broker unavailable")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+BROKER_URL = os.environ.get("LIFEOS_GOVERNOR_BROKER_URL", AGENT_URL.rstrip("/") + "/v1/chat/completions")
+BROKER_TOKEN_FILE = os.environ.get(
+    "LIFEOS_AI_BROKER_TOKEN_FILE", os.path.expanduser("~/.config/lifeos/ai-broker.token")
+)
 
 
-AI_BROKER = _load_ai_broker()
+def governor_local_generate(prompt):
+    """Use the authenticated Governor API; Engineer never calls a model directly."""
+    with open(BROKER_TOKEN_FILE, encoding="utf-8") as handle:
+        token = handle.read().strip()
+    if not token:
+        raise RuntimeError("Governor broker capability unavailable")
+    payload = {
+        "model": "lifeos-local-only",
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+    }
+    data = json.dumps(payload).encode()
+    request = urllib.request.Request(
+        BROKER_URL, data=data,
+        headers={"Content-Type": "application/json", "Authorization": "Bearer " + token},
+        method="POST",
+    )
+    with urllib.request.urlopen(request, timeout=900) as response:
+        value = json.load(response)
+    return {
+        "text": str(value["choices"][0]["message"]["content"]),
+        "provider": str(value.get("lifeos_provider") or ""),
+        "model": str(value.get("model") or ""),
+    }
 
 SYSTEM = """You are LifeOS Engineer, the local technical engineering manager for Joshan's homelab and LifeOS platform.
 You are a collaborative senior engineer, not a command parser and not the cloud coding builder.
@@ -364,7 +379,7 @@ def analyse(messages):
     context = local_context(messages)
     prompt = SYSTEM + "\n\nLOCAL READ-ONLY CONTEXT:\n" + json.dumps(context, indent=2)[:10000]
     prompt += "\n\nConversation:\n" + "\n".join(transcript) + "\n\nReturn JSON now."
-    routed = AI_BROKER.generate(prompt, privacy="local-only", task_class="normal", force_provider="ollama")
+    routed = governor_local_generate(prompt)
     parsed = json.loads(routed.get("text", "{}"))
     improvements = [clean_text(x) for x in parsed.get("improvements", []) if clean_text(x)][:4]
     reply = clean_text(parsed.get("reply"))
