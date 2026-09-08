@@ -1,0 +1,74 @@
+name: LifeOS Wave B Routing CI Repair
+
+on:
+  push:
+    branches:
+      - fix/wave-b-governor-local-tool-routing
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wave-b-governor-local-tool-routing
+          fetch-depth: 0
+
+      - name: Scope local fallback to tool-aware chat only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('governor/ai_broker.py')
+          s = p.read_text()
+          old = '    adapters = {"local-builder"} if privacy == "local-only" else {"local-builder", "direct-cloud"}\n'
+          new = '    adapters = {"local-builder"} if privacy == "local-only" else {"direct-cloud"}\n'
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise SystemExit('candidate adapter anchor missing')
+
+          old = '''    eligible, considered = candidates(privacy=privacy, task_class=task_class)\n    eligible = [p for p in eligible if p.get("id") in {"ollama", "gemini", "groq", "openrouter"}]\n'''
+          new = '''    policy = ROUTER.load_policy(POLICY_PATH)\n    secret_names = ROUTER.load_secret_names(SECRETS_PATH)\n    eligible, considered = ROUTER.eligible_providers(\n        policy,\n        task_class,\n        secret_names,\n        privacy=privacy,\n        available_adapters={"local-builder", "direct-cloud"},\n    )\n    eligible = [p for p in eligible if p.get("id") in {"ollama", "gemini", "groq", "openrouter"}]\n'''
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise SystemExit('chat routing anchor missing')
+          p.write_text(s)
+
+          t = Path('tests/test_governor_local_tool_routing.py')
+          x = t.read_text()
+          old = '''def test_normal_candidates_include_local_builder_adapter():\n    with mock.patch.object(broker.ROUTER, "load_policy", return_value={"providers": []}), \\\n         mock.patch.object(broker.ROUTER, "load_secret_names", return_value=set()), \\\n         mock.patch.object(broker.ROUTER, "eligible_providers", return_value=([], [])) as eligible:\n        broker.candidates(privacy="normal", task_class="normal")\n    assert eligible.call_args.kwargs["available_adapters"] == {"local-builder", "direct-cloud"}\n\n\n'''
+          new = '''def test_normal_generation_candidates_remain_direct_cloud_only():\n    with mock.patch.object(broker.ROUTER, "load_policy", return_value={"providers": []}), \\\n         mock.patch.object(broker.ROUTER, "load_secret_names", return_value=set()), \\\n         mock.patch.object(broker.ROUTER, "eligible_providers", return_value=([], [])) as eligible:\n        broker.candidates(privacy="normal", task_class="normal")\n    assert eligible.call_args.kwargs["available_adapters"] == {"direct-cloud"}\n\n\n'''
+          if old in x:
+              x = x.replace(old, new, 1)
+          elif 'test_normal_generation_candidates_remain_direct_cloud_only' not in x:
+              raise SystemExit('regression test anchor missing')
+          t.write_text(x)
+          PY
+
+      - name: Validate focused and existing routing tests
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m pip install -q pytest
+          python3 -m py_compile governor/ai_broker.py governor/autonomous_agent.py
+          python3 -m pytest -q tests/test_ai_broker.py tests/test_governor_local_tool_routing.py
+          git diff --check
+
+      - name: Commit CI repair
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if git diff --quiet; then exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add governor/ai_broker.py tests/test_governor_local_tool_routing.py
+          git commit -m 'Scope local fallback to agentic tool chat'
+          git push origin HEAD:fix/wave-b-governor-local-tool-routing
