@@ -1,0 +1,57 @@
+name: LifeOS Retire Legacy Email Ingestion
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-email-legacy-retire.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retire:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Guard and retire inactive duplicate adapters
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          scripts=(
+            lifeos_email_phase1_daily_window_v1.py
+            lifeos_email_phase3_limited_body_extract_v1.py
+            lifeos_gmail_readonly_full_import_v1.py
+            lifeos_gmail1_full_header_records_v1.py
+          )
+          pattern='lifeos_email_phase1_daily_window_v1|lifeos_email_phase3_limited_body_extract_v1|lifeos_gmail_readonly_full_import_v1|lifeos_gmail1_full_header_records_v1'
+          refs=''
+          for root in /etc/systemd/system /home/joshan/.config/systemd /etc/cron.d; do
+            test -d "$root" || continue
+            hit=$(timeout 15 grep -RIlE "$pattern" "$root" 2>/dev/null || true)
+            refs="$refs$hit"
+          done
+          test -z "$refs"
+          test -z "$(ps -eo args | grep -E "$pattern" | grep -v grep || true)"
+
+          src=/home/joshan/automation/scripts
+          dst=/home/joshan/automation/retired/email-ingestion-legacy-20260909
+          mkdir -p "$dst"
+          moved=0
+          for name in "${scripts[@]}"; do
+            if test -f "$src/$name"; then
+              mv "$src/$name" "$dst/$name"
+              echo "RETIRED=$name"
+              moved=$((moved+1))
+            fi
+          done
+          echo "RETIRED_COUNT=$moved"
+
+          test -f /home/joshan/automation/lifeos_email_paperless_selective.py
+          echo 'SELECTIVE_FALLBACK=RETAINED'
+          test -s /etc/lifeos/secrets/gmail-imap-user
+          test -s /etc/lifeos/secrets/gmail-imap-password
+          echo 'CANONICAL_GMAIL_SECRETS=PASS'
+          test -f /home/joshan/automation/secrets/email_oauth/email_imap_accounts.env && echo 'LEGACY_MULTIACCOUNT_ENV=RETAINED'
+          echo 'RESULT=PASS'
