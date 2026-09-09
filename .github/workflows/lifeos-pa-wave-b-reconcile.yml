@@ -69,7 +69,8 @@ jobs:
           install -m 0755 "$repo/governor/scripts/lifeos-pa-execute" /home/joshan/.local/bin/lifeos-pa-execute
           install -m 0755 "$repo/governor/scripts/lifeos-pa-mission" /home/joshan/.local/bin/lifeos-pa-mission
           install -m 0755 "$repo/homelab/live/home/joshan/automation/lifeos_calendar_adapter.py" /home/joshan/automation/lifeos_calendar_adapter.py
-          install -m 0755 "$repo/homelab/live/home/joshan/automation/z97_job_submitter.py" /home/joshan/automation/z97_job_submitter.py\n          install -m 0755 "$repo/homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py" /home/joshan/automation/lifeos_email_paperless_selective.py
+          install -m 0755 "$repo/homelab/live/home/joshan/automation/z97_job_submitter.py" /home/joshan/automation/z97_job_submitter.py
+          install -m 0755 "$repo/homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py" /home/joshan/automation/lifeos_email_paperless_selective.py
           echo 'PA_RUNTIME_INSTALL=PASS'
 
       - name: Deterministic regression
