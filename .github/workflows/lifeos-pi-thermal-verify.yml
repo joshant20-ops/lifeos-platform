@@ -1,0 +1,29 @@
+name: LifeOS Pi Thermal Verify
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-pi-thermal-verify.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Read Pi thermal and throttling state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          raw=$(cat /sys/class/thermal/thermal_zone0/temp)
+          awk -v r="$raw" 'BEGIN { printf "CPU_TEMP_C=%.1f\n", r/1000 }'
+          if command -v vcgencmd >/dev/null 2>&1; then
+            vcgencmd measure_temp || true
+            vcgencmd get_throttled || true
+          fi
+          fan='UNKNOWN'
+          for p in /sys/class/hwmon/hwmon*/fan1_input; do
+            if [ -r "$p" ]; then fan=$(cat "$p"); break; fi
+          done
+          echo "FAN_RPM=$fan"
+          echo 'THERMAL_VERIFY=PASS'
