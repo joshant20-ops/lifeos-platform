@@ -109,7 +109,8 @@ jobs:
           find /etc/systemd/system /home/joshan/.config/systemd/user /opt/stacks/homeassistant/config \
             -xdev -type f -size -2M -print0 2>/dev/null | \
             xargs -0 -r grep -IlE 'lifeos_email_to_paperless|/mnt/synology/Joshan/Intake|paperless.*(email|attachment)|(email|attachment).*paperless' 2>/dev/null | \
-            sort -u | head -120
+            grep -Ev '/\.storage/.*(backup|\.bak|before-)|/\.lifeos-backups/' | \
+            sort -u | head -120 || true
           echo 'MATCHED_CONFIG_PATHS_END'
 
           echo 'MATCHED_UNITS_BEGIN'
