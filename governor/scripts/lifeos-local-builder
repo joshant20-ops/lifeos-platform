@@ -17,7 +17,6 @@ m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
 m._publish_lease('released', required=False)
 PY
 }
-trap release_lease EXIT
 
 self_test() {
   [[ -s "$BROKER_TOKEN" && ! -L "$BROKER_TOKEN" && "$(stat -c '%a' "$BROKER_TOKEN")" == 600 ]] || {
@@ -77,6 +76,7 @@ m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
 m._publish_lease('active')
 m._wake_local_ai()
 PY
+trap release_lease EXIT
 
 READY=0
 for _ in $(seq 1 100); do
