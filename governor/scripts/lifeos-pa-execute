@@ -211,10 +211,7 @@ def inspect_candidates(inventory):
         data = data[:MAX_CONTEXT_CHARS - used]
         inspected.append({"path": path, "content": data})
         used += len(data)
-    return inspected
-
-
-def parse_json(raw: str):
+    return {item["path"]: item["content"] for item in inspected}\n\n\ndef parse_json(raw: str):
     text = raw.strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
