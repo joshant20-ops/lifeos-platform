@@ -22,13 +22,12 @@ jobs:
           c=paperless-paperless-1
           docker inspect "$c" >/dev/null
           echo 'PAPERLESS_CONTAINER=PASS'
-          docker exec "$c" python3 manage.py shell <<'PY'
+          docker exec -i "$c" python3 manage.py shell <<'PY'
           from django.apps import apps
           from django.contrib.auth import get_user_model
           print('MAIL_MODELS_START')
           for model in apps.get_models():
-              name=model.__name__.lower()
-              if 'mail' in name:
+              if 'mail' in model.__name__.lower():
                   fields=[f.name for f in model._meta.fields]
                   print(f'MODEL={model._meta.label};FIELDS={",".join(fields)};COUNT={model.objects.count()}')
           print('MAIL_MODELS_END')
@@ -36,7 +35,6 @@ jobs:
           for u in User.objects.filter(is_superuser=True):
               print(f'SUPERUSER={u.username};ACTIVE={u.is_active}')
           PY
-          echo '-- mail_fetcher command --'
           docker exec "$c" python3 manage.py help mail_fetcher >/dev/null
           echo 'MAIL_FETCHER_COMMAND=PASS'
           echo '-- relevant container env names only --'
