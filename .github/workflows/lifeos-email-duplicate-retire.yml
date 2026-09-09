@@ -1,0 +1,51 @@
+name: LifeOS Email Duplicate Retirement
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-email-duplicate-retire.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  retire:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Verify Paperless native mail and retire unused duplicate adapters
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          c=paperless-paperless-1
+          docker exec "$c" python3 manage.py help mail_fetcher >/dev/null
+          docker exec -i "$c" python3 manage.py shell <<'PY'
+          from django.apps import apps
+          MailAccount=apps.get_model('paperless_mail.MailAccount')
+          assert MailAccount.objects.filter(name='LifeOS Gmail').exists()
+          print('PAPERLESS_NATIVE_MAIL=PASS')
+          PY
+
+          files=(
+            /home/joshan/automation/scripts/lifeos_gmail_readonly_full_import_v1.py
+            /home/joshan/automation/scripts/lifeos_gmail1_full_header_records_v1.py
+            /home/joshan/automation/lifeos_email_paperless_selective.py
+          )
+          for f in "${files[@]}"; do
+            test -f "$f" || continue
+            base=$(basename "$f")
+            refs=$(grep -RIl "$base" /etc/systemd/system /home/joshan/.config/systemd /etc/cron.d 2>/dev/null || true)
+            test -z "$refs" || { echo "SCHEDULER_REFERENCE_BLOCKS_RETIREMENT=$f"; exit 1; }
+          done
+
+          retired=/home/joshan/automation/retired/email-ingestion-$(date -u +%Y%m%dT%H%M%SZ)
+          mkdir -p "$retired"
+          for f in "${files[@]}"; do
+            test -f "$f" || continue
+            mv "$f" "$retired/$(basename "$f")"
+            echo "RETIRED=$f"
+          done
+          echo 'PHASE1_PHASE3=KEPT_PENDING_OBLIGATION_REVIEW'
+          echo 'RESULT=PASS'
