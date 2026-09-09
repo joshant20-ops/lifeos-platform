@@ -57,7 +57,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           printf 'ARCHIVED_ORIGINAL=%s\n' "$archived"
           echo 'PI_RECONCILE=PASS'
-          echo 'REPAIR_LOOP_VERSION=2'
+          echo 'REPAIR_LOOP_VERSION=3'
 
       - name: Install canonical PA runtime
         shell: bash
