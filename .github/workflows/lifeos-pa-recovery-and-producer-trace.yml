@@ -1,0 +1,141 @@
+name: LifeOS PA Recovery and Producer Trace
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pa-recovery-and-producer-trace.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lifeos-pa-recovery-and-producer-trace
+  cancel-in-progress: false
+
+jobs:
+  recover-and-trace:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Inspect canonical dirty state
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          expected='?? tests/personal_admin/test_cross_domain_e2e.py'
+          status=$(git -C "$repo" status --porcelain --untracked-files=all)
+          printf 'PI_HEAD=%s\n' "$(git -C "$repo" rev-parse --short=12 HEAD)"
+          printf 'ORIGIN_MAIN=%s\n' "$(git -C "$repo" rev-parse --short=12 origin/main)"
+          if [[ "$status" != "$expected" ]]; then
+            printf 'RESULT=BLOCKED\nREASON=unexpected_dirty_set\n'
+            printf 'DIRTY_PATHS_BEGIN\n%s\nDIRTY_PATHS_END\n' "$status"
+            exit 20
+          fi
+          echo 'EXPECTED_UNTRACKED_TEST=PASS'
+
+      - name: Preserve and publish review branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          source="$repo/tests/personal_admin/test_cross_domain_e2e.py"
+          branch="recovery/pa-cross-domain-e2e-${GITHUB_RUN_ID}"
+          worktree=$(mktemp -d)
+          cleanup() {
+            git -C "$repo" worktree remove --force "$worktree" >/dev/null 2>&1 || true
+            rmdir "$worktree" >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          test -f "$source"
+          test ! -L "$source"
+          python3 - "$source" <<'PY'
+          import ast, pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          data = path.read_text(encoding='utf-8')
+          ast.parse(data)
+          forbidden = {
+              'private_key': r'-----BEGIN [A-Z ]*PRIVATE KEY-----',
+              'credential_assignment': r'(?i)(password|secret|token|authorization|api[_-]?key)\s*[:=]\s*["\'][^"\']+["\']',
+              'nonexample_email': r'(?i)\b(?![^@\s]+@example\.(?:com|test)\b)[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b',
+          }
+          hits = [name for name, pattern in forbidden.items() if re.search(pattern, data)]
+          if hits:
+              raise SystemExit('privacy_static_scan_failed:' + ','.join(hits))
+          print('UNTRACKED_TEST_AST=PASS')
+          print('UNTRACKED_TEST_PRIVACY_SCAN=PASS')
+          print('UNTRACKED_TEST_BYTES=' + str(len(data.encode())))
+          PY
+
+          git -C "$repo" fetch --prune origin main
+          git -C "$repo" worktree add --detach "$worktree" origin/main
+          install -D -m 0644 "$source" "$worktree/tests/personal_admin/test_cross_domain_e2e.py"
+          python3 -m py_compile "$worktree/tests/personal_admin/test_cross_domain_e2e.py"
+          git -C "$worktree" diff --check
+          git -C "$worktree" checkout -b "$branch"
+          git -C "$worktree" add tests/personal_admin/test_cross_domain_e2e.py
+          git -C "$worktree" -c user.name='LifeOS Pi5' -c user.email='lifeos-pi5@users.noreply.github.com' \
+            commit -m 'Recover PA cross-domain E2E test for review'
+          git -C "$worktree" push origin "HEAD:refs/heads/$branch"
+          printf 'RECOVERY_BRANCH=%s\n' "$branch"
+          printf 'RECOVERY_COMMIT=%s\n' "$(git -C "$worktree" rev-parse HEAD)"
+          echo 'UNTRACKED_TEST_PRESERVED=PASS'
+
+      - name: Trace Email to Paperless producer safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          report=/opt/stacks/homeassistant/config/www/lifeos/lifeos_email_to_paperless_export_report_v1.json
+          echo 'PRODUCER_TRACE_BEGIN'
+          python3 - "$report" <<'PY'
+          import hashlib, json, pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          if not path.is_file() or path.is_symlink():
+              print('EXPORT_REPORT=absent')
+          else:
+              raw = path.read_bytes()
+              value = json.loads(raw)
+              print('EXPORT_REPORT=present')
+              print('EXPORT_REPORT_BYTES=' + str(len(raw)))
+              print('EXPORT_REPORT_SHA256=' + hashlib.sha256(raw).hexdigest())
+              print('EXPORT_REPORT_TOP_LEVEL=' + type(value).__name__)
+              if isinstance(value, dict):
+                  print('EXPORT_REPORT_KEYS=' + ','.join(sorted(str(k) for k in value.keys())))
+          PY
+
+          echo 'MATCHED_CONFIG_PATHS_BEGIN'
+          find /etc/systemd/system /home/joshan/.config/systemd/user /opt/stacks/homeassistant/config \
+            -xdev -type f -size -2M -print0 2>/dev/null | \
+            xargs -0 -r grep -IlE 'lifeos_email_to_paperless|/mnt/synology/Joshan/Intake|paperless.*(email|attachment)|(email|attachment).*paperless' 2>/dev/null | \
+            sort -u | head -120
+          echo 'MATCHED_CONFIG_PATHS_END'
+
+          echo 'MATCHED_UNITS_BEGIN'
+          systemctl list-unit-files --no-legend --no-pager 2>/dev/null | \
+            awk 'tolower($1) ~ /(email|mail|paperless|attachment|intake)/ {print $1, $2}' | head -120
+          systemctl --user list-unit-files --no-legend --no-pager 2>/dev/null | \
+            awk 'tolower($1) ~ /(email|mail|paperless|attachment|intake)/ {print "user:" $1, $2}' | head -120 || true
+          echo 'MATCHED_UNITS_END'
+
+          echo 'MATCHED_PROCESSES_BEGIN'
+          ps -eo comm=,unit= --sort=comm 2>/dev/null | \
+            awk 'tolower($0) ~ /(email|mail|paperless|attachment|intake)/' | sort -u | head -120 || true
+          echo 'MATCHED_PROCESSES_END'
+
+          echo 'PAPERLESS_CONSUME_MOUNT_BEGIN'
+          docker inspect paperless-paperless-1 --format '{{range .Mounts}}{{if eq .Destination "/usr/src/paperless/consume"}}{{.Type}} {{.Source}} -> {{.Destination}}{{end}}{{end}}' 2>/dev/null || true
+          echo 'PAPERLESS_CONSUME_MOUNT_END'
+          echo 'PRODUCER_TRACE_COMPLETE=PASS'
+
+      - name: Confirm original remains preserved
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          test -f "$repo/tests/personal_admin/test_cross_domain_e2e.py"
+          test "$(git -C "$repo" status --porcelain --untracked-files=all)" = \
+            '?? tests/personal_admin/test_cross_domain_e2e.py'
+          echo 'ORIGINAL_PI_TEST_UNCHANGED=PASS'
+          echo 'RESULT=RECOVERY_BRANCH_READY'
