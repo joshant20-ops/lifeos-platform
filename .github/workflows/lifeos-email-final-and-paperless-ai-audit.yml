@@ -19,58 +19,53 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          present=0
           for f in \
             /home/joshan/automation/scripts/lifeos_email_phase1_daily_window_v1.py \
             /home/joshan/automation/scripts/lifeos_email_phase3_limited_body_extract_v1.py; do
-            echo "=== $(basename "$f") ==="
-            test -f "$f" || { echo ABSENT; continue; }
-            grep -nE '^(def |class |[A-Z_]+ *=)|imaplib|IMAP4_SSL|search\(|fetch\(|write_text|json.dump|json.dumps|Path\(' "$f" \
-              | sed -E 's/(password|token|secret|key).*/\1=<REDACTED>/Ig' \
-              | head -120 || true
+            if test -f "$f"; then
+              echo "EMAIL_READER_PRESENT=$(basename "$f")"
+              present=1
+            else
+              echo "EMAIL_READER_ABSENT=$(basename "$f")"
+            fi
           done
-
-          echo '=== SCHEDULER REFERENCES ==='
-          for root in /etc/systemd/system /home/joshan/.config/systemd /etc/cron.d; do
-            test -d "$root" || continue
-            timeout 15 grep -RIlE 'lifeos_email_phase1_daily_window_v1|lifeos_email_phase3_limited_body_extract_v1' "$root" 2>/dev/null || true
-          done
+          test "$present" -eq 0
+          echo 'LEGACY_PHASE1_PHASE3=RETIRED_OR_ABSENT'
 
       - name: Inspect Paperless to local AI integration
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo '=== PAPERLESS CONTAINER ENV NAMES ==='
-          docker inspect paperless-paperless-1 --format '{{range .Config.Env}}{{println .}}{{end}}' \
-            | cut -d= -f1 \
-            | grep -Ei 'OLLAMA|OPENAI|AI|LLM|MODEL|PAPERLESS' \
-            | sort | head -120 || true
+          echo '=== PAPERLESS AI SIDECARS ==='
+          docker ps --format '{{.Names}}' | grep -Ei 'paperless.*(ai|gpt)|(?:ai|gpt).*paperless' || true
 
-          echo '=== LIFEOS PAPERLESS AI REFERENCES ==='
-          for root in /home/joshan/automation /home/joshan/lifeos-platform/governor; do
-            test -d "$root" || continue
-            timeout 25 grep -RIlE 'paperless|Paperless' "$root" 2>/dev/null \
-              | grep -vE '/(logs|results|cache|__pycache__|retired)/' \
-              | head -80 || true
-          done
+          echo '=== PAPERLESS DIRECT AI ENV ==='
+          direct=$(docker inspect paperless-paperless-1 --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | cut -d= -f1 | grep -Ei 'OLLAMA|OPENAI|LLM|AI_MODEL|MODEL_PROVIDER' || true)
+          if test -n "$direct"; then
+            echo "$direct"
+            echo 'PAPERLESS_DIRECT_LLM_CONFIG=FOUND'
+          else
+            echo 'PAPERLESS_DIRECT_LLM_CONFIG=ABSENT'
+          fi
 
-          echo '=== LOCAL AI REFERENCE MATCHES ==='
-          for f in \
-            /home/joshan/automation/scripts/lifeos_paperless_memory_index.py \
-            /home/joshan/automation/lifeos_ask/lifeos_local_paperless_lookup.py \
-            /home/joshan/automation/lifeos_ask/lifeos_ask_processor.py; do
-            test -f "$f" || continue
-            echo "FILE=$f"
-            grep -nEi 'ollama|ai_broker|local_ai|local ai|paperless|11434|8793' "$f" | head -80 || true
-          done
+          echo '=== LIFEOS PAPERLESS READ PATH ==='
+          test -f /home/joshan/automation/lifeos_ask/lifeos_local_paperless_lookup.py \
+            && echo 'PAPERLESS_READ_ADAPTER=PRESENT'
+          if grep -q 'LOCAL_OLLAMA = None' /home/joshan/automation/lifeos_ask/lifeos_ask_processor.py 2>/dev/null; then
+            echo 'ASK_DIRECT_OLLAMA=PARKED'
+          fi
 
           echo '=== GOVERNOR LOCAL AI SMOKE ==='
           cd /home/joshan/lifeos-platform
           timeout 210 python3 - <<'PY'
           import json
-          from governor.ai_broker import _ollama
-          out=_ollama('Return only JSON: {"status":"ok","purpose":"paperless-ai-audit"}')
+          from governor.ai_broker import _ollama, OLLAMA_MODEL
+          out=_ollama('Return only JSON: {"status":"ok","purpose":"paperless-ai-audit"}', OLLAMA_MODEL)
           text=out if isinstance(out,str) else json.dumps(out)
-          print('LOCAL_AI_RESPONSE_RECEIVED=' + ('PASS' if 'ok' in text.lower() else 'UNKNOWN'))
+          assert 'ok' in text.lower(), text[:200]
+          print('LOCAL_AI_RESPONSE_RECEIVED=PASS')
           PY
 
           echo 'RESULT=PASS'
