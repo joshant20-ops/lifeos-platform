@@ -1,0 +1,76 @@
+name: LifeOS Email Final and Paperless AI Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-email-final-and-paperless-ai-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 8
+    steps:
+      - name: Inspect remaining email readers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for f in \
+            /home/joshan/automation/scripts/lifeos_email_phase1_daily_window_v1.py \
+            /home/joshan/automation/scripts/lifeos_email_phase3_limited_body_extract_v1.py; do
+            echo "=== $(basename "$f") ==="
+            test -f "$f" || { echo ABSENT; continue; }
+            grep -nE '^(def |class |[A-Z_]+ *=)|imaplib|IMAP4_SSL|search\(|fetch\(|write_text|json.dump|json.dumps|Path\(' "$f" \
+              | sed -E 's/(password|token|secret|key).*/\1=<REDACTED>/Ig' \
+              | head -120 || true
+          done
+
+          echo '=== SCHEDULER REFERENCES ==='
+          for root in /etc/systemd/system /home/joshan/.config/systemd /etc/cron.d; do
+            test -d "$root" || continue
+            timeout 15 grep -RIlE 'lifeos_email_phase1_daily_window_v1|lifeos_email_phase3_limited_body_extract_v1' "$root" 2>/dev/null || true
+          done
+
+      - name: Inspect Paperless to local AI integration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '=== PAPERLESS CONTAINER ENV NAMES ==='
+          docker inspect paperless-paperless-1 --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | cut -d= -f1 \
+            | grep -Ei 'OLLAMA|OPENAI|AI|LLM|MODEL|PAPERLESS' \
+            | sort | head -120 || true
+
+          echo '=== LIFEOS PAPERLESS AI REFERENCES ==='
+          for root in /home/joshan/automation /home/joshan/lifeos-platform/governor; do
+            test -d "$root" || continue
+            timeout 25 grep -RIlE 'paperless|Paperless' "$root" 2>/dev/null \
+              | grep -vE '/(logs|results|cache|__pycache__|retired)/' \
+              | head -80 || true
+          done
+
+          echo '=== LOCAL AI REFERENCE MATCHES ==='
+          for f in \
+            /home/joshan/automation/scripts/lifeos_paperless_memory_index.py \
+            /home/joshan/automation/lifeos_ask/lifeos_local_paperless_lookup.py \
+            /home/joshan/automation/lifeos_ask/lifeos_ask_processor.py; do
+            test -f "$f" || continue
+            echo "FILE=$f"
+            grep -nEi 'ollama|ai_broker|local_ai|local ai|paperless|11434|8793' "$f" | head -80 || true
+          done
+
+          echo '=== GOVERNOR LOCAL AI SMOKE ==='
+          cd /home/joshan/lifeos-platform
+          timeout 210 python3 - <<'PY'
+          import json
+          from governor.ai_broker import _ollama
+          out=_ollama('Return only JSON: {"status":"ok","purpose":"paperless-ai-audit"}')
+          text=out if isinstance(out,str) else json.dumps(out)
+          print('LOCAL_AI_RESPONSE_RECEIVED=' + ('PASS' if 'ok' in text.lower() else 'UNKNOWN'))
+          PY
+
+          echo 'RESULT=PASS'
