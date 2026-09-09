@@ -402,7 +402,7 @@ def main():
     result = {
         "timestamp": int(time.time()),
         "inventory": {"repo": inventory["repo"], "candidate_files": inventory["candidate_files"]},
-        "inspected_files": [x["path"] for x in inspected],
+        "inspected_files": list(inspected),
         "plan": plan,
         "codex_repair": repair,
         "verification": checks,
