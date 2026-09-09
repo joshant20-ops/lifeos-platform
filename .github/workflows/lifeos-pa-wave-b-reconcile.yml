@@ -97,6 +97,15 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          password_source=
+          for candidate in gmail-imap-password gmail-app-password imap-password; do
+            if sudo -n test -f "/etc/lifeos/secrets/$candidate"; then
+              password_source="/etc/lifeos/secrets/$candidate"
+              break
+            fi
+          done
+          test -n "$password_source"
+          echo 'IMAP_PASSWORD_CREDENTIAL_SOURCE=FOUND'
           args=(
             --quiet --wait --pipe --collect
             --unit=lifeos-pa-selective-acceptance
