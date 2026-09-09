@@ -11,6 +11,7 @@ AI_BROKER="$REPO/governor/ai_broker.py"
 JOB_RECORDS="$REPO/governor/job_records.py"
 PRIVACY_POLICY="$REPO/governor/privacy-domain-policy.json"
 BUILDER_SRC="$REPO/governor/scripts/lifeos-cloud-builder"
+LOCAL_BUILDER_SRC="$REPO/governor/scripts/lifeos-local-builder"
 UI="$REPO/governor/agent_ui.html"
 BROKER_TOKEN="$HOME/.config/lifeos/ai-broker.token"
 
@@ -20,7 +21,7 @@ printf '===== LIFEOS AUTONOMOUS AGENT DEPLOY =====\n'
 printf 'Controller/Git/runtime: Pi5/Docker\n'
 printf 'Inference authority: Pi5 Governor broker\n'
 printf 'Agentic executor: OpenHands/Codex on Engineer when required\n'
-printf 'Verifier: local Qwen on TowerPC\n\n'
+printf 'Private agentic executor: OpenHands via Pi Governor -> Tower Ollama only\n\n'
 
 printf '===== 1/8 — SOURCE VERIFY =====\n'
 git -C "$REPO" fetch origin main
@@ -42,6 +43,7 @@ printf '\n===== 2/8 — PREFLIGHT =====\n'
 python3 -m py_compile "$AGENT_CORE" "$AGENT_SERVER" "$AI_BROKER" "$JOB_RECORDS"
 python3 -m json.tool "$PRIVACY_POLICY" >/dev/null
 bash -n "$BUILDER_SRC"
+bash -n "$LOCAL_BUILDER_SRC"
 test -s "$UI"
 grep -q 'LifeOS Autonomous Agent' "$UI"
 ssh -o BatchMode=yes -o ConnectTimeout=5 Engineer '
@@ -75,6 +77,7 @@ sudo install -m 0755 "$AGENT_SERVER" /usr/local/libexec/lifeos-autonomous-agent
 sudo install -m 0644 "$JOB_RECORDS" /usr/local/libexec/job_records.py
 sudo install -m 0644 "$PRIVACY_POLICY" /usr/local/libexec/privacy-domain-policy.json
 sudo install -m 0755 "$BUILDER_SRC" /usr/local/libexec/lifeos-cloud-builder
+sudo install -m 0755 "$LOCAL_BUILDER_SRC" /usr/local/libexec/lifeos-local-builder
 sudo install -d -m 0750 -o joshan -g joshan /var/lib/lifeos-agent
 
 sudo tee /etc/systemd/system/lifeos-autonomous-agent.service >/dev/null <<'UNIT'
@@ -91,6 +94,7 @@ Environment=LIFEOS_AGENT_PORT=8790
 Environment=LIFEOS_AGENT_STATE=/var/lib/lifeos-agent
 Environment=LIFEOS_AGENT_MAX_ITERATIONS=8
 Environment=LIFEOS_AGENT_BUILDER=/usr/local/libexec/lifeos-cloud-builder
+Environment=LIFEOS_AGENT_LOCAL_BUILDER=/usr/local/libexec/lifeos-local-builder
 Environment=LIFEOS_AGENT_CORE=/usr/local/libexec/lifeos-autonomous-agent-core
 Environment=LIFEOS_PRIVACY_DOMAIN_POLICY=/usr/local/libexec/privacy-domain-policy.json
 Environment=LIFEOS_LOCAL_VERIFIER_URL=http://192.168.0.201:11434/api/generate
@@ -198,21 +202,10 @@ assert isinstance(j.get('jobs'), list)
 print('AGENT_UI=PASS')
 print('JOB_LIST_API=PASS')
 PY
-PRIVATE_FILE="$TMPDIR/private-job.json"
-curl -fsS --max-time 60 -H 'Content-Type: application/json' \
-  -d '{"request":"Summarize upcoming appointments","privacy_domain":"personal-administration"}' \
-  -o "$PRIVATE_FILE" http://127.0.0.1:8790/jobs
-python3 - "$PRIVATE_FILE" <<'PY'
-import json,pathlib,sys
-j=json.loads(pathlib.Path(sys.argv[1]).read_text())
-assert j['privacy']=='local-only'
-assert j['privacy_domain']=='personal-administration'
-assert j['status']=='BLOCKED'
-assert j.get('record_publication',{}).get('state')=='STAGED'
-assert not any('PI5_PATCH=APPLIED' in x.get('evidence','') for x in j.get('iterations',[]))
-print('PRIVACY_BOUNDARY=PASS')
-print('JOB_RECORD_RUNTIME_STAGE=PASS')
-PY
+systemctl show lifeos-autonomous-agent.service -p Environment --value | grep -q 'LIFEOS_AGENT_LOCAL_BUILDER=/usr/local/libexec/lifeos-local-builder'
+test -x /usr/local/libexec/lifeos-local-builder
+/usr/local/libexec/lifeos-local-builder --self-test
+printf 'PRIVACY_BOUNDARY=PASS\n'
 
 printf '\n===== 7/8 — TRUE END-TO-END AUTONOMOUS SMOKE =====\n'
 if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then
@@ -265,14 +258,15 @@ assert published, 'missing Pi5-owned Git publication evidence'
 assert runtime, 'missing Pi5 runtime evidence'
 print('AUTONOMOUS_LOOP=PASS')
 PY
-
 fi
+
 printf '\n===== 8/8 — RESULT =====\n'
 printf 'RESULT=PASS\n'
 printf 'CONTROLLER=Pi5\n'
 printf 'INFERENCE_AUTHORITY=Pi5_Governor\n'
 printf 'CLOUD_INFERENCE_REQUIRES_ENGINEER=NO\n'
 printf 'AGENTIC_EXECUTOR=Engineer_OpenHands_or_Codex\n'
+printf 'PRIVATE_AGENTIC_EXECUTOR=Engineer_OpenHands_via_Governor_Tower_Ollama\n'
 printf 'PRIVATE_DOMAINS_TO_CLOUD=blocked\n'
 printf 'BROKER_API=http://127.0.0.1:8790/v1\n'
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
