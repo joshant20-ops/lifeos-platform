@@ -1,0 +1,37 @@
+name: LifeOS Paperless Native Mail Choices
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-paperless-native-mail-choices.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect mail model choices
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker exec -i paperless-paperless-1 python3 manage.py shell <<'PY'
+          from django.apps import apps
+          for label in ('paperless_mail.MailAccount','paperless_mail.MailRule'):
+              model=apps.get_model(label)
+              print(f'MODEL={label};COUNT={model.objects.count()}')
+              for field in model._meta.fields:
+                  if field.choices:
+                      print(f'CHOICES={label}.{field.name}:{list(field.choices)}')
+                  elif field.has_default():
+                      try:
+                          value=field.get_default()
+                      except Exception:
+                          value='<callable>'
+                      print(f'DEFAULT={label}.{field.name}:{value!r}')
+          PY
+          echo 'RESULT=PASS'
