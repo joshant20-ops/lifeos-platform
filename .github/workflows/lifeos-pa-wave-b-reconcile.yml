@@ -57,19 +57,20 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           printf 'ARCHIVED_ORIGINAL=%s\n' "$archived"
           echo 'PI_RECONCILE=PASS'
-          echo 'REPAIR_LOOP_VERSION=4'
+          echo 'REPAIR_LOOP_VERSION=5'
 
       - name: Install canonical PA runtime
         shell: bash
         run: |
           set -Eeuo pipefail
           repo=/home/joshan/lifeos-platform
-          python3 -m py_compile             "$repo/governor/scripts/lifeos-pa-execute"             "$repo/governor/scripts/lifeos-pa-mission"             "$repo/homelab/live/home/joshan/automation/lifeos_calendar_adapter.py"             "$repo/homelab/live/home/joshan/automation/z97_job_submitter.py"             "$repo/tests/personal_admin/test_cross_domain_e2e.py"
+          python3 -m py_compile             "$repo/governor/scripts/lifeos-pa-execute"             "$repo/governor/scripts/lifeos-pa-mission"             "$repo/homelab/live/home/joshan/automation/lifeos_calendar_adapter.py"             "$repo/homelab/live/home/joshan/automation/z97_job_submitter.py"             "$repo/tests/personal_admin/test_cross_domain_e2e.py"             "$repo/homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py"
           install -d -m 0755 /home/joshan/.local/bin /home/joshan/automation
           install -m 0755 "$repo/governor/scripts/lifeos-pa-execute" /home/joshan/.local/bin/lifeos-pa-execute
           install -m 0755 "$repo/governor/scripts/lifeos-pa-mission" /home/joshan/.local/bin/lifeos-pa-mission
           install -m 0755 "$repo/homelab/live/home/joshan/automation/lifeos_calendar_adapter.py" /home/joshan/automation/lifeos_calendar_adapter.py
           install -m 0755 "$repo/homelab/live/home/joshan/automation/z97_job_submitter.py" /home/joshan/automation/z97_job_submitter.py
+          install -m 0755 "$repo/homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py" /home/joshan/automation/lifeos_email_paperless_selective.py
           echo 'PA_RUNTIME_INSTALL=PASS'
 
       - name: Deterministic regression
@@ -78,6 +79,7 @@ jobs:
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           python3 -m pytest -q tests/test_pa_local_ai_route.py
+          python3 -m unittest -v tests.test_pa_email_paperless_policy
           git diff --check
           test -z "$(git status --porcelain --untracked-files=all)"
           echo 'DETERMINISTIC_REGRESSION=PASS'
@@ -90,6 +92,13 @@ jobs:
           python3 tests/personal_admin/test_cross_domain_e2e.py
           test -z "$(git status --porcelain --untracked-files=all)"
           echo 'SYNTHETIC_ADAPTER_ACCEPTANCE=PASS'
+
+      - name: Selective real Email to Paperless acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /home/joshan/automation/lifeos_email_paperless_selective.py acceptance
+          echo 'SELECTIVE_EMAIL_PAPERLESS_ACCEPTANCE=PASS'
 
       - name: Resume PA mission
         shell: bash
