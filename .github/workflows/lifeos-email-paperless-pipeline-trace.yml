@@ -13,69 +13,30 @@ permissions:
 jobs:
   trace:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 6
+    timeout-minutes: 4
     steps:
-      - name: Trace existing Gmail auth path safely
+      - name: Identify existing IMAP credential interface without values
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo '=== AUTH LINEAGE TRACE START ==='
-          CFG=/home/joshan/automation/secrets/email_oauth/email_accounts_auth_config.json
-          echo "AUTH_CONFIG_EXISTS=$(test -f "$CFG" && echo yes || echo no)"
-          if test -f "$CFG"; then
-            sudo -n python3 - <<'PY'
-          import json, os, stat
-          from pathlib import Path
-          p=Path('/home/joshan/automation/secrets/email_oauth/email_accounts_auth_config.json')
-          d=json.loads(p.read_text())
-          accounts=d.get('accounts',[]) if isinstance(d,dict) else d
-          if isinstance(accounts,dict): accounts=list(accounts.values())
-          print('ACCOUNT_COUNT='+str(len(accounts)))
-          for i,a in enumerate(accounts,1):
-              print(f'ACCOUNT_{i}_ID={a.get("account_id","")}')
-              print(f'ACCOUNT_{i}_PROVIDER={a.get("provider","")}')
-              print(f'ACCOUNT_{i}_SCOPES={",".join(a.get("scopes",[]))}')
-              for key,label in [('oauth_client_file','CLIENT'),('token_file','TOKEN')]:
-                  raw=a.get(key)
-                  if not raw: continue
-                  q=Path(raw)
-                  if not q.is_absolute(): q=(p.parent/q).resolve()
-                  print(f'ACCOUNT_{i}_{label}_PATH={q}')
-                  print(f'ACCOUNT_{i}_{label}_EXISTS={q.exists()}')
-                  if q.exists():
-                      s=q.stat()
-                      print(f'ACCOUNT_{i}_{label}_MODE={stat.S_IMODE(s.st_mode):04o}')
-                      print(f'ACCOUNT_{i}_{label}_SIZE={s.st_size}')
-          PY
+          ENV=/home/joshan/automation/secrets/email_oauth/email_imap_accounts.env
+          SCRIPT=/home/joshan/automation/scripts/lifeos_email_phase1_daily_window_v1.py
+          echo "IMAP_ENV_EXISTS=$(test -f "$ENV" && echo yes || echo no)"
+          if test -f "$ENV"; then
+            echo '-- env variable names only --'
+            sudo -n awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/{print $1}' "$ENV" | sort
           fi
-
-          echo '-- pipeline scripts --'
-          find /home/joshan/automation -maxdepth 3 -type f 2>/dev/null \
-            | grep -Ei 'gmail|email.*phase|mail.*paperless|email.*paperless' \
-            | grep -v '/logs/' | sort | sed -n '1,100p' || true
-
-          echo '-- auth references in existing pipeline source --'
-          for f in \
-            /home/joshan/automation/scripts/lifeos_email_phase1_daily_window_v1.py \
-            /home/joshan/automation/scripts/lifeos_email_phase3_limited_body_extract_v1.py \
-            /home/joshan/automation/scripts/lifeos_gmail_readonly_full_import_v1.py \
-            /home/joshan/automation/scripts/lifeos_gmail1_full_header_records_v1.py; do
-            test -f "$f" || continue
-            echo "SCRIPT=$f"
-            grep -nEi 'oauth|auth_config|token_file|client_file|gmail|imap|credential' "$f" \
-              | sed -E 's/(password|client_secret|refresh_token).*/\1=<REDACTED>/Ig' \
-              | sed -n '1,50p' || true
-          done
-
-          echo '-- run existing read-only daily-window pipeline as auth proof --'
+          echo '-- phase1 credential-loading source, values redacted --'
+          if test -f "$SCRIPT"; then
+            sed -n '1,115p' "$SCRIPT" \
+              | sed -E 's/(password|secret|token)([^=]*=).*/\1\2<REDACTED>/Ig'
+          fi
+          echo '-- existing pipeline auth proof --'
           set +e
-          timeout 90 /usr/bin/python3 /home/joshan/automation/scripts/lifeos_email_phase1_daily_window_v1.py >/tmp/lifeos-email-auth-proof.out 2>&1
+          timeout 60 /usr/bin/python3 "$SCRIPT" >/tmp/lifeos-email-auth-proof.out 2>&1
           rc=$?
           set -e
           echo "PHASE1_EXIT=$rc"
-          grep -Ei 'pass|fail|error|auth|message|account|processed|result|status' /tmp/lifeos-email-auth-proof.out \
-            | sed -E 's/([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+)/<REDACTED_EMAIL>/g' \
-            | sed -E 's/(password|token|secret|key)[=: ]+[^ ,]+/\1=<REDACTED>/Ig' \
-            | tail -40 || true
+          grep -Ei 'status|connected_accounts|source_errors|candidate_messages_seen|new_messages_added' /tmp/lifeos-email-auth-proof.out \
+            | sed -E 's/([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+)/<REDACTED_EMAIL>/g' | tail -20 || true
           rm -f /tmp/lifeos-email-auth-proof.out
-          echo '=== AUTH LINEAGE TRACE COMPLETE ==='
