@@ -1,0 +1,155 @@
+name: LifeOS Paperless Native Mail Acceptance
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-paperless-native-mail-acceptance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  accept:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Configure native Paperless Gmail account and synthetic rule
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          c=paperless-paperless-1
+          sudo -n test -s /etc/lifeos/secrets/gmail-imap-user
+          sudo -n test -s /etc/lifeos/secrets/gmail-imap-password
+          tdir=$(mktemp -d)
+          trap 'rm -rf "$tdir"' EXIT
+          sudo -n cp /etc/lifeos/secrets/gmail-imap-user "$tdir/user"
+          sudo -n cp /etc/lifeos/secrets/gmail-imap-password "$tdir/password"
+          sudo -n chown "$(id -u):$(id -g)" "$tdir/user" "$tdir/password"
+          chmod 600 "$tdir/user" "$tdir/password"
+          docker cp "$tdir/user" "$c:/tmp/lifeos-mail-user"
+          docker cp "$tdir/password" "$c:/tmp/lifeos-mail-password"
+          docker exec -i "$c" python3 manage.py shell <<'PY'
+          from pathlib import Path
+          from django.apps import apps
+          from django.contrib.auth import get_user_model
+          MailAccount=apps.get_model('paperless_mail.MailAccount')
+          MailRule=apps.get_model('paperless_mail.MailRule')
+          admin=get_user_model().objects.filter(is_superuser=True,is_active=True).first()
+          assert admin is not None
+          user=Path('/tmp/lifeos-mail-user').read_text().strip()
+          password=Path('/tmp/lifeos-mail-password').read_text().strip()
+          assert user and password
+          account,created=MailAccount.objects.update_or_create(
+              name='LifeOS Gmail',
+              defaults=dict(owner=admin,imap_server='imap.gmail.com',imap_port=993,imap_security=2,
+                            username=user,password=password,is_token=False,character_set='UTF-8',account_type=1),
+          )
+          rule,rule_created=MailRule.objects.update_or_create(
+              name='LifeOS synthetic acceptance',
+              defaults=dict(owner=admin,order=0,account=account,enabled=True,folder='INBOX',
+                            filter_from='',filter_to='',filter_subject='LIFEOS-PAPERLESS-SYNTHETIC',filter_body='',
+                            filter_attachment_filename_include='lifeos-paperless-synthetic-*.pdf',
+                            filter_attachment_filename_exclude='',maximum_age=1,attachment_type=1,consumption_scope=1,
+                            pdf_layout=0,action=3,action_parameter='',assign_title_from=1,
+                            assign_document_type=None,assign_correspondent_from=1,assign_correspondent=None,
+                            assign_owner_from_rule=True,stop_processing=True),
+          )
+          print('MAIL_ACCOUNT_CONFIGURED=PASS')
+          print('MAIL_RULE_CONFIGURED=PASS')
+          PY
+          docker exec "$c" rm -f /tmp/lifeos-mail-user /tmp/lifeos-mail-password
+
+      - name: Insert synthetic Gmail message
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n python3 - <<'PY'
+          import imaplib,time,uuid
+          from email.message import EmailMessage
+          from pathlib import Path
+          marker='LIFEOS-PAPERLESS-SYNTHETIC-'+uuid.uuid4().hex
+          user=Path('/etc/lifeos/secrets/gmail-imap-user').read_text().strip()
+          password=Path('/etc/lifeos/secrets/gmail-imap-password').read_text().strip()
+          msg=EmailMessage()
+          msg['From']=user; msg['To']=user; msg['Subject']=marker
+          msg['Message-ID']='<'+marker.lower()+'@lifeos.invalid>'
+          msg.set_content('Synthetic Paperless native mail acceptance only.')
+          pdf=b'%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n'
+          msg.add_attachment(pdf,maintype='application',subtype='pdf',filename='lifeos-paperless-synthetic-'+marker+'.pdf')
+          c=imaplib.IMAP4_SSL('imap.gmail.com',993)
+          c.login(user,password); c.select('INBOX')
+          status,_=c.append('INBOX',None,imaplib.Time2Internaldate(time.time()),msg.as_bytes())
+          assert status=='OK'
+          c.logout()
+          Path('/tmp/lifeos-paperless-native-marker').write_text(marker)
+          print('SYNTHETIC_GMAIL_INSERT=PASS')
+          PY
+
+      - name: Run Paperless native mail fetcher and verify
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          c=paperless-paperless-1
+          marker=$(cat /tmp/lifeos-paperless-native-marker)
+          docker exec "$c" python3 manage.py mail_fetcher
+          for i in $(seq 1 30); do
+            found=$(docker exec -i "$c" python3 manage.py shell <<PY | tail -1
+          from documents.models import Document
+          print(Document.objects.filter(title='${marker}').count())
+          PY
+            )
+            test "$found" != 0 && break
+            sleep 2
+          done
+          test "$found" != 0
+          docker exec -i "$c" python3 manage.py shell <<PY
+          from django.apps import apps
+          from documents.models import Document
+          ProcessedMail=apps.get_model('paperless_mail.ProcessedMail')
+          marker='${marker}'
+          docs=Document.objects.filter(title=marker)
+          assert docs.count() >= 1
+          assert ProcessedMail.objects.filter(subject=marker).exists()
+          print('PAPERLESS_NATIVE_MAIL_FETCH=PASS')
+          print('PAPERLESS_NATIVE_DOCUMENT=PASS')
+          print('PAPERLESS_PROCESSED_MAIL=PASS')
+          PY
+
+      - name: Clean synthetic artefacts
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          c=paperless-paperless-1
+          if test -f /tmp/lifeos-paperless-native-marker; then
+            marker=$(cat /tmp/lifeos-paperless-native-marker)
+            docker exec -i "$c" python3 manage.py shell <<PY
+          from django.apps import apps
+          from documents.models import Document
+          ProcessedMail=apps.get_model('paperless_mail.ProcessedMail')
+          marker='${marker}'
+          Document.objects.filter(title=marker).delete()
+          ProcessedMail.objects.filter(subject=marker).delete()
+          print('PAPERLESS_SYNTHETIC_CLEANUP=PASS')
+          PY
+            sudo -n python3 - <<PY
+          import imaplib
+          from pathlib import Path
+          marker=Path('/tmp/lifeos-paperless-native-marker').read_text().strip()
+          user=Path('/etc/lifeos/secrets/gmail-imap-user').read_text().strip()
+          password=Path('/etc/lifeos/secrets/gmail-imap-password').read_text().strip()
+          c=imaplib.IMAP4_SSL('imap.gmail.com',993); c.login(user,password); c.select('INBOX')
+          status,rows=c.search(None,'HEADER','Subject','"'+marker+'"')
+          if status=='OK' and rows:
+              for mid in rows[0].split(): c.store(mid,'+FLAGS','\\Deleted')
+              c.expunge()
+          c.logout(); print('GMAIL_SYNTHETIC_CLEANUP=PASS')
+          PY
+          fi
+          rm -f /tmp/lifeos-paperless-native-marker
+
+      - name: Result
+        shell: bash
+        run: echo 'RESULT=PASS'
