@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Deterministic Personal Administration executor.
 
-Governor is intentionally minimal: this script may use governor.ai_broker for
-local reasoning, but it does not use Governor autonomous jobs, OpenHands or
-cloud AI. Source inspection is restricted to tracked repository files. The AI
-is advisory; this executor performs only explicitly allowlisted deterministic
-checks.
+Governor is intentionally minimal. Local Ollama is the normal reasoning path.
+If that path fails, one bounded Codex CLI repair attempt may diagnose/fix the
+minimal Tower/Ollama/broker path, after which the executor re-verifies and
+continues automatically. Governor autonomous jobs, OpenHands and cloud routing
+remain disabled.
 """
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ import json
 import os
 import pathlib
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -24,9 +25,11 @@ STATE = pathlib.Path(os.getenv(
 ))
 PLAN = STATE / "SCRIPTED_PLAN.json"
 RESULT = STATE / "SCRIPTED_RESULT.json"
+CODEX_LOG = STATE / "CODEX_REPAIR.log"
 MAX_FILES = 32
 MAX_CHARS_PER_FILE = 12000
 MAX_CONTEXT_CHARS = 180000
+CODEX_TIMEOUT = int(os.getenv("LIFEOS_PA_CODEX_TIMEOUT", "900"))
 
 sys.path.insert(0, str(REPO))
 from governor import ai_broker
@@ -46,9 +49,7 @@ DOMAIN_TERMS = {
 
 def run(argv, timeout=60):
     try:
-        p = subprocess.run(
-            argv, cwd=REPO, text=True, capture_output=True, timeout=timeout,
-        )
+        p = subprocess.run(argv, cwd=REPO, text=True, capture_output=True, timeout=timeout)
         return {
             "command": argv,
             "rc": p.returncode,
@@ -65,6 +66,74 @@ def local_ai(prompt: str) -> str:
     return ai_broker._ollama(prompt, ai_broker.OLLAMA_MODEL)
 
 
+def broker_probe():
+    try:
+        reply = local_ai("Reply with exactly: LOCAL_AI_OK")
+        return {"ok": "LOCAL_AI_OK" in reply, "reply": reply[-300:]}
+    except Exception as exc:
+        return {"ok": False, "error": type(exc).__name__}
+
+
+def codex_repair(reason: str):
+    """One bounded repair attempt; no destructive git and no autonomy expansion."""
+    codex = shutil.which("codex")
+    if not codex:
+        return {"attempted": False, "ok": False, "reason": "codex_not_installed"}
+
+    status = run(["git", "status", "--porcelain", "--untracked-files=all"], 30)
+    if status["rc"] != 0 or status["stdout"].strip():
+        return {"attempted": False, "ok": False, "reason": "worktree_not_clean_before_codex"}
+
+    prompt = f"""Repair one bounded LifeOS infrastructure failure in this repository.
+
+Observed failure: {reason}
+
+Current intended architecture:
+- Governor autonomous jobs are disabled by design.
+- Do NOT enable OpenHands, backlog/autonomous-agent jobs, or cloud-provider routing.
+- The only Governor capability to repair is: Tower wake -> local Ollama -> broker reply -> lease release/shutdown.
+- Normal model endpoint is the existing governor.ai_broker local Ollama path.
+- Preserve Watchman/root protections.
+- Do not use or print private Calendar, Email, Paperless, finance, secrets, tokens, credentials or household content.
+- Do not use git reset --hard, git clean, force push, or destructive recovery.
+- Do not commit or push changes.
+- Prefer existing scripts/services/configuration over new machinery.
+
+Work autonomously inside the repository and with safe non-secret runtime checks.
+Reproduce the minimal broker failure first. Find the shared root cause and make
+the smallest safe repair you can. Run relevant deterministic tests and finish
+only after re-running this exact acceptance probe successfully:
+
+python3 -c "import sys; sys.path.insert(0, '/home/joshan/lifeos-platform'); from governor import ai_broker; r=ai_broker._ollama('Reply with exactly: LOCAL_AI_OK', ai_broker.OLLAMA_MODEL); print(r.strip()); raise SystemExit(0 if 'LOCAL_AI_OK' in r else 9)"
+
+If a genuine human boundary blocks repair, leave the repository unchanged and
+state the boundary clearly. Do not broaden scope into Personal Administration.
+"""
+    print("STAGE=codex_self_repair", flush=True)
+    result = run([codex, "exec", "--full-auto", prompt], CODEX_TIMEOUT)
+    CODEX_LOG.write_text(
+        "STDOUT\n" + result["stdout"] + "\n\nSTDERR\n" + result["stderr"] + "\n",
+        encoding="utf-8",
+    )
+
+    diff_check = run(["git", "diff", "--check"], 30)
+    compile_check = run(["python3", "-m", "compileall", "-q", "governor"], 120)
+    probe = broker_probe()
+    dirty = run(["git", "status", "--porcelain", "--untracked-files=all"], 30)
+    changed = bool(dirty["stdout"].strip())
+    ok = result["rc"] == 0 and diff_check["rc"] == 0 and compile_check["rc"] == 0 and probe["ok"]
+    return {
+        "attempted": True,
+        "ok": ok,
+        "codex_rc": result["rc"],
+        "diff_check_rc": diff_check["rc"],
+        "compile_rc": compile_check["rc"],
+        "broker_probe": probe,
+        "worktree_changed": changed,
+        "log": str(CODEX_LOG),
+    }
+
+
 def tracked_files():
     p = run(["git", "ls-files"], 30)
     if p["rc"] != 0:
@@ -75,7 +144,6 @@ def tracked_files():
 def discover():
     tracked = tracked_files()
     files = {x for x in tracked if any(t in x.lower() for t in TERMS)}
-
     argv = ["git", "grep", "-I", "-l", "-i"]
     for term in TERMS:
         argv += ["-e", term]
@@ -86,10 +154,7 @@ def discover():
 
     def score(path: str):
         p = path.lower()
-        value = 0
-        for term in TERMS:
-            if term in p:
-                value += 8
+        value = sum(8 for term in TERMS if term in p)
         if p.endswith((".py", ".sh", ".yml", ".yaml", ".json")):
             value += 6
         if any(x in p for x in ("script", "governor", "homeassistant", "paperless", "test")):
@@ -98,8 +163,7 @@ def discover():
             value -= 5
         return (-value, path)
 
-    ordered = sorted(files, key=score)
-    return {"repo": str(REPO), "candidate_files": ordered[:300]}
+    return {"repo": str(REPO), "candidate_files": sorted(files, key=score)[:300]}
 
 
 def safe_source(path_text: str):
@@ -115,8 +179,7 @@ def safe_source(path_text: str):
         return None
     data = re.sub(
         r"(?im)^.*(?:password|secret|token|authorization|api[_-]?key)\s*[=:].*$",
-        "[redacted configuration line]",
-        data,
+        "[redacted configuration line]", data,
     )
     return data[:MAX_CHARS_PER_FILE]
 
@@ -124,31 +187,26 @@ def safe_source(path_text: str):
 def inspect_candidates(inventory):
     candidates = inventory["candidate_files"]
     selected = []
-
-    # Guarantee cross-domain coverage before filling remaining slots by score.
     for terms in DOMAIN_TERMS.values():
         for path in candidates:
             p = path.lower()
             if path not in selected and any(term in p for term in terms):
                 selected.append(path)
                 break
-
     for path in candidates:
         if path not in selected:
             selected.append(path)
         if len(selected) >= MAX_FILES:
             break
 
-    inspected = []
-    used = 0
+    inspected, used = [], 0
     for path in selected:
         if len(inspected) >= MAX_FILES or used >= MAX_CONTEXT_CHARS:
             break
         data = safe_source(path)
         if not data:
             continue
-        remaining = MAX_CONTEXT_CHARS - used
-        data = data[:remaining]
+        data = data[:MAX_CONTEXT_CHARS - used]
         inspected.append({"path": path, "content": data})
         used += len(data)
     return inspected
@@ -181,28 +239,21 @@ def make_plan(inventory, inspected):
 Goal: integrate existing Calendar + Email + Paperless capabilities through the
 existing shared event/obligation/action/evidence model and PA attention surface.
 
-Architecture constraints:
-- Governor autonomy/OpenHands/cloud AI are disabled by design.
-- Deterministic Pi-side scripts do execution; local AI is advisory.
-- Reuse existing working services and code. OTS/native first.
-- Paperless remains document authority.
-- Do not request or expose live private Calendar/Email/Paperless contents.
-- Do not invent services or claim files exist unless present below.
-- Do not suggest arbitrary shell/root commands.
+Constraints: Governor autonomy/OpenHands/cloud AI are disabled by design.
+Deterministic Pi scripts execute; local AI is advisory. Reuse working services,
+OTS/native first, Paperless remains document authority. Never request or expose
+live private source content. Do not invent services/files or arbitrary root work.
 
 Return ONE JSON object only with exactly these top-level keys:
 status, findings, target_files, next_action, deterministic_checks, rationale
 
-status must be READY when the supplied source is sufficient to identify one
-bounded engineering action. Use BLOCKED only when a concrete missing dependency
-or required human boundary prevents that action.
-target_files must contain only repository paths present below.
-next_action must be a bounded engineering action based on inspected code, not
-an instruction to merely inspect another file.
-deterministic_checks must be a list of safe read-only/test checks.
+status must be READY when supplied source identifies one bounded engineering
+action. BLOCKED is only for a concrete missing dependency or human boundary.
+target_files may only contain paths present below. next_action must be concrete,
+not merely another inspection request.
 
-Candidate paths:
-""" + json.dumps(inventory["candidate_files"][:160]) + "\n\nInspected repository source:\n" + json.dumps(source_context)
+Candidate paths:\n""" + json.dumps(inventory["candidate_files"][:160]) + \
+        "\n\nInspected repository source:\n" + json.dumps(source_context)
     return parse_json(local_ai(prompt))
 
 
@@ -229,8 +280,7 @@ def deterministic_checks(plan):
         run(["git", "diff", "--check"], 30),
         run(["python3", "-m", "compileall", "-q", "governor"], 90),
     ]
-    py_targets = [x for x in plan.get("target_files", []) if x.endswith(".py")]
-    for path in py_targets[:8]:
+    for path in [x for x in plan.get("target_files", []) if x.endswith(".py")][:8]:
         checks.append(run(["python3", "-m", "py_compile", path], 30))
     return checks
 
@@ -258,37 +308,59 @@ def main():
         return 20
 
     print("STAGE=local_ai_plan", flush=True)
+    repair = None
     try:
         plan = normalize_plan(make_plan(inventory, inspected), inventory)
     except Exception as exc:
-        plan = {"status": "BLOCKED", "findings": [], "target_files": [],
-                "next_action": "", "deterministic_checks": [],
-                "rationale": f"local_ai_failed:{type(exc).__name__}"}
+        reason = f"local_ai_failed:{type(exc).__name__}"
+        repair = codex_repair(reason)
+        if repair.get("ok"):
+            print("CODEX_REPAIR=PASS", flush=True)
+            try:
+                plan = normalize_plan(make_plan(inventory, inspected), inventory)
+            except Exception as retry_exc:
+                plan = {"status": "BLOCKED", "findings": [], "target_files": [],
+                        "next_action": "", "deterministic_checks": [],
+                        "rationale": f"local_ai_retry_failed:{type(retry_exc).__name__}"}
+        else:
+            print("CODEX_REPAIR=BLOCKED", flush=True)
+            plan = {"status": "BLOCKED", "findings": [], "target_files": [],
+                    "next_action": "", "deterministic_checks": [],
+                    "rationale": reason + ";codex_repair_failed"}
 
     PLAN.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     print("STAGE=deterministic_verification", flush=True)
     checks = deterministic_checks(plan)
     failed = [x for x in checks if x["rc"] != 0]
+    dirty = run(["git", "status", "--porcelain", "--untracked-files=all"], 30)
 
     result = {
         "timestamp": int(time.time()),
-        "inventory": {"repo": inventory["repo"],
-                      "candidate_files": inventory["candidate_files"]},
+        "inventory": {"repo": inventory["repo"], "candidate_files": inventory["candidate_files"]},
         "inspected_files": [x["path"] for x in inspected],
         "plan": plan,
+        "codex_repair": repair,
         "verification": checks,
+        "worktree_dirty": bool(dirty["stdout"].strip()),
     }
     RESULT.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     print("SCRIPTED_PLAN=" + str(PLAN))
     print("SCRIPTED_RESULT=" + str(RESULT))
     print("PLAN_STATUS=" + plan.get("status", "BLOCKED"))
+    if repair:
+        print("CODEX_REPAIR_LOG=" + str(CODEX_LOG))
+        print("CODEX_WORKTREE_CHANGED=" + str(bool(repair.get("worktree_changed"))).lower())
     if plan.get("next_action"):
         print("NEXT_ACTION=" + plan["next_action"].replace("\n", " ")[:500])
     if plan.get("rationale"):
         print("PLAN_RATIONALE=" + plan["rationale"].replace("\n", " ")[:500])
 
+    # Never silently declare mission PASS with an uncommitted Codex patch.
+    if dirty["stdout"].strip():
+        print("SCRIPTED_EXECUTION=BLOCKED reason=codex_patch_requires_review")
+        return 20
     if failed or plan.get("status") != "READY":
         print("SCRIPTED_EXECUTION=BLOCKED")
         return 20
