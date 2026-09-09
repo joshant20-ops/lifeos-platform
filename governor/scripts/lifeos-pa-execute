@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""
+LifeOS Personal Administration deterministic executor.
+
+Governor is deliberately NOT an orchestrator here.
+Allowed Governor capability:
+    Pi broker -> Tower lifecycle -> local Ollama
+
+Execution policy:
+    inspect -> plan locally -> execute deterministic scripts -> verify
+"""
+from __future__ import annotations
+
+import json
+import pathlib
+import subprocess
+import sys
+import time
+
+REPO = pathlib.Path("/home/joshan/lifeos-platform")
+STATE = pathlib.Path.home() / ".local/state/lifeos-pa-autonomy"
+PLAN = STATE / "SCRIPTED_PLAN.json"
+RESULT = STATE / "SCRIPTED_RESULT.json"
+
+sys.path.insert(0, str(REPO))
+from governor import ai_broker
+
+
+def run(cmd, timeout=60):
+    p = subprocess.run(
+        cmd,
+        cwd=REPO,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
+    return {
+        "command": cmd,
+        "rc": p.returncode,
+        "stdout": p.stdout[-4000:],
+        "stderr": p.stderr[-2000:],
+    }
+
+
+def local_ai(prompt):
+    # This is the ONLY AI path used by this executor.
+    return ai_broker._ollama(prompt, ai_broker.OLLAMA_MODEL)
+
+
+def discover():
+    tracked = run(["git", "ls-files"])
+
+    terms = (
+        "calendar",
+        "email",
+        "gmail",
+        "imap",
+        "paperless",
+        "document",
+        "personal",
+        "attention",
+        "obligation",
+    )
+
+    tracked_files = tracked["stdout"].splitlines()
+
+    files = {
+        x for x in tracked_files
+        if any(t in x.lower() for t in terms)
+    }
+
+    grep = run([
+        "git", "grep", "-I", "-l", "-i",
+        "-e", "calendar",
+        "-e", "email",
+        "-e", "gmail",
+        "-e", "imap",
+        "-e", "paperless",
+        "-e", "obligation",
+        "-e", "attention",
+        "--"
+    ])
+
+    if grep["rc"] in (0, 1):
+        files.update(grep["stdout"].splitlines())
+
+    return {
+        "repo": str(REPO),
+        "candidate_files": sorted(files)[:300],
+    }
+
+
+def make_plan(inventory):
+    prompt = """You are the local LifeOS planning model.
+
+We are implementing Personal Administration using EXISTING repository
+capabilities.
+
+Governor autonomy, OpenHands and cloud AI are disabled.
+
+Goal:
+Calendar + Email + Paperless -> shared event/obligation/action/evidence ->
+existing Personal Administration attention surface.
+
+Rules:
+- inspect/reuse existing functionality
+- deterministic scripts do execution
+- Paperless remains document authority
+- private data stays local
+- do not invent services
+- do not modify files yet
+- return JSON only
+- identify the smallest useful next executable step
+
+Repository candidates:
+""" + json.dumps(inventory)
+
+    raw = local_ai(prompt)
+
+    try:
+        return json.loads(raw)
+    except Exception:
+        return {
+            "status": "PLAN_PARSE_FAILED",
+            "raw": raw[:8000],
+        }
+
+
+def verify():
+    checks = []
+
+    checks.append(run([
+        "git", "status", "--porcelain",
+        "--untracked-files=all"
+    ]))
+
+    checks.append(run([
+        "python3", "-m", "compileall", "-q",
+        "governor"
+    ]))
+
+    return checks
+
+
+def main():
+    STATE.mkdir(parents=True, exist_ok=True)
+
+    print("STAGE=scripted_inventory", flush=True)
+    inventory = discover()
+
+    print(
+        f"CANDIDATE_FILES={len(inventory['candidate_files'])}",
+        flush=True,
+    )
+
+    print("STAGE=local_ai_plan", flush=True)
+    plan = make_plan(inventory)
+
+    PLAN.write_text(
+        json.dumps(plan, indent=2) + "\n"
+    )
+
+    print("STAGE=verification", flush=True)
+    checks = verify()
+
+    result = {
+        "timestamp": int(time.time()),
+        "inventory": inventory,
+        "plan": plan,
+        "verification": checks,
+    }
+
+    RESULT.write_text(
+        json.dumps(result, indent=2) + "\n"
+    )
+
+    failed = [x for x in checks if x["rc"]]
+
+    if failed:
+        print("SCRIPTED_EXECUTION=BLOCKED")
+        return 20
+
+    print("SCRIPTED_PLAN=" + str(PLAN))
+    print("SCRIPTED_RESULT=" + str(RESULT))
+    print("SCRIPTED_EXECUTION=PASS")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
