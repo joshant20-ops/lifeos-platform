@@ -29,6 +29,8 @@ CODEX_LOG = STATE / "CODEX_REPAIR.log"
 MAX_FILES = 32
 MAX_CHARS_PER_FILE = 12000
 MAX_CONTEXT_CHARS = 180000
+CHUNK_FILES = 6
+CHUNK_FILE_CHARS = 3000
 CODEX_TIMEOUT = int(os.getenv("LIFEOS_PA_CODEX_TIMEOUT", "900"))
 
 sys.path.insert(0, str(REPO))
@@ -232,30 +234,92 @@ def parse_json(raw: str):
         return {"status": "PLAN_PARSE_FAILED", "raw": text[:8000]}
 
 
-def make_plan(inventory, inspected):
-    source_context = [{"path": x["path"], "content": x["content"]} for x in inspected]
-    prompt = """You are the LOCAL LifeOS Personal Administration engineering planner.
+def make_plan(candidates, inspected):
+    import json
 
-Goal: integrate existing Calendar + Email + Paperless capabilities through the
-existing shared event/obligation/action/evidence model and PA attention surface.
+    def parse_json(raw):
+        raw = str(raw).strip()
+        if raw.startswith("```"):
+            lines = raw.splitlines()[1:]
+            if lines and lines[-1].strip().startswith("```"):
+                lines = lines[:-1]
+            raw = "\n".join(lines).strip()
+        try:
+            return json.loads(raw)
+        except Exception:
+            a = raw.find("{")
+            b = raw.rfind("}")
+            if a < 0 or b <= a:
+                raise
+            return json.loads(raw[a:b+1])
 
-Constraints: Governor autonomy/OpenHands/cloud AI are disabled by design.
-Deterministic Pi scripts execute; local AI is advisory. Reuse working services,
-OTS/native first, Paperless remains document authority. Never request or expose
-live private source content. Do not invent services/files or arbitrary root work.
+    paths = list(inspected.keys())
+    summaries = []
 
-Return ONE JSON object only with exactly these top-level keys:
-status, findings, target_files, next_action, deterministic_checks, rationale
+    for offset in range(0, len(paths), CHUNK_FILES):
+        batch = paths[offset:offset + CHUNK_FILES]
+        blocks = []
 
-status must be READY when supplied source identifies one bounded engineering
-action. BLOCKED is only for a concrete missing dependency or human boundary.
-target_files may only contain paths present below. next_action must be concrete,
-not merely another inspection request.
+        for rel in batch:
+            text = inspected.get(rel, "")
+            complete = len(text) < MAX_CHARS_PER_FILE
+            blocks.append(
+                f"FILE: {rel}\n"
+                f"EXCERPT_COMPLETE={str(complete).lower()}\n"
+                f"{text[:CHUNK_FILE_CHARS]}"
+            )
 
-Candidate paths:\n""" + json.dumps(inventory["candidate_files"][:160]) + \
-        "\n\nInspected repository source:\n" + json.dumps(source_context)
+        prompt = """Inspect ONLY these LifeOS Personal Administration source excerpts.
+
+Return JSON only:
+{
+  "capabilities": [],
+  "proven_gaps": [],
+  "important_files": [],
+  "risks": []
+}
+
+Rules:
+- excerpts may be intentionally truncated
+- NEVER infer a missing EOF, missing function, broken syntax, or incomplete file solely because an excerpt ends
+- only report a defect when directly proven by supplied text
+- distinguish proven gaps from uncertainty
+- do not execute or mutate anything
+
+SOURCE:
+""" + "\n\n".join(blocks)
+
+        raw = local_ai(prompt)
+        summaries.append(parse_json(raw))
+        print(f"PLAN_BATCH_{offset // CHUNK_FILES + 1}=PASS")
+
+    prompt = """Plan ONE bounded next engineering step for LifeOS Personal Administration.
+
+Return JSON only:
+{
+  "status": "READY|BLOCKED",
+  "findings": [],
+  "target_files": [],
+  "next_action": "",
+  "deterministic_checks": [],
+  "rationale": ""
+}
+
+Rules:
+- use ONLY the chunk summaries supplied below
+- excerpts used to create summaries may have been intentionally truncated
+- NEVER infer missing EOF/file corruption from truncation
+- prefer existing working capabilities
+- private Calendar/Email/Paperless content stays local
+- no new service unless a proven gap requires it
+- choose ONE concrete Personal Administration engineering step
+- BLOCKED only for a concrete dependency, human authorization, or unsafe boundary
+- uncertainty alone is not BLOCKED
+
+SUMMARIES:
+""" + json.dumps(summaries)
+
     return parse_json(local_ai(prompt))
-
 
 def normalize_plan(plan, inventory):
     allowed = set(inventory["candidate_files"])
