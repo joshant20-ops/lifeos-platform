@@ -54,6 +54,10 @@ jobs:
             tests.test_step11_live_closure \
             tests.test_tower_metrics
 
+      - name: Validate PA executor syntax
+        run: |
+          python3 -m py_compile governor/scripts/lifeos-pa-execute
+
       - name: Validate Tower metrics deployment boundary
         run: |
           bash -n scripts/lifeos-deploy-tower-metrics.sh
