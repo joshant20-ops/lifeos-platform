@@ -1,4 +1,5 @@
 import importlib.util
+import unittest
 from pathlib import Path
 
 SOURCE = (
@@ -24,33 +25,36 @@ def attachment(**overrides):
     return value
 
 
-def test_policy_authorizes_only_selected_synthetic_pdf():
-    module = load()
-    result = module.policy(
-        {"disposition": "archive authoritative attachment"},
-        attachment(),
-    )
-    assert result == {
-        "disposition": "archive authoritative attachment",
-        "authorized": True,
-        "allowed": True,
-    }
+class SelectivePolicyTests(unittest.TestCase):
+    def test_authorizes_only_selected_synthetic_pdf(self):
+        module = load()
+        result = module.policy(
+            {"disposition": "archive authoritative attachment"},
+            attachment(),
+        )
+        self.assertEqual(result, {
+            "disposition": "archive authoritative attachment",
+            "authorized": True,
+            "allowed": True,
+        })
+
+    def test_rejects_nonarchive_decision(self):
+        module = load()
+        result = module.policy({"disposition": "event/action only"}, attachment())
+        self.assertTrue(result["allowed"])
+        self.assertFalse(result["authorized"])
+
+    def test_rejects_untrusted_attachment(self):
+        module = load()
+        self.assertFalse(module.policy(
+            {"disposition": "archive authoritative attachment"},
+            attachment(filename="private.pdf"),
+        )["authorized"])
+        self.assertFalse(module.policy(
+            {"disposition": "archive authoritative attachment"},
+            attachment(mime="application/octet-stream"),
+        )["authorized"])
 
 
-def test_policy_rejects_nonarchive_decision():
-    module = load()
-    result = module.policy({"disposition": "event/action only"}, attachment())
-    assert result["allowed"] is True
-    assert result["authorized"] is False
-
-
-def test_policy_rejects_untrusted_attachment():
-    module = load()
-    assert not module.policy(
-        {"disposition": "archive authoritative attachment"},
-        attachment(filename="private.pdf"),
-    )["authorized"]
-    assert not module.policy(
-        {"disposition": "archive authoritative attachment"},
-        attachment(mime="application/octet-stream"),
-    )["authorized"]
+if __name__ == "__main__":
+    unittest.main()
