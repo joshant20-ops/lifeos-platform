@@ -24,9 +24,9 @@ STATE = pathlib.Path(os.getenv(
 ))
 PLAN = STATE / "SCRIPTED_PLAN.json"
 RESULT = STATE / "SCRIPTED_RESULT.json"
-MAX_FILES = 16
+MAX_FILES = 32
 MAX_CHARS_PER_FILE = 12000
-MAX_CONTEXT_CHARS = 90000
+MAX_CONTEXT_CHARS = 180000
 
 sys.path.insert(0, str(REPO))
 from governor import ai_broker
@@ -36,6 +36,12 @@ TERMS = (
     "paperless", "document", "personal", "attention", "obligation",
     "evidence", "action", "event", "lifeos_ask", "ask_processor",
 )
+DOMAIN_TERMS = {
+    "calendar": ("calendar", "caldav", "ical"),
+    "email": ("email", "gmail", "imap", "mail"),
+    "paperless": ("paperless", "document", "evidence"),
+    "shared": ("attention", "obligation", "action", "event", "lifeos_ask", "ask_processor"),
+}
 
 
 def run(argv, timeout=60):
@@ -78,7 +84,6 @@ def discover():
     if grep["rc"] in (0, 1):
         files.update(grep["stdout"].splitlines())
 
-    # Prefer implementation/config/test files over docs and historical evidence.
     def score(path: str):
         p = path.lower()
         value = 0
@@ -108,7 +113,6 @@ def safe_source(path_text: str):
         data = full.read_text(encoding="utf-8", errors="replace")
     except Exception:
         return None
-    # Never feed obvious secret material to the model even from the local repo.
     data = re.sub(
         r"(?im)^.*(?:password|secret|token|authorization|api[_-]?key)\s*[=:].*$",
         "[redacted configuration line]",
@@ -118,9 +122,26 @@ def safe_source(path_text: str):
 
 
 def inspect_candidates(inventory):
+    candidates = inventory["candidate_files"]
+    selected = []
+
+    # Guarantee cross-domain coverage before filling remaining slots by score.
+    for terms in DOMAIN_TERMS.values():
+        for path in candidates:
+            p = path.lower()
+            if path not in selected and any(term in p for term in terms):
+                selected.append(path)
+                break
+
+    for path in candidates:
+        if path not in selected:
+            selected.append(path)
+        if len(selected) >= MAX_FILES:
+            break
+
     inspected = []
     used = 0
-    for path in inventory["candidate_files"]:
+    for path in selected:
         if len(inspected) >= MAX_FILES or used >= MAX_CONTEXT_CHARS:
             break
         data = safe_source(path)
@@ -172,14 +193,16 @@ Architecture constraints:
 Return ONE JSON object only with exactly these top-level keys:
 status, findings, target_files, next_action, deterministic_checks, rationale
 
-status must be READY or BLOCKED.
+status must be READY when the supplied source is sufficient to identify one
+bounded engineering action. Use BLOCKED only when a concrete missing dependency
+or required human boundary prevents that action.
 target_files must contain only repository paths present below.
 next_action must be a bounded engineering action based on inspected code, not
 an instruction to merely inspect another file.
 deterministic_checks must be a list of safe read-only/test checks.
 
 Candidate paths:
-""" + json.dumps(inventory["candidate_files"][:120]) + "\n\nInspected repository source:\n" + json.dumps(source_context)
+""" + json.dumps(inventory["candidate_files"][:160]) + "\n\nInspected repository source:\n" + json.dumps(source_context)
     return parse_json(local_ai(prompt))
 
 
@@ -202,11 +225,10 @@ def normalize_plan(plan, inventory):
 
 
 def deterministic_checks(plan):
-    checks = []
-    checks.append(run(["git", "diff", "--check"], 30))
-    checks.append(run(["python3", "-m", "compileall", "-q", "governor"], 90))
-
-    # Compile only AI-selected Python files; never execute selected source.
+    checks = [
+        run(["git", "diff", "--check"], 30),
+        run(["python3", "-m", "compileall", "-q", "governor"], 90),
+    ]
     py_targets = [x for x in plan.get("target_files", []) if x.endswith(".py")]
     for path in py_targets[:8]:
         checks.append(run(["python3", "-m", "py_compile", path], 30))
@@ -264,6 +286,8 @@ def main():
     print("PLAN_STATUS=" + plan.get("status", "BLOCKED"))
     if plan.get("next_action"):
         print("NEXT_ACTION=" + plan["next_action"].replace("\n", " ")[:500])
+    if plan.get("rationale"):
+        print("PLAN_RATIONALE=" + plan["rationale"].replace("\n", " ")[:500])
 
     if failed or plan.get("status") != "READY":
         print("SCRIPTED_EXECUTION=BLOCKED")
