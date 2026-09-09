@@ -1,0 +1,176 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+CONTROLLER_REPO=${LIFEOS_PLATFORM_REPO:-/home/joshan/lifeos-platform}
+ENGINEER=${LIFEOS_ENGINEER_SSH:-Engineer}
+REPO=${LIFEOS_ENGINEER_REPO:-/home/joshan/workspace/lifeos-platform}
+BROKER_TOKEN=${LIFEOS_AI_BROKER_TOKEN_FILE:-$HOME/.config/lifeos/ai-broker.token}
+BROKER_URL=${LIFEOS_LOCAL_BROKER_URL:-http://127.0.0.1:8790/v1/chat/completions}
+MODEL=${LIFEOS_LOCAL_BUILDER_MODEL:-openai/lifeos-local-only-normal}
+
+release_lease() {
+  python3 - "$CONTROLLER_REPO" <<'PY' >/dev/null 2>&1 || true
+import importlib.util, pathlib, sys
+p=pathlib.Path(sys.argv[1])/'governor'/'ai_broker.py'
+s=importlib.util.spec_from_file_location('lifeos_local_builder_broker',p)
+m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+m._publish_lease('released', required=False)
+PY
+}
+
+self_test() {
+  [[ -s "$BROKER_TOKEN" && ! -L "$BROKER_TOKEN" && "$(stat -c '%a' "$BROKER_TOKEN")" == 600 ]] || {
+    echo 'LOCAL_BUILDER_SELFTEST=FAIL'; echo 'REASON=broker_token_unavailable'; return 20;
+  }
+  local req out
+  req='{"model":"openai/lifeos-local-only-normal","messages":[{"role":"user","content":"Reply with exactly LOCAL_ONLY_ROUTE_OK"}]}'
+  out=$(curl -fsS --max-time 180 -H 'Content-Type: application/json' \
+    -H "Authorization: Bearer $(cat "$BROKER_TOKEN")" -d "$req" "$BROKER_URL") || {
+      echo 'LOCAL_BUILDER_SELFTEST=FAIL'; echo 'REASON=local_broker_unavailable'; return 20;
+    }
+  python3 - "$out" <<'PY'
+import json,sys
+j=json.loads(sys.argv[1])
+assert j.get('lifeos_privacy') == 'local-only', j
+assert j.get('lifeos_provider') == 'ollama', j
+print('LOCAL_BUILDER_SELFTEST=PASS')
+print('LOCAL_BUILDER_PROVIDER=ollama')
+print('LOCAL_BUILDER_CLOUD_FALLBACK=DISABLED')
+PY
+}
+
+if [[ ${1:-} == --self-test ]]; then
+  self_test
+  exit
+fi
+
+REQUEST=${1:?request required}
+ITERATION=${2:?iteration required}
+FEEDBACK=${3:-}
+PRIVACY=${LIFEOS_JOB_PRIVACY:-}
+JOB_ID=${LIFEOS_JOB_ID:-unknown}
+RUNTIME_PATH="governor/runtime_jobs/${JOB_ID}.sh"
+
+if [[ "$PRIVACY" != local-only ]]; then
+  echo 'RESULT=BLOCKED'
+  echo 'REASON=local_builder_requires_local_only_privacy'
+  exit 42
+fi
+if [[ "$MODEL" != *local-only* ]]; then
+  echo 'RESULT=BLOCKED'
+  echo 'REASON=local_builder_model_must_be_local_only'
+  exit 42
+fi
+
+echo 'LOCAL_BUILDER_ROUTE=Pi5_Governor_to_Tower_Ollama'
+echo 'LOCAL_BUILDER_CLOUD_FALLBACK=DISABLED'
+
+# Acquire the same Pi Governor/Tower lease used by local verification, then wait
+# for the Engineer VM that boots with Tower. Any failure remains local and
+# retryable; this wrapper never falls through to a cloud provider.
+python3 - "$CONTROLLER_REPO" <<'PY'
+import importlib.util, pathlib, sys
+p=pathlib.Path(sys.argv[1])/'governor'/'ai_broker.py'
+s=importlib.util.spec_from_file_location('lifeos_local_builder_broker',p)
+m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+m._publish_lease('active')
+m._wake_local_ai()
+PY
+trap release_lease EXIT
+
+READY=0
+for _ in $(seq 1 100); do
+  if ssh -o BatchMode=yes -o ConnectTimeout=3 "$ENGINEER" true >/dev/null 2>&1; then READY=1; break; fi
+  sleep 3
+done
+if (( READY == 0 )); then
+  echo 'RESULT=RETRY'
+  echo 'REASON=engineer_not_ready_after_local_tower_wake'
+  exit 21
+fi
+
+DISCOVERY=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s <<'REMOTE'
+set -euo pipefail
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+if command -v openhands >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/openhands" ]]; then echo 'OPENHANDS=present'; else echo 'OPENHANDS=absent'; fi
+cfg="$HOME/.config/lifeos/governor-broker.env"
+if [[ -f "$cfg" && ! -L "$cfg" && "$(stat -c '%a' "$cfg")" == 600 ]] && grep -q '^LIFEOS_GOVERNOR_BROKER_URL=' "$cfg" && grep -q '^LIFEOS_GOVERNOR_BROKER_TOKEN=' "$cfg"; then echo 'GOVERNOR_BROKER=present'; else echo 'GOVERNOR_BROKER=absent'; fi
+REMOTE
+)
+printf '%s\n' "$DISCOVERY"
+grep -q '^OPENHANDS=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=openhands_unavailable'; exit 21; }
+grep -q '^GOVERNOR_BROKER=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=governor_broker_capability_unavailable'; exit 21; }
+
+PROMPT=$(cat <<EOF
+You are the LOCAL-ONLY engineering builder for LifeOS autonomous job $JOB_ID.
+All inference for this job must stay on the local Pi Governor -> Tower Ollama route. Cloud providers are forbidden.
+Work toward the user's original goal until this iteration has produced a concrete, testable improvement.
+
+SAFETY AND EXECUTION:
+- Pi5/Docker owns policy, Git publication, runtime execution, and privileged deployment.
+- OpenHands executes only on the local Engineer VM and receives only the Pi Governor broker capability.
+- Never use provider API keys, Codex, Gemini, Groq, OpenRouter, or any direct cloud model.
+- Do not commit, push, fetch, clone, or depend on GitHub/network access from inside OpenHands; Pi5 publishes handoff changes.
+- Never copy private source content into Git, logs, patches, or runtime launchers.
+- If runtime inspection/change is needed, create exactly one Pi5 launcher at $RUNTIME_PATH. It must start with #!/usr/bin/env bash, be non-interactive and timeout-aware.
+- The local verifier decides completion.
+
+REPOSITORY WORK:
+- Work in the clean disposable worktree supplied by the wrapper.
+- Make necessary changes and run focused tests.
+- Leave changes uncommitted for Pi5 handoff.
+- Do not merely explain; perform available engineering work.
+
+USER GOAL:
+$REQUEST
+
+ITERATION: $ITERATION
+LOCAL VERIFIER FEEDBACK:
+${FEEDBACK:-none yet}
+
+FINAL OUTPUT CONTRACT:
+Print these lines at the end:
+RESULT=PASS|RETRY|BLOCKED
+TESTS=<concise result>
+NEXT_RUNTIME_CHECK=<concise check or none>
+EOF
+)
+PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
+SNAPSHOT=$(mktemp --suffix=.bundle)
+trap 'rm -f "$SNAPSHOT"; release_lease' EXIT
+git -C "$CONTROLLER_REPO" bundle create "$SNAPSHOT" HEAD
+test -s "$SNAPSHOT"
+REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
+ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
+scp -q -o BatchMode=yes -o ConnectTimeout=8 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
+
+for attempt in 1 2; do
+  echo "AGENT_ATTEMPT=openhands provider=governor-broker-local-only attempt=$attempt"
+  set +e
+  OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE'
+set -euo pipefail
+REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}; SNAPSHOT_REL=${6:?snapshot required}; MODEL=${7:?model required}
+SNAPSHOT="$HOME/$SNAPSHOT_REL"
+trap 'rm -f "$SNAPSHOT"' EXIT
+test -s "$SNAPSHOT"
+git -C "$REPO" fetch "$SNAPSHOT" HEAD:refs/remotes/origin/main >/dev/null
+HELPER=$(mktemp)
+trap 'rm -f "$HELPER" "$SNAPSHOT"' EXIT
+git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$HELPER"
+chmod 700 "$HELPER"
+"$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
+REMOTE
+  )
+  RC=$?
+  set -e
+  printf '%s\n' "$OUTPUT"
+  if (( RC == 0 )); then
+    echo 'AGENT_RESULT=openhands PASS'
+    exit 0
+  fi
+  echo "AGENT_RESULT=openhands RETRY exit=$RC"
+done
+
+echo 'RESULT=RETRY'
+echo 'REASON=local_openhands_attempts_exhausted'
+exit 21
