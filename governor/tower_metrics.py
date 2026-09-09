@@ -197,6 +197,7 @@ def discovery_sensor(object_id: str, name: str, template: str, unit: str | None 
         "availability_topic": f"{BASE}/availability",
         "payload_available": "online",
         "payload_not_available": "offline",
+        "expire_after": INTERVAL * 4,
         "device": {
             "identifiers": ["lifeos_tower"],
             "name": "Tower PC / Z97",
