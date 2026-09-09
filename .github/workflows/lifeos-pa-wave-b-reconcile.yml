@@ -57,7 +57,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           printf 'ARCHIVED_ORIGINAL=%s\n' "$archived"
           echo 'PI_RECONCILE=PASS'
-          echo 'REPAIR_LOOP_VERSION=5'
+          echo 'REPAIR_LOOP_VERSION=6'
 
       - name: Install canonical PA runtime
         shell: bash
@@ -97,7 +97,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          /home/joshan/automation/lifeos_email_paperless_selective.py acceptance
+          args=(
+            --quiet --wait --pipe --collect
+            --unit=lifeos-pa-selective-acceptance
+            --property=User=joshan
+            --property=WorkingDirectory=/home/joshan/lifeos-platform
+            --property=LoadCredential=gmail-imap-user:/etc/lifeos/secrets/gmail-imap-user
+            --property=LoadCredential=gmail-imap-password:/etc/lifeos/secrets/gmail-imap-password
+            --property=LoadCredential=paperless-api-token:/etc/lifeos/secrets/paperless-api-token
+          )
+          sudo -n systemd-run "${args[@]}" /home/joshan/automation/lifeos_email_paperless_selective.py acceptance
           echo 'SELECTIVE_EMAIL_PAPERLESS_ACCEPTANCE=PASS'
 
       - name: Resume PA mission
