@@ -1,0 +1,44 @@
+name: LifeOS Paperless Junk Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'homelab/live/home/joshan/automation/lifeos_paperless_junk_audit.py'
+      - '.github/workflows/lifeos-paperless-junk-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 90
+    steps:
+      - name: Sync canonical main and install audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git merge --ff-only origin/main
+          install -m 0755 homelab/live/home/joshan/automation/lifeos_paperless_junk_audit.py /home/joshan/automation/lifeos_paperless_junk_audit.py
+          python3 -m py_compile /home/joshan/automation/lifeos_paperless_junk_audit.py
+          echo INSTALL=PASS
+
+      - name: Audit all Paperless documents read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          timeout 5100 /home/joshan/automation/lifeos_paperless_junk_audit.py
+
+      - name: Verify canonical alignment
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo REPO_CLEAN_ALIGNED=PASS
