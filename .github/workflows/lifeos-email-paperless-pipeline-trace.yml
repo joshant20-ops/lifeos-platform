@@ -1,0 +1,100 @@
+name: LifeOS Email Paperless Pipeline Trace
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-email-paperless-pipeline-trace.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trace:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 8
+    steps:
+      - name: Trace existing Email to Paperless pipeline read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo '=== PIPELINE TRACE START ==='
+          echo '-- containers --'
+          docker ps --format '{{.Names}}|{{.Image}}' | grep -Ei 'paperless|mail|gmail|pdf' || true
+
+          echo '-- paperless mounts --'
+          docker inspect paperless-webserver paperless-webserver-1 paperless 2>/dev/null \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); [print(x.get("Name","?"), m.get("Source","?"), "->", m.get("Destination","?")) for x in d for m in x.get("Mounts",[])]' \
+            | grep -Ei 'consume|paperless|intake|mail' || true
+
+          echo '-- matching systemd units --'
+          systemctl list-unit-files --type=service --type=timer --no-legend 2>/dev/null \
+            | grep -Ei 'gmail|email|mail|paperless|pdf|lifeos' | head -80 || true
+
+          echo '-- matching active processes --'
+          ps -eo pid,args --no-headers | grep -Ei 'gmail|imap|email|paperless|mail.*pdf|pdf.*mail' \
+            | grep -v grep | head -40 || true
+
+          echo '-- candidate paths and sanitized configuration references --'
+          sudo -n python3 - <<'PY'
+          import os,re
+          from pathlib import Path
+
+          roots=[Path('/home/joshan/automation'),Path('/opt/stacks'),Path('/etc/systemd/system'),Path('/etc/cron.d')]
+          terms=re.compile(r'gmail|imap|email|mail|paperless|pdf',re.I)
+          sensitive=re.compile(r'(pass(word)?|token|secret|api[_-]?key|credential|refresh[_-]?token)',re.I)
+          skip={'node_modules','.git','__pycache__','cache','logs','results','outbox'}
+          seen=0
+          for root in roots:
+              if not root.exists(): continue
+              for base,dirs,files in os.walk(root):
+                  dirs[:]=[d for d in dirs if d not in skip]
+                  try:
+                      depth=len(Path(base).relative_to(root).parts)
+                  except Exception:
+                      depth=99
+                  if depth>5:
+                      dirs[:]=[]; continue
+                  for fn in files:
+                      p=Path(base)/fn
+                      if terms.search(fn):
+                          print('PATH',p)
+                      if p.suffix.lower() not in {'.py','.sh','.service','.timer','.conf','.env','.yml','.yaml','.json','.toml','.ini'}:
+                          continue
+                      try:
+                          if p.stat().st_size>400_000 or p.is_symlink(): continue
+                          text=p.read_text(errors='replace')
+                      except Exception:
+                          continue
+                      hits=[]
+                      for i,line in enumerate(text.splitlines(),1):
+                          if not terms.search(line): continue
+                          clean=line.strip()
+                          if sensitive.search(clean):
+                              if '=' in clean:
+                                  clean=clean.split('=',1)[0]+'=<REDACTED>'
+                              elif ':' in clean:
+                                  clean=clean.split(':',1)[0]+': <REDACTED>'
+                              else:
+                                  clean='<SENSITIVE_REFERENCE_REDACTED>'
+                          hits.append((i,clean[:240]))
+                          if len(hits)>=8: break
+                      if hits:
+                          print('FILE',p)
+                          for i,line in hits: print(f'  L{i}: {line}')
+                          seen+=1
+                          if seen>=80:
+                              raise SystemExit
+          PY
+
+          echo '-- secret/credential filenames only --'
+          sudo -n find /etc/lifeos /home/joshan/.config -maxdepth 5 -type f 2>/dev/null \
+            | grep -Ei 'gmail|google|imap|email|mail|oauth|token|credential|password' \
+            | sed -n '1,80p' || true
+
+          echo '-- user/root cron command references --'
+          (crontab -l 2>/dev/null || true; sudo -n crontab -l 2>/dev/null || true) \
+            | grep -Ei 'gmail|imap|email|mail|paperless|pdf' | sed -E 's/(PASSWORD|TOKEN|SECRET|KEY)=[^ ]+/\1=<REDACTED>/Ig' || true
+
+          echo '=== PIPELINE TRACE COMPLETE ==='
