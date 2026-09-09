@@ -83,6 +83,17 @@ jobs:
           printf 'RECOVERY_COMMIT=%s\n' "$(git -C "$worktree" rev-parse HEAD)"
           echo 'UNTRACKED_TEST_PRESERVED=PASS'
 
+      - name: Preserve Pi chunked-executor commit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          head=$(git -C "$repo" rev-parse HEAD)
+          short=$(git -C "$repo" rev-parse --short=12 HEAD)
+          branch="recovery/pi-chunked-executor-$short"
+          git -C "$repo" push origin "$head:refs/heads/$branch"
+          printf 'PI_RECOVERY_BRANCH=%s\nPI_RECOVERY_COMMIT=%s\n' "$branch" "$head"
+
       - name: Trace Email to Paperless producer safely
         shell: bash
         run: |
@@ -112,6 +123,14 @@ jobs:
             grep -Ev '/\.storage/.*(backup|\.bak|before-)|/\.lifeos-backups/' | \
             sort -u | head -120 || true
           echo 'MATCHED_CONFIG_PATHS_END'
+
+          echo 'CANDIDATE_EXECUTABLE_PATHS_BEGIN'
+          find /home/joshan/automation /home/joshan/.local/bin /usr/local/bin /etc/systemd/system /opt/stacks \
+            -xdev -type f \
+            \( -name '*.py' -o -name '*.sh' -o -name '*.service' -o -name '*.timer' -o -name '*.yml' -o -name '*.yaml' \) \
+            \( -iname '*email*' -o -iname '*mail*' -o -iname '*paperless*' -o -iname '*attachment*' -o -iname '*intake*' \) \
+            2>/dev/null | grep -Ev '/(consume|media|data|archive|backup|\.git)/' | sort -u | head -160 || true
+          echo 'CANDIDATE_EXECUTABLE_PATHS_END'
 
           echo 'MATCHED_UNITS_BEGIN'
           systemctl list-unit-files --no-legend --no-pager 2>/dev/null | \
