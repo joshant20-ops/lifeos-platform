@@ -1,0 +1,138 @@
+name: LifeOS PA Existing Gmail OAuth Probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pa-gmail-oauth-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  oauth-probe:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Bounded local OAuth capability check
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import ssl
+          import time
+          import urllib.parse
+          import urllib.request
+          import uuid
+          from email.message import EmailMessage
+          from pathlib import Path
+
+          roots = [
+              Path("/etc/lifeos/secrets"),
+              Path("/home/joshan/.config"),
+              Path("/home/joshan/automation"),
+          ]
+          excluded = {".git", "logs", "results", "outbox", "cache", "__pycache__"}
+          candidates = []
+          for root in roots:
+              if not root.is_dir():
+                  continue
+              for parent, dirs, files in os.walk(root):
+                  dirs[:] = [d for d in dirs if d not in excluded and not d.startswith(".cache")]
+                  if len(Path(parent).relative_to(root).parts) > 4:
+                      dirs[:] = []
+                      continue
+                  for name in files:
+                      low = name.lower()
+                      if low in {"token.json", "credentials.json"} or (
+                          ("gmail" in low or "google" in low)
+                          and ("oauth" in low or "token" in low or "credential" in low)
+                          and low.endswith((".json", ".token"))
+                      ):
+                          candidates.append(Path(parent) / name)
+
+          print("OAUTH_CANDIDATE_COUNT=" + str(len(candidates)))
+
+          def post_form(url, fields):
+              body = urllib.parse.urlencode(fields).encode()
+              req = urllib.request.Request(
+                  url, data=body,
+                  headers={"Content-Type": "application/x-www-form-urlencoded"},
+              )
+              with urllib.request.urlopen(req, timeout=20, context=ssl.create_default_context()) as response:
+                  return json.loads(response.read().decode())
+
+          def gmail(method, path, access, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              req = urllib.request.Request(
+                  "https://gmail.googleapis.com/gmail/v1/users/me" + path,
+                  data=data, method=method,
+                  headers={
+                      "Authorization": "Bearer " + access,
+                      "Content-Type": "application/json",
+                  },
+              )
+              with urllib.request.urlopen(req, timeout=20, context=ssl.create_default_context()) as response:
+                  raw = response.read()
+                  return json.loads(raw.decode()) if raw else None
+
+          suitable = False
+          structural = 0
+          for path in sorted(set(candidates)):
+              try:
+                  if path.is_symlink() or path.stat().st_size > 1024 * 1024:
+                      continue
+                  value = json.loads(path.read_text(encoding="utf-8"))
+                  if not isinstance(value, dict):
+                      continue
+                  required = {"client_id", "client_secret", "refresh_token"}
+                  if not required.issubset(value):
+                      continue
+                  structural += 1
+                  token = post_form(
+                      value.get("token_uri", "https://oauth2.googleapis.com/token"),
+                      {
+                          "client_id": value["client_id"],
+                          "client_secret": value["client_secret"],
+                          "refresh_token": value["refresh_token"],
+                          "grant_type": "refresh_token",
+                      },
+                  )
+                  access = token["access_token"]
+                  marker = "LIFEOS-SYNTHETIC-OAUTH-" + uuid.uuid4().hex
+                  msg = EmailMessage()
+                  msg["From"] = "me"
+                  msg["To"] = "me"
+                  msg["Subject"] = marker
+                  msg["Message-ID"] = "<" + marker.lower() + "@lifeos.invalid>"
+                  msg["Date"] = time.strftime("%a, %d %b %Y %H:%M:%S +0000", time.gmtime())
+                  msg.set_content("Synthetic OAuth capability test only.")
+                  encoded = base64.urlsafe_b64encode(msg.as_bytes()).rstrip(b"=").decode()
+                  created = gmail("POST", "/messages?internalDateSource=dateHeader", access, {"raw": encoded})
+                  message_id = created["id"]
+                  try:
+                      fetched = gmail("GET", "/messages/" + message_id + "?format=metadata", access)
+                      if fetched.get("id") != message_id:
+                          raise RuntimeError("gmail_fetch_mismatch")
+                  finally:
+                      gmail("DELETE", "/messages/" + message_id, access)
+                  suitable = True
+                  break
+              except Exception:
+                  continue
+
+          print("OAUTH_STRUCTURAL_CANDIDATE_COUNT=" + str(structural))
+          if suitable:
+              print("GMAIL_OAUTH_SYNTHETIC_INSERT_FETCH_DELETE=PASS")
+              print("GMAIL_OAUTH_CAPABILITY=SUITABLE")
+              print("RESULT=PASS")
+          else:
+              print("GMAIL_OAUTH_CAPABILITY=ABSENT_OR_INSUFFICIENT")
+              print("RESULT=HUMAN_AUTHORIZATION_REQUIRED")
+              raise SystemExit(20)
+          PY
