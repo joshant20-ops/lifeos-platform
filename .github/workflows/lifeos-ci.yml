@@ -57,7 +57,7 @@ jobs:
       - name: Validate PA executor syntax
         run: |
           python3 -m py_compile governor/scripts/lifeos-pa-execute homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py
-          python3 -m pytest -q tests/test_pa_email_paperless_policy.py
+          python3 -m unittest -v tests.test_pa_email_paperless_policy
 
       - name: Validate Tower metrics deployment boundary
         run: |
