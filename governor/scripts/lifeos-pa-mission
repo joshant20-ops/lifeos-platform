@@ -11,7 +11,7 @@ import shutil
 import socket
 import subprocess
 
-VERSION = "2026.09.09-2"
+VERSION = "2026.09.09-3"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
@@ -20,23 +20,20 @@ FJ = STATE / "fault-bundle.json"
 FM = STATE / "WORK_BUNDLE.md"
 SM = STATE / "SUMMARY.md"
 LOCK = STATE / "runner.lock"
+EXECUTOR = REPO / "governor/scripts/lifeos-pa-execute"
 MINFREE = float(os.getenv("LIFEOS_PA_MIN_FREE_GIB", "2"))
-
-# Governor is deliberately minimal now. The autonomous-agent/job API is NOT a
-# mission dependency. Its accepted scope is only Tower lifecycle + local AI.
-MINIMAL_GOVERNOR_SERVICES = {
+AUTONOMY_UNITS = (
     "lifeos-autonomous-agent.service",
     "lifeos-autonomous-agent.timer",
-    "lifeos-backlog-runner.service",
     "lifeos-backlog-runner.timer",
-}
+)
 
 
-def now() -> str:
+def now():
     return dt.datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def cmd(argv, cwd=None, timeout=30):
+def cmd(argv, cwd=None, timeout=60):
     try:
         p = subprocess.run(argv, cwd=str(cwd) if cwd else None, text=True,
                            capture_output=True, timeout=timeout)
@@ -50,7 +47,7 @@ def cmd(argv, cwd=None, timeout=30):
         return {"rc": 125, "out": "", "err": type(exc).__name__}
 
 
-def write(path: pathlib.Path, text: str):
+def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     tmp.write_text(text, encoding="utf-8")
@@ -61,89 +58,18 @@ def state_load():
     try:
         return json.loads(SF.read_text(encoding="utf-8"))
     except Exception:
-        return {"schema": 2, "version": VERSION, "created_at": now(),
-                "phase": "new", "history": []}
+        return {"schema": 3, "created_at": now(), "phase": "new", "history": []}
 
 
 def state_save(state):
-    state.update(schema=2, version=VERSION, updated_at=now())
+    state.update(schema=3, version=VERSION, updated_at=now())
     write(SF, json.dumps(state, indent=2, sort_keys=True) + "\n")
 
 
-def add(faults, root, severity, component, problem, evidence, action, human=False):
-    faults.append({
-        "root_cause": root,
-        "severity": severity,
-        "component": component,
-        "problem": problem,
-        "evidence": str(evidence)[:1600],
-        "suggested_action": action,
-        "human_boundary": human,
-    })
-
-
-def host_audit(faults):
-    base = REPO if REPO.exists() else pathlib.Path.home()
-    du = shutil.disk_usage(base)
-    result = {
-        "hostname": socket.gethostname(),
-        "architecture": platform.machine(),
-        "disk_free_gib": round(du.free / 1073741824, 2),
-    }
-    if result["disk_free_gib"] < MINFREE:
-        add(faults, "RESOURCE_PRESSURE", "high", "pi5", "Low free disk space.",
-            result, "Free space using existing retention paths; do not delete unknown data.")
-    return result
-
-
-def repo_audit(faults):
-    if not (REPO / ".git").exists():
-        add(faults, "CANONICAL_REPO_UNAVAILABLE", "critical", "repository",
-            "Canonical checkout missing.", REPO,
-            "Restore the canonical checkout; do not create another source of truth.")
-        return {"exists": False}
-
-    status = cmd(["git", "status", "--porcelain", "--untracked-files=all"], REPO)
-    head = cmd(["git", "rev-parse", "HEAD"], REPO)
-    branch = cmd(["git", "branch", "--show-current"], REPO)
-    fetch = cmd(["git", "fetch", "--prune", "origin", "main"], REPO, 90)
-    origin = cmd(["git", "rev-parse", "origin/main"], REPO)
-    dirty = bool(status["out"])
-    aligned = bool(head["out"]) and head["out"] == origin["out"]
-    result = {"exists": True, "branch": branch["out"], "head": head["out"],
-              "origin_main": origin["out"], "dirty": dirty, "aligned": aligned,
-              "fetch_rc": fetch["rc"]}
-    if dirty:
-        add(faults, "CANONICAL_REPO_DIRTY", "critical", "repository",
-            "Canonical checkout has local changes; runner will not clean/reset it.",
-            "dirty=true", "Preserve/reconcile changes; never reset --hard or git clean.")
-    if fetch["rc"] != 0:
-        add(faults, "GITHUB_SYNC_UNAVAILABLE", "high", "repository",
-            "Could not refresh origin/main.", fetch["err"][:300],
-            "Repair network/auth and rerun.")
-    elif not aligned:
-        add(faults, "CANONICAL_REPO_DRIFT", "critical", "repository",
-            "Pi HEAD differs from origin/main.", result,
-            "Fast-forward only after proving the worktree is clean.")
-    return result
-
-
-def docker_audit(faults):
-    p = cmd(["docker", "ps", "--format", "{{.Names}}\t{{.Image}}\t{{.Status}}"], timeout=20)
-    if p["rc"] != 0:
-        add(faults, "DOCKER_UNAVAILABLE", "high", "runtime", "Docker inventory failed.",
-            p["err"][:300], "Restore existing Docker access/service.")
-        return {"available": False, "containers": []}
-    rows = []
-    for line in p["out"].splitlines():
-        parts = line.split("\t")
-        if len(parts) >= 3:
-            rows.append({"name": parts[0], "image": parts[1], "status": parts[2]})
-    hay = "\n".join((x["name"] + " " + x["image"]).lower() for x in rows)
-    return {"available": True, "container_count": len(rows),
-            "homeassistant": "homeassistant" in hay or "home-assistant" in hay,
-            "paperless": "paperless" in hay,
-            "mosquitto": "mosquitto" in hay}
+def fault(faults, root, severity, component, problem, evidence, action):
+    faults.append({"root_cause": root, "severity": severity, "component": component,
+                   "problem": problem, "evidence": str(evidence)[:1800],
+                   "suggested_action": action})
 
 
 def service_state(name):
@@ -151,120 +77,118 @@ def service_state(name):
     return r["out"] or "unknown"
 
 
-def minimal_governor_audit(faults, run_inference=True):
-    services = {name: service_state(name) for name in sorted(MINIMAL_GOVERNOR_SERVICES)}
-
-    # Disabled/inactive autonomous services are expected in minimal mode.
-    unexpected = {k: v for k, v in services.items()
-                  if k == "lifeos-autonomous-agent.service" and v == "active"}
-    if unexpected:
-        add(faults, "GOVERNOR_SCOPE_DRIFT", "warning", "governor",
-            "Autonomous-agent service is active while Governor is in minimal mode.",
-            unexpected, "Keep autonomous job orchestration disabled until minimal acceptance is stable.")
-
-    result = {"mode": "minimal", "services": services, "local_ai_test": "not_run"}
-    if not run_inference:
-        return result
-
-    # Test the one Governor capability we currently rely on. ai_broker._ollama
-    # owns the lease, tries Ollama, wakes Tower by WoL if required, waits for it,
-    # and releases the lease in finally.
-    probe = cmd([
-        "python3", "-c",
-        "import sys; sys.path.insert(0, '/home/joshan/lifeos-platform'); "
-        "from governor import ai_broker; "
-        "r=ai_broker._ollama('Reply with exactly: LOCAL_AI_OK', ai_broker.OLLAMA_MODEL); "
-        "print(r.strip()); raise SystemExit(0 if 'LOCAL_AI_OK' in r else 9)"
-    ], cwd=REPO, timeout=180)
-    result.update(local_ai_test="pass" if probe["rc"] == 0 else "fail",
-                  local_ai_reply=probe["out"][-200:], local_ai_rc=probe["rc"])
-    if probe["rc"] != 0:
-        add(faults, "MINIMAL_GOVERNOR_FAILED", "critical", "governor",
-            "Tower lifecycle/local AI baseline failed.",
-            {"rc": probe["rc"], "out": probe["out"][-200:], "err": probe["err"][-300:]},
-            "Repair only Tower wake, local Ollama routing, lease release/shutdown; do not re-enable autonomous orchestration.")
-    return result
-
-
-def acceptance(audit):
-    repo = audit["repo"]
-    docker = audit["docker"]
-    gov = audit["governor"]
-    return {
-        "BASELINE_REPO_CLEAN": "PASS" if repo.get("aligned") and not repo.get("dirty") else "BLOCKED",
-        "BASELINE_RUNTIME_VISIBLE": "PASS" if docker.get("available") else "BLOCKED",
-        "BASELINE_GOVERNOR_MINIMAL": "PASS" if gov.get("local_ai_test") == "pass" else "BLOCKED",
-        "GOVERNOR_AUTONOMOUS_JOBS": "DISABLED_BY_DESIGN",
-        "PA_CALENDAR_EMAIL_PAPERLESS": "READY_FOR_SCRIPTED_EXECUTION",
-    }
-
-
-def audit_all(faults, run_inference=True):
+def audit(faults):
     result = {"generated_at": now(), "runner_version": VERSION}
-    result["host"] = host_audit(faults)
-    result["repo"] = repo_audit(faults)
-    result["docker"] = docker_audit(faults)
-    result["governor"] = minimal_governor_audit(faults, run_inference=run_inference)
-    result["acceptance"] = acceptance(result)
+    base = REPO if REPO.exists() else pathlib.Path.home()
+    du = shutil.disk_usage(base)
+    result["host"] = {"hostname": socket.gethostname(),
+                      "architecture": platform.machine(),
+                      "disk_free_gib": round(du.free / 1073741824, 2)}
+    if result["host"]["disk_free_gib"] < MINFREE:
+        fault(faults, "RESOURCE_PRESSURE", "high", "pi5", "Low free disk space.",
+              result["host"], "Free space using existing retention paths.")
+
+    if not (REPO / ".git").exists():
+        fault(faults, "CANONICAL_REPO_UNAVAILABLE", "critical", "repository",
+              "Canonical checkout missing.", REPO, "Restore canonical checkout.")
+        result["repo"] = {"exists": False}
+    else:
+        st = cmd(["git", "status", "--porcelain", "--untracked-files=all"], REPO)
+        head = cmd(["git", "rev-parse", "HEAD"], REPO)
+        fetch = cmd(["git", "fetch", "--prune", "origin", "main"], REPO, 90)
+        origin = cmd(["git", "rev-parse", "origin/main"], REPO)
+        dirty = bool(st["out"])
+        aligned = bool(head["out"]) and head["out"] == origin["out"]
+        result["repo"] = {"exists": True, "head": head["out"],
+                          "origin_main": origin["out"], "dirty": dirty,
+                          "aligned": aligned, "fetch_rc": fetch["rc"]}
+        if dirty:
+            fault(faults, "CANONICAL_REPO_DIRTY", "critical", "repository",
+                  "Canonical checkout has local changes.", st["out"][:1000],
+                  "Preserve/reconcile them; never reset --hard or git clean.")
+        if fetch["rc"] != 0:
+            fault(faults, "GITHUB_SYNC_UNAVAILABLE", "high", "repository",
+                  "Could not refresh origin/main.", fetch["err"][:500],
+                  "Repair GitHub/network access and rerun.")
+        elif not aligned:
+            fault(faults, "CANONICAL_REPO_DRIFT", "critical", "repository",
+                  "Pi checkout is not at origin/main.", result["repo"],
+                  "Fast-forward the clean checkout before execution.")
+
+    docker = cmd(["docker", "ps", "--format", "{{.Names}}\t{{.Image}}"], timeout=20)
+    result["docker"] = {"available": docker["rc"] == 0}
+    if docker["rc"] == 0:
+        hay = docker["out"].lower()
+        result["docker"].update(homeassistant="homeassistant" in hay or "home-assistant" in hay,
+                                paperless="paperless" in hay,
+                                mosquitto="mosquitto" in hay)
+    else:
+        fault(faults, "DOCKER_UNAVAILABLE", "high", "runtime",
+              "Docker inventory failed.", docker["err"][:500],
+              "Restore existing Docker access/service.")
+
+    services = {x: service_state(x) for x in AUTONOMY_UNITS}
+    result["governor"] = {"mode": "minimal", "services": services,
+                          "autonomy": "disabled"}
+    if services.get("lifeos-autonomous-agent.service") == "active":
+        fault(faults, "GOVERNOR_SCOPE_DRIFT", "warning", "governor",
+              "Autonomous agent is active in minimal mode.", services,
+              "Keep autonomous orchestration disabled while using the scripted path.")
+
     write(AF, json.dumps(result, indent=2, sort_keys=True) + "\n")
     return result
 
 
-def groups(faults):
-    rank = {"info": 0, "warning": 1, "medium": 2, "high": 3, "critical": 4}
-    grouped = {}
-    for f in faults:
-        g = grouped.setdefault(f["root_cause"], {"root_cause": f["root_cause"],
-            "severity": f["severity"], "human_boundary": False, "items": []})
-        g["items"].append(f)
-        g["human_boundary"] |= f.get("human_boundary", False)
-        if rank.get(f["severity"], 0) > rank.get(g["severity"], 0):
-            g["severity"] = f["severity"]
-    return sorted(grouped.values(), key=lambda x: rank.get(x["severity"], 0), reverse=True)
+def run_executor(faults):
+    if not EXECUTOR.is_file():
+        fault(faults, "PA_EXECUTOR_MISSING", "critical", "personal-administration",
+              "Scripted PA executor is missing.", EXECUTOR,
+              "Restore governor/scripts/lifeos-pa-execute from canonical main.")
+        return {"rc": 127, "out": "", "err": "executor_missing"}
+
+    print("STAGE=scripted_execution", flush=True)
+    result = cmd(["python3", str(EXECUTOR)], REPO, timeout=420)
+    if result["out"]:
+        print(result["out"], flush=True)
+    if result["err"]:
+        print(result["err"][-1200:], flush=True)
+    if result["rc"] != 0:
+        fault(faults, "PA_SCRIPTED_EXECUTION_BLOCKED", "high", "personal-administration",
+              "Scripted PA executor did not reach PASS.",
+              {"rc": result["rc"], "out": result["out"][-1500:], "err": result["err"][-800:]},
+              "Use SCRIPTED_PLAN.json/SCRIPTED_RESULT.json to fix the bounded root cause; do not re-enable Governor autonomy.")
+    return result
 
 
-def render(faults, state, audit):
-    gs = groups(faults)
+def render(faults, state, audit_result):
     write(FJ, json.dumps({"generated_at": now(), "version": VERSION,
-                         "phase": state.get("phase"), "groups": gs},
+                         "phase": state.get("phase"), "faults": faults},
                         indent=2, sort_keys=True) + "\n")
-
-    lines = [
-        "# LifeOS Personal Administration — Work bundle",
-        "",
-        f"Phase: `{state.get('phase')}`",
-        "Governor mode: `minimal`",
-        "",
-        "## Execution rule",
-        "",
-        "Governor autonomous-job orchestration is intentionally disabled. Do not wait for or repair the old /jobs API. Use deterministic Pi-side scripts/tools for PA delivery. Use governor.ai_broker only when local AI reasoning is useful; it owns Tower wake + local Ollama + lease release. Preserve Watchman/root protections and local-only privacy. GitHub remains source/history, not the execution bus.",
-        "",
-        "## Current mission",
-        "",
-        "Continue Personal Administration issue #164: integrate existing Calendar + Email + Paperless into the existing PA attention surface. Inspect live state first, reuse working services, OTS/native first, and implement/test/deploy in bounded scripted batches. Do not send private source content to cloud AI/GitHub/logs.",
-        "",
-    ]
-    if not gs:
-        lines += ["## Baseline", "", "Minimal Governor baseline PASS. Mission may proceed with scripted execution.", ""]
-    else:
+    lines = ["# LifeOS Personal Administration — Work bundle", "",
+             f"Phase: `{state.get('phase')}`", "Governor: `minimal`", "",
+             "Execution path: deterministic Pi scripts → local AI through ai_broker only when useful → deterministic verification.",
+             "Governor autonomous jobs/OpenHands/cloud orchestration remain disabled.", ""]
+    if faults:
         lines += ["## Faults", ""]
-        for i, g in enumerate(gs, 1):
-            lines += [f"### {i}. {g['root_cause']} — {g['severity'].upper()}"]
-            for item in g["items"]:
-                lines += [f"- {item['component']}: {item['problem']}",
-                          f"  - Evidence: `{item['evidence']}`",
-                          f"  - Action: {item['suggested_action']}"]
-            lines.append("")
+        for f in faults:
+            lines += [f"### {f['root_cause']} — {f['severity'].upper()}",
+                      f"- {f['problem']}", f"- Evidence: `{f['evidence']}`",
+                      f"- Action: {f['suggested_action']}", ""]
+    else:
+        lines += ["## Status", "", "No controller/executor faults detected.", ""]
     write(FM, "\n".join(lines) + "\n")
 
-    summary = [
-        "# Personal Administration mission status", "",
-        f"- Generated: `{now()}`",
-        f"- Phase: `{state.get('phase')}`",
-        "- Governor mode: `minimal`",
-        f"- Fault groups: `{len(gs)}`", "", "## Acceptance", "",
-    ]
-    summary += [f"- `{k}`: **{v}**" for k, v in audit["acceptance"].items()]
+    acceptance = {
+        "REPO_CLEAN_ALIGNED": "PASS" if audit_result.get("repo", {}).get("aligned") and not audit_result.get("repo", {}).get("dirty") else "BLOCKED",
+        "RUNTIME_VISIBLE": "PASS" if audit_result.get("docker", {}).get("available") else "BLOCKED",
+        "GOVERNOR_MODE": "MINIMAL",
+        "GOVERNOR_AUTONOMY": "DISABLED_BY_DESIGN",
+        "PA_SCRIPTED_EXECUTION": "PASS" if state.get("phase") == "scripted_execution_passed" else "INCOMPLETE",
+    }
+    summary = ["# Personal Administration mission status", "",
+               f"- Generated: `{now()}`", f"- Phase: `{state.get('phase')}`", "",
+               "## Acceptance", ""]
+    summary += [f"- `{k}`: **{v}**" for k, v in acceptance.items()]
     write(SM, "\n".join(summary) + "\n")
 
 
@@ -273,6 +197,8 @@ def print_status(state):
     print(f"MISSION_PHASE={state.get('phase', 'unknown')}")
     print("GOVERNOR_MODE=minimal")
     print("GOVERNOR_AUTONOMY=disabled")
+    if state.get("executor_rc") is not None:
+        print(f"EXECUTOR_RC={state.get('executor_rc')}")
     print(f"STATE_DIR={STATE}")
     print(f"WORK_BUNDLE={FM}")
     print(f"SUMMARY={SM}")
@@ -311,29 +237,30 @@ def main():
         state = state_load()
         faults = []
         print("STAGE=deterministic_audit", flush=True)
-        audit = audit_all(faults, run_inference=True)
-
+        audit_result = audit(faults)
         hard = {"CANONICAL_REPO_UNAVAILABLE", "CANONICAL_REPO_DIRTY",
-                "CANONICAL_REPO_DRIFT", "MINIMAL_GOVERNOR_FAILED"}
-        roots = {f["root_cause"] for f in faults}
+                "CANONICAL_REPO_DRIFT", "GITHUB_SYNC_UNAVAILABLE"}
+        roots = {x["root_cause"] for x in faults}
+
         if roots & hard:
             state["phase"] = "baseline_blocked"
+            state["executor_rc"] = None
         elif args.mode == "audit":
             state["phase"] = "audit_passed"
+            state["executor_rc"] = None
         else:
-            # Mission execution is now explicitly scripted/supervised rather
-            # than submitted to the disabled autonomous Governor job engine.
-            state["phase"] = "ready_for_scripted_execution"
+            execution = run_executor(faults)
+            state["executor_rc"] = execution["rc"]
+            state["phase"] = "scripted_execution_passed" if execution["rc"] == 0 else "scripted_execution_blocked"
 
-        render(faults, state, audit)
         state_save(state)
+        render(faults, state, audit_result)
         print_status(state)
 
-        gs = groups(faults)
         if roots & hard:
             print("RESULT=SAFE_STOP")
             return 40
-        if gs:
+        if state.get("phase") == "scripted_execution_blocked" or faults:
             print("RESULT=WORK_BUNDLE_READY")
             return 20
         print("RESULT=PASS")
