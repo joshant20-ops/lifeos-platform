@@ -57,7 +57,7 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           printf 'ARCHIVED_ORIGINAL=%s\n' "$archived"
           echo 'PI_RECONCILE=PASS'
-          echo 'REPAIR_LOOP_VERSION=6'
+          echo 'REPAIR_LOOP_VERSION=7'
 
       - name: Install canonical PA runtime
         shell: bash
@@ -97,13 +97,22 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          password_source=
+          for candidate in gmail-imap-password gmail-app-password imap-password; do
+            if sudo -n test -f "/etc/lifeos/secrets/$candidate"; then
+              password_source="/etc/lifeos/secrets/$candidate"
+              break
+            fi
+          done
+          test -n "$password_source"
+          echo 'IMAP_PASSWORD_CREDENTIAL_SOURCE=FOUND'
           args=(
             --quiet --wait --pipe --collect
             --unit=lifeos-pa-selective-acceptance
             --property=User=joshan
             --property=WorkingDirectory=/home/joshan/lifeos-platform
             --property=LoadCredential=gmail-imap-user:/etc/lifeos/secrets/gmail-imap-user
-            --property=LoadCredential=gmail-imap-password:/etc/lifeos/secrets/gmail-imap-password
+            --property=LoadCredential=gmail-imap-password:$password_source
             --property=LoadCredential=paperless-api-token:/etc/lifeos/secrets/paperless-api-token
           )
           sudo -n systemd-run "${args[@]}" /home/joshan/automation/lifeos_email_paperless_selective.py acceptance
