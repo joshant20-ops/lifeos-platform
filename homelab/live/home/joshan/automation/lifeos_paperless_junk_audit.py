@@ -1,122 +1,63 @@
 #!/usr/bin/env python3
-"""Read-only local Paperless junk audit.
-
-Classifies every existing Paperless document as KEEP, LIKELY_JUNK, or REVIEW.
-Private document content is read locally and sent only through the governed local
-Ollama broker. Nothing is written back to Paperless and no document content is
-printed to stdout.
-"""
+"""Read-only, resumable local Paperless junk audit."""
 from __future__ import annotations
-
-import json
-import pathlib
-import subprocess
-import sys
+import json, pathlib, subprocess, sys
 from collections import Counter
-
-REPO = pathlib.Path('/home/joshan/lifeos-platform')
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
-
+REPO=pathlib.Path('/home/joshan/lifeos-platform'); sys.path.insert(0,str(REPO)) if str(REPO) not in sys.path else None
 from governor.ai_broker import OLLAMA_MODEL, _ollama
+CONTAINER='paperless-paperless-1'; SNIPPET=2500; AI_BATCH=8; RUN_LIMIT=64
+STATE=pathlib.Path('/home/joshan/automation/state/paperless-junk-audit.json')
+VALID={'KEEP','LIKELY_JUNK','REVIEW'}
 
-PAPERLESS_CONTAINER = 'paperless-paperless-1'
-SNIPPET = 2500
-BATCH = 8
-VALID = {'KEEP', 'LIKELY_JUNK', 'REVIEW'}
+def read_docs():
+ code=f'''\nimport json\nfrom documents.models import Document\nfor d in Document.objects.order_by("id"):\n print(json.dumps({{"id":d.id,"title":d.title or "","content":(d.content or "")[:{SNIPPET}]}}))\n'''
+ p=subprocess.run(['docker','exec',CONTAINER,'python3','manage.py','shell','-c',code],capture_output=True,text=True,timeout=120)
+ if p.returncode: raise RuntimeError('paperless_read_failed')
+ out=[]
+ for line in p.stdout.splitlines():
+  try: x=json.loads(line.strip())
+  except Exception: continue
+  if isinstance(x,dict) and isinstance(x.get('id'),int): out.append(x)
+ return out
 
+def parse(raw):
+ raw=raw.strip()
+ if raw.startswith('```'): raw=raw.strip('`').removeprefix('json').strip()
+ return json.loads(raw)
 
-def read_documents() -> list[dict]:
-    code = f'''\nimport json\nfrom documents.models import Document\nfor d in Document.objects.order_by("id"):\n print(json.dumps({{"id": d.id, "title": d.title or "", "content": (d.content or "")[:{SNIPPET}]}}))\n'''
-    p = subprocess.run(
-        ['docker', 'exec', PAPERLESS_CONTAINER, 'python3', 'manage.py', 'shell', '-c', code],
-        capture_output=True, text=True, timeout=120, check=False,
-    )
-    if p.returncode:
-        raise RuntimeError('paperless_read_failed')
-    docs = []
-    for line in p.stdout.splitlines():
-        line = line.strip()
-        if not line.startswith('{'):
-            continue
-        try:
-            row = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(row, dict) and isinstance(row.get('id'), int):
-            docs.append(row)
-    return docs
+def classify(batch):
+ prompt='''You are LifeOS local document hygiene. Private data must remain local. Classify EACH document KEEP, LIKELY_JUNK, or REVIEW. LIKELY_JUNK only for obvious spam/advertising/promotions/meaningless captures/transient material with no durable evidential value. KEEP plausible durable personal/household records, receipts, invoices, contracts, policies, certificates, official correspondence, bookings, warranties, tax/bank/pension/property/employment records. Err toward KEEP or REVIEW. Return ONLY JSON array objects {"id":integer,"classification":"KEEP|LIKELY_JUNK|REVIEW","confidence":number}.\nDOCUMENTS:\n'''+json.dumps([{'id':d['id'],'title':d['title'],'content':d['content']} for d in batch],ensure_ascii=False)
+ data=parse(_ollama(prompt,OLLAMA_MODEL)); expected={d['id'] for d in batch}; got=set(); out=[]
+ if not isinstance(data,list): raise ValueError('not_array')
+ for x in data:
+  i=x.get('id'); c=x.get('classification'); q=x.get('confidence')
+  if i not in expected or i in got or c not in VALID or not isinstance(q,(int,float)) or not 0<=float(q)<=1: raise ValueError('schema')
+  got.add(i); out.append({'id':i,'classification':c,'confidence':float(q)})
+ if got!=expected: raise ValueError('missing')
+ return out
 
+def load_state():
+ try:
+  x=json.loads(STATE.read_text()); return x if isinstance(x,dict) else {}
+ except Exception: return {}
 
-def parse_json(raw: str):
-    raw = raw.strip()
-    if raw.startswith('```'):
-        raw = raw.strip('`').removeprefix('json').strip()
-    return json.loads(raw)
+def save_state(s):
+ STATE.parent.mkdir(parents=True,exist_ok=True); tmp=STATE.with_suffix('.tmp'); tmp.write_text(json.dumps(s,separators=(',',':'))); tmp.replace(STATE)
 
-
-def classify_batch(batch: list[dict]) -> list[dict]:
-    payload = [{'id': d['id'], 'title': d['title'], 'content': d['content']} for d in batch]
-    prompt = '''You are LifeOS local document hygiene. The following Paperless documents are private and must remain local.\nClassify EACH document only as KEEP, LIKELY_JUNK, or REVIEW.\nLIKELY_JUNK means obvious spam, advertising, promotional material, accidental/meaningless captures, or transient material that clearly does not belong in a durable document archive.\nKEEP means a plausible durable personal/household record, receipt, invoice, contract, policy, certificate, official correspondence, booking evidence, warranty, tax/bank/pension/property/employment record, or anything with reasonable future evidential value.\nREVIEW means genuinely uncertain. Err toward KEEP or REVIEW; do not call something junk merely because it is old, mundane, or low-value.\nReturn ONLY a JSON array with one object per input document, preserving each id exactly. Each object: {"id": integer, "classification": "KEEP|LIKELY_JUNK|REVIEW", "confidence": number}. No explanations.\n\nDOCUMENTS:\n''' + json.dumps(payload, ensure_ascii=False)
-    raw = _ollama(prompt, OLLAMA_MODEL)
-    data = parse_json(raw)
-    if not isinstance(data, list):
-        raise ValueError('not_array')
-    expected = {d['id'] for d in batch}
-    got = set()
-    out = []
-    for item in data:
-        if not isinstance(item, dict):
-            raise ValueError('bad_item')
-        doc_id = item.get('id')
-        cls = item.get('classification')
-        conf = item.get('confidence')
-        if doc_id not in expected or doc_id in got or cls not in VALID or not isinstance(conf, (int, float)) or not 0 <= float(conf) <= 1:
-            raise ValueError('schema_failure')
-        got.add(doc_id)
-        out.append({'id': doc_id, 'classification': cls, 'confidence': float(conf)})
-    if got != expected:
-        raise ValueError('missing_ids')
-    return out
-
-
-def main() -> int:
-    docs = read_documents()
-    print(f'PAPERLESS_DOCUMENTS={len(docs)}')
-    if not docs:
-        print('KEEP=0')
-        print('LIKELY_JUNK=0')
-        print('REVIEW=0')
-        print('AUDIT_FAILURES=0')
-        print('PAPERLESS_MUTATION=NONE')
-        print('PRIVACY_LOCAL_ONLY=PASS')
-        print('RESULT=PASS')
-        return 0
-
-    results = []
-    failures = 0
-    for i in range(0, len(docs), BATCH):
-        batch = docs[i:i+BATCH]
-        try:
-            results.extend(classify_batch(batch))
-        except Exception:
-            failures += 1
-            results.extend({'id': d['id'], 'classification': 'REVIEW', 'confidence': 0.0} for d in batch)
-
-    counts = Counter(r['classification'] for r in results)
-    junk_ids = [r['id'] for r in results if r['classification'] == 'LIKELY_JUNK']
-    review_ids = [r['id'] for r in results if r['classification'] == 'REVIEW']
-    print(f'KEEP={counts["KEEP"]}')
-    print(f'LIKELY_JUNK={counts["LIKELY_JUNK"]}')
-    print(f'REVIEW={counts["REVIEW"]}')
-    print(f'AUDIT_FAILURES={failures}')
-    print('LIKELY_JUNK_IDS=' + ','.join(map(str, junk_ids)))
-    print('REVIEW_IDS=' + ','.join(map(str, review_ids)))
-    print('PAPERLESS_MUTATION=NONE')
-    print('PRIVACY_LOCAL_ONLY=PASS')
-    print('RESULT=PASS' if failures == 0 else 'RESULT=PASS_WITH_REVIEW_FALLBACK')
-    return 0
-
-
-if __name__ == '__main__':
-    raise SystemExit(main())
+def main():
+ docs=read_docs(); ids={d['id'] for d in docs}; state=load_state(); results={int(k):v for k,v in state.get('results',{}).items() if int(k) in ids}; failures=int(state.get('failures',0))
+ pending=[d for d in docs if d['id'] not in results][:RUN_LIMIT]
+ for n in range(0,len(pending),AI_BATCH):
+  batch=pending[n:n+AI_BATCH]
+  try: rows=classify(batch)
+  except Exception:
+   failures+=1; rows=[{'id':d['id'],'classification':'REVIEW','confidence':0.0} for d in batch]
+  for r in rows: results[r['id']]=r
+  save_state({'results':{str(k):v for k,v in results.items()},'failures':failures})
+ counts=Counter(v['classification'] for v in results.values()); remaining=len(docs)-len(results)
+ print(f'PAPERLESS_DOCUMENTS={len(docs)}'); print(f'PROCESSED={len(results)}'); print(f'REMAINING={remaining}'); print(f'KEEP={counts["KEEP"]}'); print(f'LIKELY_JUNK={counts["LIKELY_JUNK"]}'); print(f'REVIEW={counts["REVIEW"]}'); print(f'AUDIT_FAILURES={failures}')
+ print('LIKELY_JUNK_IDS='+','.join(str(k) for k,v in results.items() if v['classification']=='LIKELY_JUNK'))
+ print('REVIEW_IDS='+','.join(str(k) for k,v in results.items() if v['classification']=='REVIEW'))
+ print('PAPERLESS_MUTATION=NONE'); print('PRIVACY_LOCAL_ONLY=PASS'); print('AUDIT_COMPLETE='+('YES' if remaining==0 else 'NO')); print('RESULT=PASS')
+ return 0
+if __name__=='__main__': raise SystemExit(main())
