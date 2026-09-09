@@ -1,0 +1,120 @@
+name: LifeOS PA Wave B Reconcile
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pa-wave-b-reconcile.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pa-wave-b-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile-test-resume:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 40
+    steps:
+      - name: Recover untracked test and fast-forward Pi
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          source="$repo/tests/personal_admin/test_cross_domain_e2e.py"
+          recovery_ref=recovery/pa-cross-domain-e2e-34386299596
+          expected_head=d91e7a7502387c813e62088ff994e1fc3769b4a8
+          cd "$repo"
+          git fetch --prune origin main "$recovery_ref"
+          test "$(git rev-parse HEAD)" = "$expected_head"
+          test "$(git status --porcelain --untracked-files=all)" = '?? tests/personal_admin/test_cross_domain_e2e.py'
+          source_blob=$(git hash-object "$source")
+          recovery_blob=$(git rev-parse "origin/$recovery_ref:tests/personal_admin/test_cross_domain_e2e.py")
+          test "$source_blob" = "$recovery_blob"
+          archive=/home/joshan/.local/state/lifeos-pa-autonomy/recovered
+          install -d -m 0700 "$archive"
+          archived="$archive/test_cross_domain_e2e.$source_blob.py"
+          if [[ -e "$archived" ]]; then
+            cmp -s "$source" "$archived"
+            rm "$source"
+          else
+            mv "$source" "$archived"
+            chmod 0600 "$archived"
+          fi
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git merge-base --is-ancestor HEAD origin/main
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          printf 'ARCHIVED_ORIGINAL=%s\n' "$archived"
+          echo 'PI_RECONCILE=PASS'
+
+      - name: Install canonical PA runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          python3 -m py_compile             "$repo/governor/scripts/lifeos-pa-execute"             "$repo/governor/scripts/lifeos-pa-mission"             "$repo/homelab/live/home/joshan/automation/lifeos_calendar_adapter.py"             "$repo/homelab/live/home/joshan/automation/z97_job_submitter.py"             "$repo/tests/personal_admin/test_cross_domain_e2e.py"
+          install -d -m 0755 /home/joshan/.local/bin /home/joshan/automation
+          install -m 0755 "$repo/governor/scripts/lifeos-pa-execute" /home/joshan/.local/bin/lifeos-pa-execute
+          install -m 0755 "$repo/governor/scripts/lifeos-pa-mission" /home/joshan/.local/bin/lifeos-pa-mission
+          install -m 0755 "$repo/homelab/live/home/joshan/automation/lifeos_calendar_adapter.py" /home/joshan/automation/lifeos_calendar_adapter.py
+          install -m 0755 "$repo/homelab/live/home/joshan/automation/z97_job_submitter.py" /home/joshan/automation/z97_job_submitter.py
+          echo 'PA_RUNTIME_INSTALL=PASS'
+
+      - name: Deterministic regression
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 -m pytest -q tests/test_pa_local_ai_route.py
+          git diff --check
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'DETERMINISTIC_REGRESSION=PASS'
+
+      - name: Synthetic semantic and adapter acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 tests/personal_admin/test_cross_domain_e2e.py
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'SYNTHETIC_ADAPTER_ACCEPTANCE=PASS'
+
+      - name: Resume PA mission
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +e
+          /home/joshan/.local/bin/lifeos-pa-mission resume
+          rc=$?
+          set -e
+          echo "MISSION_RUNNER_RC=$rc"
+          case "$rc" in
+            0|20|30|40) exit "$rc" ;;
+            *) exit "$rc" ;;
+          esac
+
+      - name: Surface consolidated result
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          state=/home/joshan/.local/state/lifeos-pa-autonomy
+          for file in WORK_BUNDLE.md SUMMARY.md; do
+            if [[ -f "$state/$file" ]]; then
+              echo "--- $file ---"
+              cat "$state/$file"
+            fi
+          done
+          cd /home/joshan/lifeos-platform
+          printf 'FINAL_HEAD=%s\n' "$(git rev-parse HEAD)"
+          if test -z "$(git status --porcelain --untracked-files=all)"; then
+            echo 'FINAL_REPO_CLEAN=PASS'
+          else
+            echo 'FINAL_REPO_CLEAN=FAIL'
+            git status --short
+          fi
