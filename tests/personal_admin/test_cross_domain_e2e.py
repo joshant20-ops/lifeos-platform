@@ -96,18 +96,39 @@ Return JSON only:
 }}
 """
 
-raw = str(ai_broker._ollama(prompt, ai_broker.OLLAMA_MODEL)).strip()
-try:
-    data = json.loads(raw)
-except Exception:
-    start, end = raw.find("{"), raw.rfind("}")
-    assert start >= 0 and end > start
-    data = json.loads(raw[start : end + 1])
+def parse_response(raw):
+    text = str(raw).strip()
+    try:
+        return json.loads(text)
+    except Exception:
+        start, end = text.find("{"), text.rfind("}")
+        assert start >= 0 and end > start
+        return json.loads(text[start : end + 1])
 
-event = data.get("event") or {}
-assert canonical_date(event.get("date")) == EXPECTED_DATE, event
-assert canonical_time(event.get("time")) == EXPECTED_TIME, event
-assert paperless["document_ref"] in json.dumps(data.get("evidence", []), sort_keys=True)
+
+def validation_failures(value):
+    event = value.get("event") or {}
+    failures = []
+    if canonical_date(event.get("date")) != EXPECTED_DATE:
+        failures.append("event.date must identify 2099-10-15")
+    if canonical_time(event.get("time")) != EXPECTED_TIME:
+        failures.append("event.time must identify 14:00")
+    if paperless["document_ref"] not in json.dumps(value.get("evidence", []), sort_keys=True):
+        failures.append("evidence must contain exact document_ref " + paperless["document_ref"])
+    return failures
+
+
+data = None
+failures = []
+attempt_prompt = prompt
+for attempt in range(2):
+    data = parse_response(ai_broker._ollama(attempt_prompt, ai_broker.OLLAMA_MODEL))
+    failures = validation_failures(data)
+    if not failures:
+        break
+    attempt_prompt = prompt + "\nYour previous JSON failed these required checks:\n- " + "\n- ".join(failures) + "\nReturn a corrected complete JSON object only."
+
+assert not failures, failures
 print("AI_SEMANTICS=PASS")
 print("EMAIL_ADAPTER_BOUNDARY=FIXTURE")
 print("PAPERLESS_ADAPTER_BOUNDARY=FIXTURE")
