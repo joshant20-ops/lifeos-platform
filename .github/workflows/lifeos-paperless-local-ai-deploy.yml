@@ -1,0 +1,60 @@
+name: LifeOS Paperless Local AI Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'homelab/live/home/joshan/automation/lifeos_paperless_local_ai.py'
+      - '.github/workflows/lifeos-paperless-local-ai-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-verify:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 8
+    steps:
+      - name: Deploy bridge from canonical main
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git merge --ff-only origin/main
+          install -m 0755 homelab/live/home/joshan/automation/lifeos_paperless_local_ai.py /home/joshan/automation/lifeos_paperless_local_ai.py
+          python3 -m py_compile /home/joshan/automation/lifeos_paperless_local_ai.py
+          echo DEPLOY=PASS
+
+      - name: Verify Paperless to local AI on one existing document
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          DOC_ID="$(docker exec paperless-paperless-1 python3 manage.py shell -c 'from documents.models import Document; d=Document.objects.order_by("-id").first(); print(d.id if d else "")' | tail -1 | tr -d '\r')"
+          test -n "$DOC_ID" || { echo PAPERLESS_DOCUMENT=NONE; exit 1; }
+          timeout 240 /home/joshan/automation/lifeos_paperless_local_ai.py "$DOC_ID" > /tmp/paperless-local-ai-result.json
+          python3 - <<'PY'
+          import json
+          p='/tmp/paperless-local-ai-result.json'
+          d=json.load(open(p))
+          assert d['status']=='ok'
+          assert d['privacy']=='local_only'
+          assert d['paperless_writeback_performed'] is False
+          assert d['paperless_document_id']
+          assert d['intelligence']
+          print('PAPERLESS_TO_LOCAL_AI=PASS')
+          print('PRIVACY_LOCAL_ONLY=PASS')
+          print('PAPERLESS_WRITEBACK=NONE')
+          PY
+          rm -f /tmp/paperless-local-ai-result.json
+
+      - name: Verify canonical alignment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo REPO_CLEAN_ALIGNED=PASS
+          echo RESULT=PASS
