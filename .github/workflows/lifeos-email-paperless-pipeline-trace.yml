@@ -13,30 +13,45 @@ permissions:
 jobs:
   trace:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 4
+    timeout-minutes: 6
     steps:
-      - name: Identify existing IMAP credential interface without values
+      - name: Audit duplicate email ingestion paths
         shell: bash
         run: |
           set -Eeuo pipefail
-          ENV=/home/joshan/automation/secrets/email_oauth/email_imap_accounts.env
-          SCRIPT=/home/joshan/automation/scripts/lifeos_email_phase1_daily_window_v1.py
-          echo "IMAP_ENV_EXISTS=$(test -f "$ENV" && echo yes || echo no)"
-          if test -f "$ENV"; then
-            echo '-- env variable names only --'
-            sudo -n awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/{print $1}' "$ENV" | sort
-          fi
-          echo '-- phase1 credential-loading source, values redacted --'
-          if test -f "$SCRIPT"; then
-            sed -n '1,115p' "$SCRIPT" \
-              | sed -E 's/(password|secret|token)([^=]*=).*/\1\2<REDACTED>/Ig'
-          fi
-          echo '-- existing pipeline auth proof --'
-          set +e
-          timeout 60 /usr/bin/python3 "$SCRIPT" >/tmp/lifeos-email-auth-proof.out 2>&1
-          rc=$?
-          set -e
-          echo "PHASE1_EXIT=$rc"
-          grep -Ei 'status|connected_accounts|source_errors|candidate_messages_seen|new_messages_added' /tmp/lifeos-email-auth-proof.out \
-            | sed -E 's/([A-Za-z0-9._%+-]+)@([A-Za-z0-9.-]+)/<REDACTED_EMAIL>/g' | tail -20 || true
-          rm -f /tmp/lifeos-email-auth-proof.out
+          echo '=== DUPLICATE EMAIL INGESTION AUDIT ==='
+          echo '-- candidate files --'
+          find /home/joshan/automation /etc/systemd/system /etc/cron.d -maxdepth 5 -type f 2>/dev/null \
+            | grep -Ei 'gmail|imap|email|mail|paperless' | sort | sed -n '1,220p' || true
+
+          echo '-- scripts containing direct IMAP or Paperless upload logic --'
+          grep -RIlE 'imaplib|IMAP4_SSL|post_document|paperless.*upload|email_imap_accounts' \
+            /home/joshan/automation 2>/dev/null \
+            | grep -vE '/(logs|results|cache|__pycache__)/' | sort | sed -n '1,220p' || true
+
+          echo '-- matching systemd units and timers --'
+          systemctl list-unit-files --type=service --type=timer --no-legend 2>/dev/null \
+            | grep -Ei 'gmail|imap|email|mail|paperless|lifeos' | sed -n '1,180p' || true
+
+          echo '-- enabled/active matching units --'
+          systemctl list-units --all --type=service --type=timer --no-legend 2>/dev/null \
+            | grep -Ei 'gmail|imap|email|mail|paperless|lifeos' | sed -n '1,180p' || true
+
+          echo '-- cron references --'
+          (crontab -l 2>/dev/null || true; sudo -n crontab -l 2>/dev/null || true; cat /etc/cron.d/* 2>/dev/null || true) \
+            | grep -Ei 'gmail|imap|email|mail|paperless' \
+            | sed -E 's/(PASSWORD|TOKEN|SECRET|KEY)=[^ ]+/\1=<REDACTED>/Ig' | sed -n '1,120p' || true
+
+          echo '-- known legacy email scripts summary --'
+          for f in /home/joshan/automation/scripts/lifeos_email_phase1_daily_window_v1.py \
+                   /home/joshan/automation/scripts/lifeos_email_phase3_limited_body_extract_v1.py \
+                   /home/joshan/automation/scripts/lifeos_gmail_readonly_full_import_v1.py \
+                   /home/joshan/automation/scripts/lifeos_gmail1_full_header_records_v1.py \
+                   /home/joshan/automation/lifeos_email_paperless_selective.py; do
+            test -f "$f" || continue
+            printf 'SCRIPT=%s\n' "$f"
+            grep -nEi 'imaplib|IMAP4_SSL|login\(|post_document|paperless|email_imap_accounts|lifeos_state|write_text|OUT_|LEDGER' "$f" \
+              | sed -E 's/(password|token|secret|key).*/\1=<REDACTED>/Ig' | sed -n '1,70p' || true
+          done
+
+          echo 'RESULT=PASS'
