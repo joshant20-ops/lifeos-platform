@@ -1,0 +1,45 @@
+name: LifeOS Paperless Native Mail Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-paperless-native-mail-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Inspect native mail capability and schema
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          c=paperless-paperless-1
+          docker inspect "$c" >/dev/null
+          echo 'PAPERLESS_CONTAINER=PASS'
+          docker exec "$c" python3 manage.py shell <<'PY'
+          from django.apps import apps
+          from django.contrib.auth import get_user_model
+          print('MAIL_MODELS_START')
+          for model in apps.get_models():
+              name=model.__name__.lower()
+              if 'mail' in name:
+                  fields=[f.name for f in model._meta.fields]
+                  print(f'MODEL={model._meta.label};FIELDS={",".join(fields)};COUNT={model.objects.count()}')
+          print('MAIL_MODELS_END')
+          User=get_user_model()
+          for u in User.objects.filter(is_superuser=True):
+              print(f'SUPERUSER={u.username};ACTIVE={u.is_active}')
+          PY
+          echo '-- mail_fetcher command --'
+          docker exec "$c" python3 manage.py help mail_fetcher >/dev/null
+          echo 'MAIL_FETCHER_COMMAND=PASS'
+          echo '-- relevant container env names only --'
+          docker inspect "$c" --format '{{range .Config.Env}}{{println .}}{{end}}' \
+            | cut -d= -f1 | grep -E '^PAPERLESS_(EMAIL|OAUTH|URL)' | sort || true
+          echo 'RESULT=PASS'
