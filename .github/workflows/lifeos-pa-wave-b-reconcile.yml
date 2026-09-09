@@ -29,20 +29,26 @@ jobs:
           expected_head=d91e7a7502387c813e62088ff994e1fc3769b4a8
           cd "$repo"
           git fetch --prune origin main "$recovery_ref"
-          test "$(git rev-parse HEAD)" = "$expected_head"
-          test "$(git status --porcelain --untracked-files=all)" = '?? tests/personal_admin/test_cross_domain_e2e.py'
-          source_blob=$(git hash-object "$source")
-          recovery_blob=$(git rev-parse "origin/$recovery_ref:tests/personal_admin/test_cross_domain_e2e.py")
-          test "$source_blob" = "$recovery_blob"
-          archive=/home/joshan/.local/state/lifeos-pa-autonomy/recovered
-          install -d -m 0700 "$archive"
-          archived="$archive/test_cross_domain_e2e.$source_blob.py"
-          if [[ -e "$archived" ]]; then
-            cmp -s "$source" "$archived"
-            rm "$source"
+          current=$(git rev-parse HEAD)
+          dirty=$(git status --porcelain --untracked-files=all)
+          archived=already_reconciled
+          if [[ "$current" = "$expected_head" ]]; then
+            test "$dirty" = '?? tests/personal_admin/test_cross_domain_e2e.py'
+            source_blob=$(git hash-object "$source")
+            recovery_blob=$(git rev-parse "origin/$recovery_ref:tests/personal_admin/test_cross_domain_e2e.py")
+            test "$source_blob" = "$recovery_blob"
+            archive=/home/joshan/.local/state/lifeos-pa-autonomy/recovered
+            install -d -m 0700 "$archive"
+            archived="$archive/test_cross_domain_e2e.$source_blob.py"
+            if [[ -e "$archived" ]]; then
+              cmp -s "$source" "$archived"
+              rm "$source"
+            else
+              mv "$source" "$archived"
+              chmod 0600 "$archived"
+            fi
           else
-            mv "$source" "$archived"
-            chmod 0600 "$archived"
+            test -z "$dirty"
           fi
           test -z "$(git status --porcelain --untracked-files=all)"
           git merge-base --is-ancestor HEAD origin/main
