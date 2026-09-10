@@ -1,0 +1,59 @@
+name: LifeOS Tower Thermal Context A-B
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-tower-thermal-context-ab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-tower-thermal-context-ab
+  cancel-in-progress: false
+
+jobs:
+  thermal-diagnostic:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 35
+    steps:
+      - name: Preserve dirty context change
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          test "$(git -C "$repo" status --porcelain --untracked-files=all)" = ' M governor/ai_broker.py'
+          git -C "$repo" diff -- governor/ai_broker.py | grep -F -- '-        "num_ctx": 32768,' >/dev/null
+          git -C "$repo" diff -- governor/ai_broker.py | grep -F -- '+        "num_ctx": 8192,' >/dev/null
+          echo 'DIRTY_INVARIANT_PRESERVED=PASS'
+
+      - name: Run low-load diagnosis and bounded A-B
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          TOWER=192.168.0.201
+          LEASE_TOPIC="lifeos/tower/lease/thermal-context-$GITHUB_RUN_ID"
+          SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=yes)
+          cleanup() {
+            mosquitto_pub -h 127.0.0.1 -t "$LEASE_TOPIC" -m '{"state":"released"}' -r 2>/dev/null || true
+          }
+          trap cleanup EXIT INT TERM
+          mosquitto_pub -h 127.0.0.1 -t "$LEASE_TOPIC" -m '{"state":"requested","ttl":2100}' -r
+          for attempt in $(seq 1 30); do
+            if ssh "${SSH_OPTS[@]}" "$TOWER" true 2>/dev/null; then break; fi
+            sleep 5
+          done
+          ssh "${SSH_OPTS[@]}" "$TOWER" true
+          ssh "${SSH_OPTS[@]}" "$TOWER" 'python3 -' < /home/joshan/lifeos-platform/scripts/audit-tower-thermal-context.py
+          echo 'THERMAL_DIAGNOSTIC=PASS'
+
+      - name: Confirm invariant and lease cleanup
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          test "$(git -C "$repo" status --porcelain --untracked-files=all)" = ' M governor/ai_broker.py'
+          echo 'DIRTY_INVARIANT_FINAL=PASS'
