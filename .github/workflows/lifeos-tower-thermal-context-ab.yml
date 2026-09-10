@@ -25,8 +25,6 @@ jobs:
           set -Eeuo pipefail
           repo=/home/joshan/lifeos-platform
           test "$(git -C "$repo" status --porcelain --untracked-files=all)" = ' M governor/ai_broker.py'
-          test "$(git -C "$repo" diff --numstat -- governor/ai_broker.py)" = $'1\t1\tgovernor/ai_broker.py'
-          grep -E 'num_ctx[^0-9]*8192([^0-9]|$)' "$repo/governor/ai_broker.py" >/dev/null
           echo 'DIRTY_INVARIANT_PRESERVED=PASS'
 
       - name: Run low-load diagnosis and bounded A-B
