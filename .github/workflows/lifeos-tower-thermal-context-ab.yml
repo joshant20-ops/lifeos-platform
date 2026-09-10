@@ -46,7 +46,9 @@ jobs:
             sleep 5
           done
           ssh "${SSH_OPTS[@]}" "$TOWER" true
-          ssh "${SSH_OPTS[@]}" "$TOWER" 'python3 -' < /home/joshan/lifeos-platform/scripts/audit-tower-thermal-context.py
+          git -C /home/joshan/lifeos-platform fetch --prune origin main
+          git -C /home/joshan/lifeos-platform show origin/main:scripts/audit-tower-thermal-context.py |
+            ssh "${SSH_OPTS[@]}" "$TOWER" 'python3 -'
           echo 'THERMAL_DIAGNOSTIC=PASS'
 
       - name: Confirm invariant and lease cleanup
