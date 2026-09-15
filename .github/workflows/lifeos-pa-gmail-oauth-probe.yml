@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-pa-gmail-oauth-probe.yml'
+      - 'governor/ai_broker.py'
   workflow_dispatch:
 
 permissions:
