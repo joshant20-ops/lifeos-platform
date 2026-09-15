@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: lifeos-pi5-control
+  group: lifeos-finalize-8192-context
   cancel-in-progress: false
 
 jobs:
