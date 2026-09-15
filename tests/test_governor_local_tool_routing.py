@@ -32,6 +32,15 @@ def test_ollama_json_tool_fallback_accepts_only_declared_tools():
     ) is None
 
 
+
+def test_ollama_fenced_json_tool_fallback_is_normalized():
+    tools = [{"type": "function", "function": {"name": "invoke_skill"}}]
+    content = '```json\n{"name":"invoke_skill","arguments":{"name":"bash-runner"}}\n```'
+    call = broker._ollama_tool_call_from_content(content, tools)
+    assert call is not None
+    assert call["function"]["name"] == "invoke_skill"
+    assert json.loads(call["function"]["arguments"]) == {"name": "bash-runner"}
+
 def test_chat_dispatches_policy_selected_ollama_tool_provider():
     provider = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
     response = {
