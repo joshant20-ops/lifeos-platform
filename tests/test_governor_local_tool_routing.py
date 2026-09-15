@@ -56,3 +56,66 @@ def test_chat_dispatches_policy_selected_ollama_tool_provider():
     local.assert_called_once()
     assert result["provider"] == "ollama"
     assert result["finish_reason"] == "tool_calls"
+
+
+def test_local_only_tool_chat_uses_ollama_without_cloud_candidates():
+    provider = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
+    response = {
+        "message": {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [{
+                "id": "call_local",
+                "type": "function",
+                "function": {"name": "shell", "arguments": "{\\\"command\\\":\\\"true\\\"}"},
+            }],
+        },
+        "finish_reason": "tool_calls",
+    }
+
+    def candidate_set(*, privacy, task_class):
+        assert task_class == "substantial"
+        if privacy == "local-only":
+            return [provider], [{"provider": "ollama", "status": "AVAILABLE"}]
+        raise AssertionError("local-only tool routing evaluated cloud candidates")
+
+    with mock.patch.object(broker, "candidates", side_effect=candidate_set) as candidates, \
+         mock.patch.object(broker, "_strict_env", return_value={}), \
+         mock.patch.object(broker, "_ollama_chat", return_value=response) as local, \
+         mock.patch.object(broker, "_gemini_chat") as cloud:
+        result = broker.chat(
+            [{"role": "user", "content": "inspect the repository"}],
+            tools=[{"type": "function", "function": {"name": "shell"}}],
+            privacy="local-only",
+            task_class="substantial",
+        )
+
+    assert candidates.call_count == 1
+    local.assert_called_once()
+    cloud.assert_not_called()
+    assert result["provider"] == "ollama"
+    assert result["finish_reason"] == "tool_calls"
+
+
+def test_local_only_tool_chat_fails_closed_after_local_provider_failure():
+    provider = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
+    with mock.patch.object(
+        broker,
+        "candidates",
+        return_value=([provider], [{"provider": "ollama", "status": "AVAILABLE"}]),
+    ) as candidates, mock.patch.object(broker, "_strict_env", return_value={}), \
+         mock.patch.object(broker, "_ollama_chat", side_effect=broker.BrokerError("local unavailable")), \
+         mock.patch.object(broker, "_gemini_chat") as cloud:
+        try:
+            broker.chat(
+                [{"role": "user", "content": "inspect private source"}],
+                tools=[{"type": "function", "function": {"name": "shell"}}],
+                privacy="local-only",
+            )
+        except broker.BrokerError as exc:
+            assert "tool-capable providers exhausted" in str(exc)
+        else:
+            raise AssertionError("local-only tool failure did not fail closed")
+
+    assert candidates.call_count == 1
+    cloud.assert_not_called()
