@@ -28,6 +28,7 @@ def repositories(root):
     seed = root / "seed"
     pi = root / "pi"
     run("git", "init", "--bare", str(remote))
+    run("git", "symbolic-ref", "HEAD", "refs/heads/main", cwd=remote)
     run("git", "init", "-b", "main", str(seed))
     run("git", "remote", "add", "origin", str(remote), cwd=seed)
     commit(seed, "base", "base\n")
