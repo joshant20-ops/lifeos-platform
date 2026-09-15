@@ -111,7 +111,7 @@ for spec in "${AGENTS[@]}"; do
     echo "AGENT_ATTEMPT=$ADAPTER provider=$PROVIDER attempt=$attempt"
     ATTEMPT_LOG=$(mktemp)
     set +e
-    ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE'
+    ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE' | tee "$ATTEMPT_LOG"
 set -euo pipefail
 REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}
 PROVIDER=${6:?provider required}; ADAPTER=${7:?adapter required}; SNAPSHOT_REL=${8:?snapshot required}; MODEL=${9-}; CREDENTIALS=""
@@ -124,7 +124,6 @@ git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$
 chmod 700 "$HELPER"
 "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$MODEL" "$CREDENTIALS"
 REMOTE
-    | tee "$ATTEMPT_LOG"
     RC=${PIPESTATUS[0]}
     set -e
     rm -f "$ATTEMPT_LOG"
