@@ -1,10 +1,11 @@
-name: LifeOS Tower Thermal Context A-B
+name: LifeOS Tower Thermal 8192 Acceptance
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-tower-thermal-context-ab.yml'
+      - 'scripts/audit-tower-thermal-context.py'
   workflow_dispatch:
 
 permissions:
@@ -27,7 +28,7 @@ jobs:
           test "$(git -C "$repo" status --porcelain --untracked-files=all)" = ' M governor/ai_broker.py'
           echo 'DIRTY_INVARIANT_PRESERVED=PASS'
 
-      - name: Run low-load diagnosis and bounded A-B
+      - name: Run comparable 8192 test and conditional soak
         shell: bash
         run: |
           set -Eeuo pipefail
