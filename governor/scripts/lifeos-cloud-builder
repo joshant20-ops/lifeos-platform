@@ -93,37 +93,41 @@ if [[ "$CODEX" == present ]]; then AGENTS+=("codex|codex|"); fi
 if (( ${#AGENTS[@]} == 0 )); then echo "RESULT=BLOCKED"; echo "REASON=no_eligible_engineering_agent"; exit 43; fi
 
 SNAPSHOT=$(mktemp --suffix=.bundle)
-trap 'rm -f "$SNAPSHOT"' EXIT
 git -C "$CONTROLLER_REPO" bundle create "$SNAPSHOT" HEAD
 test -s "$SNAPSHOT"
 REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
 ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
 scp -q -o BatchMode=yes -o ConnectTimeout=8 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
+cleanup() {
+  rm -f "$SNAPSHOT"
+  ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" "rm -f -- \"\$HOME/$REMOTE_SNAPSHOT\"" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 MAX_ATTEMPTS=2
 for spec in "${AGENTS[@]}"; do
   IFS='|' read -r PROVIDER ADAPTER MODEL <<<"$spec"
   for ((attempt=1; attempt<=MAX_ATTEMPTS; attempt++)); do
     echo "AGENT_ATTEMPT=$ADAPTER provider=$PROVIDER attempt=$attempt"
+    ATTEMPT_LOG=$(mktemp)
     set +e
-    OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE'
+    ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE'
 set -euo pipefail
 REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}
 PROVIDER=${6:?provider required}; ADAPTER=${7:?adapter required}; SNAPSHOT_REL=${8:?snapshot required}; MODEL=${9-}; CREDENTIALS=""
 SNAPSHOT="$HOME/$SNAPSHOT_REL"
-trap 'rm -f "$SNAPSHOT"' EXIT
 test -s "$SNAPSHOT"
 git -C "$REPO" fetch "$SNAPSHOT" HEAD:refs/remotes/origin/main >/dev/null
 HELPER=$(mktemp)
-trap 'rm -f "$HELPER" "$SNAPSHOT"' EXIT
+trap 'rm -f "$HELPER"' EXIT
 git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$HELPER"
 chmod 700 "$HELPER"
 "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$PROVIDER" "$ADAPTER" "$MODEL" "$CREDENTIALS"
 REMOTE
-    )
-    RC=$?
+    | tee "$ATTEMPT_LOG"
+    RC=${PIPESTATUS[0]}
     set -e
-    printf '%s\n' "$OUTPUT"
+    rm -f "$ATTEMPT_LOG"
     if (( RC == 0 )); then echo "AGENT_RESULT=$ADAPTER PASS"; exit 0; fi
     echo "AGENT_RESULT=$ADAPTER RETRY exit=$RC"
   done
