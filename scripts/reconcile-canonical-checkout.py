@@ -35,15 +35,27 @@ def reconcile(repo: pathlib.Path) -> str:
             result = "fast_forward"
         else:
             head_tree = git(repo, "rev-parse", f"{head}^{{tree}}").stdout.strip()
-            origin_tree = git(repo, "rev-parse", f"{origin}^{{tree}}").stdout.strip()
+            origin_commits = git(repo, "log", "-n", "256", "--format=%H", "origin/main").stdout.splitlines()
+            matching_canonical_commit = next(
+                (
+                    commit
+                    for commit in origin_commits
+                    if git(repo, "rev-parse", f"{commit}^{{tree}}").stdout.strip() == head_tree
+                ),
+                None,
+            )
             branch = git(repo, "symbolic-ref", "--short", "-q", "HEAD", check=False).stdout.strip()
-            if not branch or head_tree != origin_tree:
+            if not branch or not matching_canonical_commit:
                 raise RuntimeError(
                     "CANONICAL_CHECKOUT_NOT_READY=non_fast_forward\n"
                     f"PLATFORM_HEAD={head}\nORIGIN_MAIN={origin}"
                 )
             git(repo, "update-ref", f"refs/heads/{branch}", origin, head)
-            result = "identical_tree_ref_converged"
+            result = (
+                "identical_tree_ref_converged"
+                if matching_canonical_commit == origin
+                else "canonical_tree_lineage_converged"
+            )
 
     final_head = git(repo, "rev-parse", "HEAD").stdout.strip()
     final_origin = git(repo, "rev-parse", "origin/main").stdout.strip()
