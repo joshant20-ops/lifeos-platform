@@ -560,19 +560,11 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
     """Preserve tool calls while enforcing the selected privacy boundary."""
     if privacy not in {"normal", "local-only"}:
         raise BrokerError("unsupported privacy class")
-    local_eligible, local_considered = candidates(privacy="local-only", task_class=task_class)
-    if privacy == "local-only":
-        cloud_eligible, considered = [], []
-    else:
-        cloud_eligible, considered = candidates(privacy="normal", task_class=task_class)
-    eligible = []
-    seen: set[str] = set()
-    for provider in [*local_eligible, *cloud_eligible]:
-        pid = str(provider.get("id") or "")
-        if pid in {"ollama", "gemini", "groq", "openrouter"} and pid not in seen:
-            eligible.append(provider)
-            seen.add(pid)
-    considered = [*local_considered, *considered]
+    eligible, considered = candidates(privacy=privacy, task_class=task_class)
+    eligible = [
+        provider for provider in eligible
+        if str(provider.get("id") or "") in {"ollama", "gemini", "groq", "openrouter"}
+    ]
     if not eligible:
         raise BrokerError("no eligible tool-capable provider")
     secrets = _strict_env(SECRETS_PATH)
