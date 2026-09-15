@@ -1,6 +1,8 @@
 import pathlib
 import subprocess
 import sys
+import tempfile
+import unittest
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -21,10 +23,10 @@ def commit(repo, message, content):
         "commit", "-m", message, cwd=repo)
 
 
-def repositories(tmp_path):
-    remote = tmp_path / "remote.git"
-    seed = tmp_path / "seed"
-    pi = tmp_path / "pi"
+def repositories(root):
+    remote = root / "remote.git"
+    seed = root / "seed"
+    pi = root / "pi"
     run("git", "init", "--bare", str(remote))
     run("git", "init", "-b", "main", str(seed))
     run("git", "remote", "add", "origin", str(remote), cwd=seed)
@@ -34,44 +36,51 @@ def repositories(tmp_path):
     return remote, seed, pi
 
 
-def test_reconciles_clean_divergent_commits_with_identical_trees(tmp_path):
-    _, seed, pi = repositories(tmp_path)
-    commit(seed, "canonical copy", "same\n")
-    run("git", "push", "origin", "main", cwd=seed)
-    commit(pi, "pi copy", "same\n")
+class CanonicalCheckoutReconcileTests(unittest.TestCase):
+    def test_reconciles_clean_divergent_commits_with_identical_trees(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, seed, pi = repositories(pathlib.Path(directory))
+            commit(seed, "canonical copy", "same\n")
+            run("git", "push", "origin", "main", cwd=seed)
+            commit(pi, "pi copy", "same\n")
 
-    result = run(sys.executable, str(SCRIPT), str(pi), check=False)
+            result = run(sys.executable, str(SCRIPT), str(pi), check=False)
 
-    assert result.returncode == 0, result.stderr
-    assert "CANONICAL_RECONCILE=identical_tree_ref_converged" in result.stdout
-    assert run("git", "rev-parse", "HEAD", cwd=pi).stdout == run(
-        "git", "rev-parse", "origin/main", cwd=pi
-    ).stdout
-    assert run("git", "status", "--porcelain", cwd=pi).stdout == ""
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("CANONICAL_RECONCILE=identical_tree_ref_converged", result.stdout)
+            self.assertEqual(
+                run("git", "rev-parse", "HEAD", cwd=pi).stdout,
+                run("git", "rev-parse", "origin/main", cwd=pi).stdout,
+            )
+            self.assertEqual(run("git", "status", "--porcelain", cwd=pi).stdout, "")
+
+    def test_rejects_clean_divergent_commits_with_different_trees(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, seed, pi = repositories(pathlib.Path(directory))
+            commit(seed, "canonical change", "canonical\n")
+            run("git", "push", "origin", "main", cwd=seed)
+            commit(pi, "different pi change", "different\n")
+            before = run("git", "rev-parse", "HEAD", cwd=pi).stdout
+
+            result = run(sys.executable, str(SCRIPT), str(pi), check=False)
+
+            self.assertEqual(result.returncode, 20)
+            self.assertIn("CANONICAL_CHECKOUT_NOT_READY=non_fast_forward", result.stderr)
+            self.assertEqual(run("git", "rev-parse", "HEAD", cwd=pi).stdout, before)
+
+    def test_rejects_dirty_checkout_without_changing_head(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, _, pi = repositories(pathlib.Path(directory))
+            before = run("git", "rev-parse", "HEAD", cwd=pi).stdout
+            (pi / "untracked.txt").write_text("keep me\n")
+
+            result = run(sys.executable, str(SCRIPT), str(pi), check=False)
+
+            self.assertEqual(result.returncode, 20)
+            self.assertIn("CANONICAL_CHECKOUT_NOT_READY=dirty", result.stderr)
+            self.assertEqual((pi / "untracked.txt").read_text(), "keep me\n")
+            self.assertEqual(run("git", "rev-parse", "HEAD", cwd=pi).stdout, before)
 
 
-def test_rejects_clean_divergent_commits_with_different_trees(tmp_path):
-    _, seed, pi = repositories(tmp_path)
-    commit(seed, "canonical change", "canonical\n")
-    run("git", "push", "origin", "main", cwd=seed)
-    commit(pi, "different pi change", "different\n")
-    before = run("git", "rev-parse", "HEAD", cwd=pi).stdout
-
-    result = run(sys.executable, str(SCRIPT), str(pi), check=False)
-
-    assert result.returncode == 20
-    assert "CANONICAL_CHECKOUT_NOT_READY=non_fast_forward" in result.stderr
-    assert run("git", "rev-parse", "HEAD", cwd=pi).stdout == before
-
-
-def test_rejects_dirty_checkout_without_changing_head(tmp_path):
-    _, _, pi = repositories(tmp_path)
-    before = run("git", "rev-parse", "HEAD", cwd=pi).stdout
-    (pi / "untracked.txt").write_text("keep me\n")
-
-    result = run(sys.executable, str(SCRIPT), str(pi), check=False)
-
-    assert result.returncode == 20
-    assert "CANONICAL_CHECKOUT_NOT_READY=dirty" in result.stderr
-    assert (pi / "untracked.txt").read_text() == "keep me\n"
-    assert run("git", "rev-parse", "HEAD", cwd=pi).stdout == before
+if __name__ == "__main__":
+    unittest.main()
