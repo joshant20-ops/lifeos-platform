@@ -188,3 +188,11 @@ def test_review_packet_is_compact_metadata_not_repository_content():
     assert result["provider_role"] == "codex-senior-review"
     assert result["content_included"] is False
     assert len(json.dumps(result)) < 16000
+
+
+def test_remote_agent_attempt_has_bounded_deadline_and_timeout_evidence():
+    script = (ROOT / "governor/scripts/lifeos-remote-agent-builder").read_text()
+    assert "AGENT_TIMEOUT_SECONDS=${LIFEOS_AGENT_TIMEOUT_SECONDS:-600}" in script
+    assert '/usr/bin/timeout --signal=TERM --kill-after=15s "${AGENT_TIMEOUT_SECONDS}s"' in script
+    assert 'HANDOFF_ERROR=agent_timeout_${AGENT_TIMEOUT_SECONDS}s' in script
+    assert "AGENT_TIMEOUT_SECONDS >= 60 && AGENT_TIMEOUT_SECONDS <= 1200" in script
