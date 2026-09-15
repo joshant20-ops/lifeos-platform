@@ -155,7 +155,7 @@ def run_test(label, soak_seconds=None):
         if value is not None:
             max_temp = max(max_temp, value)
             samples.append((now, value))
-            while samples and now - samples[0][0] > 180:
+            while samples and now - samples[0][0] > 300:
                 samples.popleft()
 
         current_procs = ollama_processes()
@@ -209,7 +209,7 @@ def run_test(label, soak_seconds=None):
     safe = not stopped_80 and not hard_abort and not timed_out and completed and max_temp < ACCEPT and delta == 0
     equilibrium = False
     span = None
-    if soak_seconds is not None and elapsed >= 300 and samples and samples[-1][0] - samples[0][0] >= 170:
+    if soak_seconds is not None and elapsed >= 300 and samples and samples[-1][0] - samples[0][0] >= 290:
         temps = [sample[1] for sample in samples]
         span = max(temps) - min(temps)
         equilibrium = span <= 2.0
@@ -234,7 +234,7 @@ def run_test(label, soak_seconds=None):
     print(f"{prefix}_THROTTLE_DELTA={delta}")
     print(f"{prefix}_THERMALLY_SAFE={str(safe).lower()}")
     if soak_seconds is not None:
-        print(f"{prefix}_LAST_180S_TEMP_SPAN_C={span if span is not None else 'UNAVAILABLE'}")
+        print(f"{prefix}_LAST_300S_TEMP_SPAN_C={span if span is not None else 'UNAVAILABLE'}")
         print(f"{prefix}_EQUILIBRIUM={str(equilibrium).lower()}")
     subprocess.run(["ollama", "stop", MODEL], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     return {"safe": safe, "equilibrium": equilibrium, "max_temp": max_temp, "throttle": delta}
@@ -259,7 +259,7 @@ unload_and_cool()
 comparison = run_test("CTX8192_COMPARABLE")
 soak = None
 if comparison["safe"] and unload_and_cool():
-    soak = run_test("CTX8192_SOAK", soak_seconds=600)
+    soak = run_test("CTX8192_SOAK", soak_seconds=1200)
     unload_and_cool()
 else:
     print("CTX8192_SOAK_RESULT=NOT_RUN_INITIAL_8192_UNSAFE")
