@@ -551,11 +551,14 @@ def candidates(*, privacy: str = "normal", task_class: str = "normal") -> tuple[
 
 
 def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=None, privacy: str = "normal", task_class: str = "normal") -> dict:
-    """Preserve OpenAI tool-calling semantics for agentic cloud-safe requests."""
-    if privacy != "normal":
-        raise BrokerError("tool-enabled private inference is not permitted")
-    cloud_eligible, considered = candidates(privacy=privacy, task_class=task_class)
+    """Preserve tool calls while enforcing the selected privacy boundary."""
+    if privacy not in {"normal", "local-only"}:
+        raise BrokerError("unsupported privacy class")
     local_eligible, local_considered = candidates(privacy="local-only", task_class=task_class)
+    if privacy == "local-only":
+        cloud_eligible, considered = [], []
+    else:
+        cloud_eligible, considered = candidates(privacy="normal", task_class=task_class)
     eligible = []
     seen: set[str] = set()
     for provider in [*local_eligible, *cloud_eligible]:

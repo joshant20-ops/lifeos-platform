@@ -113,10 +113,26 @@ def test_tool_chat_translates_gemini_function_call(monkeypatch):
     assert '"path":"x"' in call["function"]["arguments"]
 
 
-def test_tool_chat_private_fails_closed(monkeypatch):
-    with pytest.raises(BROKER.BrokerError, match="private inference"):
+def test_tool_chat_private_fails_closed_without_cloud_fallback(monkeypatch):
+    local = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
+    calls = []
+
+    def candidates(*, privacy, task_class):
+        calls.append((privacy, task_class))
+        assert privacy == "local-only"
+        return [local], []
+
+    monkeypatch.setattr(BROKER, "candidates", candidates)
+    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
+    monkeypatch.setattr(
+        BROKER,
+        "_ollama_chat",
+        lambda *args, **kwargs: (_ for _ in ()).throw(BROKER.BrokerError("local unavailable")),
+    )
+    with pytest.raises(BROKER.BrokerError, match="tool-capable providers exhausted"):
         BROKER.chat(
             [{"role": "user", "content": "private task"}],
             tools=[{"type": "function", "function": {"name": "x", "parameters": {"type": "object"}}}],
             privacy="local-only",
         )
+    assert calls == [("local-only", "normal")]
