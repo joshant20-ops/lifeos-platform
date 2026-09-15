@@ -50,12 +50,12 @@ def reconcile(repo: pathlib.Path) -> str:
                     "CANONICAL_CHECKOUT_NOT_READY=non_fast_forward\n"
                     f"PLATFORM_HEAD={head}\nORIGIN_MAIN={origin}"
                 )
-            git(repo, "update-ref", f"refs/heads/{branch}", origin, head)
-            result = (
-                "identical_tree_ref_converged"
-                if matching_canonical_commit == origin
-                else "canonical_tree_lineage_converged"
-            )
+            git(repo, "update-ref", f"refs/heads/{branch}", matching_canonical_commit, head)
+            if matching_canonical_commit == origin:
+                result = "identical_tree_ref_converged"
+            else:
+                git(repo, "merge", "--ff-only", "origin/main")
+                result = "canonical_tree_lineage_converged"
 
     final_head = git(repo, "rev-parse", "HEAD").stdout.strip()
     final_origin = git(repo, "rev-parse", "origin/main").stdout.strip()
