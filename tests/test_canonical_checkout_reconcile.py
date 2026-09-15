@@ -55,6 +55,30 @@ class CanonicalCheckoutReconcileTests(unittest.TestCase):
             )
             self.assertEqual(run("git", "status", "--porcelain", cwd=pi).stdout, "")
 
+    def test_reconciles_when_local_tree_exists_in_canonical_lineage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, seed, pi = repositories(pathlib.Path(directory))
+            commit(seed, "canonical equivalent", "same\n")
+            run("git", "push", "origin", "main", cwd=seed)
+            commit(pi, "pi equivalent", "same\n")
+            (seed / "canonical-only.txt").write_text("later canonical hardening\n")
+            run("git", "add", "canonical-only.txt", cwd=seed)
+            run(
+                "git", "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                "commit", "-m", "later canonical hardening", cwd=seed,
+            )
+            run("git", "push", "origin", "main", cwd=seed)
+
+            result = run(sys.executable, str(SCRIPT), str(pi), check=False)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("CANONICAL_RECONCILE=canonical_tree_lineage_converged", result.stdout)
+            self.assertEqual(
+                run("git", "rev-parse", "HEAD", cwd=pi).stdout,
+                run("git", "rev-parse", "origin/main", cwd=pi).stdout,
+            )
+            self.assertEqual((pi / "canonical-only.txt").read_text(), "later canonical hardening\n")
+
     def test_canonical_blob_can_bootstrap_reconcile_before_helper_exists_locally(self):
         with tempfile.TemporaryDirectory() as directory:
             _, seed, pi = repositories(pathlib.Path(directory))
