@@ -136,3 +136,36 @@ def test_tool_chat_private_fails_closed_without_cloud_fallback(monkeypatch):
             privacy="local-only",
         )
     assert calls == [("local-only", "normal")]
+
+
+def test_normal_tool_chat_does_not_prepend_local_provider(monkeypatch):
+    local = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
+    cloud = {"id": "gemini", "api_model": "gemini-test"}
+    routed = []
+
+    def candidates(*, privacy, task_class):
+        assert task_class == "normal"
+        return ([local], []) if privacy == "local-only" else ([cloud], [])
+
+    monkeypatch.setattr(BROKER, "candidates", candidates)
+    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {"GEMINI_API_KEY": "test"})
+    monkeypatch.setattr(
+        BROKER,
+        "_ollama_chat",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("normal tool chat reached local Ollama")),
+    )
+    monkeypatch.setattr(
+        BROKER,
+        "_gemini_chat",
+        lambda *args, **kwargs: (
+            routed.append("gemini")
+            or {"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
+        ),
+    )
+    result = BROKER.chat(
+        [{"role": "user", "content": "sanitized engineering task"}],
+        tools=[{"type": "function", "function": {"name": "x", "parameters": {"type": "object"}}}],
+        privacy="normal",
+    )
+    assert routed == ["gemini"]
+    assert result["provider"] == "gemini"
