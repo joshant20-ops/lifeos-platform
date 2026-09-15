@@ -14,14 +14,14 @@ permissions:
 jobs:
   oauth-probe:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - name: Bounded local OAuth capability check
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          sudo -n python3 - <<'PY'
+          sudo -n python3 -u - <<'PY'
           import base64
           import json
           import os
@@ -57,7 +57,7 @@ jobs:
                       ):
                           candidates.append(Path(parent) / name)
 
-          print("OAUTH_CANDIDATE_COUNT=" + str(len(candidates)))
+          print("OAUTH_CANDIDATE_COUNT=" + str(len(candidates)), flush=True)
 
           def post_form(url, fields):
               body = urllib.parse.urlencode(fields).encode()
@@ -65,7 +65,7 @@ jobs:
                   url, data=body,
                   headers={"Content-Type": "application/x-www-form-urlencoded"},
               )
-              with urllib.request.urlopen(req, timeout=20, context=ssl.create_default_context()) as response:
+              with urllib.request.urlopen(req, timeout=5, context=ssl.create_default_context()) as response:
                   return json.loads(response.read().decode())
 
           def gmail(method, path, access, body=None):
@@ -78,13 +78,13 @@ jobs:
                       "Content-Type": "application/json",
                   },
               )
-              with urllib.request.urlopen(req, timeout=20, context=ssl.create_default_context()) as response:
+              with urllib.request.urlopen(req, timeout=5, context=ssl.create_default_context()) as response:
                   raw = response.read()
                   return json.loads(raw.decode()) if raw else None
 
           suitable = False
           structural = 0
-          for path in sorted(set(candidates)):
+          for path in sorted(set(candidates))[:50]:
               try:
                   if path.is_symlink() or path.stat().st_size > 1024 * 1024:
                       continue
