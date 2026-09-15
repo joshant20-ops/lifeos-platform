@@ -196,3 +196,13 @@ def test_remote_agent_attempt_has_bounded_deadline_and_timeout_evidence():
     assert '/usr/bin/timeout --signal=TERM --kill-after=15s "${AGENT_TIMEOUT_SECONDS}s"' in script
     assert 'HANDOFF_ERROR=agent_timeout_${AGENT_TIMEOUT_SECONDS}s' in script
     assert "AGENT_TIMEOUT_SECONDS >= 60 && AGENT_TIMEOUT_SECONDS <= 1200" in script
+
+
+def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
+    script = (ROOT / "governor/scripts/lifeos-cloud-builder").read_text()
+    assert 'trap \'rm -f "$SNAPSHOT"\' EXIT' not in script
+    assert 'trap \'rm -f "$HELPER" "$SNAPSHOT"\' EXIT' not in script
+    assert 'trap cleanup EXIT' in script
+    assert '| tee "$ATTEMPT_LOG"' in script
+    assert 'RC=${PIPESTATUS[0]}' in script
+    assert "OUTPUT=$(ssh" not in script
