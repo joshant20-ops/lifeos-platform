@@ -34,7 +34,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          python3 /home/joshan/lifeos-platform/scripts/reconcile-canonical-checkout.py /home/joshan/lifeos-platform
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git show origin/main:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
           echo 'DEPLOY_CHECKPOINT=checkout-verified'
 
       - name: Ensure Engineer available for deploy preflight

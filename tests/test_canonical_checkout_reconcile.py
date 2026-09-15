@@ -55,6 +55,29 @@ class CanonicalCheckoutReconcileTests(unittest.TestCase):
             )
             self.assertEqual(run("git", "status", "--porcelain", cwd=pi).stdout, "")
 
+    def test_canonical_blob_can_bootstrap_reconcile_before_helper_exists_locally(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, seed, pi = repositories(pathlib.Path(directory))
+            commit(seed, "canonical copy", "same\n")
+            run("git", "push", "origin", "main", cwd=seed)
+            commit(pi, "pi copy", "same\n")
+            script = SCRIPT.read_text()
+
+            result = subprocess.run(
+                [sys.executable, "-", str(pi)],
+                input=script,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("CANONICAL_RECONCILE=identical_tree_ref_converged", result.stdout)
+            self.assertEqual(
+                run("git", "rev-parse", "HEAD", cwd=pi).stdout,
+                run("git", "rev-parse", "origin/main", cwd=pi).stdout,
+            )
+
     def test_rejects_clean_divergent_commits_with_different_trees(self):
         with tempfile.TemporaryDirectory() as directory:
             _, seed, pi = repositories(pathlib.Path(directory))
