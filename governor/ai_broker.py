@@ -181,8 +181,14 @@ def _ollama(prompt: str, model: str) -> str:
 def _ollama_tool_call_from_content(content, tools: list[dict]) -> dict | None:
     if not isinstance(content, str) or not content.strip():
         return None
+    text = content.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            lines = lines[1:-1]
+            text = "\n".join(lines).strip()
     try:
-        value = json.loads(content)
+        value = json.loads(text)
     except Exception:
         return None
     if not isinstance(value, dict):
