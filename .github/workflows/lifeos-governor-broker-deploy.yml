@@ -15,6 +15,7 @@ on:
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
+      - 'scripts/reconcile-canonical-checkout.py'
   workflow_dispatch:
 
 permissions:
@@ -33,28 +34,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          git fetch --prune origin main
-          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
-            echo 'CANONICAL_CHECKOUT_NOT_READY=dirty'
-            git status --short
-            exit 20
-          fi
-          head="$(git rev-parse HEAD)"
-          origin="$(git rev-parse origin/main)"
-          if [[ "$head" != "$origin" ]]; then
-            git merge-base --is-ancestor "$head" "$origin" || {
-              echo 'CANONICAL_CHECKOUT_NOT_READY=non_fast_forward'
-              echo "PLATFORM_HEAD=$head"
-              echo "ORIGIN_MAIN=$origin"
-              exit 20
-            }
-            git merge --ff-only origin/main
-          fi
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo "PLATFORM_HEAD=$(git rev-parse HEAD)"
-          echo 'CANONICAL_CHECKOUT_READY=PASS'
+          python3 /home/joshan/lifeos-platform/scripts/reconcile-canonical-checkout.py /home/joshan/lifeos-platform
           echo 'DEPLOY_CHECKPOINT=checkout-verified'
 
       - name: Ensure Engineer available for deploy preflight
