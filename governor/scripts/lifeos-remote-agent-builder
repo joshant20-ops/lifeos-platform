@@ -10,6 +10,8 @@ PROVIDER=${6:?provider required}
 ADAPTER=${7:?adapter required}
 MODEL=${8:-}
 CREDENTIAL_NAMES=${9:-}
+AGENT_TIMEOUT_SECONDS=${LIFEOS_AGENT_TIMEOUT_SECONDS:-600}
+[[ "$AGENT_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] && (( AGENT_TIMEOUT_SECONDS >= 60 && AGENT_TIMEOUT_SECONDS <= 1200 )) || { echo "PROVIDER_ERROR=invalid_agent_timeout"; exit 53; }
 SECRET_FILE=${LIFEOS_PROVIDER_SECRETS_FILE:-$HOME/.config/lifeos/provider-secrets.env}
 BROKER_CONFIG=${LIFEOS_GOVERNOR_BROKER_CONFIG:-$HOME/.config/lifeos/governor-broker.env}
 
@@ -75,15 +77,19 @@ resolve_agent() {
   esac
 }
 
+run_bounded() {
+  /usr/bin/timeout --signal=TERM --kill-after=15s "${AGENT_TIMEOUT_SECONDS}s" "$@"
+}
+
 run_agent() {
   case "$ADAPTER" in
     codex)
       HELP=$($AGENT exec --help 2>&1 || true)
-      if grep -q -- '--full-auto' <<<"$HELP"; then "$AGENT" exec --full-auto "$PROMPT" </dev/null
-      elif "$AGENT" --help 2>&1 | grep -q -- '--full-auto'; then "$AGENT" --full-auto exec "$PROMPT" </dev/null
-      else "$AGENT" exec "$PROMPT" </dev/null; fi
+      if grep -q -- '--full-auto' <<<"$HELP"; then run_bounded "$AGENT" exec --full-auto "$PROMPT" </dev/null
+      elif "$AGENT" --help 2>&1 | grep -q -- '--full-auto'; then run_bounded "$AGENT" --full-auto exec "$PROMPT" </dev/null
+      else run_bounded "$AGENT" exec "$PROMPT" </dev/null; fi
       ;;
-    openhands) "$AGENT" --headless --override-with-envs -t "$PROMPT" </dev/null ;;
+    openhands) run_bounded "$AGENT" --headless --override-with-envs -t "$PROMPT" </dev/null ;;
   esac
 }
 
@@ -111,6 +117,10 @@ set +e
 run_agent 2>&1 | tee "$AGENT_LOG"
 AGENT_RC=${PIPESTATUS[0]}
 set -e
+if (( AGENT_RC == 124 || AGENT_RC == 137 )); then
+  echo "HANDOFF_ERROR=agent_timeout_${AGENT_TIMEOUT_SECONDS}s"
+  exit "$AGENT_RC"
+fi
 (( AGENT_RC == 0 )) || { echo "HANDOFF_ERROR=agent_exit_${AGENT_RC}"; exit "$AGENT_RC"; }
 # OpenHands/Codex may decorate final output with ANSI or TUI frame characters.
 # Require a real explicit RESULT=PASS after normalisation; do not match the
