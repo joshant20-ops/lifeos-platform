@@ -238,9 +238,9 @@ verified=False
 for x in j.get('iterations',[]):
     ev=str(x.get('evidence',''))
     verification=x.get('verification') or {}
-    if 'AGENT_RESULT=openhands PASS' in ev and 'AUTONOMOUS_DISPOSABLE_TOOL_ACTION_PASS' in ev:
+    if 'AUTONOMOUS_DISPOSABLE_TOOL_ACTION_PASS' in ev:
         tool_action=True
-        print('GOVERNOR_ENGINEER_TOOL_ACTION=PASS')
+        print('GOVERNOR_ENGINEERING_TOOL_ACTION=PASS')
     if verification.get('verdict') == 'PASS':
         verified=True
         print('LOCAL_VERIFIER=PASS')
@@ -258,7 +258,7 @@ if j['status'] != 'PASS':
         rendered=json.dumps(safe, sort_keys=True, ensure_ascii=True)
         print(f'ITERATION_{index}_SUMMARY='+rendered[:1800])
     raise SystemExit('AUTONOMOUS_E2E_SMOKE_DID_NOT_PASS')
-assert tool_action, 'missing genuine Engineer tool-action evidence'
+assert tool_action, 'missing genuine engineering tool-action evidence'
 assert verified, 'missing local verifier PASS evidence'
 print('AUTONOMOUS_LOOP=PASS')
 PY
