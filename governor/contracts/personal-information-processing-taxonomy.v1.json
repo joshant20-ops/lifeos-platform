@@ -1,0 +1,24 @@
+{
+  "taxonomy_version": "pip-taxonomy-v1",
+  "principles": [
+    "preserve-useful-source-organisation",
+    "prefer-small-durable-domain-set",
+    "unknown-over-invention",
+    "deterministic-before-local-ai",
+    "proposal-before-authoritative-write"
+  ],
+  "domains": ["finance", "property", "employment", "vehicles", "household", "personal-administration", "unknown"],
+  "information_types": ["invoice", "receipt", "statement", "contract", "policy", "tax-document", "payslip", "tenancy-record", "vehicle-record", "booking", "official-correspondence", "actionable-email", "durable-email", "other", "unknown"],
+  "confidence_policy": {
+    "high": {"minimum": 0.9, "future_action": "eligible-for-deterministic-policy-at-P4-or-later"},
+    "medium": {"minimum": 0.65, "future_action": "proposal-review-or-corroborate"},
+    "low": {"minimum": 0.0, "future_action": "unresolved-or-review"},
+    "unknown": {"score": null, "future_action": "unresolved"}
+  },
+  "source_metadata_policy": {
+    "preserve_existing_correspondent": true,
+    "preserve_existing_document_type": true,
+    "preserve_existing_tags": true,
+    "replace_user_organisation_automatically": false
+  }
+}

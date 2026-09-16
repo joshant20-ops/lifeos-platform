@@ -93,3 +93,29 @@ document classifications or permission to mutate metadata.
 
 P1 may now define the versioned schema and taxonomy using synthetic fixtures.
 No P0 code permits real Gmail processing or Paperless metadata writes.
+
+## P1 processing contract
+
+P1 defines schema version 1 in
+`governor/contracts/personal-information-processing.schema.json` and taxonomy
+`pip-taxonomy-v1`. This gate uses synthetic fixtures only and permits no production Paperless or Gmail mutation.
+
+The deliberately small domains are Finance, Property, Employment, Vehicles,
+Household, Personal Administration and Unknown. Information types describe
+durable functional kinds rather than provider-specific tags. Existing
+user-created Paperless correspondents, document types and tags are preserved;
+the contract explicitly forbids automatic replacement of that organisation.
+
+Processing records retain stable authoritative references, never source
+content. They carry an explicit processing state, method, confidence band and
+score, controlled reason codes, dates/periods, entity and source-object
+relationships, processor/rule versions, provenance, an exception state and a
+fail-closed mutation control. `unknown` and `review` are valid outcomes;
+coverage is never improved by inventing a classification.
+
+Confidence policy is versioned with the taxonomy. High begins at 0.90 and may
+only become eligible for a later deterministic P4 action policy; it is not
+mutation permission. Medium begins at 0.65 and requires review or independent
+corroboration. Low and unknown remain unresolved/review. Local AI is encoded
+only as `local-ai-proposal`; deterministic validation and later gate policy
+remain authoritative.
