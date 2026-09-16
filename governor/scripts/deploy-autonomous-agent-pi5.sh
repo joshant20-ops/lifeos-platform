@@ -168,10 +168,12 @@ BROKER_OUT=$(curl -fsS --max-time 180 \
   -H "Authorization: Bearer $(cat "$BROKER_TOKEN")" \
   -d "$BROKER_REQ" http://127.0.0.1:8790/v1/chat/completions)
 python3 - "$BROKER_OUT" <<'PY'
-import json,sys
+import json,pathlib,sys
 j=json.loads(sys.argv[1])
 assert j['lifeos_privacy']=='normal', j
-assert j['lifeos_provider']=='ollama', j
+policy=json.loads(pathlib.Path('governor/policy.json').read_text())
+direct_cloud={p['id'] for p in policy['providers'] if p.get('adapter')=='direct-cloud'}
+assert j['lifeos_provider'] in direct_cloud, (j, direct_cloud)
 choice=j['choices'][0]
 assert choice['finish_reason']=='tool_calls', choice
 calls=choice['message'].get('tool_calls') or []
@@ -187,8 +189,9 @@ for call in calls:
         match=call
         break
 assert match is not None, calls
-print('BROKER_AUTHENTICATED_LOCAL_TOOL_CALL=PASS')
-print('BROKER_PROVIDER=ollama')
+print('BROKER_AUTHENTICATED_TOOL_CALL=PASS')
+print('BROKER_PROVIDER='+j['lifeos_provider'])
+print('BROKER_NORMAL_TOOL_ROUTE=DIRECT_CLOUD')
 PY
 
 printf '\n===== 6/8 — UI + PRIVACY FAIL-CLOSED =====\n'
