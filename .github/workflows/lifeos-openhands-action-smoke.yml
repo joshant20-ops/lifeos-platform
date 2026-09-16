@@ -88,7 +88,7 @@ jobs:
           request=$(python3 - <<'PY'
           import json
           print(json.dumps({
-              'model':'lifeos-engineering-normal',
+              'model':'lifeos-local-only-normal',
               'messages':[{'role':'user','content':'Call report_test_value with value OPENHANDS_GATE_BROKER_OK. Do not answer normally.'}],
               'tools':[{'type':'function','function':{
                   'name':'report_test_value',
@@ -106,7 +106,7 @@ jobs:
           python3 - "$out" <<'PY'
           import json,sys
           j=json.loads(sys.argv[1])
-          assert j.get('lifeos_privacy') == 'normal', j
+          assert j.get('lifeos_privacy') == 'local-only', j
           assert j.get('lifeos_provider') == 'ollama', j
           c=j['choices'][0]
           assert c.get('finish_reason') == 'tool_calls', c
@@ -120,7 +120,7 @@ jobs:
               if args.get('value') == 'OPENHANDS_GATE_BROKER_OK': ok=True
           assert ok, c
           print('GOVERNOR_AUTHENTICATED_TOOL_ROUTE=PASS')
-          print('GOVERNOR_NORMAL_TOOL_ROUTE=LOCAL_OLLAMA')
+          print('GOVERNOR_PRIVATE_TOOL_ROUTE=LOCAL_OLLAMA')
           PY
 
       - name: Require genuine OpenHands filesystem action
@@ -137,8 +137,8 @@ jobs:
           cleanup() { rm -f "$log" "$runtime"; }
           trap cleanup EXIT
           set +e
-          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=normal LIFEOS_JOB_PRIVACY=normal \
-            /usr/local/libexec/lifeos-cloud-builder "$request" 1 '' | tee "$log"
+          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=normal LIFEOS_JOB_PRIVACY=local-only \
+            /usr/local/libexec/lifeos-local-builder "$request" 1 '' | tee "$log"
           rc=${PIPESTATUS[0]}
           set -e
           test "$rc" -eq 0

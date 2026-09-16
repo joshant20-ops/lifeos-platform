@@ -5,8 +5,10 @@ SERVER = (ROOT / "governor/autonomous_agent_server.py").read_text(encoding="utf-
 BUILDER = (ROOT / "governor/scripts/lifeos-cloud-builder").read_text(encoding="utf-8")
 
 
-def test_cloud_builder_marks_sanitized_engineering_model():
-    assert 'openai/lifeos-engineering-${TASK_CLASS}' in BUILDER
+def test_cloud_builder_uses_codex_only_for_sanitized_engineering():
+    assert 'AGENTS+=("codex|codex|")' in BUILDER
+    assert 'AGENTS+=("governor-broker|openhands|' not in BUILDER
+    assert 'cloud_builder_forbidden_for_local_only_job' in BUILDER
 
 
 def test_server_honors_only_explicit_engineering_model_capability():

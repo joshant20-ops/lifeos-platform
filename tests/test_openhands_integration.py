@@ -15,30 +15,34 @@ def policy():
     return load_policy(ROOT / "governor/policy.json")
 
 
-def test_stable_base_selects_local_before_codex():
+def test_stable_base_selects_codex_and_excludes_private_local():
     result = route(
         policy(),
         "normal",
         {"GROQ_API_KEY"},
         available_adapters={"local-builder", "codex"},
     )
-    assert result["selected_provider"] == "ollama"
+    assert result["selected_provider"] == "codex"
     assert {x["provider"] for x in result["considered"]} == {"ollama", "codex"}
+    local = next(x for x in result["considered"] if x["provider"] == "ollama")
+    assert local["status"] == "PRIVACY_FORBIDDEN"
     assert result["max_attempts"] == 2
 
 
-def test_local_cooldown_routes_to_codex_without_retry_storm():
+def test_private_local_cooldown_fails_closed_without_codex_fallback():
     result = route(
         policy(),
         "normal",
         {"GEMINI_API_KEY", "GROQ_API_KEY"},
         {"ollama": 101},
-        now=100,
+        now=100, privacy="local-only",
         available_adapters={"local-builder", "codex"},
     )
-    assert result["selected_provider"] == "codex"
+    assert result["selected_provider"] is None
     local = next(x for x in result["considered"] if x["provider"] == "ollama")
     assert local["status"] == "COOLDOWN"
+    codex = next(x for x in result["considered"] if x["provider"] == "codex")
+    assert codex["status"] == "PRIVACY_FORBIDDEN"
 
 
 def test_local_only_never_selects_cloud_or_codex():
@@ -57,9 +61,9 @@ def test_local_only_never_selects_cloud_or_codex():
     assert forbidden and all(x["status"] == "PRIVACY_FORBIDDEN" for x in forbidden)
 
 
-def test_adapter_availability_is_part_of_routing_decision():
-    result = route(policy(), "normal", set(), available_adapters={"codex"})
-    assert result["selected_provider"] == "codex"
+def test_adapter_availability_is_part_of_private_routing_decision():
+    result = route(policy(), "normal", set(), privacy="local-only", available_adapters={"codex"})
+    assert result["selected_provider"] is None
     ollama = next(x for x in result["considered"] if x["provider"] == "ollama")
     assert ollama["status"] == "ADAPTER_UNAVAILABLE"
 
