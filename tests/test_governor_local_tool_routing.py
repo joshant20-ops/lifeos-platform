@@ -12,14 +12,16 @@ assert spec and spec.loader
 spec.loader.exec_module(broker)
 
 
-def test_runtime_acceptance_probes_follow_local_stable_base_tool_policy():
+def test_runtime_acceptance_probes_use_explicit_private_local_policy():
     deploy = (ROOT / "governor" / "scripts" / "deploy-autonomous-agent-pi5.sh").read_text()
     smoke = (ROOT / ".github" / "workflows" / "lifeos-openhands-action-smoke.yml").read_text()
     for probe in (deploy, smoke):
         assert "lifeos_provider') == 'ollama'" in probe or "j['lifeos_provider']=='ollama'" in probe
+        assert "lifeos-local-only-normal" in probe
+        assert "lifeos_privacy') == 'local-only'" in probe or "j['lifeos_privacy']=='local-only'" in probe
 
 
-def test_normal_generation_candidates_use_local_stable_base_only():
+def test_broker_candidates_expose_only_local_adapter_but_privacy_policy_decides_eligibility():
     with mock.patch.object(broker.ROUTER, "load_policy", return_value={"providers": []}), \
          mock.patch.object(broker.ROUTER, "load_secret_names", return_value=set()), \
          mock.patch.object(broker.ROUTER, "eligible_providers", return_value=([], [])) as eligible:
