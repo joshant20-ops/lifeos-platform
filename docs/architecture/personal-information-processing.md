@@ -1,6 +1,6 @@
 # Personal Information Processing
 
-Status: gated implementation; **P0 accepted**. P1 is the next gate; P2 through
+Status: gated implementation; **P0 and P1 accepted**. P2 is the next gate; P3 through
 P10 remain blocked until their preceding acceptance gate has durable evidence.
 
 ## Authority and privacy
@@ -119,3 +119,9 @@ mutation permission. Medium begins at 0.65 and requires review or independent
 corroboration. Low and unknown remain unresolved/review. Local AI is encoded
 only as `local-ai-proposal`; deterministic validation and later gate policy
 remain authoritative.
+
+## P1 acceptance evidence
+
+P1 passed in [PR #273](https://github.com/joshant20-ops/lifeos-platform/pull/273), merged as `9b21fef3d6e22e7aed55b45f93c76d074d997257`. Focused validation proved all synthetic records recursively satisfy schema v1; taxonomy and schema enums remain identical and bounded; source references retain authority without copying content; high, medium and unknown confidence/exception paths are represented; private payload and credential fields are absent; and every production mutation flag is fixed false. Repository CI (`validate`, `security`, and `contract`) passed. No real Paperless or Gmail object was read or mutated by P1.
+
+P2 may now implement deterministic processing against a bounded representative real Paperless sample, with local-only staging results and no production Paperless metadata writes.
