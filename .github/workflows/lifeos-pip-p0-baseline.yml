@@ -33,7 +33,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          /home/joshan/lifeos-platform/scripts/lifeos-pip-p0-paperless-inventory.sh | tee /tmp/lifeos-pip-p0-baseline.txt
+          bash /home/joshan/lifeos-platform/scripts/lifeos-pip-p0-paperless-inventory.sh | tee /tmp/lifeos-pip-p0-baseline.txt
           grep -qx 'PAPERLESS_MUTATION=NONE' /tmp/lifeos-pip-p0-baseline.txt
           grep -qx 'PRIVATE_FIELDS_EMITTED=NONE' /tmp/lifeos-pip-p0-baseline.txt
           grep -qx 'PRIVACY_LOCAL_ONLY=PASS' /tmp/lifeos-pip-p0-baseline.txt
