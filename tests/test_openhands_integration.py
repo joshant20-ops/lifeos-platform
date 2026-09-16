@@ -226,12 +226,21 @@ def test_governor_deploy_runs_true_autonomous_e2e_gate():
 def test_autonomous_e2e_respects_read_only_canonical_checkout():
     deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
     smoke = deploy.split("SMOKE_REQ=", 1)[1].split("SMOKE_JSON=", 1)[0]
-    assert "Do not modify the repository" in smoke
+    assert "Do not change tracked files" in smoke
     assert "do not return a Pi runtime launcher" in smoke
     assert "create the required per-job Pi5 runtime launcher" not in smoke
     assert "GOVERNOR_ENGINEER_TOOL_ACTION=PASS" in deploy
     assert "LOCAL_VERIFIER=PASS" in deploy
     assert "missing local verifier PASS evidence" in deploy
+
+
+def test_autonomous_e2e_action_stays_inside_disposable_worktree():
+    deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
+    smoke = deploy.split("SMOKE_REQ=", 1)[1].split("SMOKE_JSON=", 1)[0]
+    assert ".lifeos-governor-e2e-smoke" in smoke
+    assert "/tmp/lifeos-governor-e2e-smoke" not in smoke
+    assert "verify git status is clean" in smoke
+    assert "Do not change tracked files" in smoke
 
 
 def test_openhands_smoke_uses_bounded_repeated_engineer_wake():
