@@ -17,17 +17,16 @@ def secret_file(tmp_path, names):
     return path
 
 
-def test_normal_inference_uses_local_stable_base(monkeypatch, tmp_path):
+def test_normal_direct_inference_does_not_leak_to_private_local(monkeypatch, tmp_path):
     monkeypatch.setattr(
         BROKER,
         "SECRETS_PATH",
         secret_file(tmp_path, {"GEMINI_API_KEY", "GROQ_API_KEY", "OPENROUTER_API_KEY", "CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID"}),
     )
-    eligible, _ = BROKER.candidates(privacy="normal", task_class="normal")
-    assert eligible
-    assert [p["id"] for p in eligible] == ["ollama"]
-    assert eligible[0]["adapter"] == "local-builder"
-    assert "codex" not in {p["id"] for p in eligible}
+    eligible, considered = BROKER.candidates(privacy="normal", task_class="normal")
+    assert eligible == []
+    ollama = next(x for x in considered if x["provider"] == "ollama")
+    assert ollama["status"] == "PRIVACY_FORBIDDEN"
 
 
 def test_local_only_can_only_obtain_local_provider(monkeypatch, tmp_path):
@@ -110,7 +109,7 @@ def test_tool_chat_translates_gemini_function_call(monkeypatch):
     call = result["message"]["tool_calls"][0]
     assert call["id"] == "call123"
     assert call["function"]["name"] == "write_file"
-    assert '"path":"x"' in call["function"]["arguments"]
+    assert '\"path\":\"x\"' in call["function"]["arguments"]
 
 
 def test_tool_chat_private_fails_closed_without_cloud_fallback(monkeypatch):
@@ -138,28 +137,16 @@ def test_tool_chat_private_fails_closed_without_cloud_fallback(monkeypatch):
     assert calls == [("local-only", "normal")]
 
 
-def test_normal_tool_chat_uses_local_stable_base(monkeypatch):
-    local = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
-    routed = []
-
-    def candidates(*, privacy, task_class):
-        assert task_class == "normal"
-        return [local], []
-
-    monkeypatch.setattr(BROKER, "candidates", candidates)
-    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
+def test_normal_tool_chat_fails_closed_without_private_local(monkeypatch):
+    monkeypatch.setattr(BROKER, "candidates", lambda **_: ([], []))
     monkeypatch.setattr(
         BROKER,
         "_ollama_chat",
-        lambda *args, **kwargs: (
-            routed.append("ollama")
-            or {"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
-        ),
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("normal work reached private Ollama")),
     )
-    result = BROKER.chat(
-        [{"role": "user", "content": "sanitized engineering task"}],
-        tools=[{"type": "function", "function": {"name": "x", "parameters": {"type": "object"}}}],
-        privacy="normal",
-    )
-    assert routed == ["ollama"]
-    assert result["provider"] == "ollama"
+    with pytest.raises(BROKER.BrokerError, match="no eligible tool-capable provider"):
+        BROKER.chat(
+            [{"role": "user", "content": "sanitized engineering task"}],
+            tools=[{"type": "function", "function": {"name": "x", "parameters": {"type": "object"}}}],
+            privacy="normal",
+        )

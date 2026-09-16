@@ -15,9 +15,10 @@
     },
     {
       "id": "ollama",
-      "role": "local-engineer",
+      "role": "local-private-engineer",
       "adapter": "local-builder",
       "privacy": "local",
+      "private_only": true,
       "credentials": [],
       "cost": "local",
       "capability": 2,
