@@ -1,0 +1,52 @@
+{
+  "fixtures": [
+    {
+      "schema_version": 1,
+      "processor_version": "1.0.0",
+      "privacy": "local-only",
+      "mode": "proposal-only",
+      "object_id": "synthetic-property-invoice",
+      "source": {"system": "synthetic-fixture", "source_object_id": "synthetic-doc-001", "authoritative_ref": "paperless:synthetic-doc-001", "object_kind": "document", "observed_at": "2026-09-16T19:00:00Z", "content_copied": false},
+      "processing": {"state": "processed", "stage": "validated-proposal", "attempt": 1, "idempotency_key": "1111111111111111111111111111111111111111111111111111111111111111"},
+      "classification": {"domain": "property", "information_type": "invoice", "correspondent_ref": "synthetic-supplier", "sender_ref": null, "method": "deterministic", "confidence": {"band": "high", "score": 0.96}, "reason_codes": ["known-pattern", "identifier-pattern"]},
+      "dates": {"document_date": "2026-08-20", "period_start": null, "period_end": null, "tax_year": "2026-27"},
+      "entity_links": [{"entity_ref": "synthetic-property-1", "relation": "evidence-for", "confidence": {"band": "high", "score": 0.97}}],
+      "relationships": [{"target_system": "accounting-ots", "target_object_id": "synthetic-ledger-candidate-1", "relation": "evidence-for", "status": "proposed", "confidence": {"band": "medium", "score": 0.72}}],
+      "provenance": {"run_id": "synthetic-run-1", "rule_set_version": "pip-taxonomy-v1", "processor_version": "1.0.0", "canonical_revision": "0000000000000000000000000000000000000000", "processed_at": "2026-09-16T19:01:00Z"},
+      "exception": {"code": "none", "retryable": false},
+      "mutation_control": {"production_write_permitted": false, "paperless_write_performed": false, "gmail_write_performed": false, "authority_delete_performed": false}
+    },
+    {
+      "schema_version": 1,
+      "processor_version": "1.0.0",
+      "privacy": "local-only",
+      "mode": "proposal-only",
+      "object_id": "synthetic-uncertain-email",
+      "source": {"system": "synthetic-fixture", "source_object_id": "synthetic-mail-001", "authoritative_ref": "gmail:synthetic-mail-001", "object_kind": "email", "observed_at": "2026-09-16T19:02:00Z", "content_copied": false},
+      "processing": {"state": "review", "stage": "local-ai-proposal", "attempt": 1, "idempotency_key": "2222222222222222222222222222222222222222222222222222222222222222"},
+      "classification": {"domain": "personal-administration", "information_type": "actionable-email", "correspondent_ref": null, "sender_ref": "synthetic-sender", "method": "local-ai-proposal", "confidence": {"band": "medium", "score": 0.7}, "reason_codes": ["semantic-proposal", "insufficient-evidence"]},
+      "dates": {"document_date": null, "period_start": null, "period_end": null, "tax_year": null},
+      "entity_links": [],
+      "relationships": [],
+      "provenance": {"run_id": "synthetic-run-1", "rule_set_version": "pip-taxonomy-v1", "processor_version": "1.0.0", "canonical_revision": "0000000000000000000000000000000000000000", "processed_at": "2026-09-16T19:03:00Z"},
+      "exception": {"code": "insufficient-evidence", "retryable": false},
+      "mutation_control": {"production_write_permitted": false, "paperless_write_performed": false, "gmail_write_performed": false, "authority_delete_performed": false}
+    },
+    {
+      "schema_version": 1,
+      "processor_version": "1.0.0",
+      "privacy": "local-only",
+      "mode": "proposal-only",
+      "object_id": "synthetic-ocr-failure",
+      "source": {"system": "synthetic-fixture", "source_object_id": "synthetic-doc-002", "authoritative_ref": "paperless:synthetic-doc-002", "object_kind": "document", "observed_at": "2026-09-16T19:04:00Z", "content_copied": false},
+      "processing": {"state": "ocr-failure", "stage": "source-read", "attempt": 1, "idempotency_key": "3333333333333333333333333333333333333333333333333333333333333333"},
+      "classification": {"domain": "unknown", "information_type": "unknown", "correspondent_ref": null, "sender_ref": null, "method": "none", "confidence": {"band": "unknown", "score": null}, "reason_codes": ["insufficient-evidence"]},
+      "dates": {"document_date": null, "period_start": null, "period_end": null, "tax_year": null},
+      "entity_links": [],
+      "relationships": [],
+      "provenance": {"run_id": "synthetic-run-1", "rule_set_version": "pip-taxonomy-v1", "processor_version": "1.0.0", "canonical_revision": "0000000000000000000000000000000000000000", "processed_at": "2026-09-16T19:05:00Z"},
+      "exception": {"code": "ocr-missing", "retryable": true},
+      "mutation_control": {"production_write_permitted": false, "paperless_write_performed": false, "gmail_write_performed": false, "authority_delete_performed": false}
+    }
+  ]
+}
