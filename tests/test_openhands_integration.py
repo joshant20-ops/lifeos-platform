@@ -246,6 +246,12 @@ def test_openhands_smoke_uses_bounded_repeated_engineer_wake():
     assert "attempt % 6 == 0" in wake
 
 
+def test_openhands_smoke_normalizes_optional_terminal_newline():
+    workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
+    assert "p.read_text().splitlines()" in workflow
+    assert "actual == expected" in workflow
+
+
 def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
     script = (ROOT / "governor/scripts/lifeos-cloud-builder").read_text()
     assert 'trap \'rm -f "$SNAPSHOT"\' EXIT' not in script
