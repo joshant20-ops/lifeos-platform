@@ -229,9 +229,14 @@ def test_autonomous_e2e_respects_read_only_canonical_checkout():
     assert "Do not change tracked files" in smoke
     assert "do not return a Pi runtime launcher" in smoke
     assert "create the required per-job Pi5 runtime launcher" not in smoke
-    assert "GOVERNOR_ENGINEER_TOOL_ACTION=PASS" in deploy
+    assert "GOVERNOR_ENGINEERING_TOOL_ACTION=PASS" in deploy
     assert "LOCAL_VERIFIER=PASS" in deploy
     assert "missing local verifier PASS evidence" in deploy
+    assert "if 'AGENT_RESULT=openhands PASS' in ev" not in deploy
+
+    workflow = (ROOT / ".github/workflows/lifeos-governor-broker-deploy.yml").read_text()
+    assert "grep -q '^AGENT_RESULT=openhands PASS$'" in workflow
+    assert "! grep -q '^AGENT_RESULT=codex PASS$'" in workflow
 
 
 def test_autonomous_e2e_action_stays_inside_disposable_worktree():
