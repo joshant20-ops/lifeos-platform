@@ -18,12 +18,14 @@ and existing energy sources. It did not find a proven Finance & Assets ledger
 or ingestion implementation. Historical Governor job records are not proof of
 one.
 
-Select the OTS core only after a bounded, synthetic-data evaluation. Evaluate
-FreeAgent, Xero, QuickBooks Online and Sage against the current HMRC-recognised
-software finder, API entitlement, UK property-income/MTD coverage, bank feeds,
-exports, audit history and cost. Evaluate a landlord-specific product only if a
-documented property workflow gap remains. This shortlist is not a product
-selection or permission to purchase.
+The bounded evaluation selects **FreeAgent as the preferred first OTS core**, subject
+to Joshan's account/subscription choice and OAuth authorisation. It most directly
+fits the rental-first path: UK unincorporated-landlord/property dimensions,
+property-income MTD workflow, native bank feeds and an OAuth API exposing bank
+accounts and transactions. Xero, QuickBooks Online and Sage remain alternatives
+if account entitlement, cost or a sandbox proof invalidates this fit. This is a
+technical selection, not permission to purchase, authorise an account or submit
+to HMRC.
 
 Use the selected ledger's native bank feeds first. If they are inadequate,
 evaluate a regulated read-only Open Banking provider separately. Account
@@ -129,3 +131,32 @@ exports are Synology mounts outside that path. Before Wave C acceptance:
 Wave C discovery passes when stages 1 and 2 identify the product decision gate
 and the synthetic contract tests pass. It does not imply live ingestion, an
 authoritative classification, an accounting entry or an HMRC submission.
+
+## Pre-authorisation read-only implementation
+
+`governor/finance_assets_readonly.py` implements the permanent provider boundary,
+not a one-off importer. The HTTP transport exposes GET only. The FreeAgent adapter
+normalises stable source identity, dates, signed minor-unit amounts, currency,
+source categories and property references without retaining descriptions in the
+read model. A local SQLite projection rejects conflicting observations and makes
+repeat ingestion idempotent. Exact date/amount/currency Paperless references can
+be linked only when they identify one record; ambiguous candidates remain unmatched.
+The aggregate query reports income, expenses, net, uncategorised records and
+missing evidence for a period. Every bounded ingestion can compare provider
+record count/totals with the resulting projection and reports `REVIEW_REQUIRED`
+rather than concealing a conflict or discrepancy.
+
+The checked-in fixture is synthetic. No production OAuth token or financial
+record is required to test this foundation. Tower/Ollama is intentionally absent
+from the adapter and projection: permanent deterministic software owns ingestion,
+validation, arithmetic, policy and reporting. Local AI may later make a structured
+classification proposal for private data after deterministic processing, but it
+is neither system designer nor ledger, cannot establish accounting truth and
+cannot directly mutate FreeAgent, Paperless, a bank or HMRC.
+
+Real-data acceptance remains blocked until a human selects/creates the FreeAgent
+account and completes OAuth consent. The first production deployment requests
+access to read properties, bank accounts, bank transactions and explanations,
+bills/expenses/invoices and accounting periods. LifeOS will use GET only even if
+FreeAgent's OAuth grant is broader. Bank-feed consent and HMRC authority remain
+separate later human boundaries.
