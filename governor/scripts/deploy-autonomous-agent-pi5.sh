@@ -214,7 +214,7 @@ printf '\n===== 7/8 — TRUE END-TO-END AUTONOMOUS SMOKE =====\n'
 if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then
   printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\n'
 else
-SMOKE_REQ='Prove the LifeOS Governor to Engineer to verifier loop works without changing canonical source. In the disposable Engineer environment, use actual filesystem and shell tools to create /tmp/lifeos-governor-e2e-smoke.txt containing exactly GOVERNOR_DISPOSABLE_TOOL_ACTION, read it back and verify the exact content, delete it, then verify it is absent. Do not modify the repository, do not commit or push, and do not return a Pi runtime launcher or deployment handoff. Finish with RESULT=PASS, TESTS=AUTONOMOUS_DISPOSABLE_TOOL_ACTION_PASS, NEXT_RUNTIME_CHECK=none. Unrelated repository findings are not blockers.'
+SMOKE_REQ='Prove the LifeOS Governor to Engineer to verifier loop works without changing canonical source. In your disposable Engineer worktree, use actual filesystem and shell tools to create the temporary untracked file .lifeos-governor-e2e-smoke containing exactly GOVERNOR_DISPOSABLE_TOOL_ACTION, read it back and verify the exact content, delete it, verify it is absent, and verify git status is clean. Do not change tracked files, do not commit or push, and do not return a Pi runtime launcher or deployment handoff. Finish with RESULT=PASS, TESTS=AUTONOMOUS_DISPOSABLE_TOOL_ACTION_PASS, NEXT_RUNTIME_CHECK=none. Unrelated repository findings are not blockers.'
 SMOKE_JSON=$(python3 - "$SMOKE_REQ" <<'PY'
 import json,sys
 print(json.dumps({'request':sys.argv[1]}))
