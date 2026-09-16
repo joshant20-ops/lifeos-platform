@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "privacy": "local-only",
+  "mode": "read-only",
+  "generated_at": "2026-04-06T12:00:00Z",
+  "records": [
+    {
+      "record_id": "synthetic-record-0001",
+      "entity_ref": "synthetic-rental-entity",
+      "asset_ref": "synthetic-property-001",
+      "source": {
+        "system": "synthetic-fixture",
+        "source_record_id": "txn-0001",
+        "fingerprint": "769dc16fda8a975985b239078162697f829fc2e230a0cc5141f384f4635884d8",
+        "fetched_at": "2026-04-06T12:00:00Z",
+        "read_only": true
+      },
+      "transaction": {
+        "kind": "expense",
+        "amount_minor": -12345,
+        "currency": "GBP",
+        "booked_on": "2026-04-06",
+        "value_on": "2026-04-06",
+        "tax_year": "2026-27"
+      },
+      "classification": {
+        "state": "proposed",
+        "category_ref": "synthetic-property-maintenance",
+        "origin": "local-ai-proposal",
+        "confidence": 0.75,
+        "ai_advisory_only": true,
+        "authority_write_performed": false
+      },
+      "evidence": [
+        {
+          "paperless_document_id": 900001,
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "relation": "invoice",
+          "verified": true
+        }
+      ],
+      "reconciliation": {
+        "state": "matched",
+        "ledger_record_id": "synthetic-ledger-0001",
+        "matched_amount_minor": -12345,
+        "matched_currency": "GBP",
+        "rule": "exact-amount-currency"
+      },
+      "mutation_control": {
+        "permitted": false,
+        "approval_reference": null,
+        "ledger_write_performed": false,
+        "hmrc_submission_performed": false
+      },
+      "provenance": {
+        "import_run_id": "synthetic-import-0001",
+        "adapter_version": "fixture-v1",
+        "canonical_revision": "0000000000000000000000000000000000000000",
+        "observed_at": "2026-04-06T12:00:00Z"
+      }
+    }
+  ]
+}

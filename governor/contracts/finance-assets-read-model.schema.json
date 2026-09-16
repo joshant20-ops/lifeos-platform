@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lifeos.local/contracts/finance-assets-read-model.schema.json",
+  "title": "LifeOS Finance & Assets Read Model",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "privacy", "mode", "generated_at", "records"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "privacy": {"const": "local-only"},
+    "mode": {"const": "read-only"},
+    "generated_at": {"type": "string", "format": "date-time"},
+    "records": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/record"}
+    }
+  },
+  "$defs": {
+    "stable_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "nullable_stable_id": {
+      "anyOf": [
+        {"$ref": "#/$defs/stable_id"},
+        {"type": "null"}
+      ]
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record_id", "entity_ref", "asset_ref", "source", "transaction",
+        "classification", "evidence", "reconciliation", "mutation_control",
+        "provenance"
+      ],
+      "properties": {
+        "record_id": {"$ref": "#/$defs/stable_id"},
+        "entity_ref": {"$ref": "#/$defs/stable_id"},
+        "asset_ref": {"$ref": "#/$defs/nullable_stable_id"},
+        "source": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["system", "source_record_id", "fingerprint", "fetched_at", "read_only"],
+          "properties": {
+            "system": {"enum": ["synthetic-fixture", "accounting-ots", "open-banking", "manual-import"]},
+            "source_record_id": {"$ref": "#/$defs/stable_id"},
+            "fingerprint": {"$ref": "#/$defs/sha256"},
+            "fetched_at": {"type": "string", "format": "date-time"},
+            "read_only": {"const": true}
+          }
+        },
+        "transaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "amount_minor", "currency", "booked_on", "value_on", "tax_year"],
+          "properties": {
+            "kind": {"enum": ["income", "expense", "transfer", "refund"]},
+            "amount_minor": {"type": "integer"},
+            "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+            "booked_on": {"type": "string", "format": "date"},
+            "value_on": {"type": "string", "format": "date"},
+            "tax_year": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$"}
+          }
+        },
+        "classification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "category_ref", "origin", "confidence", "ai_advisory_only", "authority_write_performed"],
+          "properties": {
+            "state": {"enum": ["unclassified", "proposed", "review-required", "source-authoritative"]},
+            "category_ref": {"$ref": "#/$defs/nullable_stable_id"},
+            "origin": {"enum": ["none", "deterministic", "local-ai-proposal", "accounting-ots"]},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "ai_advisory_only": {"const": true},
+            "authority_write_performed": {"const": false}
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["paperless_document_id", "sha256", "relation", "verified"],
+            "properties": {
+              "paperless_document_id": {"type": "integer", "minimum": 1},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "relation": {"enum": ["receipt", "invoice", "statement", "contract", "tax-evidence", "vehicle-evidence"]},
+              "verified": {"type": "boolean"}
+            }
+          }
+        },
+        "reconciliation": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["state", "ledger_record_id", "matched_amount_minor", "matched_currency", "rule"],
+          "properties": {
+            "state": {"enum": ["unreconciled", "matched", "duplicate", "excluded", "review-required"]},
+            "ledger_record_id": {"$ref": "#/$defs/nullable_stable_id"},
+            "matched_amount_minor": {"type": ["integer", "null"]},
+            "matched_currency": {"type": ["string", "null"], "pattern": "^[A-Z]{3}$"},
+            "rule": {"enum": ["none", "exact-amount-currency", "source-duplicate", "human-review"]}
+          }
+        },
+        "mutation_control": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["permitted", "approval_reference", "ledger_write_performed", "hmrc_submission_performed"],
+          "properties": {
+            "permitted": {"const": false},
+            "approval_reference": {"type": "null"},
+            "ledger_write_performed": {"const": false},
+            "hmrc_submission_performed": {"const": false}
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["import_run_id", "adapter_version", "canonical_revision", "observed_at"],
+          "properties": {
+            "import_run_id": {"$ref": "#/$defs/stable_id"},
+            "adapter_version": {"$ref": "#/$defs/stable_id"},
+            "canonical_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+            "observed_at": {"type": "string", "format": "date-time"}
+          }
+        }
+      }
+    }
+  }
+}
