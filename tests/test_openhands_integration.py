@@ -223,6 +223,17 @@ def test_governor_deploy_runs_true_autonomous_e2e_gate():
     assert 'set_stage(job, "verifier"' in agent
 
 
+def test_autonomous_e2e_respects_read_only_canonical_checkout():
+    deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
+    smoke = deploy.split("SMOKE_REQ=", 1)[1].split("SMOKE_JSON=", 1)[0]
+    assert "Do not modify the repository" in smoke
+    assert "do not return a Pi runtime launcher" in smoke
+    assert "create the required per-job Pi5 runtime launcher" not in smoke
+    assert "GOVERNOR_ENGINEER_TOOL_ACTION=PASS" in deploy
+    assert "LOCAL_VERIFIER=PASS" in deploy
+    assert "missing local verifier PASS evidence" in deploy
+
+
 def test_openhands_smoke_uses_bounded_repeated_engineer_wake():
     workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
     wake = workflow.split("- name: Ensure Engineer available", 1)[1]
@@ -233,6 +244,12 @@ def test_openhands_smoke_uses_bounded_repeated_engineer_wake():
     assert "wake_engineer()" in wake
     assert wake.count("wake_engineer") >= 3
     assert "attempt % 6 == 0" in wake
+
+
+def test_openhands_smoke_normalizes_optional_terminal_newline():
+    workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
+    assert "p.read_text().splitlines()" in workflow
+    assert "actual == expected" in workflow
 
 
 def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
