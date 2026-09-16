@@ -223,6 +223,18 @@ def test_governor_deploy_runs_true_autonomous_e2e_gate():
     assert 'set_stage(job, "verifier"' in agent
 
 
+def test_openhands_smoke_uses_bounded_repeated_engineer_wake():
+    workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
+    wake = workflow.split("- name: Ensure Engineer available", 1)[1]
+    wake = wake.split("- name: Prove authenticated Governor tool route", 1)[0]
+    assert "deadline=$((SECONDS + 600))" in wake
+    assert "while (( SECONDS < deadline ))" in wake
+    assert "/usr/local/sbin/lifeos-engineer-wake" in wake
+    assert "wake_engineer()" in wake
+    assert wake.count("wake_engineer") >= 3
+    assert "attempt % 6 == 0" in wake
+
+
 def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
     script = (ROOT / "governor/scripts/lifeos-cloud-builder").read_text()
     assert 'trap \'rm -f "$SNAPSHOT"\' EXIT' not in script

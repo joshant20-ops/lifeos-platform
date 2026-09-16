@@ -24,7 +24,7 @@ concurrency:
 jobs:
   prove-openhands-action:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - name: Reconcile canonical checkout
         shell: bash
@@ -43,12 +43,36 @@ jobs:
             echo 'ENGINEER_ALREADY_READY=PASS'
             exit 0
           fi
+          wol_helper=''
+          for candidate in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
+            if test -x "$candidate"; then
+              wol_helper="$candidate"
+              break
+            fi
+          done
+          wake_engineer() {
+            if test -n "$wol_helper"; then
+              "$wol_helper"
+            else
+              command -v wakeonlan >/dev/null
+              wakeonlan 40:8d:5c:84:41:64 >/dev/null
+            fi
+          }
+          wake_engineer
+          echo "ENGINEER_WAKE_PATH=${wol_helper:-direct-wol}"
           mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
           ready=0
-          for _ in $(seq 1 120); do
+          deadline=$((SECONDS + 600))
+          attempt=0
+          while (( SECONDS < deadline )); do
+            attempt=$((attempt + 1))
             if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
               ready=1
               break
+            fi
+            if (( attempt % 6 == 0 )); then
+              wake_engineer
+              echo "ENGINEER_WAKE_RETRY=$attempt"
             fi
             sleep 5
           done
