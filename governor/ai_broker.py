@@ -552,7 +552,7 @@ def _invoke(provider: dict, prompt: str, secrets: dict[str, str]) -> str:
 def candidates(*, privacy: str = "normal", task_class: str = "normal") -> tuple[list[dict], list[dict]]:
     policy = ROUTER.load_policy(POLICY_PATH)
     secret_names = ROUTER.load_secret_names(SECRETS_PATH)
-    adapters = {"local-builder"} if privacy == "local-only" else {"direct-cloud"}
+    adapters = {"local-builder"}
     return ROUTER.eligible_providers(policy, task_class, secret_names, privacy=privacy, available_adapters=adapters)
 
 
@@ -563,7 +563,7 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
     eligible, considered = candidates(privacy=privacy, task_class=task_class)
     eligible = [
         provider for provider in eligible
-        if str(provider.get("id") or "") in {"ollama", "gemini", "groq", "openrouter"}
+        if str(provider.get("id") or "") == "ollama"
     ]
     if not eligible:
         raise BrokerError("no eligible tool-capable provider")

@@ -12,21 +12,19 @@ assert spec and spec.loader
 spec.loader.exec_module(broker)
 
 
-def test_runtime_acceptance_probes_follow_normal_direct_cloud_tool_policy():
+def test_runtime_acceptance_probes_follow_local_stable_base_tool_policy():
     deploy = (ROOT / "governor" / "scripts" / "deploy-autonomous-agent-pi5.sh").read_text()
     smoke = (ROOT / ".github" / "workflows" / "lifeos-openhands-action-smoke.yml").read_text()
     for probe in (deploy, smoke):
-        assert "p.get('adapter')=='direct-cloud'" in probe
-        assert "lifeos_provider') == 'ollama'" not in probe
-        assert "j['lifeos_provider']=='ollama'" not in probe
+        assert "lifeos_provider') == 'ollama'" in probe or "j['lifeos_provider']=='ollama'" in probe
 
 
-def test_normal_generation_candidates_remain_direct_cloud_only():
+def test_normal_generation_candidates_use_local_stable_base_only():
     with mock.patch.object(broker.ROUTER, "load_policy", return_value={"providers": []}), \
          mock.patch.object(broker.ROUTER, "load_secret_names", return_value=set()), \
          mock.patch.object(broker.ROUTER, "eligible_providers", return_value=([], [])) as eligible:
         broker.candidates(privacy="normal", task_class="normal")
-    assert eligible.call_args.kwargs["available_adapters"] == {"direct-cloud"}
+    assert eligible.call_args.kwargs["available_adapters"] == {"local-builder"}
 
 
 def test_ollama_json_tool_fallback_accepts_only_declared_tools():

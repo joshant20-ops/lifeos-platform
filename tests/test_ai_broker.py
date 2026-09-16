@@ -17,7 +17,7 @@ def secret_file(tmp_path, names):
     return path
 
 
-def test_normal_inference_uses_direct_cloud_not_local(monkeypatch, tmp_path):
+def test_normal_inference_uses_local_stable_base(monkeypatch, tmp_path):
     monkeypatch.setattr(
         BROKER,
         "SECRETS_PATH",
@@ -25,9 +25,9 @@ def test_normal_inference_uses_direct_cloud_not_local(monkeypatch, tmp_path):
     )
     eligible, _ = BROKER.candidates(privacy="normal", task_class="normal")
     assert eligible
-    assert eligible[0]["id"] == "gemini"
-    assert all(p["adapter"] == "direct-cloud" for p in eligible)
-    assert "ollama" not in {p["id"] for p in eligible}
+    assert [p["id"] for p in eligible] == ["ollama"]
+    assert eligible[0]["adapter"] == "local-builder"
+    assert "codex" not in {p["id"] for p in eligible}
 
 
 def test_local_only_can_only_obtain_local_provider(monkeypatch, tmp_path):
@@ -93,8 +93,6 @@ def test_local_inference_renews_lease_while_waiting_for_wake(monkeypatch):
 
 def test_tool_chat_translates_gemini_function_call(monkeypatch):
     provider = {"id": "gemini", "api_model": "gemini-3.6-flash"}
-    monkeypatch.setattr(BROKER, "candidates", lambda **_: ([provider], []))
-    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {"GEMINI_API_KEY": "test"})
     monkeypatch.setattr(
         BROKER,
         "_post_json",
@@ -102,9 +100,11 @@ def test_tool_chat_translates_gemini_function_call(monkeypatch):
             "candidates": [{"content": {"parts": [{"functionCall": {"id": "call123", "name": "write_file", "args": {"path": "x", "content": "y"}}}]}}]
         },
     )
-    result = BROKER.chat(
+    result = BROKER._gemini_chat(
         [{"role": "user", "content": "create x"}],
-        tools=[{"type": "function", "function": {"name": "write_file", "description": "write", "parameters": {"type": "object", "properties": {}}}}],
+        [{"type": "function", "function": {"name": "write_file", "description": "write", "parameters": {"type": "object", "properties": {}}}}],
+        provider,
+        {"GEMINI_API_KEY": "test"},
     )
     assert result["finish_reason"] == "tool_calls"
     call = result["message"]["tool_calls"][0]
@@ -138,27 +138,21 @@ def test_tool_chat_private_fails_closed_without_cloud_fallback(monkeypatch):
     assert calls == [("local-only", "normal")]
 
 
-def test_normal_tool_chat_does_not_prepend_local_provider(monkeypatch):
+def test_normal_tool_chat_uses_local_stable_base(monkeypatch):
     local = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
-    cloud = {"id": "gemini", "api_model": "gemini-test"}
     routed = []
 
     def candidates(*, privacy, task_class):
         assert task_class == "normal"
-        return ([local], []) if privacy == "local-only" else ([cloud], [])
+        return [local], []
 
     monkeypatch.setattr(BROKER, "candidates", candidates)
-    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {"GEMINI_API_KEY": "test"})
+    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
     monkeypatch.setattr(
         BROKER,
         "_ollama_chat",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("normal tool chat reached local Ollama")),
-    )
-    monkeypatch.setattr(
-        BROKER,
-        "_gemini_chat",
         lambda *args, **kwargs: (
-            routed.append("gemini")
+            routed.append("ollama")
             or {"message": {"role": "assistant", "content": "ok"}, "finish_reason": "stop"}
         ),
     )
@@ -167,5 +161,5 @@ def test_normal_tool_chat_does_not_prepend_local_provider(monkeypatch):
         tools=[{"type": "function", "function": {"name": "x", "parameters": {"type": "object"}}}],
         privacy="normal",
     )
-    assert routed == ["gemini"]
-    assert result["provider"] == "gemini"
+    assert routed == ["ollama"]
+    assert result["provider"] == "ollama"

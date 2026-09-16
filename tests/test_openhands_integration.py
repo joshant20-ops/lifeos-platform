@@ -15,31 +15,30 @@ def policy():
     return load_policy(ROOT / "governor/policy.json")
 
 
-def test_missing_credentials_are_reported_and_next_free_provider_selected():
+def test_stable_base_selects_local_before_codex():
     result = route(
         policy(),
         "normal",
         {"GROQ_API_KEY"},
-        available_adapters={"direct-cloud", "codex"},
+        available_adapters={"local-builder", "codex"},
     )
-    assert result["selected_provider"] == "groq"
-    gemini = next(x for x in result["considered"] if x["provider"] == "gemini")
-    assert gemini["status"] == "CREDENTIAL_REQUIRED"
+    assert result["selected_provider"] == "ollama"
+    assert {x["provider"] for x in result["considered"]} == {"ollama", "codex"}
     assert result["max_attempts"] == 2
 
 
-def test_cooldown_routes_without_retry_storm():
+def test_local_cooldown_routes_to_codex_without_retry_storm():
     result = route(
         policy(),
         "normal",
         {"GEMINI_API_KEY", "GROQ_API_KEY"},
-        {"gemini": 101},
+        {"ollama": 101},
         now=100,
-        available_adapters={"direct-cloud", "codex"},
+        available_adapters={"local-builder", "codex"},
     )
-    assert result["selected_provider"] == "groq"
-    gemini = next(x for x in result["considered"] if x["provider"] == "gemini")
-    assert gemini["status"] == "COOLDOWN"
+    assert result["selected_provider"] == "codex"
+    local = next(x for x in result["considered"] if x["provider"] == "ollama")
+    assert local["status"] == "COOLDOWN"
 
 
 def test_local_only_never_selects_cloud_or_codex():
@@ -72,7 +71,7 @@ def test_review_requires_capable_provider():
         {"GEMINI_API_KEY"},
         available_adapters={"direct-cloud", "codex"},
     )
-    assert result["selected_provider"] == "gemini"
+    assert result["selected_provider"] == "codex"
     assert result["considered"][0]["capability"] >= 4
 
 
@@ -89,12 +88,12 @@ def test_secret_file_requires_exact_0600_and_never_returns_values(tmp_path):
     assert load_secret_names(secret) == {"GEMINI_API_KEY"}
 
 
-def test_cloud_providers_are_direct_and_have_api_models():
+def test_stable_base_has_no_direct_cloud_providers_and_codex_is_sanitized():
     providers = [item for item in policy()["providers"] if item.get("adapter") == "direct-cloud"]
-    assert {item["id"] for item in providers} == {"gemini", "groq", "openrouter", "cloudflare"}
-    assert all(item.get("api_model") for item in providers)
-    assert all(item.get("privacy") == "sanitized-cloud" for item in providers)
-    assert all(not item.get("openhands_model") for item in providers)
+    assert providers == []
+    codex = next(item for item in policy()["providers"] if item["id"] == "codex")
+    assert codex["adapter"] == "codex"
+    assert codex["privacy"] == "sanitized-cloud"
 
 
 def test_openhands_worker_uses_only_governor_broker_capability(tmp_path):
@@ -235,8 +234,8 @@ def test_autonomous_e2e_respects_read_only_canonical_checkout():
     assert "if 'AGENT_RESULT=openhands PASS' in ev" not in deploy
 
     workflow = (ROOT / ".github/workflows/lifeos-governor-broker-deploy.yml").read_text()
-    assert "grep -q '^AGENT_RESULT=openhands PASS$'" in workflow
-    assert "! grep -q '^AGENT_RESULT=codex PASS$'" in workflow
+    assert "grep -q '^AGENT_RESULT=codex PASS$'" in workflow
+    assert "! grep -q '^AGENT_RESULT=openhands PASS$'" in workflow
 
 
 def test_autonomous_e2e_action_stays_inside_disposable_worktree():
