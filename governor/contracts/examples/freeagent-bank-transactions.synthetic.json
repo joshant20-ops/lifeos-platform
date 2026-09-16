@@ -1,0 +1,21 @@
+{
+  "bank_transactions": [
+    {
+      "url": "https://api.sandbox.freeagent.com/v2/bank_transactions/1001",
+      "dated_on": "2026-05-01",
+      "amount": "1400.00",
+      "currency": "GBP",
+      "description": "SYNTHETIC RENTAL INCOME",
+      "category": "https://api.sandbox.freeagent.com/v2/categories/001",
+      "property": "https://api.sandbox.freeagent.com/v2/properties/101"
+    },
+    {
+      "url": "https://api.sandbox.freeagent.com/v2/bank_transactions/1002",
+      "dated_on": "2026-05-03",
+      "amount": "-125.50",
+      "currency": "GBP",
+      "description": "SYNTHETIC PROPERTY REPAIR",
+      "property": "https://api.sandbox.freeagent.com/v2/properties/101"
+    }
+  ]
+}

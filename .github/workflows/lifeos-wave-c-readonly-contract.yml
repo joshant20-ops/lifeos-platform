@@ -1,0 +1,37 @@
+name: LifeOS Wave C Read-only Contract
+
+on:
+  pull_request:
+    paths:
+      - "governor/finance_assets_readonly.py"
+      - "governor/contracts/finance-assets-read-model.schema.json"
+      - "governor/contracts/examples/freeagent-bank-transactions.synthetic.json"
+      - "governor/contracts/examples/finance-assets-read-model.synthetic.json"
+      - "docs/architecture/wave-c-finance-assets-discovery.md"
+      - "tests/test_finance_assets_discovery_contract.py"
+      - "tests/test_finance_assets_readonly.py"
+      - ".github/workflows/lifeos-wave-c-readonly-contract.yml"
+  push:
+    branches: [main]
+    paths:
+      - "governor/finance_assets_readonly.py"
+      - "governor/contracts/**"
+      - "tests/test_finance_assets_discovery_contract.py"
+      - "tests/test_finance_assets_readonly.py"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pytest
+      - run: >-
+          python -m pytest -q
+          tests/test_finance_assets_discovery_contract.py
+          tests/test_finance_assets_readonly.py
