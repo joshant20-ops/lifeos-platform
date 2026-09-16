@@ -213,6 +213,16 @@ def test_governor_deploy_repeats_proven_wol_until_wall_clock_deadline():
     assert "ENGINEER_PREFLIGHT_WAKE_RETRY=" in preflight
 
 
+def test_governor_deploy_runs_true_autonomous_e2e_gate():
+    workflow = (ROOT / ".github/workflows/lifeos-governor-broker-deploy.yml").read_text()
+    assert "LIFEOS_SKIP_AUTONOMOUS_E2E=1" not in workflow
+    assert "timeout-minutes: 45" in workflow
+    deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
+    assert "AUTONOMOUS_LOOP=PASS" in deploy
+    agent = (ROOT / "governor/autonomous_agent.py").read_text()
+    assert 'set_stage(job, "verifier"' in agent
+
+
 def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
     script = (ROOT / "governor/scripts/lifeos-cloud-builder").read_text()
     assert 'trap \'rm -f "$SNAPSHOT"\' EXIT' not in script
