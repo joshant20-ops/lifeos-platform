@@ -12,6 +12,15 @@ assert spec and spec.loader
 spec.loader.exec_module(broker)
 
 
+def test_runtime_acceptance_probes_follow_normal_direct_cloud_tool_policy():
+    deploy = (ROOT / "governor" / "scripts" / "deploy-autonomous-agent-pi5.sh").read_text()
+    smoke = (ROOT / ".github" / "workflows" / "lifeos-openhands-action-smoke.yml").read_text()
+    for probe in (deploy, smoke):
+        assert "p.get('adapter')=='direct-cloud'" in probe
+        assert "lifeos_provider') == 'ollama'" not in probe
+        assert "j['lifeos_provider']=='ollama'" not in probe
+
+
 def test_normal_generation_candidates_remain_direct_cloud_only():
     with mock.patch.object(broker.ROUTER, "load_policy", return_value={"providers": []}), \
          mock.patch.object(broker.ROUTER, "load_secret_names", return_value=set()), \
