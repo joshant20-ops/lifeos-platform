@@ -142,7 +142,7 @@ printf 'BROKER_UNAUTHENTICATED_REJECT=PASS\n'
 BROKER_REQ=$(python3 - <<'PY'
 import json
 print(json.dumps({
-    "model": "lifeos-engineering-normal",
+    "model": "lifeos-local-only-normal",
     "messages": [{
         "role": "user",
         "content": "Call report_test_value with value GOVERNOR_LOCAL_TOOL_OK. Do not answer normally."
@@ -170,7 +170,7 @@ BROKER_OUT=$(curl -fsS --max-time 180 \
 python3 - "$BROKER_OUT" <<'PY'
 import json,sys
 j=json.loads(sys.argv[1])
-assert j['lifeos_privacy']=='normal', j
+assert j['lifeos_privacy']=='local-only', j
 assert j['lifeos_provider']=='ollama', j
 choice=j['choices'][0]
 assert choice['finish_reason']=='tool_calls', choice
@@ -189,7 +189,7 @@ for call in calls:
 assert match is not None, calls
 print('BROKER_AUTHENTICATED_TOOL_CALL=PASS')
 print('BROKER_PROVIDER='+j['lifeos_provider'])
-print('BROKER_NORMAL_TOOL_ROUTE=LOCAL_OLLAMA')
+print('BROKER_PRIVATE_TOOL_ROUTE=LOCAL_OLLAMA')
 PY
 
 printf '\n===== 6/8 — UI + PRIVACY FAIL-CLOSED =====\n'

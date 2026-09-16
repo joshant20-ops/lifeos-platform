@@ -81,10 +81,11 @@ jobs:
           p=load_policy(Path('governor/policy.json'))
           normal=route(p, 'normal', set(), available_adapters={'openhands','codex','local-builder'})
           private=route(p, 'normal', set(), privacy='local-only', available_adapters={'openhands','codex','local-builder'})
-          assert normal['selected_provider'] == 'ollama', normal
+          assert normal['selected_provider'] == 'codex', normal
           assert private['selected_provider'] == 'ollama', private
-          assert all(x['status']=='PRIVACY_FORBIDDEN' for x in private['considered'] if x['provider'] in {'gemini','groq','openrouter','cloudflare','codex'}), private
-          print('NORMAL_ROUTE_WITHOUT_CLOUD_CREDS=' + normal['selected_provider'])
+          assert next(x for x in normal['considered'] if x['provider']=='ollama')['status']=='PRIVACY_FORBIDDEN', normal
+          assert next(x for x in private['considered'] if x['provider']=='codex')['status']=='PRIVACY_FORBIDDEN', private
+          print('NORMAL_SANITIZED_ROUTE=' + normal['selected_provider'])
           print('LOCAL_ONLY_ROUTE=' + private['selected_provider'])
           print('PRIVACY_FAIL_CLOSED=PASS')
           PY

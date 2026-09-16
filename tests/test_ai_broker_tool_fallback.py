@@ -1,50 +1,30 @@
+import pytest
+
 from governor import ai_broker
 
 
-def test_tool_chat_falls_back_from_gemini_to_openrouter(monkeypatch):
-    providers = [
-        {"id": "gemini", "api_model": "gemini-test"},
-        {"id": "openrouter", "api_model": "openrouter/test"},
-    ]
-    monkeypatch.setattr(ai_broker, "candidates", lambda **_: (providers, []))
-    monkeypatch.setattr(ai_broker, "_strict_env", lambda _: {"OPENROUTER_API_KEY": "x"})
+def test_normal_tool_chat_has_no_disabled_cloud_or_private_local_fallback(monkeypatch):
+    called = []
+    monkeypatch.setattr(ai_broker, "candidates", lambda **_: ([], []))
+    monkeypatch.setattr(ai_broker, "_ollama_chat", lambda *a, **k: called.append("ollama"))
 
-    def gemini_fail(*args, **kwargs):
-        raise ai_broker.BrokerError("provider HTTP 400")
+    with pytest.raises(ai_broker.BrokerError, match="no eligible tool-capable provider"):
+        ai_broker.chat(
+            [{"role": "user", "content": "sanitized engineering"}],
+            tools=[{"type": "function", "function": {"name": "shell", "parameters": {"type": "object"}}}],
+            privacy="normal",
+        )
+    assert called == []
 
-    monkeypatch.setattr(ai_broker, "_gemini_chat", gemini_fail)
+
+def test_private_tool_chat_fails_closed_when_local_provider_fails(monkeypatch):
+    local = {"id": "ollama", "api_model": "qwen2.5-coder:7b-instruct"}
+    monkeypatch.setattr(ai_broker, "candidates", lambda **_: ([local], []))
     monkeypatch.setattr(
         ai_broker,
-        "_openrouter_chat",
-        lambda *args, **kwargs: {
-            "message": {
-                "role": "assistant",
-                "content": None,
-                "tool_calls": [
-                    {
-                        "id": "call_1",
-                        "type": "function",
-                        "function": {"name": "shell", "arguments": "{}"},
-                    }
-                ],
-            },
-            "finish_reason": "tool_calls",
-        },
+        "_ollama_chat",
+        lambda *a, **k: (_ for _ in ()).throw(ai_broker.BrokerError("local unavailable")),
     )
 
-    result = ai_broker.chat(
-        [{"role": "user", "content": "inspect"}],
-        tools=[{"type": "function", "function": {"name": "shell", "parameters": {"type": "object"}}}],
-    )
-    assert result["provider"] == "openrouter"
-    assert result["finish_reason"] == "tool_calls"
-    assert result["message"]["tool_calls"][0]["function"]["name"] == "shell"
-
-
-def test_private_tool_chat_still_fails_closed():
-    try:
+    with pytest.raises(ai_broker.BrokerError, match="tool-capable providers exhausted: ollama"):
         ai_broker.chat([], tools=[], privacy="local-only")
-    except ai_broker.BrokerError as exc:
-        assert "private inference" in str(exc)
-    else:
-        raise AssertionError("local-only tool chat must fail closed")

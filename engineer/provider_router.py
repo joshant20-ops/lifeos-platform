@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Policy-only AI provider routing for LifeOS Engineer.
 
-The router never calls a model and never receives secret values.  It chooses the
+The router never calls a model and never receives secret values. It chooses the
 cheapest sufficiently capable provider that is allowed by privacy policy and is
-actually runnable by the available adapter set.  Execution remains a separate
+actually runnable by the available adapter set. Execution remains a separate
 Engineer/Governor concern.
 """
 from __future__ import annotations
@@ -81,6 +81,8 @@ def _privacy_allowed(provider: dict, privacy: str) -> bool:
     boundary = provider.get("privacy", "sanitized-cloud")
     if privacy == "local-only":
         return boundary in {"local", "deterministic"}
+    if provider.get("private_only", False):
+        return False
     return boundary in {"local", "deterministic", "sanitized-cloud"}
 
 
@@ -138,9 +140,6 @@ def eligible_providers(
             candidate["_policy_index"] = index
             eligible.append(candidate)
 
-    # Cost is the primary objective, but only after minimum capability/privacy
-    # constraints are met.  Explicit priority lets policy prefer a stronger or
-    # faster provider among providers with the same spend class.
     eligible.sort(
         key=lambda p: (
             COST_RANK.get(p.get("cost", "paid"), 99),
@@ -165,13 +164,8 @@ def route(
     available_adapters: set[str] | None = None,
 ) -> dict:
     providers, considered = eligible_providers(
-        policy,
-        task_class,
-        secret_names,
-        cooldowns,
-        now,
-        privacy=privacy,
-        available_adapters=available_adapters,
+        policy, task_class, secret_names, cooldowns, now,
+        privacy=privacy, available_adapters=available_adapters,
     )
     selected = providers[0] if providers else None
     return {
