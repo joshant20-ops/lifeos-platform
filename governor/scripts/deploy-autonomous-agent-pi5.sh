@@ -168,12 +168,10 @@ BROKER_OUT=$(curl -fsS --max-time 180 \
   -H "Authorization: Bearer $(cat "$BROKER_TOKEN")" \
   -d "$BROKER_REQ" http://127.0.0.1:8790/v1/chat/completions)
 python3 - "$BROKER_OUT" <<'PY'
-import json,pathlib,sys
+import json,sys
 j=json.loads(sys.argv[1])
 assert j['lifeos_privacy']=='normal', j
-policy=json.loads(pathlib.Path('governor/policy.json').read_text())
-direct_cloud={p['id'] for p in policy['providers'] if p.get('adapter')=='direct-cloud'}
-assert j['lifeos_provider'] in direct_cloud, (j, direct_cloud)
+assert j['lifeos_provider']=='ollama', j
 choice=j['choices'][0]
 assert choice['finish_reason']=='tool_calls', choice
 calls=choice['message'].get('tool_calls') or []
@@ -191,7 +189,7 @@ for call in calls:
 assert match is not None, calls
 print('BROKER_AUTHENTICATED_TOOL_CALL=PASS')
 print('BROKER_PROVIDER='+j['lifeos_provider'])
-print('BROKER_NORMAL_TOOL_ROUTE=DIRECT_CLOUD')
+print('BROKER_NORMAL_TOOL_ROUTE=LOCAL_OLLAMA')
 PY
 
 printf '\n===== 6/8 — UI + PRIVACY FAIL-CLOSED =====\n'
@@ -268,7 +266,9 @@ printf '\n===== 8/8 — RESULT =====\n'
 printf 'RESULT=PASS\n'
 printf 'CONTROLLER=Pi5\n'
 printf 'INFERENCE_AUTHORITY=Pi5_Governor\n'
-printf 'CLOUD_INFERENCE_REQUIRES_ENGINEER=NO\n'
+printf 'BROKER_INFERENCE=LOCAL_OLLAMA\n'
+printf 'ENGINEERING_ESCALATION=CODEX\n'
+printf 'DIRECT_CLOUD_PROVIDERS=DISABLED\n'
 printf 'AGENTIC_EXECUTOR=Engineer_OpenHands_or_Codex\n'
 printf 'PRIVATE_AGENTIC_EXECUTOR=Engineer_OpenHands_via_Governor_Tower_Ollama\n'
 printf 'PRIVATE_DOMAINS_TO_CLOUD=blocked\n'
