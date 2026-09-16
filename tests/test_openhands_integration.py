@@ -204,7 +204,11 @@ def test_governor_deploy_repeats_proven_wol_until_wall_clock_deadline():
     preflight = preflight.split("- name: Deploy Governor with live phase checkpoints", 1)[0]
     assert "deadline=$((SECONDS + 600))" in preflight
     assert "while (( SECONDS < deadline ))" in preflight
-    assert preflight.count("wakeonlan 40:8d:5c:84:41:64") == 2
+    assert "/usr/local/sbin/lifeos-engineer-wake" in preflight
+    assert "/usr/local/sbin/lifeos-tower-wake" in preflight
+    assert "wake_engineer()" in preflight
+    assert preflight.count("wake_engineer") >= 3
+    assert preflight.count("wakeonlan 40:8d:5c:84:41:64") == 1
     assert "attempt % 6 == 0" in preflight
     assert "ENGINEER_PREFLIGHT_WAKE_RETRY=" in preflight
 
