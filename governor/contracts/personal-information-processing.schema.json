@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lifeos.local/contracts/personal-information-processing.schema.json",
+  "title": "LifeOS Personal Information Processing Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "processor_version", "privacy", "mode", "object_id", "source", "processing", "classification", "dates", "entity_links", "relationships", "provenance", "exception", "mutation_control"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "processor_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "privacy": {"const": "local-only"},
+    "mode": {"const": "proposal-only"},
+    "object_id": {"$ref": "#/$defs/stable_id"},
+    "source": {"$ref": "#/$defs/source"},
+    "processing": {"$ref": "#/$defs/processing"},
+    "classification": {"$ref": "#/$defs/classification"},
+    "dates": {"$ref": "#/$defs/dates"},
+    "entity_links": {"type": "array", "items": {"$ref": "#/$defs/entity_link"}},
+    "relationships": {"type": "array", "items": {"$ref": "#/$defs/relationship"}},
+    "provenance": {"$ref": "#/$defs/provenance"},
+    "exception": {"$ref": "#/$defs/exception"},
+    "mutation_control": {"$ref": "#/$defs/mutation_control"}
+  },
+  "$defs": {
+    "stable_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"},
+    "nullable_stable_id": {"anyOf": [{"$ref": "#/$defs/stable_id"}, {"type": "null"}]},
+    "nullable_date": {"type": ["string", "null"], "format": "date"},
+    "confidence": {
+      "type": "object", "additionalProperties": false,
+      "required": ["band", "score"],
+      "properties": {
+        "band": {"enum": ["unknown", "low", "medium", "high"]},
+        "score": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["system", "source_object_id", "authoritative_ref", "object_kind", "observed_at", "content_copied"],
+      "properties": {
+        "system": {"enum": ["synthetic-fixture", "paperless", "gmail"]},
+        "source_object_id": {"$ref": "#/$defs/stable_id"},
+        "authoritative_ref": {"$ref": "#/$defs/stable_id"},
+        "object_kind": {"enum": ["document", "email"]},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "content_copied": {"const": false}
+      }
+    },
+    "processing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "stage", "attempt", "idempotency_key"],
+      "properties": {
+        "state": {"enum": ["unprocessed", "processed", "pending-semantic", "review", "ocr-failure", "duplicate-candidate", "unresolved", "error-retry"]},
+        "stage": {"enum": ["source-read", "deterministic", "local-ai-proposal", "validated-proposal"]},
+        "attempt": {"type": "integer", "minimum": 0},
+        "idempotency_key": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    },
+    "classification": {
+      "type": "object", "additionalProperties": false,
+      "required": ["domain", "information_type", "correspondent_ref", "sender_ref", "method", "confidence", "reason_codes"],
+      "properties": {
+        "domain": {"enum": ["finance", "property", "employment", "vehicles", "household", "personal-administration", "unknown"]},
+        "information_type": {"enum": ["invoice", "receipt", "statement", "contract", "policy", "tax-document", "payslip", "tenancy-record", "vehicle-record", "booking", "official-correspondence", "actionable-email", "durable-email", "other", "unknown"]},
+        "correspondent_ref": {"$ref": "#/$defs/nullable_stable_id"},
+        "sender_ref": {"$ref": "#/$defs/nullable_stable_id"},
+        "method": {"enum": ["none", "source-metadata", "deterministic", "local-ai-proposal", "human-confirmed"]},
+        "confidence": {"$ref": "#/$defs/confidence"},
+        "reason_codes": {"type": "array", "uniqueItems": true, "items": {"enum": ["source-metadata", "known-pattern", "date-pattern", "identifier-pattern", "mime-structure", "semantic-proposal", "human-rule", "conflict", "insufficient-evidence"]}}
+      }
+    },
+    "dates": {
+      "type": "object", "additionalProperties": false,
+      "required": ["document_date", "period_start", "period_end", "tax_year"],
+      "properties": {
+        "document_date": {"$ref": "#/$defs/nullable_date"},
+        "period_start": {"$ref": "#/$defs/nullable_date"},
+        "period_end": {"$ref": "#/$defs/nullable_date"},
+        "tax_year": {"type": ["string", "null"], "pattern": "^[0-9]{4}-[0-9]{2}$"}
+      }
+    },
+    "entity_link": {
+      "type": "object", "additionalProperties": false,
+      "required": ["entity_ref", "relation", "confidence"],
+      "properties": {
+        "entity_ref": {"$ref": "#/$defs/stable_id"},
+        "relation": {"enum": ["about", "issued-by", "issued-to", "evidence-for", "action-for"]},
+        "confidence": {"$ref": "#/$defs/confidence"}
+      }
+    },
+    "relationship": {
+      "type": "object", "additionalProperties": false,
+      "required": ["target_system", "target_object_id", "relation", "status", "confidence"],
+      "properties": {
+        "target_system": {"enum": ["paperless", "gmail", "lifeos", "accounting-ots", "calendar"]},
+        "target_object_id": {"$ref": "#/$defs/stable_id"},
+        "relation": {"enum": ["attachment-of", "evidence-for", "duplicate-of", "supersedes", "supports-action", "same-entity"]},
+        "status": {"enum": ["proposed", "verified", "rejected"]},
+        "confidence": {"$ref": "#/$defs/confidence"}
+      }
+    },
+    "provenance": {
+      "type": "object", "additionalProperties": false,
+      "required": ["run_id", "rule_set_version", "processor_version", "canonical_revision", "processed_at"],
+      "properties": {
+        "run_id": {"$ref": "#/$defs/stable_id"},
+        "rule_set_version": {"const": "pip-taxonomy-v1"},
+        "processor_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+        "canonical_revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "processed_at": {"type": "string", "format": "date-time"}
+      }
+    },
+    "exception": {
+      "type": "object", "additionalProperties": false,
+      "required": ["code", "retryable"],
+      "properties": {
+        "code": {"enum": ["none", "ocr-missing", "source-unavailable", "invalid-local-ai-output", "classification-conflict", "possible-duplicate", "insufficient-evidence"]},
+        "retryable": {"type": "boolean"}
+      }
+    },
+    "mutation_control": {
+      "type": "object", "additionalProperties": false,
+      "required": ["production_write_permitted", "paperless_write_performed", "gmail_write_performed", "authority_delete_performed"],
+      "properties": {
+        "production_write_permitted": {"const": false},
+        "paperless_write_performed": {"const": false},
+        "gmail_write_performed": {"const": false},
+        "authority_delete_performed": {"const": false}
+      }
+    }
+  }
+}
