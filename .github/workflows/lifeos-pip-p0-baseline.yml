@@ -2,6 +2,12 @@ name: LifeOS Personal Information P0 Baseline
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pip-p0-baseline.yml'
+      - 'scripts/lifeos-pip-p0-paperless-inventory.sh'
+      - 'docs/architecture/personal-information-processing.md'
 
 permissions:
   contents: read
