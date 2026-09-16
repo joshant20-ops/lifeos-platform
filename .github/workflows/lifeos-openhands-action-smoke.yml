@@ -104,12 +104,10 @@ jobs:
             -H "Authorization: Bearer $(cat "$token")" \
             -d "$request" http://127.0.0.1:8790/v1/chat/completions)
           python3 - "$out" <<'PY'
-          import json,pathlib,sys
+          import json,sys
           j=json.loads(sys.argv[1])
           assert j.get('lifeos_privacy') == 'normal', j
-          policy=json.loads(pathlib.Path('governor/policy.json').read_text())
-          direct_cloud={p['id'] for p in policy['providers'] if p.get('adapter')=='direct-cloud'}
-          assert j.get('lifeos_provider') in direct_cloud, (j, direct_cloud)
+          assert j.get('lifeos_provider') == 'ollama', j
           c=j['choices'][0]
           assert c.get('finish_reason') == 'tool_calls', c
           ok=False
@@ -122,7 +120,7 @@ jobs:
               if args.get('value') == 'OPENHANDS_GATE_BROKER_OK': ok=True
           assert ok, c
           print('GOVERNOR_AUTHENTICATED_TOOL_ROUTE=PASS')
-          print('GOVERNOR_NORMAL_TOOL_ROUTE=DIRECT_CLOUD')
+          print('GOVERNOR_NORMAL_TOOL_ROUTE=LOCAL_OLLAMA')
           PY
 
       - name: Require genuine OpenHands filesystem action

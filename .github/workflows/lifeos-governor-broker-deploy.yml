@@ -176,7 +176,7 @@ jobs:
           echo 'BROKER_CAPABILITY_PROTECTION=PASS'
           echo 'DEPLOY_CHECKPOINT=broker-contract-proven'
 
-      - name: Prove genuine OpenHands tool action
+      - name: Prove genuine Codex tool action
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -190,13 +190,13 @@ jobs:
           cleanup() { rm -f "$log" "$runtime"; }
           trap cleanup EXIT
           set +e
-          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=normal LIFEOS_JOB_PRIVACY=normal \
+          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=escalation LIFEOS_JOB_PRIVACY=normal \
             /usr/local/libexec/lifeos-cloud-builder "$request" 1 '' | tee "$log"
           rc=${PIPESTATUS[0]}
           set -e
           test "$rc" -eq 0
-          grep -q '^AGENT_RESULT=openhands PASS$' "$log"
-          ! grep -q '^AGENT_RESULT=codex PASS$' "$log"
+          grep -q '^AGENT_RESULT=codex PASS$' "$log"
+          ! grep -q '^AGENT_RESULT=openhands PASS$' "$log"
           b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
           test -n "$b64"
           printf '%s' "$b64" | base64 -d >"$runtime"
@@ -206,9 +206,9 @@ jobs:
           chmod 700 "$runtime"
           output=$("$runtime")
           test "$output" = "$marker"
-          echo 'OPENHANDS_ADAPTER=PASS'
-          echo 'OPENHANDS_FILESYSTEM_ACTION_EVIDENCE=PASS'
-          echo 'OPENHANDS_HARMLESS_TOOL_ARTIFACT_EXECUTION=PASS'
+          echo 'CODEX_ADAPTER=PASS'
+          echo 'CODEX_FILESYSTEM_ACTION_EVIDENCE=PASS'
+          echo 'CODEX_HARMLESS_TOOL_ARTIFACT_EXECUTION=PASS'
 
       - name: Prove repository clean
         shell: bash
