@@ -47,12 +47,21 @@ jobs:
             echo 'ENGINEER_PREFLIGHT_ALREADY_READY=PASS'
             exit 0
           fi
+          command -v wakeonlan >/dev/null
+          wakeonlan 40:8d:5c:84:41:64 >/dev/null
           mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
           ready=0
-          for _ in $(seq 1 120); do
+          deadline=$((SECONDS + 600))
+          attempt=0
+          while (( SECONDS < deadline )); do
+            attempt=$((attempt + 1))
             if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
               ready=1
               break
+            fi
+            if (( attempt % 6 == 0 )); then
+              wakeonlan 40:8d:5c:84:41:64 >/dev/null
+              echo "ENGINEER_PREFLIGHT_WAKE_RETRY=$attempt"
             fi
             sleep 5
           done

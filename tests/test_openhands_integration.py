@@ -198,6 +198,17 @@ def test_remote_agent_attempt_has_bounded_deadline_and_timeout_evidence():
     assert "AGENT_TIMEOUT_SECONDS >= 60 && AGENT_TIMEOUT_SECONDS <= 1200" in script
 
 
+def test_governor_deploy_repeats_proven_wol_until_wall_clock_deadline():
+    workflow = (ROOT / ".github/workflows/lifeos-governor-broker-deploy.yml").read_text()
+    preflight = workflow.split("- name: Ensure Engineer available for deploy preflight", 1)[1]
+    preflight = preflight.split("- name: Deploy Governor with live phase checkpoints", 1)[0]
+    assert "deadline=$((SECONDS + 600))" in preflight
+    assert "while (( SECONDS < deadline ))" in preflight
+    assert preflight.count("wakeonlan 40:8d:5c:84:41:64") == 2
+    assert "attempt % 6 == 0" in preflight
+    assert "ENGINEER_PREFLIGHT_WAKE_RETRY=" in preflight
+
+
 def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
     script = (ROOT / "governor/scripts/lifeos-cloud-builder").read_text()
     assert 'trap \'rm -f "$SNAPSHOT"\' EXIT' not in script
