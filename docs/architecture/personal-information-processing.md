@@ -1,7 +1,7 @@
 # Personal Information Processing
 
-Status: gated implementation; **P0 discovery only**. P1 through P10 remain
-blocked until their preceding acceptance gate has durable evidence.
+Status: gated implementation; **P0 accepted**. P1 is the next gate; P2 through
+P10 remain blocked until their preceding acceptance gate has durable evidence.
 
 ## Authority and privacy
 
@@ -68,8 +68,28 @@ not a lock over Paperless and it grants no later mutation authority.
 
 ## Gate state
 
-P0 passes only after the governed live workflow reports `RESULT=PASS`, the
-sanitized aggregate baseline is recorded, the repository architecture review
-above is current, and production mutation remains `NONE`. P1 may then define
-the versioned schema and taxonomy using synthetic fixtures. No P0 code permits
-real Gmail processing or Paperless metadata writes.
+P0 passed in the governed workflow run
+[`35141879710`](https://github.com/joshant20-ops/lifeos-platform/actions/runs/35141879710)
+on canonical `d1f2fcee7e2c82f03209617277f63538dee02345`. The sanitized
+baseline was:
+
+- 942 documents; all 942 had OCR; OCR lengths were 1 short, 896 medium and 45
+  long;
+- zero correspondents defined, so 942 documents lacked a correspondent;
+- five document types were defined and 922 documents lacked a document type;
+- 13 tags were defined and 857 documents were untagged;
+- zero exact-checksum duplicate groups and eight probable same-title groups;
+- 219 documents matched the deliberately broad, deterministic
+  finance/property candidate vocabulary;
+- one native Paperless mail account and one native mail rule existed;
+- document-year counts covered 2014–2026 and reconciled exactly to the 942
+  document total.
+
+The same run recorded `PAPERLESS_METADATA_STABLE=PASS`,
+`PAPERLESS_MUTATION=NONE`, `PRIVATE_FIELDS_EMITTED=NONE`,
+`PRIVACY_LOCAL_ONLY=PASS`, `CANONICAL_CLEAN=PASS` and `RESULT=PASS`. No Gmail
+messages were read or processed. These figures are discovery candidates, not
+document classifications or permission to mutate metadata.
+
+P1 may now define the versioned schema and taxonomy using synthetic fixtures.
+No P0 code permits real Gmail processing or Paperless metadata writes.
