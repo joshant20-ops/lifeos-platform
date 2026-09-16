@@ -47,8 +47,23 @@ jobs:
             echo 'ENGINEER_PREFLIGHT_ALREADY_READY=PASS'
             exit 0
           fi
-          command -v wakeonlan >/dev/null
-          wakeonlan 40:8d:5c:84:41:64 >/dev/null
+          wol_helper=''
+          for candidate in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
+            if test -x "$candidate"; then
+              wol_helper="$candidate"
+              break
+            fi
+          done
+          wake_engineer() {
+            if test -n "$wol_helper"; then
+              "$wol_helper"
+            else
+              command -v wakeonlan >/dev/null
+              wakeonlan 40:8d:5c:84:41:64 >/dev/null
+            fi
+          }
+          wake_engineer
+          echo "ENGINEER_PREFLIGHT_WAKE_PATH=${wol_helper:-direct-wol}"
           mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
           ready=0
           deadline=$((SECONDS + 600))
@@ -60,7 +75,7 @@ jobs:
               break
             fi
             if (( attempt % 6 == 0 )); then
-              wakeonlan 40:8d:5c:84:41:64 >/dev/null
+              wake_engineer
               echo "ENGINEER_PREFLIGHT_WAKE_RETRY=$attempt"
             fi
             sleep 5
