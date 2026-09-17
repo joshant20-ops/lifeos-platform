@@ -37,6 +37,27 @@ def assigned_custom_fields():
         return "UNAVAILABLE"
 
 
+def nonempty_file_field_count(kind):
+    candidates = {
+        "original": ("original_filename", "filename", "original_checksum", "checksum"),
+        "archive": ("archive_filename", "archive_checksum"),
+    }[kind]
+    models = [Document]
+    for model in apps.get_models():
+        if model.__name__ == "DocumentVersion":
+            models.insert(0, model)
+    for model in models:
+        names = {field.name for field in model._meta.fields}
+        for name in candidates:
+            if name in names:
+                query = model.objects.exclude(**{name + "__isnull": True})
+                field = model._meta.get_field(name)
+                if getattr(field, "empty_strings_allowed", False):
+                    query = query.exclude(**{name: ""})
+                return query.count()
+    return "UNAVAILABLE"
+
+
 def match_counts(model):
     configured = auto = 0
     try:
@@ -78,8 +99,8 @@ metrics = {
     "DOCUMENTS": len(documents),
     "OCR_PRESENT": sum(bool((getattr(d, "content", "") or "").strip()) for d in documents),
     "OCR_MISSING": sum(not bool((getattr(d, "content", "") or "").strip()) for d in documents),
-    "ORIGINAL_FILES_PRESENT": sum(bool(getattr(d, "original_file", None)) for d in documents),
-    "ARCHIVE_FILES_PRESENT": sum(bool(getattr(d, "archive_file", None)) for d in documents),
+    "ORIGINAL_FILES_PRESENT": nonempty_file_field_count("original"),
+    "ARCHIVE_FILES_PRESENT": nonempty_file_field_count("archive"),
     "CORRESPONDENTS_DEFINED": Correspondent.objects.count(),
     "DOCUMENTS_WITH_CORRESPONDENT": sum(d.correspondent_id is not None for d in documents),
     "DOCUMENT_TYPES_DEFINED": DocumentType.objects.count(),
