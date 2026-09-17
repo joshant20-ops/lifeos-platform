@@ -121,10 +121,11 @@ def configure():
         WorkflowAction,
         workflow=workflow,
         order=0,
-        assign_custom_fields=[{"field": custom_field.pk, "value": assignment_value}],
+        assign_custom_fields_values={custom_field.pk: assignment_value},
     )
     action_kwargs["type"] = choice(WorkflowAction, "type", ("assignment", "assign"))
     action = WorkflowAction.objects.create(**action_kwargs)
+    action.assign_custom_fields.set([custom_field])
 
     # Some Paperless releases model workflow membership as M2M rather than FK.
     for relation, instance in (("triggers", trigger), ("actions", action)):
