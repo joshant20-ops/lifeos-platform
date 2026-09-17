@@ -112,3 +112,24 @@ The governed [native production shadow run `35186840593`, attempt 2](https://git
 Current native classification covered 66 sample documents and left 50 unmatched. Unsaved native-rule candidates increased coverage by one document to 67 and left 49 unmatched. Two existing document-type rules and two tag rules were safe enable candidates; three document-type and two tag rules require review. Candidate tag rules overlapped on 53 sample documents, so bulk enabling them without refinement is unsafe. No correspondent or storage-path candidates were justified, all six existing workflows should be preserved, and there were no exact duplicate groups in the current corpus.
 
 No taxonomy labels, filenames, OCR, names, source IDs or other private fields were emitted. Tower AI was not used, proposed production mutations remained none, and the canonical checkout remained clean. Revised P3 may configure only the proven safe native candidates through a reversible canary and limited rollout, and must remeasure overlap before production-wide activation. LifeOS semantic processing remains blocked until a residual native Paperless gap is demonstrated after that configuration work.
+
+## Revised P3 — Paperless-native configuration
+
+P3 is redefined from the P0–P2 evidence; it is not the superseded plan to build
+a general local-AI document classifier. It may activate only existing taxonomy
+objects whose unsaved native literal matchers have non-zero bounded coverage,
+no single-value ambiguity, and no conflict with current metadata. Activation is
+transactional and followed by a second idempotence pass. It changes matcher
+configuration only and never rewrites production document metadata. The local
+runtime preserves a private rollback artifact containing only the affected
+object IDs and prior matcher fields; rollback is an explicit supported mode.
+
+The two candidate tag rules are not automatically enabled. P2 measured native
+or candidate tag overlap on 53 sampled documents, and multi-value overlap alone
+does not prove semantic correctness. Tag candidates remain deferred for native
+rule refinement or grouped review. Existing workflows remain preserved.
+
+No LifeOS semantic processor, alternate document index, duplicate handler or
+bulk metadata writer is justified in P3. Tower remains unused. P4 must be redesigned
+from residual measurements after this native configuration gate; any capability
+already supplied adequately by Paperless is deleted from that plan rather than rebuilt.
