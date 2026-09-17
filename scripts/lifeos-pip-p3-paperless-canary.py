@@ -20,7 +20,7 @@ from documents.models import Correspondent, Document, DocumentType, MatchingMode
 logging.disable(logging.CRITICAL)
 
 # Reuse the accepted P2 sample/evaluation primitives without copying Paperless logic.
-exec(open("/tmp/lifeos-pip-p2-lib.py").read().replace("\nmain()\n", "\n"), globals())
+p2_source = open("/tmp/lifeos-pip-p2-lib.py").read()\np2_library = p2_source.rsplit("\\nmain()", 1)[0]\nexec(p2_library, globals())
 
 SAFE_DIMENSIONS = (("DOCUMENT_TYPE", DocumentType, False), ("TAG", Tag, True))
 EXPECTED_SAFE = {"DOCUMENT_TYPE": 2, "TAG": 2}
