@@ -93,6 +93,11 @@ configuration. Names, matcher expressions, source IDs, filenames, OCR and all
 other private values remain inside Paperless. Existing user-created organisation
 is preserved. Real reads are allowed; production metadata writes are prohibited.
 The same shadow evaluation must produce an identical logical result when rerun.
+For existing taxonomy objects without an effective matcher, P2 may construct an
+unsaved case-insensitive literal candidate from the object's existing private
+name and evaluate it through Paperless's native matcher. Only candidate counts
+and outcome aggregates leave the runtime; no new taxonomy is invented and no
+candidate is persisted.
 
 Tower AI is prohibited in P2. A later custom LifeOS component is justified only
 when it cites a demonstrated native capability gap from durable P2 evidence.

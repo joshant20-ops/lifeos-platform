@@ -59,6 +59,26 @@ def native_matches(rules, document):
     return [rule for rule in rules if matches(rule, document)]
 
 
+def literal_shadow_candidates(model, effective_ids: set[int]):
+    """Build unsaved native-literal candidates from existing taxonomy only.
+
+    The object names remain private in memory.  No taxonomy object or matcher is
+    created or updated in Paperless.
+    """
+    candidates = []
+    for existing in model.objects.exclude(pk__in=effective_ids).order_by("pk"):
+        if not (existing.name or "").strip():
+            continue
+        shadow = model(
+            name="private-shadow-candidate",
+            match=existing.name,
+            matching_algorithm=MatchingModel.MATCH_LITERAL,
+            is_insensitive=True,
+        )
+        candidates.append((existing.pk, shadow))
+    return candidates
+
+
 def main() -> None:
     documents = list(
         Document.objects.order_by("pk")
@@ -77,6 +97,7 @@ def main() -> None:
     aggregate: dict[str, int] = {}
     any_explicit: set[int] = set()
     any_native: set[int] = set()
+    any_candidate: set[int] = set()
     total_conflicts = 0
     total_ambiguities = 0
     broad_rule_total = 0
@@ -85,8 +106,13 @@ def main() -> None:
     for prefix, model, assigned_field, multi_value in dimensions:
         rules = explicit_rules(model)
         auto_rules = list(model.objects.filter(matching_algorithm=MatchingModel.MATCH_AUTO).order_by("pk"))
+        effective_ids = {rule.pk for rule in rules + auto_rules}
+        candidates = literal_shadow_candidates(model, effective_ids)
         hits_by_rule = Counter()
+        auto_hits_by_rule = Counter()
+        candidate_hits_by_rule = Counter()
         explicit_covered = native_covered = ambiguity = conflicts = overlap = 0
+        candidate_covered = candidate_ambiguity = candidate_conflicts = candidate_overlap = 0
 
         for document in sample:
             hit = native_matches(rules, document)
@@ -105,16 +131,19 @@ def main() -> None:
             if classifier is not None and auto_rules:
                 if prefix == "CORRESPONDENT":
                     predicted = classifier.predict_correspondent(document.suggestion_content)
-                    native.extend(rule for rule in auto_rules if rule.pk == predicted)
+                    predicted_rules = [rule for rule in auto_rules if rule.pk == predicted]
                 elif prefix == "DOCUMENT_TYPE":
                     predicted = classifier.predict_document_type(document.suggestion_content)
-                    native.extend(rule for rule in auto_rules if rule.pk == predicted)
+                    predicted_rules = [rule for rule in auto_rules if rule.pk == predicted]
                 elif prefix == "TAG":
                     predicted = set(classifier.predict_tags(document.suggestion_content))
-                    native.extend(rule for rule in auto_rules if rule.pk in predicted)
+                    predicted_rules = [rule for rule in auto_rules if rule.pk in predicted]
                 elif prefix == "STORAGE_PATH":
                     predicted = classifier.predict_storage_path(document.suggestion_content)
-                    native.extend(rule for rule in auto_rules if rule.pk == predicted)
+                    predicted_rules = [rule for rule in auto_rules if rule.pk == predicted]
+                native.extend(predicted_rules)
+                for rule in predicted_rules:
+                    auto_hits_by_rule[rule.pk] += 1
             native_ids = {rule.pk for rule in native}
             if native_ids:
                 native_covered += 1
@@ -129,12 +158,30 @@ def main() -> None:
                 if assigned is not None and native_ids and assigned not in native_ids:
                     conflicts += 1
 
+            candidate_hit = [(pk, rule) for pk, rule in candidates if matches(rule, document)]
+            for pk, _ in candidate_hit:
+                candidate_hits_by_rule[pk] += 1
+            candidate_ids = {pk for pk, _ in candidate_hit}
+            combined_ids = native_ids | candidate_ids
+            if candidate_ids:
+                candidate_covered += 1
+            if combined_ids:
+                any_candidate.add(document.pk)
+            if len(combined_ids) > 1:
+                if multi_value:
+                    candidate_overlap += 1
+                else:
+                    candidate_ambiguity += 1
+            if not multi_value and assigned is not None and candidate_ids and assigned not in candidate_ids:
+                candidate_conflicts += 1
+
         broad_threshold = max(3, (len(sample) + 3) // 4)
         broad = sum(count >= broad_threshold for count in hits_by_rule.values())
         zero_hit = sum(hits_by_rule[rule.pk] == 0 for rule in rules)
-        review = len({rule.pk for rule in rules if hits_by_rule[rule.pk] == 0 or hits_by_rule[rule.pk] >= broad_threshold})
-        if conflicts:
-            review = max(review, 1)
+        preserved_explicit = sum(0 < hits_by_rule[rule.pk] < broad_threshold for rule in rules)
+        preserved_auto = sum(auto_hits_by_rule[rule.pk] > 0 for rule in auto_rules)
+        safe_candidates = sum(0 < candidate_hits_by_rule[pk] < broad_threshold for pk, _ in candidates)
+        review = (len(rules) - preserved_explicit) + (len(auto_rules) - preserved_auto) + (len(candidates) - safe_candidates)
 
         aggregate.update(
             {
@@ -148,9 +195,14 @@ def main() -> None:
                 f"{prefix}_MULTI_RULE_OVERLAP_DOCUMENTS": overlap,
                 f"{prefix}_BROAD_RULES": broad,
                 f"{prefix}_ZERO_HIT_RULES": zero_hit,
-                f"CANDIDATE_{prefix}_RULES_PRESERVE": len(rules) - review,
+                f"CANDIDATE_{prefix}_RULES_PRESERVE": preserved_explicit + preserved_auto,
+                f"CANDIDATE_{prefix}_RULES_ENABLE": safe_candidates,
                 f"CANDIDATE_{prefix}_RULES_REVIEW": review,
                 f"CANDIDATE_{prefix}_NEW_RULES": 0,
+                f"CANDIDATE_{prefix}_COVERED_DOCUMENTS": candidate_covered,
+                f"CANDIDATE_{prefix}_AMBIGUOUS_DOCUMENTS": candidate_ambiguity,
+                f"CANDIDATE_{prefix}_CONFLICTING_DOCUMENTS": candidate_conflicts,
+                f"CANDIDATE_{prefix}_MULTI_RULE_OVERLAP_DOCUMENTS": candidate_overlap,
             }
         )
         total_conflicts += conflicts
@@ -178,6 +230,8 @@ def main() -> None:
     print(f"NATIVE_EXPLICIT_ANY_COVERAGE_DOCUMENTS={len(any_explicit)}")
     print(f"NATIVE_ANY_COVERAGE_DOCUMENTS={len(any_native)}")
     print(f"NATIVE_UNMATCHED_DOCUMENTS={len(sample) - len(any_native)}")
+    print(f"SHADOW_NATIVE_ANY_COVERAGE_DOCUMENTS={len(any_candidate)}")
+    print(f"SHADOW_NATIVE_UNMATCHED_DOCUMENTS={len(sample) - len(any_candidate)}")
     print(f"NATIVE_AMBIGUOUS_DOCUMENTS={total_ambiguities}")
     print(f"NATIVE_CONFLICTING_DOCUMENTS={total_conflicts}")
     print(f"FALSE_OVERLAP_RISK_BROAD_RULES={broad_rule_total}")
