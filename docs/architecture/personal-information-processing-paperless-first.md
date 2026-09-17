@@ -79,4 +79,23 @@ The governed [native canary run `35185765793`](https://github.com/joshant20-ops/
 
 The canary used a unique namespace and `try/finally` cleanup. It removed both synthetic documents, both task rows and all temporary taxonomy/workflow objects; the marker search returned to zero and the canonical checkout remained clean. It emitted no private fields or source content, mutated no production document and used neither Tower AI nor a LifeOS classifier.
 
-Revised P2 must now evaluate native Paperless rules against a representative real corpus sample in shadow/read-only mode and propose the smallest durable native taxonomy/matcher/workflow configuration. Any future LifeOS component must cite a measured native capability gap after this evaluation. Duplicate policy remains a Paperless configuration decision; LifeOS must not implement parallel deduplication.
+## Revised P2 — native production shadow
+
+Revised P2 evaluates native Paperless rules against a stable, metadata-stratified
+representative real corpus sample. The evaluator invokes Paperless's own matcher
+and, where available, its native classifier. It does not copy or reimplement
+matching, OCR, classification, duplicate handling, search or workflow logic.
+
+Only sanitised aggregates may leave the local runtime: coverage, unmatched,
+ambiguity, conflict, broad-overlap risk, zero-hit rules and candidate counts for
+preserving or reviewing the existing correspondent/type/tag/storage-path
+configuration. Names, matcher expressions, source IDs, filenames, OCR and all
+other private values remain inside Paperless. Existing user-created organisation
+is preserved. Real reads are allowed; production metadata writes are prohibited.
+The same shadow evaluation must produce an identical logical result when rerun.
+
+Tower AI is prohibited in P2. A later custom LifeOS component is justified only
+when it cites a demonstrated native capability gap from durable P2 evidence.
+Low native coverage by itself first calls for bounded Paperless configuration,
+not a parallel LifeOS classifier. Exact-duplicate policy remains entirely owned
+by Paperless.

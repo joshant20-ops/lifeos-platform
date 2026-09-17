@@ -1,0 +1,59 @@
+name: LifeOS P2 Paperless Native Shadow
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-pip-p2-paperless-shadow.py'
+      - 'scripts/lifeos-pip-p2-paperless-shadow.sh'
+      - '.github/workflows/lifeos-pip-p2-paperless-shadow.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-production-shadow:
+    runs-on: [self-hosted, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Reconcile clean canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          git -C "$repo" fetch origin main
+          test -z "$(git -C "$repo" status --porcelain)"
+          test "$(git -C "$repo" rev-parse HEAD)" = "$(git -C "$repo" merge-base HEAD origin/main)"
+          git -C "$repo" merge --ff-only origin/main
+          echo 'CANONICAL_CHECKOUT=PASS'
+
+      - name: Evaluate native Paperless rules read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          output=/tmp/lifeos-pip-p2-paperless-shadow.txt
+          bash /home/joshan/lifeos-platform/scripts/lifeos-pip-p2-paperless-shadow.sh | tee "$output"
+          for marker in \
+            'SAMPLE_METHOD=stable_hash_stratified_metadata_coverage' \
+            'EXACT_DUPLICATE_AUTHORITY=PAPERLESS' \
+            'PRODUCTION_DOCUMENT_MUTATION=NONE' \
+            'PRODUCTION_METADATA_MUTATION=NONE' \
+            'TOWER_AI_USED=NO' \
+            'LIFEOS_CLASSIFIER_BUILT=NO' \
+            'PRIVATE_FIELDS_EMITTED=NONE' \
+            'PRIVACY_LOCAL_ONLY=PASS' \
+            'IDEMPOTENT_IDENTICAL_RERUN=PASS' \
+            'SHADOW_EVALUATOR_REUSABLE=PASS' \
+            'RESULT=PASS'; do
+            grep -qx "$marker" "$output"
+          done
+
+      - name: Verify clean canonical checkout
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
+          rm -f /tmp/lifeos-pip-p2-paperless-shadow.txt
+          echo 'CANONICAL_CLEAN=PASS'
