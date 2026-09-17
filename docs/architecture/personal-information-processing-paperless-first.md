@@ -1,8 +1,8 @@
 # Personal Information Processing — Paperless-first reset
 
-Status: revised Paperless-first **P0 and P1 accepted**. Earlier custom-first P0–P2
+Status: revised Paperless-first **P0, P1 and P2 accepted**. Earlier custom-first P0–P2
 implementation evidence remains historically useful but its gate acceptance is
-**superseded/incomplete**. Revised P2 is next; later gates remain blocked.
+**superseded/incomplete**. Revised P3 is next; later gates remain blocked.
 
 ## Paperless-first invariant
 
@@ -104,3 +104,11 @@ when it cites a demonstrated native capability gap from durable P2 evidence.
 Low native coverage by itself first calls for bounded Paperless configuration,
 not a parallel LifeOS classifier. Exact-duplicate policy remains entirely owned
 by Paperless.
+
+### Revised P2 live acceptance
+
+The governed [native production shadow run `35186840593`, attempt 2](https://github.com/joshant20-ops/lifeos-platform/actions/runs/35186840593) passed after an incidental DNS failure on attempt 1. It evaluated 116 stable metadata-stratified documents from the 942-document corpus through Paperless's own matching and classifier logic, without changing documents, metadata or configuration. The identical rerun proof passed.
+
+Current native classification covered 66 sample documents and left 50 unmatched. Unsaved native-rule candidates increased coverage by one document to 67 and left 49 unmatched. Two existing document-type rules and two tag rules were safe enable candidates; three document-type and two tag rules require review. Candidate tag rules overlapped on 53 sample documents, so bulk enabling them without refinement is unsafe. No correspondent or storage-path candidates were justified, all six existing workflows should be preserved, and there were no exact duplicate groups in the current corpus.
+
+No taxonomy labels, filenames, OCR, names, source IDs or other private fields were emitted. Tower AI was not used, proposed production mutations remained none, and the canonical checkout remained clean. Revised P3 may configure only the proven safe native candidates through a reversible canary and limited rollout, and must remeasure overlap before production-wide activation. LifeOS semantic processing remains blocked until a residual native Paperless gap is demonstrated after that configuration work.
