@@ -27,6 +27,8 @@ def test_canary_uses_paperless_native_capabilities_and_rest_ingestion():
     assert "Correspondent, name=MARKER, owner=admin" not in HELPER
     assert "DocumentType, name=MARKER, owner=admin" not in HELPER
     assert "Tag, name=MARKER, owner=admin" not in HELPER
+    assert 'getattr(row, "field_id", None) == expected' in HELPER
+    assert 'getattr(row, "value", None) == "verified-native-workflow"' in HELPER
 
 
 def test_canary_is_unique_bounded_and_always_cleans_up():
