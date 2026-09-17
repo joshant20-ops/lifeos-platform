@@ -20,6 +20,9 @@ def test_canary_uses_paperless_native_capabilities_and_rest_ingestion():
     ):
         assert evidence in SHELL + HELPER
     assert "/api/documents/post_document/" in SHELL
+    assert "assign_custom_fields_values={custom_field.pk: assignment_value}" in HELPER
+    assert "action.assign_custom_fields.set([custom_field])" in HELPER
+    assert "assign_custom_fields=[" not in HELPER
 
 
 def test_canary_is_unique_bounded_and_always_cleans_up():
