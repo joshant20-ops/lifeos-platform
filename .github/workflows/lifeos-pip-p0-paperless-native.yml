@@ -1,0 +1,44 @@
+name: LifeOS P0 Paperless Native Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-pip-p0-paperless-native-audit.sh'
+      - '.github/workflows/lifeos-pip-p0-paperless-native.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native-read-only-audit:
+    runs-on: [self-hosted, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Reconcile clean canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          repo=/home/joshan/lifeos-platform
+          git -C "$repo" fetch origin main
+          test -z "$(git -C "$repo" status --porcelain)"
+          test "$(git -C "$repo" rev-parse HEAD)" = "$(git -C "$repo" merge-base HEAD origin/main)"
+          git -C "$repo" merge --ff-only origin/main
+          echo 'CANONICAL_CHECKOUT=PASS'
+      - name: Audit native Paperless capabilities and outcomes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          bash /home/joshan/lifeos-platform/scripts/lifeos-pip-p0-paperless-native-audit.sh | tee /tmp/pip-p0-native.txt
+          for marker in 'PRIVATE_FIELDS_EMITTED=NONE' 'PAPERLESS_MUTATION=NONE' 'PRIVACY_LOCAL_ONLY=PASS' 'CONFIG_SECRET_VALUES_EMITTED=NONE' 'RESULT=PASS'; do
+            grep -qx "$marker" /tmp/pip-p0-native.txt
+          done
+      - name: Verify clean canonical checkout
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
+          rm -f /tmp/pip-p0-native.txt
+          echo 'CANONICAL_CLEAN=PASS'
