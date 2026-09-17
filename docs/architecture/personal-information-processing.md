@@ -125,3 +125,19 @@ remain authoritative.
 P1 passed in [PR #273](https://github.com/joshant20-ops/lifeos-platform/pull/273), merged as `9b21fef3d6e22e7aed55b45f93c76d074d997257`. Focused validation proved all synthetic records recursively satisfy schema v1; taxonomy and schema enums remain identical and bounded; source references retain authority without copying content; high, medium and unknown confidence/exception paths are represented; private payload and credential fields are absent; and every production mutation flag is fixed false. Repository CI (`validate`, `security`, and `contract`) passed. No real Paperless or Gmail object was read or mutated by P1.
 
 P2 may now implement deterministic processing against a bounded representative real Paperless sample, with local-only staging results and no production Paperless metadata writes.
+
+## P2 deterministic processor
+
+P2 adds `lifeos_pip_deterministic.py`, a reusable pure deterministic processor
+plus a governed live read path. It uses existing Paperless metadata, title and
+OCR locally, with bounded keyword/pattern rules. The record returned to later
+stages contains only stable source references and P1 contract fields; source
+content is neither embedded nor emitted.
+
+The representative sample is a stable SHA-256 ranking of Paperless ID and
+checksum, capped at 96 documents for acceptance. The processor runs the same
+sample twice in memory and compares canonical logical digests. It emits only
+aggregate classified/ambiguous/conflict/error/semantic-needed counts. Unknown
+or conflicting evidence is queued for future semantics rather than guessed.
+P2 uses no AI, creates no persistent staging data, and performs no Paperless
+metadata mutation.
