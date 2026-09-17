@@ -1,9 +1,8 @@
 # Personal Information Processing — Paperless-first reset
 
-Status: revised P0 discovery. Earlier P0–P2 evidence remains historically
-useful but its acceptance is **superseded/incomplete** because native
-Paperless-ngx capability was not proven first. Revised P1 and later gates remain
-blocked until the governed native audit passes.
+Status: revised Paperless-first **P0 accepted**. Earlier custom-first P0–P2
+implementation evidence remains historically useful but its gate acceptance is
+**superseded/incomplete**. Revised P1 is next; later gates remain blocked.
 
 ## Paperless-first invariant
 
@@ -61,3 +60,15 @@ It must expose no labels, filenames, OCR, names, IDs or secrets and perform no
 production mutation. Only after that evidence passes may revised P1 decide
 which native Paperless configuration should be tested before any LifeOS gap
 component.
+
+## Revised P0 live evidence and gaps
+
+The governed [native audit run `35183312070`](https://github.com/joshant20-ops/lifeos-platform/actions/runs/35183312070) passed on canonical `95f92bc699b6e2edb58feddc64567c1e9f412aab`. Runtime identity was Paperless-ngx 3.1.2, configured from the mutable `latest` image reference but resolved to immutable image ID `sha256:5ab4f4f9bb099a36bec3e092906ea3e611323c5f18dc5cc38c76a1d540bdca9c`.
+
+The production corpus contained 942 documents: OCR text existed for all 942, originals for all 942 and archive versions for 66. Native metadata currently comprised zero correspondents, five document types, 13 tags, zero storage paths, zero custom fields and zero saved views. Assignment coverage was 0 documents with correspondents, 20 with a type and 85 with tags. All five types and all 13 tags had native matchers configured; 11 tag matchers used Auto. No correspondent or storage-path matchers existed.
+
+Paperless already had six workflows, six triggers and six actions, one mail account and one mail rule. Processed-mail history was zero. The consume mount was present, filesystem polling was 10 seconds, the full-text document API route resolved, and no exact-checksum duplicate group existed. Other audited OCR/consumer settings used current defaults. Paperless cannot reliably expose historical assignment provenance for these existing objects; the audit records that as unavailable rather than inferring it.
+
+This proves the immediate gap is configuration and measured use of native Paperless—not absence of document-processing machinery. Revised P1 must use synthetic canaries to evaluate native matching, workflows, search, mail/API ingestion, duplicate behaviour, rollback and assignment observability before authorising any LifeOS classifier. The mutable `latest` deployment reference is a separate operational reproducibility concern; the audit's immutable image ID preserves current evidence, but changing/pinning deployment is outside read-only P0.
+
+The audit emitted no private fields, configuration secrets, taxonomy labels, filenames, OCR, names or source IDs; it performed no Paperless/Gmail mutation and left canonical clean.
