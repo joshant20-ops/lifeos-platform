@@ -35,7 +35,8 @@ def test_evaluator_measures_required_native_outcomes_and_duplicate_policy():
         "NATIVE_EXPLICIT_ANY_COVERAGE_DOCUMENTS", "NATIVE_UNMATCHED_DOCUMENTS",
         "NATIVE_AMBIGUOUS_DOCUMENTS", "NATIVE_CONFLICTING_DOCUMENTS",
         "FALSE_OVERLAP_RISK_BROAD_RULES", "CANDIDATE_{prefix}_RULES_PRESERVE",
-        "CANDIDATE_{prefix}_RULES_REVIEW", "EXACT_DUPLICATE_GROUPS",
+        "CANDIDATE_{prefix}_RULES_ENABLE", "CANDIDATE_{prefix}_RULES_REVIEW",
+        "CANDIDATE_{prefix}_COVERED_DOCUMENTS", "SHADOW_NATIVE_UNMATCHED_DOCUMENTS", "EXACT_DUPLICATE_GROUPS",
         "EXACT_DUPLICATE_REJECT_CURRENT_CORPUS_IMPACT", "EXACT_DUPLICATE_AUTHORITY=PAPERLESS",
         "CANDIDATE_WORKFLOWS_PRESERVE", "CANDIDATE_WORKFLOWS_REVIEW", "CANDIDATE_WORKFLOWS_NEW",
     ):
@@ -51,6 +52,14 @@ def test_no_production_write_or_local_ai_surface_exists():
     assert "PRODUCTION_DOCUMENT_MUTATION=NONE" in HELPER
     assert "PRODUCTION_METADATA_MUTATION=NONE" in HELPER
     assert "TOWER_AI_USED=NO" in HELPER
+
+
+def test_candidate_rules_are_unsaved_native_literal_shadows_of_existing_taxonomy():
+    assert "def literal_shadow_candidates" in HELPER
+    assert "match=existing.name" in HELPER
+    assert "matching_algorithm=MatchingModel.MATCH_LITERAL" in HELPER
+    assert "candidates.append((existing.pk, shadow))" in HELPER
+    assert "objects.exclude(pk__in=effective_ids)" in HELPER
 
 
 def test_wrapper_proves_identical_rerun_and_workflow_preserves_checkout():
