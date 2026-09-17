@@ -8,6 +8,7 @@ docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -qx true 
 
 image="$(docker inspect -f '{{.Config.Image}}' "$container")"
 printf 'PAPERLESS_IMAGE=%s\n' "$image"
+printf 'PAPERLESS_IMAGE_ID=%s\n' "$(docker inspect -f '{{.Image}}' "$container")"
 consume_mount="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/usr/src/paperless/consume"}}present{{end}}{{end}}' "$container")"
 printf 'CONSUME_DIRECTORY=%s\n' "${consume_mount:-absent}"
 
@@ -81,7 +82,14 @@ duplicate_groups = sum(value > 1 for key, value in checksum_counts.items() if ke
 duplicate_documents = sum(value for key, value in checksum_counts.items() if key and value > 1)
 
 version = "UNAVAILABLE"
+try:
+    from paperless.version import __full_version_str__
+    version = str(__full_version_str__)
+except Exception:
+    pass
 for distribution in ("paperless-ngx", "paperless"):
+    if version != "UNAVAILABLE":
+        break
     try:
         version = importlib.metadata.version(distribution)
         break
