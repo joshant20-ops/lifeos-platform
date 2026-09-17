@@ -89,15 +89,15 @@ def configure():
     assert admin is not None
 
     correspondent = Correspondent.objects.create(
-        **supported(Correspondent, name=MARKER, owner=admin),
+        **supported(Correspondent, name=MARKER),
         **matching_defaults(Correspondent),
     )
     document_type = DocumentType.objects.create(
-        **supported(DocumentType, name=MARKER, owner=admin),
+        **supported(DocumentType, name=MARKER),
         **matching_defaults(DocumentType),
     )
     tag = Tag.objects.create(
-        **supported(Tag, name=MARKER, owner=admin, color="#334155"),
+        **supported(Tag, name=MARKER, color="#334155"),
         **matching_defaults(Tag),
     )
 
@@ -110,7 +110,7 @@ def configure():
     trigger_kwargs = supported(
         WorkflowTrigger,
         workflow=workflow,
-        filter_filename=MARKER,
+        filter_filename=f"*{MARKER}*",
         filter_path="",
     )
     trigger_kwargs["type"] = choice(WorkflowTrigger, "type", ("consumption", "consume"))

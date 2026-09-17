@@ -23,6 +23,10 @@ def test_canary_uses_paperless_native_capabilities_and_rest_ingestion():
     assert "assign_custom_fields_values={custom_field.pk: assignment_value}" in HELPER
     assert "action.assign_custom_fields.set([custom_field])" in HELPER
     assert "assign_custom_fields=[" not in HELPER
+    assert "filter_filename=f\"*{MARKER}*\"" in HELPER
+    assert "Correspondent, name=MARKER, owner=admin" not in HELPER
+    assert "DocumentType, name=MARKER, owner=admin" not in HELPER
+    assert "Tag, name=MARKER, owner=admin" not in HELPER
 
 
 def test_canary_is_unique_bounded_and_always_cleans_up():
