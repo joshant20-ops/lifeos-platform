@@ -16,7 +16,7 @@ def test_canary_uses_paperless_native_capabilities_and_rest_ingestion():
         "NATIVE_TAG_MATCHER=PASS",
         "NATIVE_WORKFLOW_CUSTOM_FIELD=PASS",
         "NATIVE_FULL_TEXT_SEARCH=PASS",
-        "NATIVE_EXACT_DUPLICATE_NO_SECOND_DOCUMENT=PASS",
+        "NATIVE_EXACT_DUPLICATE_BEHAVIOUR=MEASURED",
     ):
         assert evidence in SHELL + HELPER
     assert "/api/documents/post_document/" in SHELL
@@ -42,6 +42,8 @@ def test_canary_is_unique_bounded_and_always_cleans_up():
     assert 'duplicate_status="${duplicate_response##*$\'\\n\'}"' in SHELL
     assert "400|409)" in SHELL
     assert "NATIVE_DUPLICATE_HTTP_STATUS=" in SHELL
+    assert "NATIVE_EXACT_DUPLICATE_POLICY=REJECT" in SHELL
+    assert "NATIVE_EXACT_DUPLICATE_POLICY=ALLOW" in SHELL
 
 
 def test_canary_cannot_query_or_mutate_unmarked_production_documents():
