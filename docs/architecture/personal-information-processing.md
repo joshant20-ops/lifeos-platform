@@ -1,6 +1,6 @@
 # Personal Information Processing
 
-Status: gated implementation; **P0 and P1 accepted**. P2 is the next gate; P3 through
+Status: gated implementation; **P0, P1 and P2 accepted**. P3 is the next gate; P4 through
 P10 remain blocked until their preceding acceptance gate has durable evidence.
 
 ## Authority and privacy
@@ -141,3 +141,9 @@ aggregate classified/ambiguous/conflict/error/semantic-needed counts. Unknown
 or conflicting evidence is queued for future semantics rather than guessed.
 P2 uses no AI, creates no persistent staging data, and performs no Paperless
 metadata mutation.
+
+## P2 acceptance evidence
+
+P2 passed in [workflow run `35182510027`](https://github.com/joshant20-ops/lifeos-platform/actions/runs/35182510027) on canonical `906cb5754e6bc8d33673c85ac34aab31ee724ba4`. The stable 96-document sample was drawn from 942 Paperless documents. Deterministic processing fully classified 9, left 87 explicitly pending semantics, identified 13 conflicts within those ambiguous results, and produced zero processing errors. Deterministic coverage was 937 basis points (9.37%); this deliberately conservative baseline is a measurement, not a target relaxed by guessing.
+
+The governed run recorded `LOGICAL_RERUN_IDENTICAL=PASS`, `STAGING_PERSISTED=NONE`, `AI_USED=NONE`, `CLOUD_CONTENT_SENT=NONE`, `PAPERLESS_MUTATION=NONE`, `PRIVATE_FIELDS_EMITTED=NONE`, `PRIVACY_LOCAL_ONLY=PASS`, `CANONICAL_CLEAN=PASS` and `RESULT=PASS`. P2 therefore satisfies real-read/no-write, contract validation and idempotency acceptance. P3 may process only the unresolved bounded sample through the governed Tower/local-AI proposal path.
