@@ -142,7 +142,12 @@ def custom_field_value(document):
     value = getattr(document, "custom_fields", None)
     if hasattr(value, "all"):
         rows = list(value.all())
-        return any(getattr(row, "pk", None) == CustomField.objects.get(name=MARKER).pk for row in rows)
+        expected = CustomField.objects.get(name=MARKER).pk
+        return any(
+            getattr(row, "field_id", None) == expected
+            and getattr(row, "value", None) == "verified-native-workflow"
+            for row in rows
+        )
     if isinstance(value, str):
         try:
             value = json.loads(value)
