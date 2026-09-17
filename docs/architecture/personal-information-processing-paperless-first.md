@@ -1,8 +1,8 @@
 # Personal Information Processing — Paperless-first reset
 
-Status: revised Paperless-first **P0 accepted**. Earlier custom-first P0–P2
+Status: revised Paperless-first **P0 and P1 accepted**. Earlier custom-first P0–P2
 implementation evidence remains historically useful but its gate acceptance is
-**superseded/incomplete**. Revised P1 is next; later gates remain blocked.
+**superseded/incomplete**. Revised P2 is next; later gates remain blocked.
 
 ## Paperless-first invariant
 
@@ -72,3 +72,11 @@ Paperless already had six workflows, six triggers and six actions, one mail acco
 This proves the immediate gap is configuration and measured use of native Paperless—not absence of document-processing machinery. Revised P1 must use synthetic canaries to evaluate native matching, workflows, search, mail/API ingestion, duplicate behaviour, rollback and assignment observability before authorising any LifeOS classifier. The mutable `latest` deployment reference is a separate operational reproducibility concern; the audit's immutable image ID preserves current evidence, but changing/pinning deployment is outside read-only P0.
 
 The audit emitted no private fields, configuration secrets, taxonomy labels, filenames, OCR, names or source IDs; it performed no Paperless/Gmail mutation and left canonical clean.
+
+## Revised P1 live acceptance
+
+The governed [native canary run `35185765793`](https://github.com/joshant20-ops/lifeos-platform/actions/runs/35185765793) passed against Paperless-ngx 3.1.2. A unique disposable PDF entered through the authenticated REST ingestion boundary and proved native OCR, correspondent matching, document-type matching, tag matching, workflow-driven custom-field assignment and full-text API search. The canary then submitted the exact file again and measured the configured native duplicate policy as `ALLOW`, which is Paperless's current default rather than a missing LifeOS capability.
+
+The canary used a unique namespace and `try/finally` cleanup. It removed both synthetic documents, both task rows and all temporary taxonomy/workflow objects; the marker search returned to zero and the canonical checkout remained clean. It emitted no private fields or source content, mutated no production document and used neither Tower AI nor a LifeOS classifier.
+
+Revised P2 must now evaluate native Paperless rules against a representative real corpus sample in shadow/read-only mode and propose the smallest durable native taxonomy/matcher/workflow configuration. Any future LifeOS component must cite a measured native capability gap after this evaluation. Duplicate policy remains a Paperless configuration decision; LifeOS must not implement parallel deduplication.
