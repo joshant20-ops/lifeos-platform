@@ -100,12 +100,29 @@ inside verify
 [[ "$(marker_count)" == 1 ]]
 echo 'NATIVE_FULL_TEXT_SEARCH=PASS'
 
-duplicate="$(api POST /api/documents/post_document/ \
-  -F "title=$marker" -F "document=@$work/canary.pdf;filename=$marker-duplicate.pdf;type=application/pdf")"
-task2="$(python3 -c 'import json,sys; v=json.load(sys.stdin); print(v if isinstance(v,str) else v.get("task_id",v.get("id","")))' <<<"$duplicate")"
-[[ -n "$task2" ]] && task_ids+=("$task2")
-sleep 8
-[[ "$(marker_count)" == 1 ]]
+duplicate_response="$(curl --silent --show-error --max-time 30 \
+  -X POST -H "Authorization: Token $(<"$credential")" \
+  -H 'Accept: application/json; version=10' \
+  -F "title=$marker" \
+  -F "document=@$work/canary.pdf;filename=$marker-duplicate.pdf;type=application/pdf" \
+  -w $'\n%{http_code}' "$paperless_url/api/documents/post_document/")"
+duplicate_status="${duplicate_response##*$'\n'}"
+duplicate_body="${duplicate_response%$'\n'*}"
+case "$duplicate_status" in
+  200|201|202)
+    task2="$(python3 -c 'import json,sys; v=json.load(sys.stdin); print(v if isinstance(v,str) else v.get("task_id",v.get("id","")))' <<<"$duplicate_body")"
+    [[ -n "$task2" ]] && task_ids+=("$task2")
+    sleep 8
+    [[ "$(marker_count)" == 1 ]]
+    ;;
+  400|409)
+    [[ "$(marker_count)" == 1 ]]
+    ;;
+  *)
+    echo "NATIVE_DUPLICATE_HTTP_STATUS=$duplicate_status"
+    exit 1
+    ;;
+esac
 echo 'NATIVE_EXACT_DUPLICATE_NO_SECOND_DOCUMENT=PASS'
 
 echo 'PAPERLESS_OWNS_INGESTION_OCR_METADATA_MATCHING_WORKFLOW_SEARCH_DUPLICATES=PROVEN'

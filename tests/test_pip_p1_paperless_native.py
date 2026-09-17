@@ -39,6 +39,9 @@ def test_canary_is_unique_bounded_and_always_cleans_up():
         assert f'{native_object}.objects.filter(name=MARKER).delete()' in HELPER
     assert "MARKER_SEARCH_BEFORE=0" in SHELL
     assert "MARKER_SEARCH_AFTER=0" in SHELL
+    assert 'duplicate_status="${duplicate_response##*$\'\\n\'}"' in SHELL
+    assert "400|409)" in SHELL
+    assert "NATIVE_DUPLICATE_HTTP_STATUS=" in SHELL
 
 
 def test_canary_cannot_query_or_mutate_unmarked_production_documents():
