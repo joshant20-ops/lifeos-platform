@@ -1,26 +1,26 @@
-name: LifeOS P5 Semantic Batch
+name: LifeOS P5 Semantic Drain
 on:
   push:
     branches: [main]
-    paths:
-      - 'scripts/lifeos-pip-p5-semantic-batch.py'
-      - 'scripts/lifeos-pip-p5-backlog-state.py'
+    paths: ['scripts/lifeos-pip-p5-semantic-batch.py','scripts/lifeos-pip-p5-backlog-state.py']
   workflow_dispatch:
+concurrency:
+  group: lifeos-p5-state
+  cancel-in-progress: false
 jobs:
   batch:
     runs-on: [self-hosted, lifeos-pi5]
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - name: Reconcile canonical checkout
-        shell: bash --noprofile --norc -e -o pipefail {0}
         run: |
           repo=/home/joshan/lifeos-platform
           git -C "$repo" fetch origin main
           test -z "$(git -C "$repo" status --porcelain)"
           git -C "$repo" merge --ff-only origin/main
-      - name: Bounded semantic backlog batch
-        timeout-minutes: 20
-        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 25
+      - name: Drain semantic backlog in checkpointed chunks
+        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 50 --drain
       - name: Verify canonical clean
         if: always()
         run: |
