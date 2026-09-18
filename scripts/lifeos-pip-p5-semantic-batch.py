@@ -7,8 +7,8 @@ spec=importlib.util.spec_from_file_location("p5state",REPO/"scripts/lifeos-pip-p
 state=importlib.util.module_from_spec(spec); spec.loader.exec_module(state)
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("--db",type=Path,default=state.DEFAULT_DB); p.add_argument("--limit",type=int,default=5); a=p.parse_args()
-    if not 1 <= a.limit <= 10: raise SystemExit("invalid_limit")
+    p=argparse.ArgumentParser(); p.add_argument("--db",type=Path,default=state.DEFAULT_DB); p.add_argument("--limit",type=int,default=10); a=p.parse_args()
+    if not 1 <= a.limit <= 25: raise SystemExit("invalid_limit")
     db=state.connect(a.db)
     rows=db.execute("SELECT paperless_id FROM document_state WHERE state='semantic_pending' ORDER BY paperless_id LIMIT ?",(a.limit,)).fetchall()
     ok=review=0
