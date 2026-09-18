@@ -49,7 +49,12 @@ if reg_path.exists():
         pass
 
 def eid(uid):
-    return registry.get(uid)
+    # Discovery may be temporarily absent while Tower is off/restarting. Preserve
+    # the stable entity IDs already established by the metrics publisher so the
+    # dashboard and Recorder history do not disappear with live availability.
+    return registry.get(uid) or {
+      'lifeos_tower_activity_v1':'sensor.tower_activity','lifeos_tower_cpu_util_v1':'sensor.tower_cpu','lifeos_tower_ram_util_v1':'sensor.tower_ram','lifeos_tower_cpu_temp_v1':'sensor.tower_cpu_temperature','lifeos_tower_load_1m_v1':'sensor.tower_load_1m','lifeos_tower_net_rx_v1':'sensor.tower_network_receive','lifeos_tower_net_tx_v1':'sensor.tower_network_transmit','lifeos_tower_gpu_util_v1':'sensor.tower_gpu','lifeos_tower_gpu_temp_v1':'sensor.tower_gpu_temperature','lifeos_tower_gpu_vram_v1':'sensor.tower_gpu_vram','lifeos_tower_gpu_power_v1':'sensor.tower_gpu_power'
+    }.get(uid)
 
 def entity(uid, name=None):
     value=eid(uid)
@@ -210,6 +215,11 @@ for card in [
 ]:
     if card:
         cards.append(card)
+
+# Never silently publish a Z97 view without the fixed core history cards.
+# Their entity availability may be unknown/offline; Recorder history remains valid.
+core_titles={'CPU & RAM — 24 hours','GPU utilisation & VRAM — 24 hours','Temperatures — 24 hours','Network throughput — 24 hours','Activity state — 24 hours'}
+assert core_titles.issubset({str(x.get('title') or '') for x in cards}), 'core_history_cards_missing'
 
 disks={}
 pattern=re.compile(r'^lifeos_tower_disk_(.+)_(read|write|used)_v1$')
