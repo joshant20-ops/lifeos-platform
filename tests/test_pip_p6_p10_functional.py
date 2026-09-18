@@ -12,3 +12,22 @@ def test_p9_evidence_is_reference_not_ledger(tmp_path):
  d=m.connect(tmp_path/"x.db");m.evidence(d,"freeagent","txn-synthetic",10,"MATCHED","synthetic");cols={x[1] for x in d.execute("pragma table_info(evidence_link)")};assert "amount" not in cols and "balance" not in cols
 def test_p10_private_permissions_and_exception_queue(tmp_path):
  p=tmp_path/"state"/"x.db";d=m.connect(p);m.exception(d,"email","gmail:2","ambiguous");m.service(d,"pipeline","RUNNING");assert p.stat().st_mode&0o777==0o600;assert d.execute("select count(*) from exception_queue").fetchone()[0]==1
+
+
+def test_p9_tax_related_does_not_imply_deductible():
+    # Contract guard: HMRC/tax correspondence can be important tax evidence
+    # without representing expenditure or a deductible-expense candidate.
+    hmrc_letter = {"tax_related": True, "financial_evidence": True, "expense_candidate": False, "deductible_expense_candidate": False}
+    assert hmrc_letter["tax_related"] is True
+    assert hmrc_letter["expense_candidate"] is False
+    assert hmrc_letter["deductible_expense_candidate"] is False
+
+
+def test_p9_deductibility_requires_positive_expense_and_allowed_purpose():
+    def candidate(*, spent, purpose):
+        return bool(spent and purpose in {"work", "rental_property"})
+    assert not candidate(spent=False, purpose="work")
+    assert not candidate(spent=True, purpose="private")
+    assert not candidate(spent=True, purpose="unknown")
+    assert candidate(spent=True, purpose="work")
+    assert candidate(spent=True, purpose="rental_property")
