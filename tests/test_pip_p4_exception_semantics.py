@@ -18,3 +18,5 @@ def test_bridge_is_governed_local_only():
     assert 'generate(prompt, privacy="local-only", force_provider="ollama")' in BRIDGE
     assert "_ollama(prompt" not in BRIDGE
     assert "paperless_writeback_performed': False" in BRIDGE
+
+# P4 live-shadow trigger: accepted evaluator wiring revision 1.
