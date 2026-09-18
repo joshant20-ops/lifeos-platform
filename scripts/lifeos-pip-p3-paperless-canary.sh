@@ -9,7 +9,7 @@ docker inspect -f '{{.State.Running}}' "$container" 2>/dev/null | grep -qx true 
 
 docker cp "$repo/scripts/lifeos-pip-p2-paperless-shadow.py" "$container:/tmp/lifeos-pip-p2-lib.py"
 docker cp "$repo/scripts/lifeos-pip-p3-paperless-canary.py" "$container:/tmp/lifeos-pip-p3-canary.py"
-docker exec "$container" python3 manage.py shell < "$repo/scripts/lifeos-pip-p3-paperless-canary.py" | tee "$work/result.txt"
+docker exec -i "$container" python3 manage.py shell < "$repo/scripts/lifeos-pip-p3-paperless-canary.py" | tee "$work/result.txt"
 
 grep -qx 'P3_SAFE_DOCUMENT_TYPE_RULES=2' "$work/result.txt"
 grep -qx 'P3_SAFE_TAG_RULES=2' "$work/result.txt"
