@@ -2,3 +2,4 @@ operation=deploy-tower-metrics
 reason=preserve-control-entity-and-verify-sdb
 requested_commit=0c143d1c81d5baa4dd3770f7e18d9ef950c961ce
 nonce=2026-09-05T10:09+01:00
+2026-09-18 lifecycle-dashboard
