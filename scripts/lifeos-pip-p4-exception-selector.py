@@ -48,7 +48,7 @@ def main():
     p=argparse.ArgumentParser()
     p.add_argument("--limit",type=int,default=0)
     p.add_argument("--emit-ids",action="store_true")
-    a=p.parse_args()
+    a=p.parse_args([])
     ids=unresolved_ids(a.limit)
     print(f"P4_UNRESOLVED_SELECTED={len(ids)}")
     print("P4_SELECTOR=PAPERLESS_NATIVE_EXCEPTION_ONLY")
