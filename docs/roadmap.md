@@ -31,3 +31,13 @@
 - Z97 retirement checklist: **PUBLISHED** in `operations/z97-retirement.md`; retirement remains gated on live dependency evidence.
 - System simplification map: **RECORDED** in `architecture/system-simplification-map.md`.
 - Transactional-root first production increment: **COMPLETE**; broader operation types remain fail-closed until separately designed and proven.
+
+
+## Queued maintenance — Predbat v9
+
+- **Predbat v8.55.0 → v9.0.3 controlled upgrade** — queued for the governed runner after the current interactive build work. Treat this as a safety-sensitive energy-control upgrade, not an unattended blind update.
+- Preflight: capture installed version, current Predbat status/mode, `apps.yaml` and relevant HA entity/config state; confirm a rollback path to v8.55.0; inspect current inverter/component configuration and verify no deprecated AppDaemon migration is being mixed into this change.
+- Compatibility review: v9.0.0's major refactor is specifically GivTCP REST; this installation uses Enphase, so that headline refactor is not directly applicable. Octopus fixes in v9.0.x are relevant and should be retained. New `manual_soc_max` is optional and must not be enabled merely by upgrading.
+- Execute: take/verify HA backup or equivalent rollback evidence, upgrade Predbat to v9.0.3 using its supported HA update mechanism, then wait for clean startup.
+- Acceptance: prove Predbat reports v9.0.3 with no error status; tariff/Octopus inputs, PV/load/grid/battery sensors and plan populate; compare pre/post plan for unexplained material changes; verify existing battery control mode and limits are preserved; perform a bounded observation before allowing normal autonomous control. If validation fails, roll back to v8.55.0 and record aggregate diagnostics only.
+- Do not expose secrets from `apps.yaml` or HA tokens in CI/log evidence.
