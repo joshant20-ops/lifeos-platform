@@ -3,8 +3,12 @@ on:
   push:
     branches: [main]
     paths:
-      - 'scripts/lifeos-pip-p5-*.py'
+      - 'scripts/lifeos-pip-p5-native-inventory.py'
+      - 'scripts/lifeos-pip-p5-inventory-runner.py'
   workflow_dispatch:
+concurrency:
+  group: lifeos-p5-state
+  cancel-in-progress: false
 jobs:
   inventory:
     runs-on: [self-hosted, lifeos-pi5]

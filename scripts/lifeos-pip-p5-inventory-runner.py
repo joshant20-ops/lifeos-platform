@@ -15,7 +15,7 @@ def main():
     for line in r.stdout.splitlines():
         parts=line.strip().split("\t")
         if len(parts)==2 and parts[0].isdigit() and parts[1] in {"native_resolved","semantic_pending"}:
-            state.upsert(db,int(parts[0]),parts[1]); seen+=1
+            state.inventory_upsert(db,int(parts[0]),parts[1]); seen+=1
     if not seen: raise RuntimeError("no_inventory_rows")
     state.checkpoint(db,"native_inventory_count",seen); db.commit()
     counts=state.summary(db)
