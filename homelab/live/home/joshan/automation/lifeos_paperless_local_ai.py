@@ -17,7 +17,7 @@ REPO = pathlib.Path('/home/joshan/lifeos-platform')
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from governor.ai_broker import OLLAMA_MODEL, _ollama
+from governor.ai_broker import OLLAMA_MODEL, generate
 
 PAPERLESS_CONTAINER = 'paperless-paperless-1'
 MAX_CONTENT = 24000
@@ -39,7 +39,7 @@ def read_document(document_id: int) -> dict:
 
 def analyse(doc: dict) -> dict:
     prompt = '''You are LifeOS local document intelligence. The following content is private and must remain local.\nReturn ONLY JSON with keys: document_type, summary, obligations, dates, amounts, organisations, confidence.\nDo not invent facts. Unknown values must be null or empty arrays.\n\nDOCUMENT TITLE:\n''' + doc['title'] + '\n\nDOCUMENT CONTENT:\n' + doc['content']
-    raw = _ollama(prompt, OLLAMA_MODEL).strip()
+    raw = generate(prompt, privacy="local-only", force_provider="ollama").strip()
     if raw.startswith('```'):
         raw = raw.strip('`').removeprefix('json').strip()
     try:
