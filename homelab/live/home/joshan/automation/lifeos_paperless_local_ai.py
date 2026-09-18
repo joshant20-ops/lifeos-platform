@@ -45,8 +45,21 @@ def analyse(doc: dict) -> dict:
         raw = raw.strip('`').removeprefix('json').strip()
     try:
         intelligence = json.loads(raw)
-    except json.JSONDecodeError:
-        intelligence = {'summary': raw, 'parse_status': 'non_json'}
+    except json.JSONDecodeError as exc:
+        raise RuntimeError('local_ai_invalid_json') from exc
+    required = {'document_type', 'summary', 'obligations', 'dates', 'amounts', 'organisations', 'confidence'}
+    if not isinstance(intelligence, dict) or set(intelligence) != required:
+        raise RuntimeError('local_ai_invalid_schema_keys')
+    if intelligence['document_type'] is not None and not isinstance(intelligence['document_type'], str):
+        raise RuntimeError('local_ai_invalid_document_type')
+    if intelligence['summary'] is not None and not isinstance(intelligence['summary'], str):
+        raise RuntimeError('local_ai_invalid_summary')
+    for key in ('obligations', 'dates', 'amounts', 'organisations'):
+        if not isinstance(intelligence[key], list):
+            raise RuntimeError(f'local_ai_invalid_{key}')
+    confidence = intelligence['confidence']
+    if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not 0 <= confidence <= 1:
+        raise RuntimeError('local_ai_invalid_confidence')
     return {
         'status': 'ok',
         'paperless_document_id': doc['id'],
