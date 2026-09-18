@@ -1,61 +1,62 @@
 #!/usr/bin/env python3
-"""P4 Paperless-first exception selector.
+"""P4 exception selector using the accepted P2 native Paperless evaluator.
 
-Runs inside Paperless. Selects only documents unresolved by Paperless native
-matching/classification. Emits IDs only when explicitly requested for a local
-consumer; default output is aggregate-only. Never writes Paperless.
+Executed inside the Paperless Django shell. Private document/taxonomy values
+remain local. No Paperless writes are performed.
 """
 from __future__ import annotations
-import argparse, hashlib
-from documents.classifier import load_classifier
-from documents.matching import matches
-from documents.models import Correspondent, Document, DocumentType, StoragePath, Tag
 
-MODELS=(Correspondent,DocumentType,Tag,StoragePath)
+p2_source=open("/tmp/lifeos-pip-p2-lib.py").read()
+p2_library=p2_source.rsplit("\nmain()",1)[0]
+exec(p2_library,globals())
 
-def rules(model):
-    return list(model.objects.exclude(matching_algorithm=0).exclude(match=""))
+documents=list(
+    Document.objects.order_by("pk")
+    .select_related("correspondent","document_type","storage_path")
+    .prefetch_related("tags")
+)
+sample,_=representative_sample(documents)
+classifier=load_classifier()
+dimensions=(
+    (Correspondent,False),
+    (DocumentType,False),
+    (Tag,True),
+    (StoragePath,False),
+)
+rules_by_model={}
+auto_by_model={}
+for model,_ in dimensions:
+    rules_by_model[model]=explicit_rules(model)
+    auto_by_model[model]=list(model.objects.filter(matching_algorithm=MatchingModel.MATCH_AUTO).order_by("pk"))
 
-def native_match(doc):
-    text=(doc.content or "")
-    title=(doc.title or "")
-    for model in MODELS:
-        for rule in rules(model):
-            try:
-                if matches(rule, text, title):
-                    return True
-            except Exception:
-                continue
-    try:
-        classifier=load_classifier()
-        if classifier and classifier.classify(doc):
+def resolved(document):
+    for model,_ in dimensions:
+        if native_matches(rules_by_model[model],document):
             return True
-    except Exception:
-        pass
+    if classifier is not None:
+        for model,_ in dimensions:
+            auto=auto_by_model[model]
+            if not auto:
+                continue
+            if model is Correspondent:
+                pred=classifier.predict_correspondent(document.suggestion_content)
+                if any(r.pk==pred for r in auto): return True
+            elif model is DocumentType:
+                pred=classifier.predict_document_type(document.suggestion_content)
+                if any(r.pk==pred for r in auto): return True
+            elif model is Tag:
+                pred=set(classifier.predict_tags(document.suggestion_content))
+                if any(r.pk in pred for r in auto): return True
+            elif model is StoragePath:
+                pred=classifier.predict_storage_path(document.suggestion_content)
+                if any(r.pk==pred for r in auto): return True
     return False
 
-def unresolved_ids(limit):
-    qs=Document.objects.only("id","title","content").order_by("id")
-    out=[]
-    for doc in qs.iterator():
-        if not native_match(doc):
-            out.append(doc.id)
-            if limit and len(out)>=limit:
-                break
-    return out
-
-def main():
-    p=argparse.ArgumentParser()
-    p.add_argument("--limit",type=int,default=0)
-    p.add_argument("--emit-ids",action="store_true")
-    a=p.parse_args([])
-    ids=unresolved_ids(a.limit)
-    print(f"P4_UNRESOLVED_SELECTED={len(ids)}")
-    print("P4_SELECTOR=PAPERLESS_NATIVE_EXCEPTION_ONLY")
-    print("P4_DOCUMENT_MUTATION=NONE")
-    print("P4_PRIVATE_CONTENT_EMITTED=NONE")
-    if a.emit_ids:
-        print("P4_LOCAL_DOCUMENT_IDS="+",".join(map(str,ids)))
-    print("RESULT=PASS")
-
-main()
+unresolved=[d.pk for d in sample if not resolved(d)]
+print(f"P4_SAMPLE_DOCUMENTS={len(sample)}")
+print(f"P4_NATIVE_RESOLVED={len(sample)-len(unresolved)}")
+print(f"P4_UNRESOLVED_SELECTED={len(unresolved)}")
+print("P4_SELECTOR=PAPERLESS_NATIVE_EXCEPTION_ONLY")
+print("P4_DOCUMENT_MUTATION=NONE")
+print("P4_PRIVATE_CONTENT_EMITTED=NONE")
+print("RESULT=PASS")
