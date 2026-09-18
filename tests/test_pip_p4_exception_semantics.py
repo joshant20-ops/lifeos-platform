@@ -20,3 +20,10 @@ def test_bridge_is_governed_local_only():
     assert "paperless_writeback_performed': False" in BRIDGE
 
 # P4 live-shadow trigger: accepted evaluator wiring revision 1.
+
+def test_bridge_fails_closed_on_semantic_schema():
+    assert "local_ai_invalid_json" in BRIDGE
+    assert "local_ai_invalid_schema_keys" in BRIDGE
+    assert "local_ai_invalid_confidence" in BRIDGE
+    assert "parse_status" not in BRIDGE
+    assert "set(intelligence) != required" in BRIDGE
