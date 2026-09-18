@@ -20,7 +20,7 @@ jobs:
           git -C "$repo" merge --ff-only origin/main
       - name: Bounded semantic backlog batch
         timeout-minutes: 20
-        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 5
+        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 10
       - name: Verify canonical clean
         if: always()
         run: |
