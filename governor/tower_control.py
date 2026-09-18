@@ -194,6 +194,11 @@ def publish_discovery() -> None:
         "payload_on": "ON", "payload_off": "OFF", "state_on": "ON", "state_off": "OFF", "icon": "mdi:power",
         "availability_topic": f"{BASE}/availability", "payload_available": "online", "payload_not_available": "offline", "device": tower_device(),
     }
+    lifecycle = {
+        "name": "Tower Lifecycle", "unique_id": "lifeos_tower_lifecycle_v1", "state_topic": f"{BASE}/state",
+        "value_template": "{{ value_json.lease_state }}", "json_attributes_topic": f"{BASE}/state", "icon": "mdi:timer-cog-outline",
+        "availability_topic": f"{BASE}/availability", "payload_available": "online", "payload_not_available": "offline", "device": tower_device(),
+    }
     accessible = {
         "name": "Tower Accessible", "unique_id": "lifeos_tower_accessible_v1", "state_topic": f"{BASE}/state",
         "value_template": "{{ 'ON' if value_json.accessible else 'OFF' }}", "payload_on": "ON", "payload_off": "OFF", "device_class": "connectivity",
@@ -202,10 +207,27 @@ def publish_discovery() -> None:
     mqtt_pub(f"{DISCOVERY}/sensor/lifeos_tower/status/config", json.dumps(state, separators=(",", ":")))
     mqtt_pub(f"{DISCOVERY}/switch/lifeos_tower/power/config", json.dumps(power, separators=(",", ":")))
     mqtt_pub(f"{DISCOVERY}/binary_sensor/lifeos_tower/accessible/config", json.dumps(accessible, separators=(",", ":")))
+    mqtt_pub(f"{DISCOVERY}/sensor/lifeos_tower/lifecycle/config", json.dumps(lifecycle, separators=(",", ":")))
 
 
 def publish_state() -> dict:
     value = observed_state(load_config())
+    lifecycle = _load_compute_state()
+    now_ts = int(time.time())
+    with LEASE_LOCK:
+        active_leases = [v for v in LEASES.values() if int(v.get("expires_at") or 0) > now_ts]
+    idle_since = lifecycle.get("idle_since")
+    value.update({
+        "active_leases": len(active_leases),
+        "lease_state": "ACTIVE" if active_leases else "NONE",
+        "woke_by_lifeos": bool(lifecycle.get("woke_by_lifeos")),
+        "idle_since": idle_since,
+        "idle_seconds": max(0, now_ts - int(idle_since)) if idle_since else 0,
+        "idle_grace_seconds": IDLE_GRACE,
+        "last_wake_at": lifecycle.get("last_wake_at"),
+        "last_shutdown_at": lifecycle.get("last_shutdown_at"),
+        "next_action": "KEEP_ON_LEASE" if active_leases else ("SHUTDOWN_AFTER_IDLE" if lifecycle.get("woke_by_lifeos") else "NONE"),
+    })
     mqtt_pub(f"{BASE}/state", json.dumps(value, separators=(",", ":")))
     mqtt_pub(f"{BASE}/power/state", value["switch_state"])
     mqtt_pub(f"{BASE}/availability", "online")
