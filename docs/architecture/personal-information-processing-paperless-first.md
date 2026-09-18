@@ -125,3 +125,16 @@ The governed native Paperless canary run `35309290110` passed on the self-hosted
 Native coverage moved from 66 to 67 documents. Document-type overlap remained zero. Tag overlap moved from 52 to 53, confirming the P2 warning that the candidate tag configuration is not suitable for production-wide activation without refinement. The canary restored the exact matcher configuration successfully. It performed no document metadata mutation, created no taxonomy, mutated no review candidates, emitted no private fields and used no Tower AI. The canonical checkout remained clean.
 
 P3 is accepted as a bounded configuration/measurement gate, not as approval to bulk-enable all four candidates. Its evidence demonstrates a substantial residual native Paperless gap: 49 of the 116 representative documents remain outside the native/candidate coverage measured by P2/P3, while the tag candidates introduce additional overlap. P4 may therefore investigate an exception-only semantic layer for the unresolved tail, while continuing to prefer native Paperless for documents it can classify safely. Any production matcher activation must be independently justified by non-regressing overlap evidence.
+
+
+## Revised P4 — exception-only governed local semantics
+
+P4 adds no replacement document classifier. Paperless remains the first-line authority and the accepted P2 evaluator is reused to identify only the residual native exception set. Real document title/OCR stays local. Semantic interpretation is routed through Governor with `privacy="local-only"` and `force_provider="ollama"`; the bridge independently requires the returned provider to be Ollama. Invalid JSON, missing/unknown schema keys, invalid field types or confidence outside 0..1 fail closed. P4 performs no Paperless writeback.
+
+### Revised P4 live acceptance
+
+The corrected governed native-exception shadow reproduced the accepted P2 baseline on the same representative sample: 116 documents, 66 resolved by native Paperless behavior and 50 selected as unresolved exceptions. It emitted no private content, performed no document mutation and left the canonical checkout clean.
+
+The bounded real semantic canary run `35324638387` then selected three documents only from that native-unresolved set and processed all three successfully through the governed local-only Tower Ollama route. All three returned the strict seven-field structured schema. Sanitised evidence reported `P4_AI_CANARY_SELECTED=3`, `P4_AI_VALID_STRUCTURED=3`, `P4_AI_PRIVACY=LOCAL_ONLY`, `P4_AI_PAPERLESS_WRITEBACK=NONE`, `P4_AI_PRIVATE_CONTENT_EMITTED=NONE`, `RESULT=PASS` and `CANONICAL_CLEAN=PASS`. Paperless Local AI deployment, stable broker contract, contract audit and repository CI also passed for the same revision.
+
+An earlier strict-schema run accepted two of three outputs and rejected one; that failure was retained as evidence that malformed semantic output fails closed. The producer prompt was tightened rather than weakening validation, after which the bounded canary passed three of three. P4 is accepted. P5 may now build a progressive, resumable backlog state machine around Paperless-first native resolution and this exception-only local semantic path; it must not turn Tower Ollama into a default full-corpus processor and must not auto-delete documents.
