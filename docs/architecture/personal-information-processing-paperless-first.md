@@ -112,3 +112,16 @@ The governed [native production shadow run `35186840593`, attempt 2](https://git
 Current native classification covered 66 sample documents and left 50 unmatched. Unsaved native-rule candidates increased coverage by one document to 67 and left 49 unmatched. Two existing document-type rules and two tag rules were safe enable candidates; three document-type and two tag rules require review. Candidate tag rules overlapped on 53 sample documents, so bulk enabling them without refinement is unsafe. No correspondent or storage-path candidates were justified, all six existing workflows should be preserved, and there were no exact duplicate groups in the current corpus.
 
 No taxonomy labels, filenames, OCR, names, source IDs or other private fields were emitted. Tower AI was not used, proposed production mutations remained none, and the canonical checkout remained clean. Revised P3 may configure only the proven safe native candidates through a reversible canary and limited rollout, and must remeasure overlap before production-wide activation. LifeOS semantic processing remains blocked until a residual native Paperless gap is demonstrated after that configuration work.
+
+
+## Revised P3 — reversible native configuration canary
+
+Revised P3 remains Paperless-first. It may exercise only the existing native matcher candidates proven safe by P2, must remeasure native coverage and overlap on the same representative sample, and must restore the exact matcher configuration before exit. It must not mutate document metadata, create taxonomy, touch review candidates, or invoke Tower/cloud AI. Production-wide activation requires evidence that a candidate adds useful native coverage without unacceptable ambiguity or overlap.
+
+### Revised P3 live acceptance
+
+The governed native Paperless canary run `35309290110` passed on the self-hosted Pi runner. All 11 focused P2/P3 contract tests passed, the canonical checkout reconciled cleanly, and the canary rediscovered exactly the P2-proven two document-type and two tag candidates against the same 116-document sample.
+
+Native coverage moved from 66 to 67 documents. Document-type overlap remained zero. Tag overlap moved from 52 to 53, confirming the P2 warning that the candidate tag configuration is not suitable for production-wide activation without refinement. The canary restored the exact matcher configuration successfully. It performed no document metadata mutation, created no taxonomy, mutated no review candidates, emitted no private fields and used no Tower AI. The canonical checkout remained clean.
+
+P3 is accepted as a bounded configuration/measurement gate, not as approval to bulk-enable all four candidates. Its evidence demonstrates a substantial residual native Paperless gap: 49 of the 116 representative documents remain outside the native/candidate coverage measured by P2/P3, while the tag candidates introduce additional overlap. P4 may therefore investigate an exception-only semantic layer for the unresolved tail, while continuing to prefer native Paperless for documents it can classify safely. Any production matcher activation must be independently justified by non-regressing overlap evidence.
