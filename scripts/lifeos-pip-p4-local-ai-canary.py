@@ -44,7 +44,7 @@ if not ids:
     raise SystemExit("P4_CANARY_FAIL=no_exception_ids")
 valid=0
 for doc_id in ids:
-    p=subprocess.run([f"{repo}/homelab/live/home/joshan/automation/lifeos_paperless_local_ai.py",str(doc_id)],capture_output=True,text=True,timeout=180)
+    p=subprocess.run([sys.executable,f"{repo}/homelab/live/home/joshan/automation/lifeos_paperless_local_ai.py",str(doc_id)],capture_output=True,text=True,timeout=180)
     if p.returncode: continue
     try: obj=json.loads(p.stdout)
     except Exception: continue
