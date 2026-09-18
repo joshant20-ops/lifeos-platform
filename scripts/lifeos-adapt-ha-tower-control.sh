@@ -153,7 +153,31 @@ gpu_vram=eid('lifeos_tower_gpu_vram_v1')
 gpu_power=eid('lifeos_tower_gpu_power_v1')
 
 cards=[]
-cards.append({'type':'markdown','content':f"# Z97 / TowerPC\nDedicated host metrics and activity history.\n\n<!-- {metrics_marker} -->"})
+cards.append({'type':'markdown','content':f"""# 🖥️ Z97 / TowerPC
+**AI compute — on demand**
+
+{% set online = is_state('binary_sensor.tower_accessible','on') %}
+{% set ls = states('sensor.tower_lifecycle') %}
+{% set leases = state_attr('sensor.tower_lifecycle','active_leases') | int(0) %}
+{% set idle = state_attr('sensor.tower_lifecycle','idle_seconds') | int(0) %}
+{% set grace = state_attr('sensor.tower_lifecycle','idle_grace_seconds') | int(600) %}
+**{{ '🟢 ON' if online else '⚫ OFF' }}** · {{ leases }} active lease{{ '' if leases == 1 else 's' }} · {{ 'working' if leases else ('idle '+(idle|string)+'s / '+(grace|string)+'s' if online else 'asleep') }}
+
+<!-- {metrics_marker} -->"""})
+cards.append({'type':'entities','title':'LifeOS lease status','show_header_toggle':False,'entities':[
+    {'entity':'sensor.tower_lifecycle','name':'Lease state'},
+    {'type':'attribute','entity':'sensor.tower_lifecycle','attribute':'active_leases','name':'Active leases'},
+    {'type':'attribute','entity':'sensor.tower_lifecycle','attribute':'idle_seconds','name':'Idle timer (s)'},
+    {'type':'attribute','entity':'sensor.tower_lifecycle','attribute':'idle_grace_seconds','name':'Auto-shutdown delay (s)'},
+    {'type':'attribute','entity':'sensor.tower_lifecycle','attribute':'last_wake_at','name':'Last LifeOS wake'},
+    {'type':'attribute','entity':'sensor.tower_lifecycle','attribute':'last_shutdown_at','name':'Last LifeOS shutdown'},
+    {'type':'attribute','entity':'sensor.tower_lifecycle','attribute':'next_action','name':'Next action'},
+]})
+cards.append({'type':'horizontal-stack','cards':[
+    {'type':'button','entity':'switch.tower_power','name':'Wake Tower','icon':'mdi:power','tap_action':{'action':'call-service','service':'switch.turn_on','target':{'entity_id':'switch.tower_power'}}},
+    {'type':'button','entity':'switch.tower_power','name':'Shut down','icon':'mdi:power-off','tap_action':{'action':'call-service','service':'switch.turn_off','target':{'entity_id':'switch.tower_power'},'confirmation':{'text':'Force a graceful Tower shutdown? Active LifeOS work may be interrupted.'}}},
+]})
+cards.append(history('Power state — 24 hours',[{'entity':'binary_sensor.tower_accessible','name':'Tower accessible'}]))
 
 live=[]
 for uid,name in [
@@ -276,7 +300,8 @@ assert isinstance(cards,list) and len(cards) >= 10, len(cards or [])
 history=[c for c in cards if c.get('type')=='history-graph']
 disk_history=[c for c in history if str(c.get('title') or '').startswith('Disk ')]
 disk_cards=[c for c in cards if c.get('type')=='entities' and str(c.get('title') or '').startswith('Disk ')]
-assert len(history) >= 7, len(history)
+assert len(history) >= 8, len(history)
+assert 'sensor.tower_lifecycle' in text
 assert len(disk_history) >= 2, len(disk_history)
 assert len(disk_cards) >= 2, len(disk_cards)
 for card in disk_cards:
