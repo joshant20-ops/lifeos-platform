@@ -30,7 +30,8 @@ jobs:
           repo=/home/joshan/lifeos-platform
           container=paperless-paperless-1
           docker inspect -f '{{.State.Running}}' "$container" | grep -qx true
-          docker cp "$repo/scripts/lifeos-pip-p2-paperless-shadow.py" "$container:/tmp/lifeos-pip-p2-lib.py"\n          docker cp "$repo/scripts/lifeos-pip-p4-exception-selector.py" "$container:/tmp/lifeos-pip-p4-exception-selector.py"
+          docker cp "$repo/scripts/lifeos-pip-p2-paperless-shadow.py" "$container:/tmp/lifeos-pip-p2-lib.py"
+          docker cp "$repo/scripts/lifeos-pip-p4-exception-selector.py" "$container:/tmp/lifeos-pip-p4-exception-selector.py"
           docker exec -i "$container" python3 manage.py shell < "$repo/scripts/lifeos-pip-p4-exception-selector.py" > /tmp/lifeos-p4-shadow.txt
           grep -q '^P4_SELECTOR=PAPERLESS_NATIVE_EXCEPTION_ONLY$' /tmp/lifeos-p4-shadow.txt
           grep -q '^P4_DOCUMENT_MUTATION=NONE$' /tmp/lifeos-p4-shadow.txt
