@@ -58,5 +58,4 @@ def main():
         print("P4_LOCAL_DOCUMENT_IDS="+",".join(map(str,ids)))
     print("RESULT=PASS")
 
-if __name__=="__main__":
-    main()
+main()
