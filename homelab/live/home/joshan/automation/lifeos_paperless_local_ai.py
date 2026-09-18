@@ -38,7 +38,7 @@ def read_document(document_id: int) -> dict:
 
 
 def analyse(doc: dict) -> dict:
-    prompt = '''You are LifeOS local document intelligence. The following content is private and must remain local.\nReturn ONLY JSON with keys: document_type, summary, obligations, dates, amounts, organisations, confidence.\nDo not invent facts. Unknown values must be null or empty arrays.\n\nDOCUMENT TITLE:\n''' + doc['title'] + '\n\nDOCUMENT CONTENT:\n' + doc['content']
+    prompt = '''You are LifeOS local document intelligence. The following content is private and must remain local.\nReturn ONLY one JSON object, with no markdown and exactly these keys: document_type, summary, obligations, dates, amounts, organisations, confidence. document_type and summary must be strings or null. obligations, dates, amounts and organisations must always be JSON arrays (use [] when unknown). confidence must be a number from 0.0 to 1.0. Do not invent facts.\n\nDOCUMENT TITLE:\n''' + doc['title'] + '\n\nDOCUMENT CONTENT:\n' + doc['content']
     response = generate(prompt, privacy="local-only", force_provider="ollama")
     raw = str(response["text"]).strip()
     if raw.startswith('```'):
