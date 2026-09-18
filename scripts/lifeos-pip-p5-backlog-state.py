@@ -9,7 +9,7 @@ from __future__ import annotations
 import argparse, sqlite3, time
 from pathlib import Path
 
-DEFAULT_DB=Path("/data/lifeos/pip/backlog.sqlite3")
+DEFAULT_DB=Path.home()/".local/state/lifeos/pip/backlog.sqlite3"
 VALID={"pending_native","native_resolved","semantic_pending","semantic_resolved","review","failed"}
 
 def connect(path: Path):
