@@ -1,0 +1,27 @@
+name: LifeOS Tower 24h Lifecycle Proof
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/audit-tower-24h-lifecycle.py
+      - .github/workflows/lifeos-tower-24h-lifecycle.yml
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync canonical main
+        run: |
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          test -z "$(git status --porcelain)"
+          git merge --ff-only origin/main
+      - name: Aggregate last 24h Tower lifecycle
+        run: python3 /home/joshan/lifeos-platform/scripts/audit-tower-24h-lifecycle.py
+      - name: Canonical clean
+        if: always()
+        run: |
+          test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
+          echo CANONICAL_CLEAN=PASS
