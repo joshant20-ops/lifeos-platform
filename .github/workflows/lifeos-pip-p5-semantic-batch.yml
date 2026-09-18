@@ -10,7 +10,7 @@ concurrency:
 jobs:
   batch:
     runs-on: [self-hosted, lifeos-pi5]
-    timeout-minutes: 240
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - name: Reconcile canonical checkout
@@ -19,8 +19,8 @@ jobs:
           git -C "$repo" fetch origin main
           test -z "$(git -C "$repo" status --porcelain)"
           git -C "$repo" merge --ff-only origin/main
-      - name: Drain semantic backlog in checkpointed chunks
-        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 50 --drain
+      - name: Process one bounded semantic checkpoint
+        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 50
       - name: Verify canonical clean
         if: always()
         run: |
