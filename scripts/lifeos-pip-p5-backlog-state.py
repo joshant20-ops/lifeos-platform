@@ -26,11 +26,11 @@ def connect(path: Path):
     )""")
     return db
 
-def upsert(db, paperless_id:int, state:str):
+def upsert(db, paperless_id:int, state:str, increment_attempt:bool=False):
     if state not in VALID: raise ValueError("invalid_state")
     now=int(time.time())
-    db.execute("""INSERT INTO document_state(paperless_id,state,updated_at) VALUES(?,?,?)
-      ON CONFLICT(paperless_id) DO UPDATE SET state=excluded.state,updated_at=excluded.updated_at""",(paperless_id,state,now))
+    db.execute("""INSERT INTO document_state(paperless_id,state,attempts,updated_at) VALUES(?,?,?,?)
+      ON CONFLICT(paperless_id) DO UPDATE SET state=excluded.state,attempts=document_state.attempts+excluded.attempts,updated_at=excluded.updated_at""",(paperless_id,state,1 if increment_attempt else 0,now))
 
 def checkpoint(db,name:str,value:int):
     now=int(time.time())
