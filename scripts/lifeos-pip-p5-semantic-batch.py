@@ -7,7 +7,7 @@ spec=importlib.util.spec_from_file_location("p5state",REPO/"scripts/lifeos-pip-p
 state=importlib.util.module_from_spec(spec); spec.loader.exec_module(state)
 
 def main():
-    p=argparse.ArgumentParser(); p.add_argument("--db",type=Path,default=state.DEFAULT_DB); p.add_argument("--limit",type=int,default=10); a=p.parse_args()
+    p=argparse.ArgumentParser(); p.add_argument("--db",type=Path,default=state.DEFAULT_DB); p.add_argument("--limit",type=int,default=25); a=p.parse_args()
     if not 1 <= a.limit <= 25: raise SystemExit("invalid_limit")
     db=state.connect(a.db)
     rows=db.execute("SELECT paperless_id FROM document_state WHERE state='semantic_pending' ORDER BY paperless_id LIMIT ?",(a.limit,)).fetchall()
@@ -30,6 +30,8 @@ def main():
     print(f"P5_BATCH_REVIEW={review}")
     print("P5_AI_PRIVACY=LOCAL_ONLY")
     print("P5_PAPERLESS_WRITEBACK=NONE")
+    remaining=db.execute("SELECT count(*) FROM document_state WHERE state='semantic_pending'").fetchone()[0]
+    print(f"P5_SEMANTIC_REMAINING={remaining}")
     print("P5_PRIVATE_CONTENT_EMITTED=NONE")
     print("RESULT=PASS")
 if __name__=="__main__": main()
