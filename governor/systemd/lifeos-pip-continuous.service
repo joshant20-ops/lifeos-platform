@@ -5,5 +5,6 @@ After=network-online.target
 Type=oneshot
 User=joshan
 WorkingDirectory=/home/joshan/lifeos-platform
+ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-cross-system-init.py
 ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-inventory-runner.py
 ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 50
