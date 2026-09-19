@@ -8,8 +8,8 @@ docker pull nipar44/predbat_addon:latest >/dev/null
 candidate=$(docker image inspect nipar44/predbat_addon:latest -f '{{.Id}}')
 test -n "$candidate"
 # The persistent Predbat core version is authoritative. The image can be newer
-# while /config/apps/predbat still contains an older running core.
-iv=$(docker exec predbat sh -lc "cd /config/apps/predbat && python3 -c 'import predbat; print(predbat.THIS_VERSION)'" 2>/dev/null | tail -1 || true)
+# while /config still contains an older running core.
+iv=$(docker exec predbat sh -lc "cd /config && python3 -c 'import predbat; print(predbat.THIS_VERSION)'" 2>/dev/null | tail -1 || true)
 cv=$(docker image inspect nipar44/predbat_addon:latest -f '{{index .Config.Labels "org.opencontainers.image.version"}}' 2>/dev/null || true)
 iv=${iv#v}; cv=${cv#v}; test -n "$iv"; test -n "$cv"
 src="https://github.com/springfall2008/batpred/releases"
