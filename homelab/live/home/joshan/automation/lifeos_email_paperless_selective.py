@@ -208,7 +208,16 @@ def synthetic_pdf(marker):
     return bytes(out)
 
 
+def require_governed_credentials():
+    """Reject privileged/private acceptance when bypassing the canonical credential boundary."""
+    directory = os.getenv("CREDENTIALS_DIRECTORY", "")
+    required = ("gmail-imap-user", "gmail-imap-password", "paperless-api-token")
+    if not directory or any(not (Path(directory) / name).is_file() for name in required):
+        raise BoundaryError("governed_credential_boundary_required_use_lifeos_run")
+
+
 def acceptance():
+    require_governed_credentials()
     marker = "LIFEOS-SYNTHETIC-" + uuid.uuid4().hex
     mailbox = os.getenv("LIFEOS_IMAP_TEST_MAILBOX", "INBOX")
     user, password = imap_credentials()
