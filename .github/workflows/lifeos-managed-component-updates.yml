@@ -1,0 +1,21 @@
+name: LifeOS Managed Component Updates
+on:
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+concurrency:
+  group: lifeos-managed-component-updates
+  cancel-in-progress: false
+jobs:
+  predbat:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - name: Synchronize canonical checkout
+        run: |
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+      - name: Managed Predbat lifecycle
+        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-managed-update-runner.py --target predbat
