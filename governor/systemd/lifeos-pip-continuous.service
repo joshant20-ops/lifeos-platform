@@ -1,0 +1,9 @@
+[Unit]
+Description=LifeOS P7 Paperless-first continuous semantic exception processor
+After=network-online.target
+[Service]
+Type=oneshot
+User=joshan
+WorkingDirectory=/home/joshan/lifeos-platform
+ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-inventory-runner.py
+ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p5-semantic-batch.py --limit 50
