@@ -27,7 +27,7 @@ jobs:
           set -Eeuo pipefail
           systemctl is-active --quiet lifeos-autonomous-agent.service
           systemctl is-active --quiet lifeos-tower-control.service
-          PORT=$(systemctl show lifeos-autonomous-agent.service -p Environment --value | sed -n 's/.*LIFEOS_AGENT_PORT=\\([0-9][0-9]*\\).*/\\1/p')
+          PORT=$(systemctl show lifeos-autonomous-agent.service -p Environment --value | tr ' ' '\n' | awk -F= '$1=="LIFEOS_AGENT_PORT" {print $2; exit}')
           test -n "$PORT"
           echo "ARCHIVE_LIVE_JOBS_API_PORT=$PORT"
           curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/health" >/dev/null
