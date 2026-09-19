@@ -13,7 +13,8 @@ echo MANAGED_UPDATE_STAGE=$stage
 candidate=$(docker image inspect nipar44/predbat_addon:latest -f '{{.Id}}'); test -n "$candidate"
 stage=compare-images
 echo MANAGED_UPDATE_STAGE=$stage
-test "$candidate" != "$old"
+# Image and core are independent for this standalone image because /config is persistent.
+# A core-only reconciliation is valid even when the accepted image digest is unchanged.
 stage=backup-compose
 echo MANAGED_UPDATE_STAGE=$stage
 tmp=$(mktemp); cp "$compose" "$tmp"
@@ -41,7 +42,7 @@ candidate_version="${candidate_version#v}"
 test -n "$candidate_version"
 # /config is persistent, so replacing the Docker image does not replace Predbat core.
 # Use Predbat's checksum-verified updater for the accepted release.
-docker exec predbat sh -lc "cd /config/apps/predbat && python3 download.py --download v$candidate_version"
+docker exec predbat sh -lc "cd /config && python3 download.py --download v$candidate_version"
 docker restart predbat >/dev/null
 for _ in $(seq 1 60); do
   test "$(docker inspect -f '{{.State.Running}}' predbat 2>/dev/null || true)" = true && break
@@ -50,7 +51,7 @@ done
 test "$(docker inspect -f '{{.State.Running}}' predbat)" = true
 stage=verify-predbat-core
 echo MANAGED_UPDATE_STAGE=$stage
-core_version=$(docker exec predbat sh -lc "cd /config/apps/predbat && python3 -c 'import predbat; print(predbat.THIS_VERSION)'" | tail -1)
+core_version=$(docker exec predbat sh -lc "cd /config && python3 -c 'import predbat; print(predbat.THIS_VERSION)'" | tail -1)
 core_version="${core_version#v}"
 echo MANAGED_UPDATE_CORE_VERSION="$core_version"
 test "$core_version" = "$candidate_version"
