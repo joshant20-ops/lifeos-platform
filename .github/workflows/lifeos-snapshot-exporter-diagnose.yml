@@ -1,0 +1,15 @@
+name: Diagnose snapshot exporter
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-snapshot-exporter-diagnose.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    steps:
+      - run: |
+          systemctl status lifeos-snapshots-export.service --no-pager -l || true
+          journalctl -u lifeos-snapshots-export.service -n 80 --no-pager || true
+          stat -c '%A %U:%G %n' /home/joshan/lifeos-platform/governor/scripts/snapshot-lifeos-observed-state.sh
