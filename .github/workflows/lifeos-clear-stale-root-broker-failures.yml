@@ -1,0 +1,19 @@
+name: Clear stale root broker failures
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-clear-stale-root-broker-failures.yml']
+permissions:
+  contents: read
+jobs:
+  fix:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    steps:
+      - name: Clear historical transient failures
+        run: |
+          set -Eeuo pipefail
+          systemctl is-active --quiet lifeos-root-broker.socket
+          sudo -n systemctl reset-failed 'lifeos-root-broker@*.service' || true
+          ! systemctl --failed --no-legend | grep -q 'lifeos-root-broker@'
+          echo ROOT_BROKER_SOCKET=ACTIVE
+          echo HISTORICAL_ROOT_BROKER_FAILURES=ABSENT
