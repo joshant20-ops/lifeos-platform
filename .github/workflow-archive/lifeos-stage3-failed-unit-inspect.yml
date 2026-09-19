@@ -1,0 +1,45 @@
+name: LifeOS Stage 3 Failed Unit Inspect
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-stage3-failed-unit-inspect.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+
+      - name: Inspect failed unit read-only
+        shell: bash
+        run: |
+          set +e
+          echo '===== FAILED UNITS ====='
+          systemctl --failed --no-legend --plain
+          echo '===== UNIT FILE ====='
+          systemctl cat lifeos-powerdown-assurance-active.service
+          echo '===== STATUS ====='
+          systemctl status lifeos-powerdown-assurance-active.service --no-pager -l
+          echo '===== PROPERTIES ====='
+          systemctl show lifeos-powerdown-assurance-active.service \
+            -p LoadState -p ActiveState -p SubState -p UnitFileState -p FragmentPath \
+            -p ExecMainCode -p ExecMainStatus -p Result -p NRestarts -p InvocationID
+          echo '===== JOURNAL ====='
+          journalctl -u lifeos-powerdown-assurance-active.service -n 120 --no-pager
+          echo '===== REPOSITORY REFERENCES ====='
+          cd /home/joshan/lifeos-platform
+          grep -RIn --exclude-dir=.git -E 'powerdown-assurance-active|powerdown.assurance|power.?down.*assurance' . | head -200
+          exit 0
