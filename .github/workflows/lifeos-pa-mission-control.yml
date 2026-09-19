@@ -70,7 +70,27 @@ jobs:
           fi
           echo "RUNNER_SHA256=$(sha256sum "$DEST" | awk '{print $1}')"
 
-      - name: Run mission controller
+      - name: Preflight mission controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /home/joshan/.local/bin/lifeos-pa-mission audit
+
+      - name: Validate local builder route
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          governor/scripts/lifeos-local-builder --self-test
+
+      - name: Run deterministic planning and acceptance preparation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /home/joshan/.local/bin/lifeos-pa-mission audit
+          echo 'PLANNING_PRECHECK=PASS'
+
+      - name: Execute governed issue mission
         shell: bash
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
