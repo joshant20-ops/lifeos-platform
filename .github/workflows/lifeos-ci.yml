@@ -85,7 +85,7 @@ jobs:
             homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py \
             homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py \
             homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py \
-            scripts/audit-wave-a-live-acceptance.py \
+            archive/closed-gates/scripts/audit-wave-a-live-acceptance.py \
             homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py
           bash -n scripts/lifeos-deploy-energy-opportunity-api.sh
           grep -F "'deploy-energy-opportunity-api'" \
