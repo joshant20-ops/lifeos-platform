@@ -194,7 +194,6 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #227 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #228 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #229 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #230 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #231 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #232 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #233 — UNPROVEN — item-specific current live acceptance still required
