@@ -1,0 +1,23 @@
+name: Audit exporter trigger truth
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-exporter-trigger-truth.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    steps:
+      - name: Inspect exporters
+        run: |
+          set -Eeuo pipefail
+          echo '=== JOB EXPORT PATH ==='
+          systemctl status lifeos-jobs-export.path --no-pager -l || true
+          systemctl cat lifeos-jobs-export.path || true
+          echo '=== SNAPSHOT TRIGGERS ==='
+          systemctl list-unit-files --no-legend | grep -Ei 'snapshot|lifeos.*export' || true
+          systemctl list-timers --all --no-pager | grep -Ei 'snapshot|lifeos.*export' || true
+          echo '=== SNAPSHOT REPO ==='
+          git -C /home/joshan/lifeos-snapshots log -1 --format='SNAPSHOT_HEAD=%H%nSNAPSHOT_DATE=%cI' || true
+          find /home/joshan/lifeos-snapshots/snapshots -type f -name '*.json' -printf '%T@ %p\n' 2>/dev/null | sort -nr | head -n5 || true
