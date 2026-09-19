@@ -51,6 +51,10 @@ OPS = {
         'script': 'scripts/lifeos-managed-update-apply-predbat.sh',
         'privileged': True,
     },
+    'predbat-ha-reconcile-test': {
+        'script': 'scripts/lifeos-predbat-ha-reconcile-test.sh',
+        'privileged': True,
+    },
     'restore-rehearsal': {
         'script': 'scripts/lifeos-restic-restore-rehearsal.sh',
         'privileged': True,
