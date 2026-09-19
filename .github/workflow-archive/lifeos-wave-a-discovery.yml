@@ -1,0 +1,75 @@
+name: LifeOS Wave A Discovery
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-wave-a-discovery.yml'
+      - 'scripts/audit-wave-a-live.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  discovery:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Run Wave A read-only discovery
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-wave-a-live.py
+
+      - name: Emit sanitized discovery detail
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, pathlib
+          p=pathlib.Path.home()/'.local/state/lifeos/wave-a-discovery.json'
+          d=json.loads(p.read_text())
+          print('===== WAVE A CONTAINERS =====')
+          for k,v in d['containers'].items(): print(f'{k}={v}')
+          print('===== LIFEOS DASHBOARD PATHS =====')
+          for x in d['ha']['lifeos_dashboard_paths']: print(x)
+          print('===== RELEVANT HA ENTITY IDS =====')
+          for x in d['ha']['relevant_entity_ids']: print(x)
+          print('===== NOTIFICATION ENTITY IDS =====')
+          for x in d['ha']['notification_entity_ids']: print(x)
+          print('===== RELEVANT HA CONFIG FILES =====')
+          for x in d['ha']['relevant_config_files']: print(x)
+          print('===== LIFEOS ENERGY ENDPOINT SHAPE =====')
+          print(json.dumps(d['lifeos_energy']['endpoints'], sort_keys=True))
+          print('===== REPOSITORY CANDIDATE PRIMITIVES =====')
+          for x in d['repository_candidate_primitives']: print(x)
+          assert not d['secrets_emitted']
+          assert not d['states_emitted']
+          assert not d['mutation_performed']
+          print('WAVE_A_SANITIZED_DETAIL=PASS')
+          PY
+
+      - name: Prove repository non-mutation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'WAVE_A_REPOSITORY_FINAL=PASS'
