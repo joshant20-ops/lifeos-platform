@@ -7,7 +7,7 @@ REPO=pathlib.Path("/home/joshan/lifeos-platform")
 # Existing Wave-B adapter performs a reversible synthetic message+PDF through real Gmail,
 # Tower local AI, deterministic policy, real Paperless submission/verification and cleanup.
 # Consume the canonical capability boundary; do not reconstruct credential plumbing here.
-r=subprocess.run([str(REPO/"governor/scripts/lifeos-run"),"email-paperless-selective","acceptance"],capture_output=True,text=True,timeout=600)
+r=subprocess.run(["/usr/bin/bash",str(REPO/"governor/scripts/lifeos-run"),"email-paperless-selective","acceptance"],capture_output=True,text=True,timeout=600)
 required={"EMAIL_ADAPTER=REAL","LOCAL_TRIAGE=REAL_LOCAL_AI","DETERMINISTIC_POLICY=REAL","PAPERLESS_SUBMISSION=REAL","PAPERLESS_VERIFICATION=REAL","EVIDENCE_LINK=REAL","PAPERLESS_CLEANUP=PASS","EMAIL_CLEANUP=PASS","RESULT=PASS"}
 seen={line.strip() for line in r.stdout.splitlines()}
 if r.returncode or not required.issubset(seen):
