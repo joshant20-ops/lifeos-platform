@@ -97,8 +97,12 @@ a=d.get("sanity_assessment") or {}
 assert a.get("level") in {"PASS","WATCH"}, "sanity did not reach trustworthy state"
 assert not a.get("fail_flags"), "sanity has blocking fail flags"
 PY
-stage=restore-compose
+stage=accept-candidate
 echo MANAGED_UPDATE_STAGE=$stage
-cp "$tmp" "$compose"; trap - EXIT ERR; rm -f "$tmp"
+candidate_digest="${candidate#sha256:}"
+sed -i "s#image: .*#image: nipar44/predbat_addon@sha256:$candidate_digest#" "$compose"
+trap - EXIT ERR
+rm -f "$tmp"
+echo MANAGED_UPDATE_ACCEPTED_DIGEST="sha256:$candidate_digest"
 echo MANAGED_UPDATE_REGRESSION=PASS
 echo MANAGED_UPDATE_APPLY=PASS
