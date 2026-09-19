@@ -7,7 +7,8 @@ import argparse,json,pathlib,re,subprocess,sys,tempfile
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT/"engineer"))
 import managed_updates as mu
-GATEWAY="/usr/local/sbin/lifeos-deploy-gateway"\nDIGEST_RE=re.compile(r"^sha256:[0-9a-f]{64}$")
+GATEWAY="/usr/local/sbin/lifeos-deploy-gateway"
+DIGEST_RE=re.compile(r"^sha256:[0-9a-f]{64}$")
 def call(op):
  r=subprocess.run(["sudo","-n",GATEWAY,op],text=True,capture_output=True,timeout=900)
  print(r.stdout,end="")
