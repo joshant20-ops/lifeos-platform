@@ -16,6 +16,15 @@ LATEST="$OUT_DIR/latest.json"
   exit 30
 }
 
+cd "$SNAPSHOT_REPO"
+[[ -z "$(git status --porcelain)" ]] || {
+  echo "RESULT=BLOCKED"
+  echo "REASON=lifeos_snapshots_repo_dirty"
+  exit 31
+}
+git fetch origin main >/dev/null
+git merge --ff-only origin/main >/dev/null
+
 mkdir -p "$OUT_DIR"
 
 python3 - "$OUT" "$HOST" "$HOST_ROLE" "$PLATFORM_REPO" <<'PY'
