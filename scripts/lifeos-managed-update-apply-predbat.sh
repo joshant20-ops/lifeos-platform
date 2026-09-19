@@ -101,6 +101,10 @@ stage=accept-candidate
 echo MANAGED_UPDATE_STAGE=$stage
 candidate_digest="${candidate#sha256:}"
 sed -i "s#image: .*#image: nipar44/predbat_addon@sha256:$candidate_digest#" "$compose"
+# The running container was created from the temporary local tag. Recreate
+# once from the immutable accepted reference so runtime and compose agree.
+docker compose -f "$compose" up -d --no-deps --force-recreate predbat >/dev/null
+test "$(docker inspect -f '{{.Image}}' predbat)" = "$candidate"
 trap - EXIT ERR
 rm -f "$tmp"
 echo MANAGED_UPDATE_ACCEPTED_DIGEST="sha256:$candidate_digest"
