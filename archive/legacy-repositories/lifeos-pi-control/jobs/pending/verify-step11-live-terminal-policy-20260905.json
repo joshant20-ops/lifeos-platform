@@ -1,0 +1,13 @@
+{
+  "schema_version": 2,
+  "job_id": "verify-step11-live-terminal-policy-20260905",
+  "target": "pi5-docker",
+  "job_type": "diagnostic",
+  "source_repo": "joshant20-ops/lifeos-platform",
+  "source_commit": "b9d972a81a5c6789521b6b4bd508bbaceac99b0d",
+  "source_script": "scripts/diagnose-step11-live-terminal-policy.sh",
+  "source_sha256": "a79d608c708c2d3548f1ef005877c46862686b27b2d1937a88e67d09353f30d3",
+  "timeout_seconds": 120,
+  "created_by": "chatgpt",
+  "description": "Read-only verification that the installed job_records.py matches the canonical Step-11 terminal policy and classifies all stop conditions correctly."
+}
