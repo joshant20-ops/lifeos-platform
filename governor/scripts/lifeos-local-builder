@@ -164,6 +164,16 @@ REMOTE
   RC=$?
   set -e
   printf '%s\n' "$OUTPUT"
+  echo "LOCAL_BUILDER_ATTEMPT_RC=$RC"
+  if (( RC != 0 )); then
+    if grep -q '^HANDOFF_ERROR=' <<<"$OUTPUT"; then
+      grep '^HANDOFF_ERROR=' <<<"$OUTPUT" | tail -1
+    elif grep -q '^PROVIDER_ERROR=' <<<"$OUTPUT"; then
+      grep '^PROVIDER_ERROR=' <<<"$OUTPUT" | tail -1
+    else
+      echo 'HANDOFF_ERROR=local_builder_failed_without_structured_reason'
+    fi
+  fi
   if (( RC == 0 )); then
     echo 'AGENT_RESULT=openhands PASS'
     exit 0
