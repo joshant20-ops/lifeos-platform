@@ -1,0 +1,34 @@
+name: LifeOS P8 Live Cross-System Acceptance
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/lifeos-pip-cross-system-init.py','scripts/lifeos-pip-p8-live-acceptance.py','governor/systemd/lifeos-pip-continuous.service']
+  workflow_dispatch:
+jobs:
+  live:
+    runs-on: [self-hosted, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile canonical checkout
+        run: |
+          git -C /home/joshan/lifeos-platform fetch origin main
+          test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
+          git -C /home/joshan/lifeos-platform merge --ff-only origin/main
+      - name: Deploy integrated continuous unit
+        run: |
+          sudo -n install -m 0644 /home/joshan/lifeos-platform/governor/systemd/lifeos-pip-continuous.service /etc/systemd/system/lifeos-pip-continuous.service
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl start lifeos-pip-continuous.service
+      - name: P8 live acceptance
+        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p8-live-acceptance.py
+      - name: Audit production state
+        run: |
+          test -f /home/joshan/.local/state/lifeos/pip/cross_system.sqlite3
+          test "$(stat -c %a /home/joshan/.local/state/lifeos/pip/cross_system.sqlite3)" = 600
+          grep -q lifeos-pip-cross-system-init.py /etc/systemd/system/lifeos-pip-continuous.service
+          systemctl is-active lifeos-pip-continuous.timer | grep -qx active
+          echo P8_POST_DEPLOY_AUDIT=PASS
+      - name: Canonical clean
+        if: always()
+        run: test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
