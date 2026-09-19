@@ -45,8 +45,8 @@ def _version(value: str) -> tuple[int, int, int]:
 
 def load_policy(path: Path) -> dict[str, Any]:
     policy = json.loads(path.read_text())
-    if policy.get("mode") != "shadow" or not policy.get("targets"):
-        raise ContractError("policy must start in shadow mode with an allow-list")
+    if policy.get("mode") not in {"shadow", "managed"} or not policy.get("targets"):
+        raise ContractError("policy requires shadow or managed mode with an allow-list")
     return policy
 
 
@@ -144,7 +144,7 @@ def build_packet(policy: dict[str, Any], observation: dict[str, Any]) -> dict[st
         "coalesced_release_count": len(candidates),
         "risk": risk,
         "risk_reasons": reasons,
-        "automatic_deploy_allowed": False,
+        "automatic_deploy_allowed": bool(policy["mode"] == "managed" and policy["targets"][target].get("auto_update") and risk == "routine" and all(str(pre[n]).upper() == "PASS" for n in PRE_UPDATE_CHECKS)),
         "one_component_only": True,
         "pre_update": pre,
         "regression": regression,
