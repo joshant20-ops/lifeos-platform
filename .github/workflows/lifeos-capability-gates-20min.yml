@@ -22,7 +22,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          python3 -m unittest -q             tests.test_repository_foundation tests.test_repository_model_consistency             tests.test_issue_pickup_contract tests.test_engineer_job_observability_acceptance             tests.test_privacy_classifier tests.test_private_domain_policy             tests.test_governor_engineering_privacy_route tests.test_governor_local_tool_routing             tests.test_openhands_integration tests.test_agent_contract
+          python3 -m unittest tests.test_repository_foundation tests.test_repository_model_consistency             tests.test_issue_pickup_contract tests.test_engineer_job_observability_acceptance             tests.test_privacy_classifier tests.test_private_domain_policy             tests.test_governor_engineering_privacy_route tests.test_governor_local_tool_routing             tests.test_openhands_integration tests.test_agent_contract
           systemctl is-active --quiet lifeos-autonomous-agent.service
           systemctl is-active --quiet lifeos-engineer.service
           systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
@@ -31,7 +31,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          python3 -m unittest -q tests.test_energy_opportunity_service tests.test_tower_control_shutdown tests.test_tower_metrics tests.test_managed_updates
+          python3 -m unittest tests.test_energy_opportunity_service tests.test_tower_control_shutdown tests.test_tower_metrics tests.test_managed_updates
           docker ps --format '{{.Names}}' | grep -Fx homeassistant
           docker ps --format '{{.Names}}' | grep -Fx lifeos-energy
           systemctl is-active --quiet lifeos-tower-control.service
@@ -43,7 +43,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          python3 -m unittest -q             tests.personal_admin.test_cross_domain_e2e tests.personal_admin.test_synthetic_ai_e2e             tests.test_pa_email_paperless_policy tests.test_pa_local_ai_route             tests.test_lifeos_email_selector tests.test_pip_p0_paperless_native             tests.test_pip_p1_paperless_native tests.test_pip_p2_paperless_shadow             tests.test_pip_p3_paperless_canary tests.test_pip_p4_exception_semantics             tests.test_pip_p5_backlog_state tests.test_pip_p6_p10_functional
+          python3 -m unittest tests.personal_admin.test_cross_domain_e2e tests.personal_admin.test_synthetic_ai_e2e             tests.test_pa_email_paperless_policy tests.test_pa_local_ai_route             tests.test_lifeos_email_selector tests.test_pip_p0_paperless_native             tests.test_pip_p1_paperless_native tests.test_pip_p2_paperless_shadow             tests.test_pip_p3_paperless_canary tests.test_pip_p4_exception_semantics             tests.test_pip_p5_backlog_state tests.test_pip_p6_p10_functional
           docker ps --format '{{.Names}}' | grep -Fx paperless-paperless-1
           docker ps --format '{{.Names}}' | grep -Fx lifeos-pa-radicale
           echo PA_PAPERLESS=PASS
@@ -51,7 +51,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          python3 -m unittest -q tests.test_finance_assets_discovery_contract tests.test_finance_assets_readonly tests.test_transaction_controller tests.test_semaphore_shadow_contract
+          python3 -m unittest tests.test_finance_assets_discovery_contract tests.test_finance_assets_readonly tests.test_transaction_controller tests.test_semaphore_shadow_contract
           systemctl is-active --quiet lifeos-jobs-export.path
           systemctl is-active --quiet lifeos-snapshots-export.timer
           docker ps --format '{{.Names}}' | grep -Fx uptime-kuma
