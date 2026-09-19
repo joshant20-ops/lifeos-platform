@@ -1,0 +1,61 @@
+name: LifeOS Full Ledger Live Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-full-ledger-live-audit.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  live-audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Synchronize canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)" || { echo "AUDIT_GATE=BLOCKED_DIRTY"; exit 20; }
+          git merge --ff-only origin/main
+          echo "AUDIT_COMMIT=$(git rev-parse HEAD)"
+
+      - name: Run canonical mission audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          install -d -m 0755 /home/joshan/.local/bin
+          install -m 0755 governor/scripts/lifeos-pa-mission /home/joshan/.local/bin/lifeos-pa-mission
+          set +e
+          /home/joshan/.local/bin/lifeos-pa-mission audit
+          rc=$?
+          set -e
+          echo "MISSION_AUDIT_RC=$rc"
+          exit "$rc"
+
+      - name: Live estate evidence
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "=== HOST ==="
+          hostname
+          uname -a
+          echo "=== SERVICES ==="
+          systemctl --no-pager --plain --type=service --state=running | grep -E 'lifeos|docker|mosquitto|home-assistant|engineer|governor' || true
+          echo "=== CONTAINERS ==="
+          docker ps --format '{{.Names}}|{{.Status}}' | sort || true
+          echo "=== CANONICAL ==="
+          cd /home/joshan/lifeos-platform
+          git status --short
+          git rev-parse HEAD
+          echo "=== MISSION STATE ==="
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          for f in SUMMARY.md WORK_BUNDLE.md; do
+            if [[ -f "$STATE/$f" ]]; then echo "--- $f ---"; sed -n '1,220p' "$STATE/$f"; fi
+          done
