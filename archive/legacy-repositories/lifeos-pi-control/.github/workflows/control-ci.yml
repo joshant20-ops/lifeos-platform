@@ -1,0 +1,53 @@
+name: LifeOS Pi Control CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enforce canonical executable ownership
+        run: |
+          set -Eeuo pipefail
+          for path in publisher runner broker; do
+            if git ls-files -- "$path/**" | grep -q .; then
+              echo "DUPLICATE_EXECUTABLE_SOURCE=FAIL path=$path"
+              exit 1
+            fi
+          done
+          grep -Fq '`joshant20-ops/lifeos-platform` is the single canonical source' RUNTIME_OWNERSHIP.md
+          echo CANONICAL_EXECUTABLE_OWNERSHIP=PASS
+
+      - name: Enforce Git/runtime ownership boundary
+        run: |
+          set -Eeuo pipefail
+          bad="$(git ls-files -- \
+            'jobs/staging/**' 'jobs/staged/**' 'jobs/pending/**' 'jobs/archive/**' \
+            'jobs/scripts/**' 'jobs/change-scripts/**' 'jobs/root-scripts/**' \
+            'results/**' 'state/**')"
+          if [ -n "$bad" ]; then
+            echo 'RUNTIME_OWNERSHIP=FAIL'
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          grep -Fxq 'jobs/pending/' .gitignore
+          grep -Fxq 'results/' .gitignore
+          grep -Fxq 'state/' .gitignore
+          echo RUNTIME_OWNERSHIP=PASS
+
+      - name: Verify stale activation policy
+        run: |
+          set -Eeuo pipefail
+          grep -Fq 'activate-engineer-v1-660a6d4862fa' RUNTIME_OWNERSHIP.md
+          grep -Fq 'must not be executed' RUNTIME_OWNERSHIP.md
+          grep -Fq 'fresh live evidence' RUNTIME_OWNERSHIP.md
+          echo STALE_ACTIVATION_POLICY=PASS
