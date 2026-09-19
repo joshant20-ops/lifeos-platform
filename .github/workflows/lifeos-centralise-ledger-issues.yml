@@ -1,0 +1,83 @@
+name: Centralise ledger as GitHub issues
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-centralise-ledger-issues.yml']
+permissions:
+  contents: read
+  issues: write
+jobs:
+  centralise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create one visible issue per unresolved ledger item
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mapfile -t nums < <(sed -nE 's/^- \[ \] #([0-9]{3}) — UNPROVEN.*/\1/p' TASK_LEDGER.md)
+          echo "LEDGER_PENDING=${#nums[@]}"
+          created=0
+          skipped_open=0
+          skipped_existing=0
+          for padded in "${nums[@]}"; do
+            n=$((10#$padded))
+            src="$(gh api "repos/$REPO/issues/$n")"
+            state="$(jq -r .state <<<"$src")"
+            title="$(jq -r .title <<<"$src")"
+            is_pr="$(jq -r 'has("pull_request")' <<<"$src")"
+
+            # A genuine current open Issue already is its own Issues-page line.
+            if [[ "$state" == open && "$is_pr" == false ]]; then
+              echo "SOURCE_$padded=EXISTING_OPEN_ISSUE"
+              skipped_open=$((skipped_open+1))
+              continue
+            fi
+
+            marker="Historical ledger source: #$padded"
+            existing="$(gh api --paginate "repos/$REPO/issues?state=open&per_page=100" --jq ".[] | select(.pull_request == null) | select((.body // \"\") | contains(\"$marker\")) | .number" | head -1 || true)"
+            if [[ -n "$existing" ]]; then
+              echo "SOURCE_$padded=ALREADY_CENTRALISED_AS_$existing"
+              skipped_existing=$((skipped_existing+1))
+              continue
+            fi
+
+            kind="closed GitHub Issue"
+            [[ "$is_pr" == true ]] && kind="historical Pull Request"
+            body="$(cat <<EOF
+## Historical LifeOS ledger item
+
+$marker
+
+Original title: **$title**
+
+Original record: #$n ($kind).
+
+This requirement/task is unresolved in the current audit ledger and is intentionally visible as its own GitHub Issue.
+
+### Disposition rule
+
+Do not close this issue merely because the original PR/issue was closed or merged.
+
+Close only when one of these is established:
+
+- **LIVE-PROVEN COMPLETE** — current live-system outcome/acceptance evidence proves the underlying requirement;
+- **OBSOLETE / SUPERSEDED** — current architecture makes the underlying requirement unnecessary, with evidence; or
+- **DUPLICATE** — only when it is demonstrably the same underlying requirement as another current Issue.
+
+Archive the disposition evidence in `lifeos-jobs` before closing.
+
+Source of pending status: `TASK_LEDGER.md`.
+EOF
+)"
+            gh api "repos/$REPO/issues" -f title="[Ledger #$padded] $title" -f body="$body" >/dev/null
+            created=$((created+1))
+            echo "SOURCE_$padded=CREATED"
+          done
+          echo "CREATED=$created"
+          echo "EXISTING_OPEN=$skipped_open"
+          echo "ALREADY_CENTRALISED=$skipped_existing"
