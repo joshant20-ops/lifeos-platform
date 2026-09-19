@@ -1,5 +1,9 @@
 name: LifeOS Managed Component Updates
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'deploy-triggers/managed-predbat-update'
   schedule:
     - cron: '17 4 * * *'
   workflow_dispatch:
