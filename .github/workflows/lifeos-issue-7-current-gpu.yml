@@ -1,0 +1,59 @@
+name: Issue 7 current GPU live acceptance
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-issue-7-current-gpu.yml']
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Align
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git merge --ff-only origin/main
+      - name: Prove current Tower GPU stack
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          echo '=== NVIDIA ==='
+          nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv,noheader
+          systemctl is-active --quiet ollama.service
+          model=qwen2.5-coder:7b-instruct
+          python3 - "$model" >/tmp/issue7.json <<'PY'
+          import json,sys
+          print(json.dumps({'model':sys.argv[1],'prompt':'Reply with exactly ISSUE7_GPU_OK','stream':False,'keep_alive':'5m','options':{'num_ctx':8192}}))
+          PY
+          curl -fsS --max-time 120 -H 'Content-Type: application/json' --data-binary @/tmp/issue7.json http://127.0.0.1:11434/api/generate >/tmp/issue7-response.json
+          python3 - <<'PY'
+          import json
+          j=json.load(open('/tmp/issue7-response.json')); assert 'ISSUE7_GPU_OK' in j.get('response',''), j
+          print('INFERENCE_8K=PASS')
+          PY
+          curl -fsS --max-time 5 http://127.0.0.1:11434/api/ps >/tmp/issue7-ps.json
+          python3 - "$model" <<'PY'
+          import json,sys
+          j=json.load(open('/tmp/issue7-ps.json')); model=sys.argv[1]
+          row=next(x for x in j['models'] if x.get('name')==model or x.get('model')==model)
+          size=int(row.get('size') or 0); vram=int(row.get('size_vram') or 0); ctx=int(row.get('context_length') or 0)
+          print('MODEL_SIZE_BYTES='+str(size)); print('MODEL_VRAM_BYTES='+str(vram)); print('CONTEXT_LENGTH='+str(ctx))
+          assert size>0 and vram/size>=.95, row
+          assert ctx>=8192, row
+          print('GPU_OFFLOAD_RATIO='+f'{vram/size:.3f}')
+          print('CURRENT_GPU_REQUIREMENT=PASS')
+          PY
+          REMOTE
+      - name: Prove architecture invariants
+        run: |
+          set -Eeuo pipefail
+          ! command -v ollama
+          systemctl is-active --quiet lifeos-tower-control.service
+          systemctl is-active --quiet lifeos-engineer.service
+          echo PI_LOCAL_OLLAMA=ABSENT
+          echo ISSUE_7_SUPERSEDED_ACCEPTANCE=PASS
