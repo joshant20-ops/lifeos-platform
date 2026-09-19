@@ -10,8 +10,11 @@ import platform
 import shutil
 import socket
 import subprocess
+import urllib.request
+import urllib.error
+import time
 
-VERSION = "2026.09.09-3"
+VERSION = "2026.09.19-4"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
@@ -21,6 +24,7 @@ FM = STATE / "WORK_BUNDLE.md"
 SM = STATE / "SUMMARY.md"
 LOCK = STATE / "runner.lock"
 EXECUTOR = REPO / "governor/scripts/lifeos-pa-execute"
+AGENT_URL = os.getenv("LIFEOS_AGENT_URL", "http://127.0.0.1:8790")
 MINFREE = float(os.getenv("LIFEOS_PA_MIN_FREE_GIB", "2"))
 AUTONOMY_UNITS = (
     "lifeos-autonomous-agent.service",
@@ -129,7 +133,7 @@ def audit(faults):
 
     services = {x: service_state(x) for x in AUTONOMY_UNITS}
     result["governor"] = {"mode": "minimal", "services": services,
-                          "autonomy": "disabled"}
+                          "autonomy": "available"}
     if services.get("lifeos-autonomous-agent.service") == "active":
         fault(faults, "GOVERNOR_SCOPE_DRIFT", "warning", "governor",
               "Autonomous agent is active in minimal mode.", services,
@@ -160,6 +164,55 @@ def run_executor(faults):
     return result
 
 
+def run_autonomous_mission(faults):
+    """Submit the bounded backlog objective to the already-deployed Governor and wait for terminal evidence."""
+    request = """Take the oldest ten currently open LifeOS issues that do not require human credentials, consent, physical intervention, or policy decisions. For each issue, determine the underlying current requirement, repair or implement it where still required, then execute item-specific live acceptance against the production system. Continue autonomously through failures using Governor, Engineer and Tower according to the current routing/privacy policy. Do not treat historical merge state or broad regression health as acceptance. Archive sanitised evidence in lifeos-jobs, add the live evidence to the corresponding GitHub issue, and close/archive it only when LIVE-PROVEN COMPLETE or demonstrably OBSOLETE/SUPERSEDED. Skip human-boundary issues and continue to the next eligible issue until ten eligible issues have been closed with evidence. Finish with RESULT=PASS and CLOSED_COUNT=10 only after all ten are evidenced and archived."""
+    payload = json.dumps({"request": request}).encode()
+    req = urllib.request.Request(
+        AGENT_URL + "/jobs?async=1", data=payload,
+        headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            job = json.loads(response.read())
+    except Exception as exc:
+        fault(faults, "GOVERNOR_SUBMISSION_FAILED", "critical", "governor",
+              "Could not submit the ten-issue mission to Governor.", type(exc).__name__,
+              "Repair the local Governor API/service and rerun.")
+        return {"rc": 20, "job_id": None, "status": "SUBMISSION_FAILED"}
+
+    job_id = str(job.get("id") or "")
+    if not job_id:
+        fault(faults, "GOVERNOR_SUBMISSION_INVALID", "critical", "governor",
+              "Governor accepted no usable job id.", job,
+              "Repair Governor job submission response and rerun.")
+        return {"rc": 20, "job_id": None, "status": "SUBMISSION_INVALID"}
+
+    print(f"GOVERNOR_JOB_ID={job_id}", flush=True)
+    deadline = time.monotonic() + 2100
+    latest = job
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(AGENT_URL + "/jobs/" + job_id, timeout=20) as response:
+                latest = json.loads(response.read())
+        except Exception:
+            time.sleep(10)
+            continue
+        status = str(latest.get("status") or "").upper()
+        print(f"GOVERNOR_JOB_STATUS={status}", flush=True)
+        if status in {"PASS", "BLOCKED", "FAIL", "FAILED", "CANCELLED"}:
+            break
+        time.sleep(15)
+
+    status = str(latest.get("status") or "").upper()
+    evidence = "\n".join(str(x.get("evidence") or "") for x in latest.get("iterations", []))
+    passed = status == "PASS" and "CLOSED_COUNT=10" in evidence and "RESULT=PASS" in evidence
+    if not passed:
+        fault(faults, "GOVERNOR_MISSION_INCOMPLETE", "high", "governor",
+              "Autonomous ten-issue mission did not prove the required terminal contract.",
+              {"job_id": job_id, "status": status, "blocked_reason": latest.get("blocked_reason")},
+              "Resume/fix the Governor job; do not claim the ten issues complete.")
+    return {"rc": 0 if passed else 20, "job_id": job_id, "status": status}
+
 def render(faults, state, audit_result):
     write(FJ, json.dumps({"generated_at": now(), "version": VERSION,
                          "phase": state.get("phase"), "faults": faults},
@@ -167,7 +220,7 @@ def render(faults, state, audit_result):
     lines = ["# LifeOS Personal Administration — Work bundle", "",
              f"Phase: `{state.get('phase')}`", "Governor: `minimal`", "",
              "Execution path: deterministic Pi scripts → local AI through ai_broker only when useful → deterministic verification.",
-             "Governor autonomous jobs/OpenHands/cloud orchestration remain disabled.", ""]
+             "Governor autonomous jobs are permitted through the existing governed agent; privacy and execution routing remain enforced.", ""]
     if faults:
         lines += ["## Faults", ""]
         for f in faults:
@@ -182,7 +235,7 @@ def render(faults, state, audit_result):
         "REPO_CLEAN_ALIGNED": "PASS" if audit_result.get("repo", {}).get("aligned") and not audit_result.get("repo", {}).get("dirty") else "BLOCKED",
         "RUNTIME_VISIBLE": "PASS" if audit_result.get("docker", {}).get("available") else "BLOCKED",
         "GOVERNOR_MODE": "MINIMAL",
-        "GOVERNOR_AUTONOMY": "DISABLED_BY_DESIGN",
+        "GOVERNOR_AUTONOMY": "ENABLED_GOVERNED",
         "PA_SCRIPTED_EXECUTION": "PASS" if state.get("phase") == "scripted_execution_passed" else "INCOMPLETE",
     }
     summary = ["# Personal Administration mission status", "",
@@ -196,7 +249,7 @@ def print_status(state):
     print(f"RUNNER_VERSION={VERSION}")
     print(f"MISSION_PHASE={state.get('phase', 'unknown')}")
     print("GOVERNOR_MODE=minimal")
-    print("GOVERNOR_AUTONOMY=disabled")
+    print("GOVERNOR_AUTONOMY=enabled_governed")
     if state.get("executor_rc") is not None:
         print(f"EXECUTOR_RC={state.get('executor_rc')}")
     print(f"STATE_DIR={STATE}")
@@ -251,7 +304,12 @@ def main():
         else:
             execution = run_executor(faults)
             state["executor_rc"] = execution["rc"]
-            state["phase"] = "scripted_execution_passed" if execution["rc"] == 0 else "scripted_execution_blocked"
+            if execution["rc"] == 0:
+                mission = run_autonomous_mission(faults)
+                state["governor_job_id"] = mission.get("job_id")
+                state["phase"] = "autonomous_mission_passed" if mission["rc"] == 0 else "autonomous_mission_blocked"
+            else:
+                state["phase"] = "scripted_execution_blocked"
 
         state_save(state)
         render(faults, state, audit_result)
@@ -260,7 +318,7 @@ def main():
         if roots & hard:
             print("RESULT=SAFE_STOP")
             return 40
-        if state.get("phase") == "scripted_execution_blocked" or faults:
+        if state.get("phase") in {"scripted_execution_blocked", "autonomous_mission_blocked"} or faults:
             print("RESULT=WORK_BUNDLE_READY")
             return 20
         print("RESULT=PASS")
