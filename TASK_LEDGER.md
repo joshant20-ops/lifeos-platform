@@ -7,7 +7,7 @@ The audit proved the current estate and ran the complete repository regression s
 
 Seven entries are proven obsolete because they are either unused shared-number gaps or an unmerged proposal superseded by later canonical work. They were archived with evidence to `lifeos-jobs`.
 
-All other historical items remain here until their own live acceptance is proved.
+All other historical items remain here until their own live acceptance is proved.\n\nBatch 003 (#061-#078) is now live-proven complete: current runtime ownership, canonical checkout, Engineer activation/health and terminal-policy contracts passed Actions run 35447856285; durable evidence is in `lifeos-jobs/audits/task-dispositions-2026-09-19-batch-003.json`.
 
 ## Current live findings
 - Core runtime is live: GitHub runner, Docker, autonomous-agent, Engineer, HA issue queue bridge and Tower control are active.
@@ -54,24 +54,6 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #045 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #051 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #053 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #061 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #062 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #063 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #064 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #065 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #066 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #067 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #068 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #069 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #070 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #071 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #072 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #073 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #074 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #075 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #076 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #077 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #078 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #080 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #083 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #084 — UNPROVEN — item-specific current live acceptance still required
