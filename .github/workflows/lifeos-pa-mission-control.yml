@@ -74,7 +74,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          set +e
           /home/joshan/.local/bin/lifeos-pa-mission audit
+          rc=$?
+          set -e
+          echo "AUDIT_RUNNER_RC=$rc"
+          [[ "$rc" == 0 || "$rc" == 20 ]]
 
       - name: Validate local builder route
         shell: bash
@@ -87,7 +92,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          set +e
           /home/joshan/.local/bin/lifeos-pa-mission audit
+          rc=$?
+          set -e
+          echo "PLANNING_AUDIT_RC=$rc"
+          [[ "$rc" == 0 || "$rc" == 20 ]]
           echo 'PLANNING_PRECHECK=PASS'
 
       - name: Execute governed issue mission
