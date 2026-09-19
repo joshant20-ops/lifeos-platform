@@ -11,7 +11,7 @@ Environment=HOME=/home/joshan
 Environment=LIFEOS_PLATFORM_REPO=/home/joshan/lifeos-platform
 Environment=LIFEOS_SNAPSHOTS_REPO=/home/joshan/lifeos-snapshots
 Environment=LIFEOS_HOST_ROLE=pi5-controller
-ExecStart=/home/joshan/lifeos-platform/governor/scripts/snapshot-lifeos-observed-state.sh
+ExecStart=/usr/bin/bash /home/joshan/lifeos-platform/governor/scripts/snapshot-lifeos-observed-state.sh
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
