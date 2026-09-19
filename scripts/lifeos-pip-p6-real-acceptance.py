@@ -9,7 +9,19 @@ REPO=pathlib.Path("/home/joshan/lifeos-platform")
 r=subprocess.run([sys.executable,str(REPO/"homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py"),"acceptance"],capture_output=True,text=True,timeout=600)
 required={"EMAIL_ADAPTER=REAL","LOCAL_TRIAGE=REAL_LOCAL_AI","DETERMINISTIC_POLICY=REAL","PAPERLESS_SUBMISSION=REAL","PAPERLESS_VERIFICATION=REAL","EVIDENCE_LINK=REAL","PAPERLESS_CLEANUP=PASS","EMAIL_CLEANUP=PASS","RESULT=PASS"}
 seen={line.strip() for line in r.stdout.splitlines()}
-if r.returncode or not required.issubset(seen):\n    # Preserve privacy: expose only aggregate boundary/error class and missing public markers.\n    missing=sorted(required-seen)\n    stderr=(r.stderr or "").lower()\n    if "unavailable" in stderr or "credential" in stderr: failure_class="CREDENTIAL_OR_BOUNDARY"\n    elif "connection" in stderr or "urlopen" in stderr or "timeout" in stderr: failure_class="DEPENDENCY_OR_CONNECTIVITY"\n    elif "deterministic_policy_rejected" in stderr: failure_class="POLICY_REJECTION"\n    else: failure_class="ADAPTER_EXECUTION"\n    print("P6_WAVEB_REUSE=FAIL")\n    print("P6_WAVEB_RETURN_CODE="+str(r.returncode))\n    print("P6_WAVEB_FAILURE_CLASS="+failure_class)\n    print("P6_WAVEB_MISSING_MARKERS="+",".join(missing))\n    raise SystemExit(1)
+if r.returncode or not required.issubset(seen):
+    # Preserve privacy: expose only aggregate boundary/error class and missing public markers.
+    missing=sorted(required-seen)
+    stderr=(r.stderr or "").lower()
+    if "unavailable" in stderr or "credential" in stderr: failure_class="CREDENTIAL_OR_BOUNDARY"
+    elif "connection" in stderr or "urlopen" in stderr or "timeout" in stderr: failure_class="DEPENDENCY_OR_CONNECTIVITY"
+    elif "deterministic_policy_rejected" in stderr: failure_class="POLICY_REJECTION"
+    else: failure_class="ADAPTER_EXECUTION"
+    print("P6_WAVEB_REUSE=FAIL")
+    print("P6_WAVEB_RETURN_CODE="+str(r.returncode))
+    print("P6_WAVEB_FAILURE_CLASS="+failure_class)
+    print("P6_WAVEB_MISSING_MARKERS="+",".join(missing))
+    raise SystemExit(1)
 spec=importlib.util.spec_from_file_location("pipcore",REPO/"scripts/lifeos-pip-p6-p10-core.py")
 core=importlib.util.module_from_spec(spec);spec.loader.exec_module(core)
 cases=[
