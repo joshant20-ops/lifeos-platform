@@ -15,7 +15,7 @@ jobs:
           git fetch --prune origin main
           git reset --hard origin/main
           test -z "$(git status --porcelain)"
-      - name: Refresh gateway
-        run: sudo -n /home/joshan/lifeos-platform/scripts/lifeos-install-github-runner-gateway.sh
+      - name: Refresh gateway through existing allow-listed operation
+        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge
       - name: Restart HA and test reconciliation
         run: sudo -n /usr/local/sbin/lifeos-deploy-gateway predbat-ha-reconcile-test
