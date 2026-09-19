@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """P9 bounded live acceptance before FreeAgent OAuth: real Paperless authority + synthetic ledger-side transaction."""
-import hashlib,importlib.util,subprocess,tempfile
+import hashlib,importlib.util,subprocess,tempfile,sys
 from datetime import date
 from pathlib import Path
 repo=Path("/home/joshan/lifeos-platform")
-spec=importlib.util.spec_from_file_location("fin",repo/"governor/finance_assets_readonly.py");fin=importlib.util.module_from_spec(spec);spec.loader.exec_module(fin)
+spec=importlib.util.spec_from_file_location("fin",repo/"governor/finance_assets_readonly.py");fin=importlib.util.module_from_spec(spec);sys.modules[spec.name]=fin;spec.loader.exec_module(fin)
 # Real Paperless authority: read only an ID and checksum locally; no title/OCR/private content emitted.
 q="from documents.models import Document; d=Document.objects.order_by('id').first(); print(f'{d.id}\\t{d.checksum}' if d else '')"
 r=subprocess.run(["docker","exec","-i","paperless-paperless-1","python3","manage.py","shell"],input=q,capture_output=True,text=True,timeout=60)
