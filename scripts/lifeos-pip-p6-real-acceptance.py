@@ -6,25 +6,8 @@ import importlib.util, pathlib, subprocess, sys, tempfile
 REPO=pathlib.Path("/home/joshan/lifeos-platform")
 # Existing Wave-B adapter performs a reversible synthetic message+PDF through real Gmail,
 # Tower local AI, deterministic policy, real Paperless submission/verification and cleanup.
-adapter=str(REPO/"homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py")
-# Reuse Wave B's established systemd credential boundary. Secrets stay root-owned and
-# are exposed only to the transient User=joshan unit through CREDENTIALS_DIRECTORY.
-password_candidates=("gmail-imap-password","gmail-app-password","imap-password")
-password_source=next((f"/etc/lifeos/secrets/{name}" for name in password_candidates
-                      if subprocess.run(["sudo","-n","test","-s",f"/etc/lifeos/secrets/{name}"]).returncode==0),None)
-if not password_source:
-    print("P6_WAVEB_REUSE=FAIL")
-    print("P6_WAVEB_FAILURE_CLASS=CREDENTIAL_OR_BOUNDARY")
-    raise SystemExit(1)
-cmd=["sudo","-n","systemd-run","--quiet","--wait","--pipe","--collect",
-     "--unit=lifeos-p6-selective-acceptance",
-     "--property=User=joshan",
-     "--property=WorkingDirectory=/home/joshan/lifeos-platform",
-     "--property=LoadCredential=gmail-imap-user:/etc/lifeos/secrets/gmail-imap-user",
-     "--property=LoadCredential=gmail-imap-password:"+password_source,
-     "--property=LoadCredential=paperless-api-token:/etc/lifeos/secrets/paperless-api-token",
-     sys.executable,adapter,"acceptance"]
-r=subprocess.run(cmd,capture_output=True,text=True,timeout=600)
+# Consume the canonical capability boundary; do not reconstruct credential plumbing here.
+r=subprocess.run([str(REPO/"governor/scripts/lifeos-run"),"email-paperless-selective","acceptance"],capture_output=True,text=True,timeout=600)
 required={"EMAIL_ADAPTER=REAL","LOCAL_TRIAGE=REAL_LOCAL_AI","DETERMINISTIC_POLICY=REAL","PAPERLESS_SUBMISSION=REAL","PAPERLESS_VERIFICATION=REAL","EVIDENCE_LINK=REAL","PAPERLESS_CLEANUP=PASS","EMAIL_CLEANUP=PASS","RESULT=PASS"}
 seen={line.strip() for line in r.stdout.splitlines()}
 if r.returncode or not required.issubset(seen):
