@@ -1,38 +1,389 @@
 # LifeOS active task ledger
 
-This file contains only work that survived the 2026-09-19 #1–#366 live audit.
+## Corrected audit policy
+The prior bulk classification was invalid because repository closure/merge plus a healthy current runtime does **not** prove each historical task's acceptance criteria.
 
-## Audit evidence
-- Live audit workflow: https://github.com/joshant20-ops/lifeos-platform/actions/runs/35443732378
-- Live canonical commit audited: `1a4ca5a33596b458e393bfa9e3633c2e6b5a1f2f`
-- Runner: `lifeos-pi5`; machine: `Docker`
-- `REPO_CLEAN_ALIGNED=PASS`
-- `RUNTIME_VISIBLE=PASS`
-- Mission phase: `audit_passed`
-- Current mission limitation: `PA_SCRIPTED_EXECUTION=INCOMPLETE`; Governor autonomy disabled by design.
-- Full #1–#366 disposition/evidence archive: `lifeos-jobs/audits/task-ledger-2026-09-19.json` at commit `3345557e6e9f1222301cb1d1a6d41e142a2d3e25`.
+Every #001–#366 item is restored here as **UNPROVEN** until its own acceptance criteria are checked against current live-system evidence.
 
-## Retained numbered work
-- [ ] #007 — **P1: Prove safe Z97 P106 shared-GPU R580 migration** — RETAIN — open; no current live acceptance. Historical GPU migration assumptions must not mutate drivers/packages.
-- [ ] #014 — **Verify privacy-classifier fix end-to-end with fresh Engineer job** — RETAIN — latest issue evidence: focused tests PASS but Pi5 runtime launcher was never proven; current audit does not supply that missing E2E proof.
-- [ ] #015 — **Design and build LifeOS Personal Assistant UI in Home Assistant** — RETAIN — open; current live audit does not prove the broader PA UX/navigation acceptance.
-- [ ] #016 — **Build user-facing autonomous job interface and management layer** — RETAIN — open; current audit reports Governor autonomy DISABLED_BY_DESIGN and PA scripted execution INCOMPLETE.
-- [ ] #017 — **Build LifeOS Finance: personal, rental and business accounting** — RETAIN — open; Finance & Assets remains active/partial.
-- [ ] #018 — **Diagnose and stabilise Zemismart Matter smart-curtain integration** — RETAIN — open; Matter server is live but curtain-specific stability acceptance is not proven.
-- [ ] #024 — **LifeOS central build list and backlog index** — RETAIN — persistent portfolio index by design.
-- [ ] #103 — **Configure household WhatsApp delivery for energy alerts** — RETAIN — external account/recipient authorisation boundary remains.
-- [ ] #104 — **Authorize Alexa announcement path for LifeOS energy alerts** — RETAIN — external integration/account authorisation boundary remains.
-- [ ] #105 — **Approve cheap-power alert threshold policy** — RETAIN — explicit human policy decision remains.
-- [ ] #164 — **Personal Administration delivery — Calendar + Email + Paperless** — RETAIN — current 2026-09-19 mission audit: phase audit_passed, but PA_SCRIPTED_EXECUTION=INCOMPLETE; do not close on historical merge alone.
-- [ ] #200 — **LifeOS automation health failure** — RETAIN — current LifeOS CI is failing; automation health is not presently clean.
-- [ ] #230 — **Diagnose Tower CPU thermal limit under local 8K inference** — RETAIN — historical 8K remediation exists, but current live audit did not probe Tower thermal acceptance; issue-specific proof is insufficient.
+An item may leave this ledger only when:
+- **COMPLETE** — current live evidence proves the requested outcome/acceptance criteria; or
+- **OBSOLETE** — current architecture/runtime proves the work is superseded or no longer applicable.
 
-## Newly exposed live defects
-- [ ] **CI cleanup regression** — active LifeOS CI fails because an active check still references the archived Wave-A helper. Repair the active CI contract; do not resurrect obsolete Wave-A implementation merely to make CI green.
-- [ ] **Restore rehearsal regression** — latest restore rehearsal fails with `repository contract missing`; reconcile it with the three-repository authority model and re-prove non-destructive restore.
-- [ ] **Stage-3 HA/Jinja deployment defect** — Python f-string processing collides with Home Assistant Jinja braces while adding Tower controls; repair and live-prove deployment/rollback.
-- [ ] **Snapshot exporter stale** — `lifeos-snapshots` lacks current September observed-state evidence; repair the sanitised exporter and prove recurring export.
-- [ ] **Runner inventory incomplete** — retained `lifeos-pi5` runner is live (runner 2.337.0), but every stale/offline/duplicate runner registration has not yet been proven removed.
+A merged PR, closed issue, historical PASS, or presence in current Git history is supporting evidence only. It is never sufficient on its own.
 
-## Disposition rule
-Completed/obsolete work is not kept here. Its supporting evidence lives in `lifeos-jobs`. Work remains here whenever current evidence is failed, blocked, incomplete, or insufficient. A historical merge alone never overrides a current regression.
+Before removal, a sanitised evidence record must be written to `lifeos-jobs` containing the item number, acceptance criteria checked, live checks performed, current canonical/runtime identity, result, and evidence references.
+
+## Numbered ledger
+- [ ] #001 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #002 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #003 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #004 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #005 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #006 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #007 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #008 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #009 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #010 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #011 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #012 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #013 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #014 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #015 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #016 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #017 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #018 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #019 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #020 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #021 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #022 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #023 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #024 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #025 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #026 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #027 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #028 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #029 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #030 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #031 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #032 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #033 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #034 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #035 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #036 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #037 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #038 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #039 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #040 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #041 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #042 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #043 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #044 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #045 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #046 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #047 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #048 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #049 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #050 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #051 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #052 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #053 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #054 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #055 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #056 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #057 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #058 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #059 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #060 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #061 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #062 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #063 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #064 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #065 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #066 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #067 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #068 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #069 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #070 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #071 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #072 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #073 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #074 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #075 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #076 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #077 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #078 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #079 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #080 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #081 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #082 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #083 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #084 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #085 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #086 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #087 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #088 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #089 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #090 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #091 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #092 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #093 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #094 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #095 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #096 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #097 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #098 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #099 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #100 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #101 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #102 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #103 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #104 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #105 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #106 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #107 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #108 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #109 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #110 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #111 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #112 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #113 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #114 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #115 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #116 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #117 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #118 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #119 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #120 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #121 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #122 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #123 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #124 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #125 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #126 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #127 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #128 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #129 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #130 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #131 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #132 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #133 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #134 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #135 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #136 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #137 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #138 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #139 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #140 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #141 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #142 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #143 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #144 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #145 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #146 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #147 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #148 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #149 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #150 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #151 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #152 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #153 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #154 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #155 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #156 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #157 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #158 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #159 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #160 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #161 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #162 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #163 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #164 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #165 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #166 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #167 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #168 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #169 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #170 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #171 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #172 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #173 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #174 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #175 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #176 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #177 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #178 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #179 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #180 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #181 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #182 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #183 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #184 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #185 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #186 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #187 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #188 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #189 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #190 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #191 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #192 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #193 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #194 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #195 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #196 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #197 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #198 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #199 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #200 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #201 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #202 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #203 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #204 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #205 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #206 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #207 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #208 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #209 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #210 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #211 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #212 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #213 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #214 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #215 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #216 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #217 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #218 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #219 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #220 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #221 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #222 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #223 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #224 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #225 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #226 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #227 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #228 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #229 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #230 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #231 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #232 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #233 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #234 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #235 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #236 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #237 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #238 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #239 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #240 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #241 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #242 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #243 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #244 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #245 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #246 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #247 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #248 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #249 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #250 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #251 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #252 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #253 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #254 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #255 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #256 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #257 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #258 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #259 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #260 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #261 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #262 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #263 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #264 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #265 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #266 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #267 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #268 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #269 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #270 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #271 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #272 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #273 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #274 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #275 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #276 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #277 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #278 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #279 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #280 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #281 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #282 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #283 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #284 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #285 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #286 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #287 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #288 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #289 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #290 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #291 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #292 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #293 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #294 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #295 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #296 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #297 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #298 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #299 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #300 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #301 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #302 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #303 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #304 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #305 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #306 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #307 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #308 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #309 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #310 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #311 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #312 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #313 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #314 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #315 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #316 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #317 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #318 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #319 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #320 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #321 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #322 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #323 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #324 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #325 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #326 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #327 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #328 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #329 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #330 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #331 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #332 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #333 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #334 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #335 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #336 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #337 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #338 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #339 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #340 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #341 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #342 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #343 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #344 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #345 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #346 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #347 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #348 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #349 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #350 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #351 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #352 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #353 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #354 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #355 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #356 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #357 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #358 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #359 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #360 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #361 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #362 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #363 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #364 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #365 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+- [ ] #366 — UNPROVEN — requires item-specific live-system evidence before COMPLETE/OBSOLETE disposition
+
+## Known current defects retained independently
+- [ ] CI cleanup regression — active CI references an archived Wave-A helper.
+- [ ] Restore rehearsal regression — latest rehearsal reported `repository contract missing`.
+- [ ] Stage-3 HA/Jinja deployment defect — Python f-string/Jinja brace collision.
+- [ ] Snapshot exporter stale — current recurring sanitised observed-state export not proven.
+- [ ] Runner inventory incomplete — retained Pi runner works, but stale/offline/duplicate registrations are not fully audited.
