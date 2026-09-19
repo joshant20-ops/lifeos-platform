@@ -1,0 +1,47 @@
+name: LifeOS Capability Stage 3 Follow-ups
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/audit-capability-stage3-followups.py'
+      - '.github/workflows/lifeos-capability-stage3-followups.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Audit backup certificate and update coverage
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-capability-stage3-followups.py
+
+      - name: Prove non-mutation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo STAGE3_FOLLOWUP_REPOSITORY_FINAL=PASS
