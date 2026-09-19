@@ -20,10 +20,8 @@ All other historical items remain here until their own live acceptance is proved
 
 ## Active/unproven numbered ledger
 - [ ] #001 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #002 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #004 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #005 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #006 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #007 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #008 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #009 — UNPROVEN — item-specific current live acceptance still required
@@ -37,46 +35,25 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #017 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #018 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #019 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #020 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #021 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #022 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #023 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #024 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #025 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #026 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #027 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #028 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #029 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #030 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #031 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #032 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #033 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #034 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #035 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #036 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #037 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #038 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #039 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #040 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #041 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #042 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #043 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #044 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #045 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #046 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #047 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #048 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #049 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #051 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #052 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #053 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #054 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #055 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #056 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #057 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #058 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #059 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #060 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #061 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #062 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #063 — UNPROVEN — item-specific current live acceptance still required
@@ -95,10 +72,7 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #076 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #077 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #078 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #079 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #080 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #081 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #082 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #083 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #084 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #085 — UNPROVEN — item-specific current live acceptance still required
@@ -116,8 +90,6 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #097 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #098 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #099 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #100 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #101 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #102 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #103 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #104 — UNPROVEN — item-specific current live acceptance still required
@@ -127,8 +99,6 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #108 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #109 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #110 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #111 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #112 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #113 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #114 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #115 — UNPROVEN — item-specific current live acceptance still required
@@ -377,7 +347,6 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #363 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #364 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #365 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #366 — UNPROVEN — item-specific current live acceptance still required
 
 ## Known current defects
 - [ ] CI cleanup regression.
