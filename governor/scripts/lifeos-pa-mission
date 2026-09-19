@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 import time
 
-VERSION = "2026.09.19-8"
+VERSION = "2026.09.19-9"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
