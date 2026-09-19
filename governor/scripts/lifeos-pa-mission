@@ -166,21 +166,19 @@ def run_executor(faults):
 
 def run_autonomous_mission(faults):
     """Submit the bounded backlog objective to the already-deployed Governor and wait for terminal evidence."""
-    request = """Process this explicitly selected next batch of ten autonomous-safe unresolved LifeOS issues: #412, #415, #416, #417, #418, #419, #421, #423, #424 and #425.
+    request = """Process exactly one autonomous-safe unresolved LifeOS issue: #412 — Engineer: complete OpenHands integration and safe VM cleanup.
 
-For each issue independently inspect current canonical main, current architecture, historical records and all available live runtime evidence. Run simulations/unit/integration tests where they materially reduce uncertainty, perform any safe engineering needed through existing governed execution paths, and then obtain item-specific live acceptance. Never infer completion from age, historical merge state, or broad system health.
+Inspect current canonical main, current architecture, historical records and available live runtime evidence. Test the current governed OpenHands/local-builder role and Engineer VM lifecycle/cleanup. Perform safe engineering through existing governed paths where needed. Obtain item-specific live acceptance.
 
-Close only with current evidence proving COMPLETE, OBSOLETE/SUPERSEDED, or DUPLICATE. Archive a sanitised disposition/evidence record in lifeos-jobs before closure. If any selected issue unexpectedly requires credentials, physical intervention, irreversible/high-risk action, or a user policy decision, leave it open and report the exact blocker rather than weakening acceptance.
+Close #412 only with current evidence proving COMPLETE, OBSOLETE/SUPERSEDED, or DUPLICATE, and archive sanitised disposition/evidence in lifeos-jobs before closure. If credentials, physical intervention, irreversible/high-risk action, or a user policy decision is genuinely required, leave it open and report the exact blocker.
 
-Preserve current invariants: Pi5 orchestration/control only; private/personal data local-only; Tower Ollama demand-powered through existing lease/WoL lifecycle; no direct production SSH mutation outside governed controls; no sudo assumption; canonical Git changes via branch/PR publication; do not revive retired architecture merely to satisfy historical wording.
-
-Specific checks: #412 current governed OpenHands/local-builder role and safe Engineer VM cleanup; #415 snapshot/FIFO publishing; #416 job history, queue and stuck detection; #417 observability contracts; #418 current issue-to-Engineer/Governor pickup path or successor; #419 dirty-checkout handling; #421 private-document local-only routing plus Tower wake/lease/release without exposing private content; #423-#425 historical Semaphore/Ansible/planner/root-control requirements against current governed transactional architecture, implementing only demonstrated gaps.
+Preserve invariants: Pi5 orchestration/control only; private data local-only; Tower Ollama demand-powered through lease/WoL; no direct production SSH mutation outside governed controls; no sudo assumption; Git changes through governed branch/PR publication.
 
 Final status must explicitly report:
 RESULT=PASS
-CLOSED_COUNT=10
-ISSUE_DISPOSITIONS=all ten with tests/simulations, live evidence references and closure state
-Only emit RESULT=PASS/CLOSED_COUNT=10 when all ten have evidence-backed terminal dispositions."""
+CLOSED_COUNT=1
+ISSUE_DISPOSITIONS=#412 with tests/simulations, live evidence references and closure state
+Only emit RESULT=PASS/CLOSED_COUNT=1 when #412 has an evidence-backed terminal disposition."""
     payload = json.dumps({"request": request, "privacy_domain": "personal-administration"}).encode()
     req = urllib.request.Request(
         AGENT_URL + "/jobs?async=1", data=payload,
@@ -219,12 +217,12 @@ Only emit RESULT=PASS/CLOSED_COUNT=10 when all ten have evidence-backed terminal
 
     status = str(latest.get("status") or "").upper()
     evidence = "\n".join(str(x.get("evidence") or "") for x in latest.get("iterations", []))
-    passed = status == "PASS" and "CLOSED_COUNT=10" in evidence and "RESULT=PASS" in evidence
+    passed = status == "PASS" and "CLOSED_COUNT=1" in evidence and "RESULT=PASS" in evidence
     if not passed:
         fault(faults, "GOVERNOR_MISSION_INCOMPLETE", "high", "governor",
-              "Autonomous ten-issue mission did not prove the required terminal contract.",
+              "Autonomous single-issue mission did not prove the required terminal contract.",
               {"job_id": job_id, "status": status, "blocked_reason": latest.get("blocked_reason")},
-              "Resume/fix the Governor job; do not claim the ten issues complete.")
+              "Resume/fix the Governor job; do not claim the issue complete.")
     return {"rc": 0 if passed else 20, "job_id": job_id, "status": status}
 
 def render(faults, state, audit_result):
