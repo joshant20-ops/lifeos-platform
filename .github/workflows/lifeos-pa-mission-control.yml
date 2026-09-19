@@ -86,7 +86,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          governor/scripts/lifeos-local-builder --self-test
+          bash governor/scripts/lifeos-local-builder --self-test
 
       - name: Run deterministic planning and acceptance preparation
         shell: bash
