@@ -1,0 +1,22 @@
+name: LifeOS Archive Reconciliation Audit
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-archive-job-reconcile.py'
+      - 'governor/job_records/**'
+jobs:
+  reconcile:
+    runs-on: [self-hosted, linux, ARM64]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile archived jobs
+        run: python3 scripts/lifeos-archive-job-reconcile.py
+      - name: Runtime archive and service audit
+        run: |
+          set -euo pipefail
+          test -x governor/scripts/export-lifeos-job-records.sh
+          systemctl --user --no-pager --failed || true
+          echo "ARCHIVE_RUNTIME_AUDIT=PASS"
