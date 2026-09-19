@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 import time
 
-VERSION = "2026.09.19-6"
+VERSION = "2026.09.19-10"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
@@ -166,19 +166,19 @@ def run_executor(faults):
 
 def run_autonomous_mission(faults):
     """Submit the bounded backlog objective to the already-deployed Governor and wait for terminal evidence."""
-    request = """Process exactly one autonomous-safe unresolved LifeOS issue: #412 — Engineer: complete OpenHands integration and safe VM cleanup.
+    request = """Process exactly one autonomous-safe unresolved LifeOS issue: #417 — Engineer self-improvement v2: observability contracts.
 
-Inspect current canonical main, current architecture, historical records and available live runtime evidence. Test the current governed OpenHands/local-builder role and Engineer VM lifecycle/cleanup. Perform safe engineering through existing governed paths where needed. Obtain item-specific live acceptance.
+Inspect canonical main and current live runtime first. Re-evaluate the historical observability-contract requirement against today's governed architecture. Run focused simulations/tests and item-specific live checks of status, stage, elapsed/ETA, fault/evidence surfaces and current consumers. Repair only a demonstrated current gap through governed paths.
 
-Close #412 only with current evidence proving COMPLETE, OBSOLETE/SUPERSEDED, or DUPLICATE, and archive sanitised disposition/evidence in lifeos-jobs before closure. If credentials, physical intervention, irreversible/high-risk action, or a user policy decision is genuinely required, leave it open and report the exact blocker.
+Close #417 only with current evidence proving COMPLETE, OBSOLETE/SUPERSEDED, or DUPLICATE. Archive sanitised disposition/evidence in lifeos-jobs and add a transparent issue note listing inspection, tests, live evidence, changes/no-change rationale, evidence location and disposition. Leave open only for a genuine user-only blocker and state it exactly.
 
-Preserve invariants: Pi5 orchestration/control only; private data local-only; Tower Ollama demand-powered through lease/WoL; no direct production SSH mutation outside governed controls; no sudo assumption; Git changes through governed branch/PR publication.
+Preserve Pi5 orchestration-only, private local-only routing, Tower Ollama demand lease/WoL, no private cloud fallback, governed mutation, no sudo assumption and Git PR publication.
 
-Final status must explicitly report:
+Final status:
 RESULT=PASS
 CLOSED_COUNT=1
-ISSUE_DISPOSITIONS=#412 with tests/simulations, live evidence references and closure state
-Only emit RESULT=PASS/CLOSED_COUNT=1 when #412 has an evidence-backed terminal disposition."""
+ISSUE_DISPOSITIONS=#417 with tests/simulations, live evidence references and closure state
+Emit PASS only after evidence-backed terminal disposition."""
     payload = json.dumps({"request": request, "privacy_domain": "personal-administration"}).encode()
     req = urllib.request.Request(
         AGENT_URL + "/jobs?async=1", data=payload,
