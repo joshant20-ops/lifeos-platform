@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "mode": "shadow",
+  "mode": "managed",
   "targets": {
     "predbat": {
       "enabled": true,
       "coalesce_hours": 24,
-      "auto_update": false,
+      "auto_update": true,
       "source": "github-release",
       "risk_terms": ["breaking", "migration", "entity", "control", "enphase", "battery", "tariff", "saving session"]
     },
