@@ -13,9 +13,9 @@ All other historical items remain here until their own live acceptance is proved
 - Core runtime is live: GitHub runner, Docker, autonomous-agent, Engineer, HA issue queue bridge and Tower control are active.
 - Pi-local Ollama is absent.
 - 100 repository regression tests pass.
-- Current defects prevent broad completion claims: `lifeos-important-info-refresh.service`, `lifeos-job-publisher.service`, and legacy `lifeos-pi-control.service` are failed; several historical root-broker instances are failed.
-- `lifeos-jobs-export.service` exists but no active exporter timer was shown.
-- Current CI is failing independently of the 100-test live suite.
+- Runtime convergence 2026-09-19: stale `lifeos-pi-control`/`lifeos-job-publisher` units were retired; `lifeos-important-info-refresh` repaired and live-proven; historical root-broker failure state cleared with the broker socket active.
+- `lifeos-jobs` export is correctly event-driven, not timer-driven: `lifeos-jobs-export.path` is enabled and active. `lifeos-snapshots` now has a canonical daily exporter timer and a fresh live-proven export.
+- CI cleanup regression is repaired: current `LifeOS CI` security and validate jobs both pass (run 35447214315).
 - Several live-probe scripts are present but not executable from the canonical checkout, so their runtime acceptance is not proven.
 
 ## Active/unproven numbered ledger
