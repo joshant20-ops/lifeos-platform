@@ -1,0 +1,9 @@
+[Unit]
+Description=LifeOS P7 continuous ingestion timer
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+Persistent=true
+Unit=lifeos-pip-continuous.service
+[Install]
+WantedBy=timers.target
