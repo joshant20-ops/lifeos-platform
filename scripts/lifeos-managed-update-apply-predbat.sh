@@ -28,9 +28,6 @@ sed -i 's#image: .*#image: nipar44/predbat_addon:lifeos-candidate#' "$compose"
 stage=recreate-candidate
 echo MANAGED_UPDATE_STAGE=$stage
 docker compose -f "$compose" up -d --no-deps --force-recreate predbat >/dev/null
-stage=settle
-echo MANAGED_UPDATE_STAGE=$stage
-sleep 30
 stage=verify-running
 echo MANAGED_UPDATE_STAGE=$stage
 test "$(docker inspect -f '{{.State.Running}}' predbat)" = true
@@ -49,23 +46,56 @@ mapfile -t sanity_units < <(
 test "${#sanity_units[@]}" -eq 1
 sanity_unit="${sanity_units[0]}"
 echo MANAGED_UPDATE_SANITY_UNIT="$sanity_unit"
-before_mtime=$(stat -c %Y "$sanity_export" 2>/dev/null || echo 0)
-stage=sanity-collector
+
+# Predbat publishes its HA forecast asynchronously after container startup.
+# Require the real secret-aware sanity service to prove readiness; never
+# convert a transient restart state into either acceptance or immediate
+# rollback. Five minutes is bounded and remains fail-closed.
+stage=readiness
 echo MANAGED_UPDATE_STAGE=$stage
-systemctl start "$sanity_unit"
-for _ in $(seq 1 30); do
-  after_mtime=$(stat -c %Y "$sanity_export" 2>/dev/null || echo 0)
-  if [ "$after_mtime" -gt "$before_mtime" ]; then break; fi
-  sleep 1
+ready=false
+for attempt in $(seq 1 10); do
+  before_mtime=$(stat -c %Y "$sanity_export" 2>/dev/null || echo 0)
+  systemctl start "$sanity_unit"
+  after_mtime="$before_mtime"
+  for _ in $(seq 1 15); do
+    after_mtime=$(stat -c %Y "$sanity_export" 2>/dev/null || echo 0)
+    [ "$after_mtime" -gt "$before_mtime" ] && break
+    sleep 1
+  done
+  test "$after_mtime" -gt "$before_mtime"
+
+  if python3 - "$sanity_export" "$attempt" <<'PY'
+import json,sys
+p,attempt=sys.argv[1:]
+d=json.load(open(p))
+a=d.get("sanity_assessment") or {}
+flags=list(d.get("anomaly_flags") or [])
+fails=list(a.get("fail_flags") or [])
+watches=list(a.get("watch_flags") or [])
+print("MANAGED_UPDATE_SANITY_ATTEMPT="+attempt)
+print("MANAGED_UPDATE_SANITY_LEVEL="+str(a.get("level","UNKNOWN")))
+print("MANAGED_UPDATE_SANITY_FAIL_FLAGS="+(",".join(fails) if fails else "none"))
+print("MANAGED_UPDATE_SANITY_WATCH_FLAGS="+(",".join(watches) if watches else "none"))
+# WATCH is safe enough to continue: the collector explicitly defines it as
+# trustworthy data with an economic-strategy advisory. FAIL remains blocking.
+raise SystemExit(0 if a.get("level") in {"PASS","WATCH"} and not fails else 1)
+PY
+  then
+    ready=true
+    break
+  fi
+  sleep 15
 done
-test "${after_mtime:-0}" -gt "$before_mtime"
+test "$ready" = true
 stage=sanity-evaluate
 echo MANAGED_UPDATE_STAGE=$stage
-python3 - <<'PY'
-import json
-p="/opt/stacks/lifeos-energy/predbat-sanity-export/latest.json"
-d=json.load(open(p))
-assert not d.get("anomaly_flags"), "sanity regression"
+python3 - "$sanity_export" <<'PY'
+import json,sys
+d=json.load(open(sys.argv[1]))
+a=d.get("sanity_assessment") or {}
+assert a.get("level") in {"PASS","WATCH"}, "sanity did not reach trustworthy state"
+assert not a.get("fail_flags"), "sanity has blocking fail flags"
 PY
 stage=restore-compose
 echo MANAGED_UPDATE_STAGE=$stage
