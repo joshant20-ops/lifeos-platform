@@ -1,0 +1,12 @@
+# Runtime-owned LifeOS control-plane state.
+# These paths must exist only in the live checkout/runtime filesystem and must
+# never be reintroduced as Git-owned desired state.
+jobs/staging/
+jobs/staged/
+jobs/pending/
+jobs/archive/
+jobs/scripts/
+jobs/change-scripts/
+jobs/root-scripts/
+results/
+state/
