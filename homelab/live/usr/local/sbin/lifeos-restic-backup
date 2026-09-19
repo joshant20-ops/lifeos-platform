@@ -16,6 +16,7 @@ restic backup \
     /usr/local/sbin \
     /usr/local/bin \
     /opt/stacks \
+    /mnt/docker-data/predbat/config \
     /mnt/docker-data/automation/repos \
     /mnt/docker-data/automation/secrets
 
