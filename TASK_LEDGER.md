@@ -22,7 +22,6 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #001 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #004 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #005 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #007 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #008 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #009 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #010 — UNPROVEN — item-specific current live acceptance still required
