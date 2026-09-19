@@ -1,0 +1,29 @@
+name: Inspect Engineer retry 0b9b6768548a
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-inspect-0b9b6768548a.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: startsWith(github.event.head_commit.message, 'Inspect retry 0b9b6768548a')
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Read deterministic job summary through Engineer
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request
+          payload={'model':'lifeos-engineer','messages':[{'role':'user','content':'What is the status of job 0b9b6768548a?'}],'stream':False}
+          req=urllib.request.Request('http://127.0.0.1:8793/v1/chat/completions',data=json.dumps(payload).encode(),headers={'Content-Type':'application/json'},method='POST')
+          with urllib.request.urlopen(req,timeout=20) as response:
+              answer=json.load(response)['choices'][0]['message']['content']
+          print('ENGINEER_JOB_SUMMARY_BEGIN')
+          print(answer)
+          print('ENGINEER_JOB_SUMMARY_END')
+          PY
