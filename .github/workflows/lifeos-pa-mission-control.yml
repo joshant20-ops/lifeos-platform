@@ -24,7 +24,7 @@ permissions:
 
 concurrency:
   group: lifeos-pa-mission-control
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   control:
