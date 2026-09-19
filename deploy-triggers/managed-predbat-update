@@ -1,1 +1,1 @@
-2026-09-19 retry persistent core reconciliation after standalone-layout fix
+2026-09-19 native HA update path: backup then update.install
