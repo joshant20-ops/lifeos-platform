@@ -163,7 +163,6 @@ All other historical items remain here until their own live acceptance is proved
 - [ ] #197 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #198 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #199 — UNPROVEN — item-specific current live acceptance still required
-- [ ] #200 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #201 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #202 — UNPROVEN — item-specific current live acceptance still required
 - [ ] #203 — UNPROVEN — item-specific current live acceptance still required
