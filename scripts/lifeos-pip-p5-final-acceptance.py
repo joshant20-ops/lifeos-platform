@@ -7,7 +7,16 @@ spec=importlib.util.spec_from_file_location("p5state",REPO/"scripts/lifeos-pip-p
 state=importlib.util.module_from_spec(spec); spec.loader.exec_module(state)
 DB=state.DEFAULT_DB
 
-# Re-run native inventory first: inventory_upsert must preserve terminal semantic states.
+# Backfill only legacy semantic_resolved rows that predate durable result storage.
+pre=state.connect(DB)
+legacy=pre.execute("SELECT d.paperless_id FROM document_state d LEFT JOIN semantic_result r ON r.paperless_id=d.paperless_id WHERE d.state='semantic_resolved' AND r.paperless_id IS NULL").fetchall()
+for (doc_id,) in legacy: state.upsert(pre,doc_id,"semantic_pending")
+pre.commit()
+print(f"P5_ACCEPT_LEGACY_REQUEUED={len(legacy)}")
+if legacy:
+    subprocess.run([sys.executable,str(REPO/"scripts/lifeos-pip-p5-semantic-batch.py"),"--limit","50","--drain"],check=True,timeout=3600)
+
+# Re-run native inventory: inventory_upsert must preserve terminal semantic states.
 subprocess.run([sys.executable,str(REPO/"scripts/lifeos-pip-p5-inventory-runner.py")],check=True,timeout=1200)
 db=state.connect(DB)
 counts=state.summary(db)
