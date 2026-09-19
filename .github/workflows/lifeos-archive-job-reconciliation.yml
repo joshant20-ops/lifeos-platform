@@ -27,9 +27,14 @@ jobs:
           set -Eeuo pipefail
           systemctl is-active --quiet lifeos-autonomous-agent.service
           systemctl is-active --quiet lifeos-tower-control.service
-          PORT=$(systemctl show lifeos-autonomous-agent.service -p Environment --value | sed -n 's/.*LIFEOS_AGENT_PORT=\\([0-9][0-9]*\\).*/\\1/p')\n          test -n "$PORT"\n          echo "ARCHIVE_LIVE_JOBS_API_PORT=$PORT"\n          curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/health" >/dev/null\n          curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/jobs" >/dev/null
+          PORT=$(systemctl show lifeos-autonomous-agent.service -p Environment --value | sed -n 's/.*LIFEOS_AGENT_PORT=\\([0-9][0-9]*\\).*/\\1/p')
+          test -n "$PORT"
+          echo "ARCHIVE_LIVE_JOBS_API_PORT=$PORT"
+          curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/health" >/dev/null
+          curl -fsS --max-time 5 "http://127.0.0.1:${PORT}/jobs" >/dev/null
           echo ARCHIVE_LIVE_GOVERNOR=PASS
           echo ARCHIVE_LIVE_TOWER_CONTROL=PASS
-          echo ARCHIVE_LIVE_JOBS_API=PASS\n          echo ARCHIVE_AUDIT_EXPECTED_PORT_SOURCE=systemd_runtime_environment
+          echo ARCHIVE_LIVE_JOBS_API=PASS
+          echo ARCHIVE_AUDIT_EXPECTED_PORT_SOURCE=systemd_runtime_environment
       - name: Canonical clean
         run: test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
