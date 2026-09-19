@@ -1,0 +1,70 @@
+name: Fix runtime health convergence
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-runtime-health-convergence.yml']
+permissions:
+  contents: read
+jobs:
+  fix:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 12
+    steps:
+      - name: Align
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git merge --ff-only origin/main
+      - name: Rotate Paperless service credential without disclosure
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          tmp="$(mktemp)"
+          trap 'rm -f "$tmp"' EXIT
+          docker exec paperless-paperless-1 python3 manage.py shell -c '
+          from django.contrib.auth import get_user_model
+          from rest_framework.authtoken.models import Token
+          U=get_user_model()
+          u=U.objects.filter(is_superuser=True,is_active=True).order_by("id").first()
+          assert u is not None
+          Token.objects.filter(user=u).delete()
+          t=Token.objects.create(user=u)
+          print(t.key)
+          ' >"$tmp"
+          test -s "$tmp"
+          test "$(wc -l < "$tmp")" -eq 1
+          sudo -n install -o root -g root -m 0600 "$tmp" /etc/lifeos/secrets/paperless-api-token
+          echo PAPERLESS_CREDENTIAL_ROTATED=PASS
+      - name: Re-run important information refresh
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n systemctl reset-failed lifeos-important-info-refresh.service || true
+          sudo -n systemctl start lifeos-important-info-refresh.service
+          test "$(systemctl show -p Result --value lifeos-important-info-refresh.service)" = success
+          echo IMPORTANT_INFO_REFRESH=PASS
+      - name: Clear historical broker instance failures
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          systemctl is-active --quiet lifeos-root-broker.socket
+          sudo -n systemctl reset-failed 'lifeos-root-broker@*.service' || true
+          if systemctl --failed --no-legend | grep -q 'lifeos-root-broker@'; then
+            echo HISTORICAL_BROKER_FAILURES=FAIL
+            systemctl --failed --no-pager
+            exit 1
+          fi
+          echo ROOT_BROKER_SOCKET=ACTIVE
+          echo HISTORICAL_BROKER_FAILURES=CLEARED
+      - name: Final health
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          systemctl is-active --quiet lifeos-autonomous-agent.service
+          systemctl is-active --quiet lifeos-engineer.service
+          systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+          systemctl is-active --quiet lifeos-tower-control.service
+          ! systemctl --failed --no-legend | grep -E 'lifeos-important-info-refresh|lifeos-root-broker@'
+          echo RUNTIME_HEALTH_CONVERGENCE=PASS
