@@ -1,0 +1,23 @@
+name: LifeOS P6 Real Acceptance
+on:
+  push:
+    branches: [main]
+    paths: ['scripts/lifeos-pip-p6-real-acceptance.py']
+  workflow_dispatch:
+jobs:
+  accept:
+    runs-on: [self-hosted, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile canonical checkout
+        run: |
+          repo=/home/joshan/lifeos-platform
+          git -C "$repo" fetch origin main
+          test -z "$(git -C "$repo" status --porcelain)"
+          git -C "$repo" merge --ff-only origin/main
+      - name: P6 real acceptance
+        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p6-real-acceptance.py
+      - name: Canonical clean
+        if: always()
+        run: test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
