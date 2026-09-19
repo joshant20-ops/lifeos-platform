@@ -68,6 +68,8 @@ STUCK_JOB_MULTIPLIER = float(os.environ.get("LIFEOS_STUCK_JOB_MULTIPLIER", "3.0"
 STUCK_JOB_MIN_SECONDS = int(os.environ.get("LIFEOS_STUCK_JOB_MIN_SECONDS", "300"))
 CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"))
 EXECUTION_LOCK = threading.Lock()
+ACTIVE_JOB_LOCK = threading.Lock()
+ACTIVE_JOB_ID = None
 DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})
 DEPLOYMENT_OPERATIONS = frozenset({
     "deploy-engineer-runtime", "deploy-autonomous-agent", "deploy-backlog-runner",
@@ -954,8 +956,15 @@ def spawn_continuation(job):
 
 
 def execute_job(job):
+    global ACTIVE_JOB_ID
     with EXECUTION_LOCK:
-        final = _execute_job_locked(job)
+        with ACTIVE_JOB_LOCK:
+            ACTIVE_JOB_ID = job["id"]
+        try:
+            final = _execute_job_locked(job)
+        finally:
+            with ACTIVE_JOB_LOCK:
+                ACTIVE_JOB_ID = None
     spawn_continuation(final)
 
 
@@ -1003,6 +1012,13 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
 
 
 def create_job(request, async_mode=False, retry_of=None, **continuation):
+    # Do not create an unbounded in-memory thread queue behind the single
+    # execution lock.  A caller can retry once the active governed job ends.
+    if async_mode:
+        with ACTIVE_JOB_LOCK:
+            active = ACTIVE_JOB_ID
+        if active:
+            return {"status": "BUSY", "active_job_id": active}
     job = new_job(request, retry_of=retry_of, **continuation)
     if async_mode:
         threading.Thread(target=execute_job, args=(job,), daemon=True, name=f"job-{job['id']}").start()
@@ -1131,7 +1147,7 @@ class Handler(BaseHTTPRequestHandler):
                 dispatch_builder=old.get("dispatch_builder"),
                 privacy_domain=old.get("privacy_domain"),
             )
-            self.send_json(202, job)
+            self.send_json(409 if job.get("status") == "BUSY" else 202, job)
             return
         if path != "/jobs":
             self.send_json(404, {"error": "not_found"})
@@ -1162,7 +1178,10 @@ class Handler(BaseHTTPRequestHandler):
             "privacy_domain": body.get("privacy_domain"),
         }
         job = create_job(request, async_mode=async_mode, **continuation)
-        self.send_json(202 if async_mode else 200, job)
+        if job.get("status") == "BUSY":
+            self.send_json(409, job)
+        else:
+            self.send_json(202 if async_mode else 200, job)
 
     def log_message(self, fmt, *args):
         print("agent", self.address_string(), fmt % args, flush=True)
