@@ -1,0 +1,37 @@
+name: LifeOS P7 Live Continuous Acceptance
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'governor/systemd/lifeos-pip-continuous.service'
+      - 'governor/systemd/lifeos-pip-continuous.timer'
+      - 'scripts/lifeos-pip-p7-live-acceptance.py'
+  workflow_dispatch:
+concurrency:
+  group: lifeos-pip-p7-live
+  cancel-in-progress: false
+jobs:
+  live:
+    runs-on: [self-hosted, lifeos-pi5]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile canonical checkout
+        run: |
+          repo=/home/joshan/lifeos-platform
+          git -C "$repo" fetch origin main
+          test -z "$(git -C "$repo" status --porcelain)"
+          git -C "$repo" merge --ff-only origin/main
+      - name: Install and prove P7 continuous operation
+        run: python3 /home/joshan/lifeos-platform/scripts/lifeos-pip-p7-live-acceptance.py
+      - name: Audit live P7 runtime
+        run: |
+          systemctl is-enabled lifeos-pip-continuous.timer | grep -qx enabled
+          systemctl is-active lifeos-pip-continuous.timer | grep -qx active
+          systemctl show lifeos-pip-continuous.service -p Result --value | grep -qx success
+          grep -q 'lifeos-pip-p5-inventory-runner.py' /etc/systemd/system/lifeos-pip-continuous.service
+          grep -q 'lifeos-pip-p5-semantic-batch.py' /etc/systemd/system/lifeos-pip-continuous.service
+          echo P7_LIVE_AUDIT=PASS
+      - name: Canonical clean
+        if: always()
+        run: test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
