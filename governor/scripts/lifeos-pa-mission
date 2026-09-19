@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 import time
 
-VERSION = "2026.09.19-4"
+VERSION = "2026.09.19-5"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
@@ -137,7 +137,7 @@ def audit(faults):
     if services.get("lifeos-autonomous-agent.service") == "active":
         fault(faults, "GOVERNOR_SCOPE_DRIFT", "warning", "governor",
               "Autonomous agent is active in minimal mode.", services,
-              "Keep autonomous orchestration disabled while using the scripted path.")
+              "Autonomous orchestration is allowed only through the governed mission path; retain privacy and routing enforcement.")
 
     write(AF, json.dumps(result, indent=2, sort_keys=True) + "\n")
     return result
@@ -167,7 +167,7 @@ def run_executor(faults):
 def run_autonomous_mission(faults):
     """Submit the bounded backlog objective to the already-deployed Governor and wait for terminal evidence."""
     request = """Take the oldest ten currently open LifeOS issues that do not require human credentials, consent, physical intervention, or policy decisions. For each issue, determine the underlying current requirement, repair or implement it where still required, then execute item-specific live acceptance against the production system. Continue autonomously through failures using Governor, Engineer and Tower according to the current routing/privacy policy. Do not treat historical merge state or broad regression health as acceptance. Archive sanitised evidence in lifeos-jobs, add the live evidence to the corresponding GitHub issue, and close/archive it only when LIVE-PROVEN COMPLETE or demonstrably OBSOLETE/SUPERSEDED. Skip human-boundary issues and continue to the next eligible issue until ten eligible issues have been closed with evidence. Finish with RESULT=PASS and CLOSED_COUNT=10 only after all ten are evidenced and archived."""
-    payload = json.dumps({"request": request}).encode()
+    payload = json.dumps({"request": request, "privacy_domain": "personal-administration"}).encode()
     req = urllib.request.Request(
         AGENT_URL + "/jobs?async=1", data=payload,
         headers={"Content-Type": "application/json"}, method="POST")
