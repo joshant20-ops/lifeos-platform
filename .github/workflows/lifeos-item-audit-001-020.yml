@@ -1,0 +1,47 @@
+name: LifeOS Item Specific Live Audit 001-020
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-item-audit-001-020.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Align canonical source
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git merge --ff-only origin/main
+          echo "HEAD=$(git rev-parse HEAD)"
+      - name: Evidence for items 001-020
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          echo '=== canonical/runtime ownership ==='
+          git remote -v
+          systemctl is-active lifeos-engineer.service
+          systemctl is-active lifeos-autonomous-agent.service
+          systemctl is-active lifeos-ha-issue-queue-bridge.service
+          systemctl is-active lifeos-tower-control.service
+          echo '=== pi-local ollama must be absent ==='
+          if systemctl list-unit-files --no-legend | grep -q '^ollama\.service'; then systemctl is-active ollama.service || true; else echo OLLAMA_UNIT=ABSENT; fi
+          if command -v ollama >/dev/null; then echo OLLAMA_BINARY=PRESENT; else echo OLLAMA_BINARY=ABSENT; fi
+          echo '=== runtime containers ==='
+          docker ps --format '{{.Names}}|{{.Status}}' | sort
+          echo '=== targeted regression tests ==='
+          python3 -m unittest -q tests.test_engineer_job_observability_acceptance tests.test_engineer_live_acceptance_contract tests.test_engineer_runtime_health_diagnostic tests.test_pi_control_runner_runtime_ownership
+          echo '=== HA curtain evidence ==='
+          docker ps --format '{{.Names}}|{{.Status}}' | grep '^matter-server|' || true
+          grep -R -n -E 'zemismart|curtain' homelab/live/opt/stacks/homeassistant/config 2>/dev/null | head -80 || true
+          echo '=== finance/PA implementation markers ==='
+          find . -maxdepth 4 -type f \( -iname '*finance*' -o -iname '*paperless*' -o -iname '*calendar*' -o -iname '*email*' \) | sort | head -160
