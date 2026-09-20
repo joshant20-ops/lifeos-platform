@@ -108,7 +108,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          python3 scripts/audit-wave-a-live-acceptance.py
+          python3 archive/closed-gates/scripts/audit-wave-a-live-acceptance.py
           test -z "$(git status --porcelain --untracked-files=all)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo ENERGY_OPPORTUNITY_LIVE_ACCEPTANCE=PASS
@@ -127,7 +127,9 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const ok = '${{ steps.gateway.outputs.gateway_rc }}' === '0';
+            const gatewayOk = '${{ steps.gateway.outputs.gateway_rc }}' === '0';
+            const jobOk = '${{ job.status }}' === 'success';
+            const ok = gatewayOk && jobOk;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,

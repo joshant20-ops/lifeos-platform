@@ -1,4 +1,5 @@
 name: LifeOS CI
+# Pass 7 regression: canonical Energy acceptance/reporting contract — rerun 2
 
 on:
   push:
@@ -138,6 +139,9 @@ jobs:
             homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
           grep -F 'deploy-energy-opportunity-api' \
             .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F 'archive/closed-gates/scripts/audit-wave-a-live-acceptance.py' \
+            .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F 'const jobOk =' .github/workflows/lifeos-pi-deploy.yml | grep -F 'job.status' >/dev/null
 
       - name: Validate bounded Tower shutdown integration
         run: |
