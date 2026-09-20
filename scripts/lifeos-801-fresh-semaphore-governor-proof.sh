@@ -71,7 +71,16 @@ try:
         if 'LIFEOS_801_SEMAPHORE_INTENT=PASS issue=862 action=verify_governor_ots_boundary mutation=none' in output: break
         time.sleep(2)
     marker='LIFEOS_801_SEMAPHORE_INTENT=PASS issue=862 action=verify_governor_ots_boundary mutation=none'
-    if marker not in output: raise RuntimeError('exact Semaphore intent marker absent')
+    if marker not in output:
+        print('SEMAPHORE_RAW_OUTPUT_DIAGNOSTIC_BEGIN')
+        print(output[-8000:])
+        print('SEMAPHORE_RAW_OUTPUT_DIAGNOSTIC_END')
+        try:
+            structured=req('GET',f'/project/{pid}/tasks/{task_id}/output',token=token)
+            print('SEMAPHORE_STRUCTURED_OUTPUT_DIAGNOSTIC='+json.dumps(structured,separators=(',',':'))[-8000:])
+        except Exception as exc:
+            print('SEMAPHORE_STRUCTURED_OUTPUT_DIAGNOSTIC_ERROR='+type(exc).__name__)
+        raise RuntimeError('exact Semaphore intent marker absent')
     pathlib.Path(os.environ['LIFEOS_TASK_META']).write_text(json.dumps({'project_id':pid,'template_id':tid,'task_id':task_id,'status':terminal})+'\n')
     print('SEMAPHORE_TASK_TERMINAL=PASS'); print('SEMAPHORE_EXACT_INTENT=PASS')
 finally:
