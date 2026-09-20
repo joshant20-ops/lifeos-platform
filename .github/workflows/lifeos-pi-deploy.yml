@@ -12,6 +12,7 @@ on:
           - retire-engineer-dispatcher
           - deploy-ha-control-bridge
           - deploy-tower-metrics
+          - deploy-governor-managed-engineer
           - capability-stage3-systemd-cleanup
           - verify-transaction-core
   issues:
@@ -32,6 +33,7 @@ jobs:
       (github.event_name == 'issues' && (
         github.event.issue.title == 'LifeOS Deploy: deploy-ha-control-bridge' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' ||
         github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core'
       ))
@@ -45,6 +47,7 @@ jobs:
         ${{ github.event_name == 'issues' &&
         (github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' && 'capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' && 'deploy-tower-metrics' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' && 'deploy-governor-managed-engineer' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core' && 'verify-transaction-core' ||
         'deploy-ha-control-bridge') || inputs.operation }}
     steps:
