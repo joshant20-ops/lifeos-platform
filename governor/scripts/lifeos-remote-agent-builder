@@ -93,14 +93,23 @@ run_agent() {
       else run_bounded "$AGENT" exec "$PROMPT" </dev/null; fi
       ;;
     openhands)
-      # Headless OpenHands has no human available to approve tool actions. Without
-      # an explicit non-interactive approval policy it can emit the correct action
-      # and immediately finish without executing it (direct #759 proof,
-      # run 35526869274 attempt 2: terminal action security_risk=MEDIUM).
-      # --always-approve delegates the engineering loop to OpenHands as intended.
-      # The security boundary remains the disposable Engineer worktree/VM plus the
-      # Governor's routing, publication and independent acceptance controls.
-      run_bounded "$AGENT" --headless --always-approve --override-with-envs -t "$PROMPT" </dev/null
+      # Use the OpenHands SDK as the engineering runtime rather than embedding its
+      # interactive CLI protocol inside a LifeOS execution protocol. The SDK owns
+      # the conversation and native Terminal/FileEditor tool loop; LifeOS neither
+      # parses nor executes invoke_skill/tool actions. Governor remains outside
+      # the agent as policy/publication/acceptance boundary (#764).
+      OPENHANDS_PYTHON="$(dirname "$(readlink -f "$AGENT")")/python"
+      [[ -x "$OPENHANDS_PYTHON" ]] || { echo "PROVIDER_ERROR=openhands_sdk_python_missing"; return 55; }
+      SDK_RUNNER="$WORKTREE/governor/scripts/lifeos-openhands-sdk-runner.py"
+      [[ -f "$SDK_RUNNER" ]] || { echo "PROVIDER_ERROR=openhands_sdk_runner_missing"; return 55; }
+      PROMPT_FILE=$(mktemp)
+      printf '%s' "$PROMPT" >"$PROMPT_FILE"
+      set +e
+      run_bounded "$OPENHANDS_PYTHON" "$SDK_RUNNER" "$PROMPT_FILE"
+      local rc=$?
+      set -e
+      rm -f "$PROMPT_FILE"
+      return "$rc"
       ;;
   esac
 }
@@ -109,13 +118,13 @@ stage resolve_agent_start
 resolve_agent
 stage resolve_agent_pass
 if [[ "$ADAPTER" == openhands ]]; then
-  OPENHANDS_VERSION=$("$AGENT" --version 2>&1 | head -1 || true)
-  OPENHANDS_HELP=$("$AGENT" --help 2>&1 || true)
-  grep -q -- '--headless' <<<"$OPENHANDS_HELP" || { echo 'PROVIDER_ERROR=openhands_headless_flag_missing'; exit 54; }
-  grep -q -- '--always-approve' <<<"$OPENHANDS_HELP" || { echo 'PROVIDER_ERROR=openhands_always_approve_flag_missing'; exit 54; }
+  OPENHANDS_VERSION=$("$AGENT" --version 2>&1 | tail -1 || true)
+  OPENHANDS_PYTHON="$(dirname "$(readlink -f "$AGENT")")/python"
+  [[ -x "$OPENHANDS_PYTHON" ]] || { echo 'PROVIDER_ERROR=openhands_sdk_python_missing'; exit 54; }
+  "$OPENHANDS_PYTHON" -c 'from openhands.sdk import LLM,Agent,Conversation; from openhands.tools.terminal import TerminalTool; from openhands.tools.file_editor import FileEditorTool'
   echo "OPENHANDS_VERSION=$OPENHANDS_VERSION"
-  echo 'OPENHANDS_HEADLESS_CAPABILITY=PASS'
-  echo 'OPENHANDS_NONINTERACTIVE_APPROVAL_CAPABILITY=PASS'
+  echo 'OPENHANDS_SDK_CAPABILITY=PASS'
+  echo 'OPENHANDS_NATIVE_ENGINEERING_TOOLS=terminal,file_editor'
   stage openhands_cli_capabilities_pass
 fi
 echo "PROVIDER_SELECTED=$PROVIDER"
