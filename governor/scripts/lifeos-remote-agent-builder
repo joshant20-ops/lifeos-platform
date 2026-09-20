@@ -138,7 +138,22 @@ PATCH_BYTES=$(wc -c <"$PATCH_FILE")
 if (( PATCH_BYTES > 1048576 )); then rm -f "$PATCH_FILE"; echo "HANDOFF_ERROR=patch_exceeds_1MiB"; exit 61; fi
 RUNTIME_PRESENT=0
 [[ -f "$RUNTIME_PATH" ]] && RUNTIME_PRESENT=1
-if (( PATCH_BYTES == 0 && RUNTIME_PRESENT == 0 )); then rm -f "$PATCH_FILE"; echo "HANDOFF_ERROR=no_material_handoff"; exit 63; fi
+if (( PATCH_BYTES == 0 && RUNTIME_PRESENT == 0 )); then
+  # A verification/disposition job can legitimately prove the requested state
+  # is already satisfied without changing source or launching Pi runtime work.
+  # The agent contract above already requires an explicit RESULT=PASS; preserve
+  # its sanitised test evidence instead of turning a successful inspection into
+  # a deterministic no_material_handoff failure.
+  echo "HANDOFF_BASE=$BASE"
+  echo "HANDOFF_PATCH_BYTES=0"
+  echo "HANDOFF_NO_CHANGE=PASS"
+  echo "HANDOFF_EVIDENCE_ONLY=PASS"
+  echo "WORKTREE_STATUS_BEGIN"
+  git status --short
+  echo "WORKTREE_STATUS_END"
+  rm -f "$PATCH_FILE"
+  exit 0
+fi
 
 echo "HANDOFF_BASE=$BASE"
 echo "HANDOFF_PATCH_BYTES=$PATCH_BYTES"
