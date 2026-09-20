@@ -40,6 +40,12 @@ jobs:
             exit 1
           fi
           echo 'INSTALLED_LOCAL_BUILDER_ALIGNMENT=PASS'
+      - name: Probe Engineer to Governor broker boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          bash scripts/test-engineer-governor-broker.sh
       - name: Run direct OpenHands isolation proof
         shell: bash
         run: |
