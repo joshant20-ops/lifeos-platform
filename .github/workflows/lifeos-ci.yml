@@ -1,5 +1,5 @@
 name: LifeOS CI
-# Pass 5 trigger semantics exact-current-main proof
+# Pass 5 trigger semantics exact-current-main proof sync
 # HA Tower dashboard Jinja regression proof
 # Pass 7 regression: canonical Energy acceptance/reporting contract — rerun 2
 # Pass 5 semantic restoration: fresh PR check trigger
