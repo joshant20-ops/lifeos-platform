@@ -39,6 +39,10 @@ OPS = {
         'script': 'scripts/lifeos-deploy-governor-managed-engineer.sh',
         'privileged': True,
     },
+    'proof-801-semaphore-governor': {
+        'script': 'scripts/lifeos-801-fresh-semaphore-governor-proof.sh',
+        'privileged': True,
+    },
     'capability-stage3-systemd-cleanup': {
         'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
         'privileged': True,
