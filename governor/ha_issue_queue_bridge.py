@@ -182,7 +182,6 @@ def control_state(rows, jobs):
     now = int(time.time())
     active_jobs = [j for j in jobs if str(j.get("status") or "").upper() in {"QUEUED", "RUNNING"}]
     active_job = sorted(active_jobs, key=lambda j: _epoch(j.get("stage_changed_at") or j.get("created_at")), reverse=True)[0] if active_jobs else None
-    active_job = jobs_by_id.get(str(active.get("job_id"))) if active else None
     protected = {unit: systemd_state(unit) for unit in PROTECTED_UNITS}
     runner = runner_health()
     semaphore = semaphore_health()
