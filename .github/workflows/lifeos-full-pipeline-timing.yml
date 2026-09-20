@@ -1,0 +1,82 @@
+name: LifeOS Full Pipeline Timing Audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-full-pipeline-timing.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  timing:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 25
+    steps:
+      - name: Synchronise canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          t0=$(date +%s%3N)
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git merge --ff-only origin/main
+          echo "TIMING_SYNC_MS=$(( $(date +%s%3N)-t0 ))"
+      - name: Time full governed pipeline
+        shell: bash
+        env:
+          LIFEOS_PA_TARGET_ISSUE: "418"
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          now(){ date +%s%3N; }
+          mark(){ echo "TIMING_$1_MS=$(( $(now)-$2 ))"; }
+          echo "CONFIG_MISSION_WORKFLOW_TIMEOUT_S=1500"
+          echo "CONFIG_MISSION_INNER_TIMEOUT_S=1200"
+          echo "CONFIG_GOVERNOR_POLL_DEADLINE_S=1050"
+          echo "CONFIG_GOVERNOR_MAX_ITERATIONS=8"
+          echo "CONFIG_BUILDER_TIMEOUT_S=720"
+          echo "CONFIG_ENGINEER_WAKE_TIMEOUT_S=300"
+          echo "CONFIG_RUNTIME_INNER_TIMEOUT_S=900"
+          echo "CONFIG_RUNTIME_SUBPROCESS_TIMEOUT_S=930"
+          total=$(now)
+          t=$(now); set +e; /home/joshan/.local/bin/lifeos-pa-mission audit >/tmp/timing-audit.log 2>&1; rc=$?; set -e; mark PREFLIGHT_AUDIT "$t"; echo "PREFLIGHT_AUDIT_RC=$rc"
+          t=$(now); bash governor/scripts/lifeos-local-builder --self-test >/tmp/timing-builder-selftest.log 2>&1; mark LOCAL_BUILDER_SELFTEST "$t"
+          t=$(now); python3 - <<'PY'
+          import json,time,urllib.request
+          url="http://127.0.0.1:8790"
+          req=urllib.request.Request(url+"/jobs?async=1",data=json.dumps({
+            "request":"Pipeline timing diagnostic only. Exercise the governed local-only Engineer path without changing GitHub state. Inspect current runtime and return concise diagnostic evidence. Do not close or modify issues.",
+            "privacy_domain":"personal-administration"}).encode(),headers={"Content-Type":"application/json"},method="POST")
+          start=time.monotonic()
+          with urllib.request.urlopen(req,timeout=20) as r: job=json.loads(r.read())
+          print("TIMING_GOVERNOR_SUBMIT_MS=%d"%((time.monotonic()-start)*1000))
+          jid=str(job.get("id") or ""); print("TIMING_JOB_ID="+jid)
+          deadline=time.monotonic()+1050; last=""; transitions=[]
+          while time.monotonic()<deadline:
+            q0=time.monotonic()
+            try:
+              with urllib.request.urlopen(url+"/jobs/"+jid,timeout=20) as r: x=json.loads(r.read())
+            except Exception as e:
+              print("TIMING_POLL_ERROR="+type(e).__name__); time.sleep(5); continue
+            st=str(x.get("status") or "").upper(); stage=str(x.get("stage") or "")
+            key=st+"|"+stage
+            if key!=last:
+              transitions.append((round(time.monotonic()-start,3),st,stage))
+              print("TIMING_TRANSITION=%0.3fs status=%s stage=%s"%(transitions[-1]))
+              last=key
+            if st in {"PASS","BLOCKED","FAIL","FAILED","CANCELLED"}: break
+            time.sleep(5)
+          elapsed=time.monotonic()-start
+          print("TIMING_GOVERNOR_END_TO_END_MS=%d"%(elapsed*1000))
+          print("TIMING_FINAL_STATUS="+str(x.get("status") or "UNKNOWN"))
+          for it in x.get("iterations") or []:
+            print("TIMING_ITERATION_RECORD="+json.dumps({k:it.get(k) for k in ("iteration","started_at","finished_at","builder_rc","iteration_result","milestone_result")},separators=(",",":")))
+          PY
+          mark GOVERNED_DIAGNOSTIC "$t"
+          mark TOTAL "$total"
+      - name: Surface component logs
+        if: always()
+        shell: bash
+        run: |
+          echo '--- PREFLIGHT ---'; tail -100 /tmp/timing-audit.log 2>/dev/null || true
+          echo '--- BUILDER SELFTEST ---'; tail -100 /tmp/timing-builder-selftest.log 2>/dev/null || true
