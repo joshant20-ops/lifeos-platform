@@ -216,39 +216,23 @@ def test_governor_deploy_repeats_proven_wol_until_wall_clock_deadline():
     assert "ENGINEER_PREFLIGHT_WAKE_RETRY=" in preflight
 
 
-def test_governor_deploy_runs_true_autonomous_e2e_gate():
+def test_governor_deploy_proves_interfaces_without_competing_engineering_job():
+    deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
+    assert "AUTONOMOUS_E2E=DELEGATED_TO_MISSION_WORKFLOW" in deploy
+    assert "AUTONOMOUS_E2E_REASON=deployment_proves_interfaces_mission_proves_engineering" in deploy
+    assert "SMOKE_REQ=" not in deploy
+    assert "AUTONOMOUS_LOOP=PASS" not in deploy
+
     workflow = (ROOT / ".github/workflows/lifeos-governor-broker-deploy.yml").read_text()
-    assert "LIFEOS_SKIP_AUTONOMOUS_E2E=1" not in workflow
     assert "timeout-minutes: 45" in workflow
-    deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
-    assert "AUTONOMOUS_LOOP=PASS" in deploy
-    agent = (ROOT / "governor/autonomous_agent.py").read_text()
-    assert 'set_stage(job, "verifier"' in agent
 
 
-def test_autonomous_e2e_respects_read_only_canonical_checkout():
-    deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
-    smoke = deploy.split("SMOKE_REQ=", 1)[1].split("SMOKE_JSON=", 1)[0]
-    assert "Do not change tracked files" in smoke
-    assert "do not return a Pi runtime launcher" in smoke
-    assert "create the required per-job Pi5 runtime launcher" not in smoke
-    assert "GOVERNOR_ENGINEERING_TOOL_ACTION=PASS" in deploy
-    assert "LOCAL_VERIFIER=PASS" in deploy
-    assert "missing local verifier PASS evidence" in deploy
-    assert "if 'AGENT_RESULT=openhands PASS' in ev" not in deploy
-
-    workflow = (ROOT / ".github/workflows/lifeos-governor-broker-deploy.yml").read_text()
-    assert "grep -q '^AGENT_RESULT=codex PASS$'" in workflow
-    assert "! grep -q '^AGENT_RESULT=openhands PASS$'" in workflow
-
-
-def test_autonomous_e2e_action_stays_inside_disposable_worktree():
-    deploy = (ROOT / "governor/scripts/deploy-autonomous-agent-pi5.sh").read_text()
-    smoke = deploy.split("SMOKE_REQ=", 1)[1].split("SMOKE_JSON=", 1)[0]
-    assert ".lifeos-governor-e2e-smoke" in smoke
-    assert "/tmp/lifeos-governor-e2e-smoke" not in smoke
-    assert "verify git status is clean" in smoke
-    assert "Do not change tracked files" in smoke
+def test_level1_worker_does_not_own_meta_issue_disposition():
+    mission = (ROOT / "governor/scripts/lifeos-pa-mission").read_text()
+    assert "Do not close GitHub issues" in mission
+    assert "LEVEL1_CANONICAL_MARKER=PASS" in mission
+    assert "LEVEL1_DETERMINISTIC_ASSERTION=PASS" in mission
+    assert 'passed = status == "PASS" and canonical_marker' in mission
 
 
 def test_openhands_smoke_uses_bounded_repeated_engineer_wake():

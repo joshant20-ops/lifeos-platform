@@ -208,59 +208,9 @@ test -x /usr/local/libexec/lifeos-local-builder
 /usr/local/libexec/lifeos-local-builder --self-test
 printf 'PRIVACY_BOUNDARY=PASS\n'
 
-printf '\n===== 7/8 — TRUE END-TO-END AUTONOMOUS SMOKE =====\n'
-if [[ "${LIFEOS_SKIP_AUTONOMOUS_E2E:-0}" == "1" ]]; then
-  printf 'AUTONOMOUS_E2E=SKIPPED_OPENHANDS_GATE\n'
-else
-SMOKE_REQ='Prove the LifeOS Governor to Engineer to verifier loop works without changing canonical source. In your disposable Engineer worktree, use actual filesystem and shell tools to create the temporary untracked file .lifeos-governor-e2e-smoke containing exactly GOVERNOR_DISPOSABLE_TOOL_ACTION, read it back and verify the exact content, delete it, verify it is absent, and verify git status is clean. Do not change tracked files, do not commit or push, and do not return a Pi runtime launcher or deployment handoff. Finish with RESULT=PASS, TESTS=AUTONOMOUS_DISPOSABLE_TOOL_ACTION_PASS, NEXT_RUNTIME_CHECK=none. Unrelated repository findings are not blockers.'
-SMOKE_JSON=$(python3 - "$SMOKE_REQ" <<'PY'
-import json,sys
-print(json.dumps({'request':sys.argv[1]}))
-PY
-)
-SMOKE_FILE="$TMPDIR/e2e-smoke.json"
-curl -fsS --max-time 1100 -H 'Content-Type: application/json' \
-  -d "$SMOKE_JSON" -o "$SMOKE_FILE" http://127.0.0.1:8790/jobs
-python3 - "$SMOKE_FILE" <<'PY'
-import importlib.util
-import json
-import pathlib
-import sys
-
-j=json.loads(pathlib.Path(sys.argv[1]).read_text())
-print('JOB_ID='+j['id'])
-print('STATUS='+j['status'])
-print('ITERATIONS='+str(len(j.get('iterations',[]))))
-tool_action=False
-verified=False
-for x in j.get('iterations',[]):
-    ev=str(x.get('evidence',''))
-    verification=x.get('verification') or {}
-    if 'AUTONOMOUS_DISPOSABLE_TOOL_ACTION_PASS' in ev:
-        tool_action=True
-        print('GOVERNOR_ENGINEERING_TOOL_ACTION=PASS')
-    if verification.get('verdict') == 'PASS':
-        verified=True
-        print('LOCAL_VERIFIER=PASS')
-if j['status'] != 'PASS':
-    print('BLOCKED_REASON='+str(j.get('blocked_reason')))
-    spec=importlib.util.spec_from_file_location('lifeos_job_records', pathlib.Path('/usr/local/libexec/job_records.py'))
-    records=importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(records)
-    for index, iteration in enumerate(j.get('iterations',[]), start=1):
-        safe=records.sanitise({
-            'stage': iteration.get('stage'),
-            'failure_signature': iteration.get('failure_signature'),
-            'evidence': str(iteration.get('evidence') or '')[:1200],
-        })
-        rendered=json.dumps(safe, sort_keys=True, ensure_ascii=True)
-        print(f'ITERATION_{index}_SUMMARY='+rendered[:1800])
-    raise SystemExit('AUTONOMOUS_E2E_SMOKE_DID_NOT_PASS')
-assert tool_action, 'missing genuine engineering tool-action evidence'
-assert verified, 'missing local verifier PASS evidence'
-print('AUTONOMOUS_LOOP=PASS')
-PY
-fi
+printf '\n===== 7/8 — AUTONOMOUS ACCEPTANCE OWNERSHIP =====\n'
+printf 'AUTONOMOUS_E2E=DELEGATED_TO_MISSION_WORKFLOW\n'
+printf 'AUTONOMOUS_E2E_REASON=deployment_proves_interfaces_mission_proves_engineering\n'
 
 printf '\n===== 8/8 — RESULT =====\n'
 printf 'RESULT=PASS\n'
