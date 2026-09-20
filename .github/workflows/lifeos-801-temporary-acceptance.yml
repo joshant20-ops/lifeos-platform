@@ -30,12 +30,20 @@ jobs:
           git fetch --prune origin main
           git merge --ff-only origin/main
           test -z "$(git status --porcelain)"
+          echo "ACCEPTANCE_CHECKOUT_HEAD=$(git rev-parse HEAD)"
       - name: Run every independent gate
         id: gates
         continue-on-error: true
         shell: bash
         run: |
           cd /home/joshan/lifeos-platform
+          # Main can advance while this self-hosted run waits between steps.
+          # Reconcile again immediately before loading the gated runner.
+          git fetch --prune origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+          echo "ACCEPTANCE_GATE_HEAD=$(git rev-parse HEAD)"
+          grep -q 'gate 801-05 ' scripts/lifeos-ots-purge-gated-runner.sh
           rm -rf /tmp/lifeos-ots-purge-gates
           bash scripts/lifeos-ots-purge-gated-runner.sh
       - name: Publish consolidated evidence
