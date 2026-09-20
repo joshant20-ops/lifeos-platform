@@ -39,10 +39,6 @@ OPS = {
         'script': 'scripts/lifeos-deploy-governor-managed-engineer.sh',
         'privileged': True,
     },
-    'cleanup-retired-backlog-runtime': {
-        'script': 'scripts/lifeos-cleanup-retired-backlog-runtime.sh',
-        'privileged': True,
-    },
     'capability-stage3-systemd-cleanup': {
         'script': 'scripts/lifeos-capability-stage3-systemd-cleanup.sh',
         'privileged': True,
