@@ -108,3 +108,23 @@ def test_all_equivalent_incomplete_states_are_rejected(tmp_path):
             f"GATE={state}\n",
         )
         assert decision["milestone_result"] == "RETRY", state
+
+
+def test_claimed_user_only_blocker_without_external_boundary_retries(tmp_path):
+    module = load_agent(tmp_path)
+    job = contract_job(module, tmp_path)
+    decision = module.milestone_decision(
+        job,
+        {
+            "verdict": "BLOCKED",
+            "reason": (
+                "OpenHands did not declare a pass and no publication evidence was provided. "
+                "It is not possible to determine current status. Therefore, the user-only "
+                "blocker exists and needs to be addressed."
+            ),
+        },
+        "IMPLEMENTATION=PENDING\nDEPLOYMENT=PENDING\n",
+    )
+    assert decision["iteration_result"] == "BLOCKED"
+    assert decision["milestone_result"] == "RETRY"
+    assert "concrete evidenced external boundary" in decision["reason"]
