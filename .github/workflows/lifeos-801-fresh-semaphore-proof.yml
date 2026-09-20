@@ -1,0 +1,37 @@
+name: LifeOS #801 Fresh Semaphore Governor Proof
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-801-fresh-semaphore-governor-proof.sh'
+      - 'orchestration/semaphore/playbooks/801-post-migration-intent.yml'
+      - '.github/workflows/lifeos-801-fresh-semaphore-proof.yml'
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-801-fresh-semaphore-proof
+  cancel-in-progress: false
+jobs:
+  prove:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Sync canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+      - name: Refresh bounded gateway
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n bash scripts/lifeos-install-github-runner-gateway.sh
+      - name: Run fresh Semaphore to Governor proof
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway proof-801-semaphore-governor
