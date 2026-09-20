@@ -158,7 +158,7 @@ gpu_vram=eid('lifeos_tower_gpu_vram_v1')
 gpu_power=eid('lifeos_tower_gpu_power_v1')
 
 cards=[]
-cards.append({'type':'markdown','content':f"""# 🖥️ Z97 / TowerPC
+cards.append({'type':'markdown','content':"""# 🖥️ Z97 / TowerPC
 **AI compute — on demand**
 
 {% set online = is_state('binary_sensor.tower_accessible','on') %}
@@ -168,7 +168,7 @@ cards.append({'type':'markdown','content':f"""# 🖥️ Z97 / TowerPC
 {% set grace = state_attr('sensor.tower_lifecycle','idle_grace_seconds') | int(600) %}
 **{{ '🟢 ON' if online else '⚫ OFF' }}** · {{ leases }} active lease{{ '' if leases == 1 else 's' }} · {{ 'working' if leases else ('idle '+(idle|string)+'s / '+(grace|string)+'s' if online else 'asleep') }}
 
-<!-- {metrics_marker} -->"""})
+<!-- LifeOS Z97 metrics managed view -->"""})
 cards.append({'type':'entities','title':'LifeOS lease status','show_header_toggle':False,'entities':[
     {'entity':'sensor.tower_lifecycle','name':'Lease state'},
     {'type':'attribute','entity':'sensor.tower_lifecycle','attribute':'active_leases','name':'Active leases'},
@@ -216,6 +216,7 @@ for card in [
     if card:
         cards.append(card)
 
+# Regression: Jinja in this literal must never be parsed as a Python f-string.
 # Never silently publish a Z97 view without the fixed core history cards.
 # Their entity availability may be unknown/offline; Recorder history remains valid.
 core_titles={'CPU & RAM — 24 hours','GPU utilisation & VRAM — 24 hours','Temperatures — 24 hours','Network throughput — 24 hours','Activity state — 24 hours'}
