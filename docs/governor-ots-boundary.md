@@ -83,3 +83,11 @@ agent-framework behaviour. The critical path is therefore frozen to this ownersh
 Rule: a new failure may justify repairing one of the KEEP interfaces, but must not add a
 new planner, retry loop, self-acceptance contract, route preflight, or competing automatic
 smoke around OpenHands. The acceptance workload itself is the end-to-end proof.
+
+## Native OpenHands engineering runtime (2026-09-20)
+
+After #759 proved the Governor broker can return both ordinary completions and required OpenAI tool calls, the CLI still emitted `invoke_skill(bash-runner)` and terminated without performing the requested edit. LifeOS must not grow an interpreter for OpenHands internal actions.
+
+The local Engineer path therefore delegates the engineering session directly to the OpenHands SDK. A thin entrypoint constructs the OTS `Agent` with its native `TerminalTool` and `FileEditorTool`, attaches the disposable worktree as the OpenHands workspace, sends the original governed engineering prompt, and lets `Conversation.run()` own the complete plan/edit/test/debug loop. The transport only collects the resulting git diff/runtime artifact after the SDK conversation returns.
+
+This deliberately migrates engineering mechanics into OpenHands while leaving privacy classification, Tower lifecycle, broker capability, publication, privileged deployment, independent verification, archive and issue disposition in Governor.
