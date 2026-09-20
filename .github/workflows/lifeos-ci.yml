@@ -55,6 +55,52 @@ jobs:
             tests.test_step11_live_closure \
             tests.test_tower_metrics
 
+      - name: Install focused Python contract dependency
+        run: python3 -m pip install pytest
+
+      - name: Validate stable-base broker contracts
+        run: |
+          python3 -m pytest -q \
+            tests/test_stable_base_provider_contract.py \
+            tests/test_provider_router_private_only.py \
+            tests/test_stable_base_broker_contract.py
+
+      - name: Validate Governor AI routing contracts
+        run: |
+          python3 -m py_compile \
+            engineer/provider_router.py \
+            engineer/openhands_worker.py \
+            governor/ai_broker.py \
+            governor/assistant_bridge.py \
+            governor/autonomous_agent.py \
+            governor/autonomous_agent_server.py
+          python3 -m json.tool governor/policy.json >/dev/null
+          python3 -m json.tool governor/privacy-domain-policy.json >/dev/null
+          python3 -m pytest -q \
+            tests/test_ai_broker.py \
+            tests/test_openhands_integration.py \
+            tests/test_privacy_classifier.py \
+            tests/test_private_domain_policy.py
+
+      - name: Validate Wave C read-only contracts
+        run: |
+          python3 -m pytest -q \
+            tests/test_finance_assets_discovery_contract.py \
+            tests/test_finance_assets_readonly.py
+
+      - name: Validate P6-P10 functional contracts
+        run: |
+          python3 -m pytest -q tests/test_pip_p6_p10_functional.py
+
+      - name: Validate automation file contracts
+        run: |
+          BASE="$GITHUB_WORKSPACE/homelab/live/home/joshan/automation"
+          VALIDATOR="$BASE/contracts/lifeos_file_contract_validator.py"
+          CI_VALIDATOR="$RUNNER_TEMP/lifeos_file_contract_validator_ci.py"
+          test -f "$VALIDATOR"
+          sed "s|BASE = Path(\"/home/joshan/automation\")|BASE = Path(\"$BASE\")|" "$VALIDATOR" > "$CI_VALIDATOR"
+          python3 "$CI_VALIDATOR"
+
       - name: Validate PA executor syntax
         run: |
           python3 -m py_compile governor/scripts/lifeos-pa-execute homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py
