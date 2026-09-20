@@ -60,7 +60,7 @@ echo "BATCH_RUNNER_REVISION=2"
 echo "BATCH_POLICY=failure_is_logged_then_continue"
 echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
 echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
-echo "BATCH_GATE_COUNT=7"
+echo "BATCH_GATE_COUNT=8"
 
 gate 801-01 "HA bridge legacy-state removal" "" bash -c '
   ! grep -q "/var/lib/lifeos-backlog-runner/state.json" governor/ha_issue_queue_bridge.py &&
@@ -143,6 +143,21 @@ gate 801-07 "retired backlog runtime artifacts absent" "801-06b" bash -c '
   fi
   echo "RETIRED_BACKLOG_STATE=ABSENT"
   echo "RETIRED_BACKLOG_DROPIN=ABSENT"
+'
+
+
+gate 801-08 "installed gateway aligned and retired cleanup capability rejected" "" bash -c '
+  cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway || {
+    echo "INSTALLED_GATEWAY_ALIGNMENT=FAIL"; exit 1;
+  }
+  echo "INSTALLED_GATEWAY_ALIGNMENT=PASS"
+  set +e
+  out=$(sudo -n /usr/local/sbin/lifeos-deploy-gateway cleanup-retired-backlog-runtime 2>&1)
+  rc=$?
+  set -e
+  printf "%s\n" "$out"
+  test "$rc" -eq 64 || { echo "RETIRED_CLEANUP_CAPABILITY_REJECTION=FAIL rc=$rc"; exit 1; }
+  echo "RETIRED_CLEANUP_CAPABILITY_REJECTION=PASS"
 '
 
 echo "================================================================"
