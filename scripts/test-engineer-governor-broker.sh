@@ -7,6 +7,36 @@ set -Eeuo pipefail
 # prints its token. Added after controlled run 35531936975 reached OpenHands SDK
 # startup on aligned deployed code but emitted no action before the 900s ceiling.
 echo 'ENGINEER_BROKER_PROBE=START'
+# This probe bypasses lifeos-local-builder, so it must explicitly establish the
+# same compute prerequisite before SSH. Run 35532979915 failed here because the
+# probe assumed Engineer was already awake after the preceding workflow released
+# Tower power. Keep this bounded readiness gate with the diagnostic itself.
+if ! ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
+  wol_helper=''
+  for candidate in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
+    [[ -x "$candidate" ]] && { wol_helper="$candidate"; break; }
+  done
+  wake_engineer() {
+    if [[ -n "$wol_helper" ]]; then "$wol_helper"; else
+      command -v wakeonlan >/dev/null
+      wakeonlan 40:8d:5c:84:41:64 >/dev/null
+    fi
+  }
+  wake_engineer
+  mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
+  echo "ENGINEER_BROKER_WAKE_PATH=${wol_helper:-direct-wol}"
+  ready=0
+  deadline=$((SECONDS + 180))
+  attempt=0
+  while (( SECONDS < deadline )); do
+    attempt=$((attempt + 1))
+    if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then ready=1; break; fi
+    if (( attempt % 6 == 0 )); then wake_engineer; echo "ENGINEER_BROKER_WAKE_RETRY=$attempt"; fi
+    sleep 5
+  done
+  [[ "$ready" -eq 1 ]] || { echo 'ENGINEER_BROKER_READINESS=FAIL'; exit 21; }
+fi
+echo 'ENGINEER_BROKER_READINESS=PASS'
 ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
 set -Eeuo pipefail
 cfg="$HOME/.config/lifeos/governor-broker.env"
