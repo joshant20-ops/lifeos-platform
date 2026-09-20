@@ -399,13 +399,23 @@ def milestone_decision(job, iteration_verdict, evidence):
         # external/user-only boundary. Generic or self-referential blocker
         # prose is actionable engineering uncertainty and must be retried.
         reason = result["reason"].strip()
+        lower_reason = reason.lower()
+        external_markers = (
+            "credential", "hardware", "physical", "policy",
+            "authorization", "authorisation", "consent",
+        )
+        # A terminal BLOCKED result must identify the actual external boundary.
+        # Model prose that merely says a user-only blocker exists, or describes
+        # missing engineering/evidence output, is retryable work.
         generic = (
             not reason
-            or "without providing a structured reason" in reason.lower()
-            or "genuine user-only blocker" in reason.lower()
-            or "cannot resolve itself" in reason.lower() and not any(
-                marker in reason.lower()
-                for marker in ("credential", "hardware", "physical", "policy", "authorization", "authorisation")
+            or "without providing a structured reason" in lower_reason
+            or "genuine user-only blocker" in lower_reason
+            or "user-only blocker exists" in lower_reason
+            or "cannot resolve itself" in lower_reason
+            or (
+                "not possible to determine" in lower_reason
+                and not any(marker in lower_reason for marker in external_markers)
             )
         )
         if generic:
