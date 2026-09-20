@@ -78,7 +78,7 @@ gate 801-02 "terminal observer uses Governor plus GitHub" "" bash -c '
 # migration/proof scripts fail this gate; immutable runtime-job/archive evidence
 # is reported but does not count as an active dependency.
 gate 801-03 "no active script depends on retired backlog state" "" bash -c '
-  refs=$(grep -RIl --exclude-dir=.git "/var/lib/lifeos-backlog-runner/state.json" scripts governor 2>/dev/null || true)
+  refs=$(grep -RIl --exclude-dir=.git --exclude=lifeos-ots-purge-gated-runner.sh "/var/lib/lifeos-backlog-runner/state.json" scripts governor 2>/dev/null || true)
   active=$(printf "%s\n" "$refs" | grep -v "^governor/runtime_jobs/" | grep -v "^archive/" || true)
   printf "ALL_REFS=%s\n" "$refs"
   printf "ACTIVE_REFS=%s\n" "$active"
