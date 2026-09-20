@@ -82,24 +82,9 @@ jobs:
           echo "AUDIT_RUNNER_RC=$rc"
           [[ "$rc" == 0 || "$rc" == 20 ]]
 
-      - name: Validate local builder route
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          bash governor/scripts/lifeos-local-builder --self-test
-
-      - name: Run deterministic planning and acceptance preparation
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          set +e
-          /home/joshan/.local/bin/lifeos-pa-mission audit
-          rc=$?
-          set -e
-          echo "PLANNING_AUDIT_RC=$rc"
-          [[ "$rc" == 0 || "$rc" == 20 ]]
-          echo 'PLANNING_PRECHECK=PASS'
+      # Do not pre-run the local builder or a second planning audit here.
+      # Governor owns routing/readiness and OpenHands owns planning; duplicating
+      # those checks made #759 wake/test the same path multiple times.
 
       # Keep the governed mission as one process so it is never executed twice, but
       # expose its internal checkpoints as separate Actions steps. The background
