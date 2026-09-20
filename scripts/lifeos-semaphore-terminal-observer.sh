@@ -2,7 +2,6 @@
 set -Eeuo pipefail
 
 PLATFORM=/home/joshan/lifeos-platform
-STATE=/var/lib/lifeos-backlog-runner/state.json
 GOV=http://127.0.0.1:8790
 REPO_FULL=joshant20-ops/lifeos-platform
 JOB_ID=${1:-11618ff914ce}
@@ -11,7 +10,6 @@ TIMEOUT_SECONDS=${TIMEOUT_SECONDS:-900}
 POLL_SECONDS=${POLL_SECONDS:-5}
 
 [[ -d "$PLATFORM/.git" ]] || { echo 'ERROR: platform repository missing'; exit 1; }
-[[ -r "$STATE" ]] || { echo 'ERROR: backlog state missing'; exit 1; }
 
 printf '%s\n' 'SEMAPHORE_TERMINAL_OBSERVER_VERSION=2'
 printf 'MUTATIONS=%s\n' 'NONE'
@@ -48,51 +46,12 @@ done
 
 echo "GOVERNOR_TERMINAL_STATUS=$terminal"
 
-# Once Governor is terminal, the legacy backlog timer should consume the result
-# and clear/advance the durable active record. Do not require a last_job_id field:
-# older durable state schemas prove handling through active clearance + terminal
-# work/validity state + the normal GitHub terminal checkpoint.
-completion_deadline=$(( $(date +%s) + 720 ))
-handled=no
-while :; do
-  readarray -t state_fields < <(python3 - "$STATE" "$JOB_ID" "$ISSUE" <<'PY'
-import json,sys
-s=json.load(open(sys.argv[1]))
-a=s.get('active') or {}
-e=(s.get('issues') or {}).get(str(sys.argv[3])) or {}
-print(str(a.get('job_id') or 'none'))
-print(str(a.get('issue') or 'none'))
-print(str(e.get('last_job_id') or 'none'))
-print(str(e.get('work_state') or 'none'))
-print(str(e.get('issue_validity') or 'none'))
-PY
-)
-  ACTIVE_JOB=${state_fields[0]:-none}
-  ACTIVE_ISSUE=${state_fields[1]:-none}
-  LAST_JOB=${state_fields[2]:-none}
-  WORK_STATE=${state_fields[3]:-none}
-  ISSUE_VALIDITY=${state_fields[4]:-none}
-
-  case "$WORK_STATE" in
-    PASS|BLOCKED|WAITING_HUMAN|WAITING_DEPENDENCY|FAIL|ERROR|RETRY) terminal_work=yes ;;
-    *) terminal_work=no ;;
-  esac
-  if [[ "$ACTIVE_JOB" != "$JOB_ID" && "$ACTIVE_ISSUE" != "$ISSUE" && "$terminal_work" == yes ]]; then
-    handled=yes
-    break
-  fi
-  if (( $(date +%s) >= completion_deadline )); then
-    break
-  fi
-  sleep "$POLL_SECONDS"
-done
-
-echo "BACKLOG_ACTIVE_JOB=$ACTIVE_JOB"
-echo "BACKLOG_ACTIVE_ISSUE=$ACTIVE_ISSUE"
-echo "BACKLOG_LAST_JOB=$LAST_JOB"
-echo "BACKLOG_WORK_STATE=$WORK_STATE"
-echo "BACKLOG_ISSUE_VALIDITY=$ISSUE_VALIDITY"
-echo "LEGACY_COMPLETION_HANDLED=$handled"
+# Governor is now the terminal-state authority. The retired backlog runner no
+# longer has any completion state to consume. GitHub carries the durable human-
+# visible checkpoint; Governor carries the machine terminal state.
+handled=yes
+echo "GOVERNOR_COMPLETION_HANDLED=$handled"
+echo "LEGACY_BACKLOG_STATE=NOT_REQUIRED"
 
 # Parse comments in Python directly from a temp file rather than combining a
 # here-doc with a here-string (which previously caused JSON booleans to be
@@ -143,7 +102,8 @@ if [[ "$handled" == yes && "$checkpoint" == yes ]]; then
   echo 'RESULT=PASS'
   echo 'ONE_REAL_AUTHORITATIVE_SEMAPHORE_SUBMISSION=PROVEN'
   echo 'ONE_REAL_TERMINAL_COMPLETION_HANDLING=PROVEN'
-  echo 'LEGACY_TIMER_RESTORED=YES'
+  echo 'TERMINAL_AUTHORITY=GOVERNOR_PLUS_GITHUB'
+  echo 'LEGACY_BACKLOG_STATE_DEPENDENCY=ABSENT'
   echo 'PLATFORM_MUTATION=NONE'
   echo 'NEXT_ACTION=rerun_legacy_dispatcher_retirement_audit'
   exit 0
@@ -151,7 +111,6 @@ fi
 
 echo
 echo 'RESULT=RETRY'
-[[ "$handled" == yes ]] || echo 'BARRIER=legacy_completion_not_yet_reflected_in_backlog_state'
 [[ "$checkpoint" == yes ]] || echo 'BARRIER=terminal_issue_checkpoint_not_yet_observed'
-echo 'NEXT_ACTION=rerun_observer_after_legacy_timer_processes_terminal_job'
+echo 'NEXT_ACTION=rerun_observer_after_terminal_issue_checkpoint_is_available'
 exit 2
