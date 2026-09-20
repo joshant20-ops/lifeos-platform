@@ -13,6 +13,7 @@ on:
           - deploy-ha-control-bridge
           - deploy-tower-metrics
           - deploy-governor-managed-engineer
+          - deploy-energy-opportunity-api
           - capability-stage3-systemd-cleanup
           - verify-transaction-core
   issues:
@@ -34,6 +35,7 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: deploy-ha-control-bridge' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core'
       ))
@@ -48,6 +50,7 @@ jobs:
         (github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' && 'capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' && 'deploy-tower-metrics' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' && 'deploy-governor-managed-engineer' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' && 'deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core' && 'verify-transaction-core' ||
         'deploy-ha-control-bridge') || inputs.operation }}
     steps:
@@ -87,6 +90,17 @@ jobs:
           grep -E '^[A-Z0-9_]+=' "$RUNNER_TEMP/lifeos-evidence/gateway.log" \
             > "$RUNNER_TEMP/lifeos-evidence/result.env" || true
           exit "$rc"
+
+      - name: Run Energy Opportunity live acceptance
+        if: env.LIFEOS_OPERATION == 'deploy-energy-opportunity-api' && steps.gateway.outputs.gateway_rc == '0'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-wave-a-live-acceptance.py
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo ENERGY_OPPORTUNITY_LIVE_ACCEPTANCE=PASS
 
       - name: Upload deployment evidence
         if: always()
