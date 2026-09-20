@@ -60,3 +60,26 @@ This refactor does not change:
 4. Only after #759 passes, advance through progressively harder acceptance workloads.
 5. Close #764 only after the simplified path is live-proven; close #418 only after the
    overall issue-to-Engineer path has sufficient staged evidence.
+
+## #759 one-pass burn-down (2026-09-20)
+
+The Level-1 failures showed that incremental wrapper repair was preserving too much legacy
+agent-framework behaviour. The critical path is therefore frozen to this ownership map:
+
+| Capability | Owner | Critical path |
+|---|---|---|
+| issue/job intake, privacy classification, route choice | Governor | KEEP |
+| Tower lease/WoL/release and broker capability | Governor | KEEP |
+| repository inspection, planning, editing, tests, diagnosis, repair | OpenHands | OTS |
+| disposable worktree and bounded artifact handoff | thin adapter | KEEP |
+| agent self-verdict / RESULT parser | none | DELETE |
+| workflow local-route preflight before the real job | none | DELETE |
+| workflow planning precheck before OpenHands | none | DELETE |
+| Governor engineering retry/planning loop | none | DELETE |
+| independent outcome verification | Governor | KEEP |
+| bounded publication/deployment, record/archive/disposition | Governor | KEEP |
+| automatic OpenHands action smoke competing with missions | none | DELETE from automatic path; manual diagnostic only |
+
+Rule: a new failure may justify repairing one of the KEEP interfaces, but must not add a
+new planner, retry loop, self-acceptance contract, route preflight, or competing automatic
+smoke around OpenHands. The acceptance workload itself is the end-to-end proof.
