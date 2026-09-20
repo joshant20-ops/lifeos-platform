@@ -32,12 +32,12 @@ jobs:
           mark(){ echo "TIMING_$1_MS=$(( $(now)-$2 ))"; }
           echo "CONFIG_MISSION_WORKFLOW_TIMEOUT_S=1500"
           echo "CONFIG_MISSION_INNER_TIMEOUT_S=1200"
-          echo "CONFIG_GOVERNOR_POLL_DEADLINE_S=1050"
-          echo "CONFIG_GOVERNOR_MAX_ITERATIONS=8"
-          echo "CONFIG_BUILDER_TIMEOUT_S=720"
-          echo "CONFIG_ENGINEER_WAKE_TIMEOUT_S=300"
-          echo "CONFIG_RUNTIME_INNER_TIMEOUT_S=900"
-          echo "CONFIG_RUNTIME_SUBPROCESS_TIMEOUT_S=930"
+          echo "CONFIG_GOVERNOR_POLL_DEADLINE_S=1140"
+          echo "CONFIG_GOVERNOR_MAX_ITERATIONS=3"
+          echo "CONFIG_BUILDER_TIMEOUT_S=300"
+          echo "CONFIG_ENGINEER_WAKE_TIMEOUT_S=120"
+          echo "CONFIG_RUNTIME_INNER_TIMEOUT_S=240"
+          echo "CONFIG_RUNTIME_SUBPROCESS_TIMEOUT_S=270"
           total=$(now)
           t=$(now); set +e; /home/joshan/.local/bin/lifeos-pa-mission audit >/tmp/timing-audit.log 2>&1; rc=$?; set -e; mark PREFLIGHT_AUDIT "$t"; echo "PREFLIGHT_AUDIT_RC=$rc"
           t=$(now); bash governor/scripts/lifeos-local-builder --self-test >/tmp/timing-builder-selftest.log 2>&1; mark LOCAL_BUILDER_SELFTEST "$t"
@@ -48,10 +48,18 @@ jobs:
             "request":"Pipeline timing diagnostic only. Exercise the governed local-only Engineer path without changing GitHub state. Inspect current runtime and return concise diagnostic evidence. Do not close or modify issues.",
             "privacy_domain":"personal-administration"}).encode(),headers={"Content-Type":"application/json"},method="POST")
           start=time.monotonic()
-          with urllib.request.urlopen(req,timeout=20) as r: job=json.loads(r.read())
+          busy_deadline=time.monotonic()+1200
+          while True:
+            try:
+              with urllib.request.urlopen(req,timeout=20) as r: job=json.loads(r.read())
+              break
+            except urllib.error.HTTPError as e:
+              if e.code != 409 or time.monotonic() >= busy_deadline: raise
+              print("TIMING_WAIT_ACTIVE_JOB_S=%d"%(time.monotonic()-start))
+              time.sleep(10)
           print("TIMING_GOVERNOR_SUBMIT_MS=%d"%((time.monotonic()-start)*1000))
           jid=str(job.get("id") or ""); print("TIMING_JOB_ID="+jid)
-          deadline=time.monotonic()+1050; last=""; transitions=[]
+          deadline=time.monotonic()+1140; last=""; transitions=[]
           while time.monotonic()<deadline:
             q0=time.monotonic()
             try:
