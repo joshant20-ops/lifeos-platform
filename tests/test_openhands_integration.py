@@ -235,22 +235,18 @@ def test_level1_worker_does_not_own_meta_issue_disposition():
     assert 'passed = status == "PASS" and canonical_marker' in mission
 
 
-def test_openhands_smoke_uses_bounded_repeated_engineer_wake():
+def test_openhands_smoke_delegates_readiness_and_acceptance_to_current_proof_scripts():
     workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
-    wake = workflow.split("- name: Ensure Engineer available", 1)[1]
-    wake = wake.split("- name: Prove authenticated Governor tool route", 1)[0]
-    assert "deadline=$((SECONDS + 600))" in wake
-    assert "while (( SECONDS < deadline ))" in wake
-    assert "/usr/local/sbin/lifeos-engineer-wake" in wake
-    assert "wake_engineer()" in wake
-    assert wake.count("wake_engineer") >= 3
-    assert "attempt % 6 == 0" in wake
+    assert "bash scripts/test-engineer-governor-broker.sh" in workflow
+    assert "bash scripts/test-direct-openhands.sh" in workflow
+    assert "- name: Probe Engineer to Governor broker boundary" in workflow
+    assert "- name: Run direct OpenHands isolation proof" in workflow
 
 
-def test_openhands_smoke_normalizes_optional_terminal_newline():
+def test_openhands_smoke_does_not_duplicate_retired_inline_acceptance_logic():
     workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
-    assert "p.read_text().splitlines()" in workflow
-    assert "actual == expected" in workflow
+    assert "- name: Ensure Engineer available" not in workflow
+    assert "p.read_text().splitlines()" not in workflow
 
 
 def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
