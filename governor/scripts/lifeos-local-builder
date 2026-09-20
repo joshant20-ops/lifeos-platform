@@ -158,7 +158,7 @@ HELPER=$(mktemp)
 trap 'rm -f "$HELPER" "$SNAPSHOT"' EXIT
 git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$HELPER"
 chmod 700 "$HELPER"
-"$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
+# Keep one local Engineer attempt comfortably inside the Governor/controller budget.\n# Governor owns retries; a 240s OpenHands bound leaves time for a diagnostic retry\n# and terminal evidence instead of letting two iterations consume the 20m mission window.\nLIFEOS_AGENT_TIMEOUT_SECONDS=240 "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
 REMOTE
   )
   RC=$?
