@@ -23,14 +23,29 @@ gate() {
       fi
     done
   fi
-  echo "=== GATE $id START: $name ==="
+  echo "================================================================"
+  echo "GATE_ID=$id"
+  echo "GATE_NAME=$name"
+  echo "GATE_DEPENDENCIES=${deps:-none}"
+  echo "GATE_STARTED_AT=$(date --iso-8601=seconds)"
+  echo "GATE_COMMAND=$*"
+  echo "GATE_STATUS=RUNNING"
+  echo "================================================================"
   set +e
   "$@" > >(tee "$log") 2>&1
   rc=$?
   set -e
   if (( rc == 0 )); then
+    echo "GATE_RESULT=PASS"
+    echo "GATE_FINISHED_AT=$(date --iso-8601=seconds)"
+    echo "GATE_LOG=$log"
     printf '%s\tPASS\t%s\t%s\n' "$id" "$name" "$log" | tee -a "$summary"
   else
+    echo "GATE_RESULT=FAIL"
+    echo "GATE_RETURN_CODE=$rc"
+    echo "GATE_FINISHED_AT=$(date --iso-8601=seconds)"
+    echo "GATE_LOG=$log"
+    echo "GATE_CONTINUATION=YES"
     printf '%s\tFAIL\t%s\trc=%s log=%s\n' "$id" "$name" "$rc" "$log" | tee -a "$summary"
     failures=$((failures+1))
   fi
@@ -40,6 +55,12 @@ gate() {
 set -e
 # 801-01 was already live-proven in Actions run 35536667941. Re-audit it
 # independently here so this harness never trusts a historical green tick.
+echo "BATCH_PHASE=801_CONSUMER_REAUDIT"
+echo "BATCH_POLICY=failure_is_logged_then_continue"
+echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
+echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
+echo "BATCH_GATE_COUNT=3"
+
 gate 801-01 "HA bridge legacy-state removal" "" bash -c '
   ! grep -q "/var/lib/lifeos-backlog-runner/state.json" governor/ha_issue_queue_bridge.py &&
   ! grep -q "/var/lib/lifeos-backlog-runner/state.json" governor/systemd/lifeos-ha-issue-queue-bridge.service &&
@@ -64,6 +85,9 @@ gate 801-03 "no active script depends on retired backlog state" "" bash -c '
   test -z "$active"
 '
 
+echo "================================================================"
+echo "BATCH_PHASE=CONSOLIDATED_REPORT"
+echo "BATCH_FINISHED_AT=$(date --iso-8601=seconds)"
 echo "=== CONSOLIDATED GATE REPORT ==="
 cat "$summary"
 echo "GATE_FAILURES=$failures"
