@@ -875,122 +875,92 @@ def retain_runtime_publication(job, runtime_evidence):
 
 
 def _execute_job_locked(job):
+    """Run one governed OTS engineering session, then independently accept/reject it.
+
+    OpenHands/Codex owns planning, editing, testing, diagnosis and internal iteration.
+    Governor intentionally does not implement a second coding-agent retry loop.  It
+    owns policy/routing, bounded publication/runtime, independent acceptance and the
+    durable job record.  A failed acceptance is returned as an evidence-backed
+    terminal result so a caller may deliberately submit a new job rather than
+    silently nesting another home-grown engineering loop around the OTS agent.
+    """
     job = load(job["id"])
     job["status"] = "RUNNING"
     job["started_at"] = now()
-    set_stage(job, "starting")
-    feedback = None
-    for iteration in range(1, MAX_ITERATIONS + 1):
-        rec = {"iteration": iteration, "started_at": now()}
-        set_stage(job, "builder", f"iteration {iteration}: implementation")
-        try:
-            rc, build_evidence, handoff = run_builder(job, iteration, feedback)
-            rec["builder_rc"] = rc
-        except Exception as exc:
-            build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
-            handoff = {}
-            rec["builder_rc"] = 255
+    job["engineering_loop"] = "ots-owned"
+    set_stage(job, "builder", "OTS agent owns plan/edit/test/debug/iteration")
 
-        set_stage(job, "publication", f"iteration {iteration}: apply/publish patch")
-        publication = apply_and_publish_patch(job, iteration, handoff)
-        set_stage(job, "runtime", f"iteration {iteration}: Pi5 runtime verification")
-        runtime = run_pi5_runtime(job, handoff)
-        runtime = retain_runtime_publication(job, runtime)
-        if "RUNTIME_ARTIFACT_PUBLISHED=FAIL" in runtime:
-            build_evidence = suppress_unpublished_runtime_instructions(build_evidence)
-        evidence = f"BUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\nPUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
-        rec["evidence"] = evidence[-26000:]
+    rec = {"iteration": 1, "started_at": now(), "owner": "ots-agent"}
+    try:
+        rc, build_evidence, handoff = run_builder(job, 1, None)
+        rec["builder_rc"] = rc
+    except Exception as exc:
+        build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
+        handoff = {}
+        rec["builder_rc"] = 255
 
-        set_stage(job, "verifier", f"iteration {iteration}: local Qwen verification")
-        try:
-            verdict = local_verify(job, iteration, rec["evidence"])
-        except Exception as exc:
-            verdict = {"verdict": "RETRY", "reason": f"local verifier unavailable: {type(exc).__name__}", "next_instruction": "Retry local verifier and runtime verification."}
-        rec["verification"] = verdict
-        decision = milestone_decision(job, verdict, rec["evidence"])
-        rec["iteration_result"] = decision["iteration_result"]
-        rec["milestone_result"] = decision["milestone_result"]
-        rec["finished_at"] = now()
-        signature = failure_signature(rec["evidence"], verdict)
-        if signature:
-            rec["failure_signature"] = signature
-        job.setdefault("iterations", []).append(rec)
-        v = decision["milestone_result"]
+    set_stage(job, "publication", "Governor bounded publication gate")
+    publication = apply_and_publish_patch(job, 1, handoff)
+    set_stage(job, "runtime", "Governor bounded runtime/evidence gate")
+    runtime = retain_runtime_publication(job, run_pi5_runtime(job, handoff))
+    if "RUNTIME_ARTIFACT_PUBLISHED=FAIL" in runtime:
+        build_evidence = suppress_unpublished_runtime_instructions(build_evidence)
+    evidence = (
+        f"ENGINEERING_LOOP=ots-owned\nBUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\n"
+        f"PUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
+    )
+    rec["evidence"] = evidence[-26000:]
 
-        if v == "PASS":
-            deployment_operation = handoff.get("deployment_operation")
-            if bool(job.get("deploy_engineer_runtime")):
-                deployment_operation = "deploy-engineer-runtime"
-            if deployment_operation:
-                set_stage(job, "deployment", "requesting approved bounded Engineer runtime deployment")
-                if deployment_operation == "deploy-engineer-runtime":
-                    job["deployment"] = request_engineer_runtime_deployment(job["id"])
-                else:
-                    job["deployment"] = request_bounded_deployment(job["id"], deployment_operation)
-                if job["deployment"].get("status") != "PASS":
-                    job["status"] = "BLOCKED"
-                    job["blocked_reason"] = "bounded runtime deployment was not approved or failed"
-                    job["completed_at"] = now()
-                    return finish_job(job, "blocked", job["blocked_reason"])
-            job["status"] = "PASS"
-            job["completed_at"] = now()
-            return finish_job(job, "complete", "local verifier accepted result")
-        if v == "BLOCKED":
-            reason = str(decision.get("reason") or "").strip()
-            # BLOCKED is valid only when the verifier identifies the concrete
-            # external/user-only boundary. A bare BLOCKED result is not a
-            # terminal disposition: retry so the agent can repair or produce
-            # structured evidence instead of silently closing work.
-            if not reason:
-                signature = failure_signature(rec["evidence"], verdict)
-                repeat_count = update_failure_history(job, signature)
-                if repeat_count >= REPEATED_FAILURE_LIMIT:
-                    job["status"] = "BLOCKED"
-                    job["blocked_reason"] = (
-                        "verifier repeatedly returned BLOCKED without a concrete reason; "
-                        "terminal disposition rejected"
-                    )
-                    job["completed_at"] = now()
-                    return finish_job(job, "blocked_invalid_verdict", job["blocked_reason"])
-                feedback = (
-                    "Verifier returned BLOCKED without a concrete external/user-only reason. "
-                    "Do not close the issue. Re-evaluate the evidence, repair any actionable "
-                    "engineering gap, or identify and evidence the exact external boundary."
-                )
-                set_stage(job, "retry_planning", f"iteration {iteration}: rejected unstructured BLOCKED verdict")
-                save(job)
-                continue
-            job["status"] = "BLOCKED"
-            job["blocked_reason"] = reason
-            job["completed_at"] = now()
-            return finish_job(job, "blocked", job["blocked_reason"])
+    set_stage(job, "verifier", "independent local acceptance gate")
+    try:
+        verdict = local_verify(job, 1, rec["evidence"])
+    except Exception as exc:
+        verdict = {
+            "verdict": "RETRY",
+            "reason": f"local verifier unavailable: {type(exc).__name__}",
+            "next_instruction": "Submit a new governed job after verifier recovery.",
+        }
+    rec["verification"] = verdict
+    decision = milestone_decision(job, verdict, rec["evidence"])
+    rec["iteration_result"] = decision["iteration_result"]
+    rec["milestone_result"] = decision["milestone_result"]
+    rec["finished_at"] = now()
+    signature = failure_signature(rec["evidence"], verdict)
+    if signature:
+        rec["failure_signature"] = signature
+    job.setdefault("iterations", []).append(rec)
 
-        repeat_count = update_failure_history(job, signature)
-        if repeat_count >= REPEATED_FAILURE_LIMIT:
-            job["status"] = "BLOCKED"
-            job["blocked_reason"] = (
-                f"repeated deterministic failure detected ({repeat_count} occurrences); "
-                "stopped before exhausting the full iteration budget"
-            )
-            job["completed_at"] = now()
-            return finish_job(job, "blocked_repeated_failure", job["blocked_reason"])
+    if decision["milestone_result"] == "PASS":
+        deployment_operation = handoff.get("deployment_operation")
+        if bool(job.get("deploy_engineer_runtime")):
+            deployment_operation = "deploy-engineer-runtime"
+        if deployment_operation:
+            set_stage(job, "deployment", "Governor approved bounded deployment gate")
+            if deployment_operation == "deploy-engineer-runtime":
+                job["deployment"] = request_engineer_runtime_deployment(job["id"])
+            else:
+                job["deployment"] = request_bounded_deployment(job["id"], deployment_operation)
+            if job["deployment"].get("status") != "PASS":
+                job["status"] = "BLOCKED"
+                job["blocked_reason"] = "bounded runtime deployment was not approved or failed"
+                job["completed_at"] = now()
+                return finish_job(job, "blocked", job["blocked_reason"])
+        job["status"] = "PASS"
+        job["completed_at"] = now()
+        return finish_job(job, "complete", "independent acceptance gate passed OTS result")
 
-        base_feedback = str(decision.get("next_instruction") or decision.get("reason") or "Verification failed; continue toward the original goal using the evidence.")
-        if repeat_count >= 2:
-            feedback = (
-                f"REPLAN REQUIRED: failure signature {signature} repeated {repeat_count} times. "
-                "Do not repeat the previous implementation/runtime approach. Diagnose the deterministic cause and choose a materially different plan. "
-                + base_feedback
-            )
-        else:
-            feedback = base_feedback
-        set_stage(job, "retry_planning", f"iteration {iteration} failed; preparing next plan")
-        save(job)
-
-    job["status"] = "BLOCKED"
-    job["blocked_reason"] = "maximum iterations reached"
+    reason = str(decision.get("reason") or "").strip()
+    if decision["milestone_result"] == "BLOCKED":
+        job["status"] = "BLOCKED"
+        job["blocked_reason"] = reason or "concrete external boundary reported"
+        terminal_stage = "blocked"
+    else:
+        job["status"] = "FAILED"
+        job["blocked_reason"] = reason or "OTS result did not satisfy independent acceptance"
+        job["next_instruction"] = str(decision.get("next_instruction") or "")
+        terminal_stage = "acceptance_failed"
     job["completed_at"] = now()
-    return finish_job(job, "blocked", job["blocked_reason"])
+    return finish_job(job, terminal_stage, job["blocked_reason"])
 
 
 def continuation_allowed(job):
