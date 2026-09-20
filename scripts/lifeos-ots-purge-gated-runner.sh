@@ -60,7 +60,7 @@ echo "BATCH_RUNNER_REVISION=2"
 echo "BATCH_POLICY=failure_is_logged_then_continue"
 echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
 echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
-echo "BATCH_GATE_COUNT=6"
+echo "BATCH_GATE_COUNT=7"
 
 gate 801-01 "HA bridge legacy-state removal" "" bash -c '
   ! grep -q "/var/lib/lifeos-backlog-runner/state.json" governor/ha_issue_queue_bridge.py &&
@@ -118,7 +118,7 @@ gate 801-06 "active runtime source has no retired backlog-runner references" "" 
 '
 
 
-gate 801-06 "retired backlog runtime artifacts inventory" "" bash -c '
+gate 801-06b "retired backlog runtime artifacts inventory" "" bash -c '
   echo "RUNTIME_ARTIFACT_AUDIT=START"
   state=/var/lib/lifeos-backlog-runner/state.json
   dropin=/etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf
@@ -133,11 +133,14 @@ gate 801-06 "retired backlog runtime artifacts inventory" "" bash -c '
   echo "RUNTIME_ARTIFACT_AUDIT=PASS"
 '
 
-gate 801-07 "retired backlog runtime artifacts absent" "801-06" bash -c '
+gate 801-07 "retired backlog runtime artifacts absent" "801-06b" bash -c '
   state=/var/lib/lifeos-backlog-runner/state.json
   dropin=/etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf
-  test ! -e "$state"
-  test ! -e "$dropin"
+  if test -e "$state"; then echo "RETIRED_BACKLOG_STATE=PRESENT"; exit 1; fi
+  if test -e "$dropin"; then echo "RETIRED_BACKLOG_DROPIN=PRESENT"; exit 1; fi
+  if systemctl show lifeos-autonomous-agent.service -p DropInPaths --value | grep -q "backlog-dispatcher.conf"; then
+    echo "RETIRED_BACKLOG_DROPIN=LOADED"; exit 1
+  fi
   echo "RETIRED_BACKLOG_STATE=ABSENT"
   echo "RETIRED_BACKLOG_DROPIN=ABSENT"
 '
