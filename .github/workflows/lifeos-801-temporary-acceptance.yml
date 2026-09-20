@@ -1,4 +1,5 @@
 name: LifeOS #801 Temporary Acceptance
+# rerun-after-live-governor-deploy: 2
 on:
   push:
     branches: [main]
