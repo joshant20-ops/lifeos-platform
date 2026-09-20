@@ -1,0 +1,61 @@
+name: LifeOS OTS Purge 801 HA State Proof
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'governor/ha_issue_queue_bridge.py'
+      - 'governor/systemd/lifeos-ha-issue-queue-bridge.service'
+      - '.github/workflows/lifeos-ots-purge-801-ha-state.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  live-proof:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Sync canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+          echo "PURGE801_SYNC=PASS"
+      - name: Static active-code dependency gate
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          ! grep -q '/var/lib/lifeos-backlog-runner/state.json' governor/ha_issue_queue_bridge.py
+          ! grep -q '/var/lib/lifeos-backlog-runner/state.json' governor/systemd/lifeos-ha-issue-queue-bridge.service
+          python3 -m py_compile governor/ha_issue_queue_bridge.py
+          echo "PURGE801_HA_LEGACY_STATE_REFERENCE=ABSENT"
+      - name: Deploy HA bridge through bounded implementation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n bash scripts/lifeos-deploy-ha-control-bridge-impl.sh | tee /tmp/purge801-deploy.txt
+          echo "PURGE801_HA_DEPLOY=PASS"
+      - name: Live HA bridge proof
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sleep 35
+          test "$(systemctl is-active lifeos-ha-issue-queue-bridge.service)" = active
+          cmp -s /home/joshan/lifeos-platform/governor/ha_issue_queue_bridge.py /usr/local/libexec/lifeos-ha-issue-queue-bridge
+          journalctl -u lifeos-ha-issue-queue-bridge.service --since '-2 minutes' --no-pager | tee /tmp/purge801-ha.log
+          grep -q 'QUEUE_REFRESH=PASS' /tmp/purge801-ha.log
+          ! grep -q 'QUEUE_REFRESH=FAIL' /tmp/purge801-ha.log
+          mosquitto_sub -h 127.0.0.1 -C 1 -W 10 -t lifeos/issue_queue/control | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("state"); print("PURGE801_HA_CONTROL_MQTT=PASS state="+str(d["state"]))'
+          python3 - <<'PY'
+          import json,urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8790/jobs',timeout=10) as r: d=json.load(r)
+          print('PURGE801_GOVERNOR_JOBS_API=PASS')
+          PY
+          echo "PURGE801_HA_LIVE_PROOF=PASS"
