@@ -30,7 +30,30 @@ for row in rows:
         break
 PY
 )"
-[[ -n "$TOWER_IP" ]] || { echo 'ERROR=tower_mac_not_present_in_neighbor_table'; exit 1; }
+if [[ -z "$TOWER_IP" ]]; then
+  # A powered-off/recently restarted Tower may legitimately be absent from the
+  # neighbour cache. Reuse the already-reviewed configured host rather than
+  # treating ephemeral ARP state as authoritative identity.
+  TOWER_IP="$(python3 - "$CONFIG" <<'PY'
+import json,sys,ipaddress
+from pathlib import Path
+v=json.loads(Path(sys.argv[1]).read_text())
+candidates=[v.get('host'), (v.get('access_probe') or {}).get('host'), (v.get('shutdown') or {}).get('host')]
+for raw in candidates:
+    try:
+        ip=ipaddress.ip_address(str(raw or '').strip())
+    except ValueError:
+        continue
+    if ip.version == 4 and ip.is_private:
+        print(str(ip))
+        break
+PY
+)"
+  [[ -n "$TOWER_IP" ]] || { echo 'ERROR=tower_mac_not_present_and_no_configured_host'; exit 1; }
+  echo "TOWER_IP_SOURCE=configured_fallback"
+else
+  echo "TOWER_IP_SOURCE=neighbor_mac"
+fi
 
 timeout 3 bash -c "</dev/tcp/$TOWER_IP/22" 2>/dev/null || { echo "ERROR=tower_ssh_probe_failed:$TOWER_IP"; exit 1; }
 
