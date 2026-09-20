@@ -22,7 +22,7 @@ def load(path, name):
 def test_deployments_are_fixed_declarative_manifests():
     broker = load(BROKER, "bounded_broker")
     assert set(broker.DEPLOYMENT_SPECS) == {
-        "deploy-engineer-runtime", "deploy-autonomous-agent", "deploy-backlog-runner"
+        "deploy-engineer-runtime", "deploy-autonomous-agent"
     }
     for spec in broker.DEPLOYMENT_SPECS.values():
         assert spec["files"]
@@ -35,7 +35,7 @@ def test_deployments_are_fixed_declarative_manifests():
     )
 
 
-@pytest.mark.parametrize("operation", ["deploy-autonomous-agent", "deploy-backlog-runner"])
+@pytest.mark.parametrize("operation", ["deploy-autonomous-agent"])
 @pytest.mark.parametrize("field", ["command", "source", "destination", "unit", "environment", "args"])
 def test_new_deployments_reject_caller_selected_capabilities(operation, field):
     broker = load(BROKER, f"bounded_{operation}_{field}")
