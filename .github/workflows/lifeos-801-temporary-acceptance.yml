@@ -1,5 +1,5 @@
 name: LifeOS #801 Temporary Acceptance
-# rerun-after-live-governor-deploy: 5
+# rerun-after-live-governor-deploy: 6
 on:
   push:
     branches: [main]
@@ -43,7 +43,7 @@ jobs:
           test -z "$(git status --porcelain)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo "ACCEPTANCE_GATE_HEAD=$(git rev-parse HEAD)"
-          grep -q 'gate 801-05 ' scripts/lifeos-ots-purge-gated-runner.sh
+          grep -q 'gate 801-06 ' scripts/lifeos-ots-purge-gated-runner.sh
           rm -rf /tmp/lifeos-ots-purge-gates
           bash scripts/lifeos-ots-purge-gated-runner.sh
       - name: Publish consolidated evidence
