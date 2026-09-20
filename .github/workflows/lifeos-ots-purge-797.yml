@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-ots-purge-797.yml'
+      - 'scripts/lifeos-remove-retired-backlog-runner.sh'
+      - 'governor/backlog_runner.py'
   workflow_dispatch:
 
 permissions:
@@ -61,13 +63,22 @@ jobs:
             echo "PURGE797_CUTOVER=PASS"
           fi
 
+      - name: Remove retired legacy runtime after proven cutover
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n bash scripts/lifeos-remove-retired-backlog-runner.sh | tee /tmp/purge797-remove.txt
+          grep -qx 'RESULT=PASS' /tmp/purge797-remove.txt
+          echo "PURGE797_LEGACY_RUNTIME_REMOVAL=PASS"
+
       - name: Live post-cutover duplicate-dispatch and safety audit
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           test "$(systemctl is-active lifeos-backlog-runner.timer 2>/dev/null || true)" != active
-          test "$(systemctl is-enabled lifeos-backlog-runner.timer 2>/dev/null || true)" = disabled
+          test "$(systemctl is-enabled lifeos-backlog-runner.timer 2>/dev/null || true)" = not-found
           test "$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)" != active
           test "$(systemctl is-active lifeos-engineer-dispatcher.timer 2>/dev/null || true)" != active
           for u in lifeos-control-job-submit.socket lifeos-root-broker.socket lifeos-autonomous-agent.service lifeos-engineer.service lifeos-ha-issue-queue-bridge.service; do
@@ -80,7 +91,16 @@ jobs:
           test "$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)" != active
           echo "PURGE797_LEGACY_SERVICE_AFTER=$(systemctl is-active lifeos-backlog-runner.service 2>/dev/null || true)"
           echo "PURGE797_NO_DUPLICATE_LEGACY_DISPATCH=PASS"
+          test ! -e /usr/local/libexec/lifeos-backlog-runner
+          echo "PURGE797_RUNTIME_ABSENCE=PASS"
           echo "PURGE797_BOOT_PERSISTENCE=PASS backlog_timer_enabled=$(systemctl is-enabled lifeos-backlog-runner.timer 2>/dev/null || true)"
-          bash scripts/lifeos-legacy-dispatcher-retirement-audit.sh | tee /tmp/purge797-post.txt
-          grep -qx 'LEGACY_DISPATCHER_RETIREMENT_READY=YES' /tmp/purge797-post.txt
-          echo "PURGE797_POSTCUTOVER_LIVE_AUDIT=PASS"
+          for u in lifeos-control-job-submit.socket lifeos-root-broker.socket lifeos-autonomous-agent.service lifeos-engineer.service lifeos-ha-issue-queue-bridge.service; do
+            test "$(systemctl is-active "$u" 2>/dev/null || true)" = active
+          done
+          python3 - <<'PY'
+          import urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8790/health',timeout=10) as r:
+              assert r.status == 200
+          print('PURGE797_GOVERNOR_HEALTH=PASS')
+          PY
+          echo "PURGE797_POSTREMOVAL_LIVE_AUDIT=PASS"
