@@ -52,7 +52,10 @@ jobs:
           sleep 35
           test "$(systemctl is-active lifeos-ha-issue-queue-bridge.service)" = active
           cmp -s /home/joshan/lifeos-platform/governor/ha_issue_queue_bridge.py /usr/local/libexec/lifeos-ha-issue-queue-bridge
-          journalctl -u lifeos-ha-issue-queue-bridge.service --since '-2 minutes' --no-pager | tee /tmp/purge801-ha.log
+          started=$(date --iso-8601=seconds)
+          sudo -n systemctl restart lifeos-ha-issue-queue-bridge.service
+          sleep 35
+          journalctl -u lifeos-ha-issue-queue-bridge.service --since "$started" --no-pager | tee /tmp/purge801-ha.log
           grep -q 'QUEUE_REFRESH=PASS' /tmp/purge801-ha.log
           ! grep -q 'QUEUE_REFRESH=FAIL' /tmp/purge801-ha.log
           mosquitto_sub -h 127.0.0.1 -C 1 -W 10 -t lifeos/issue_queue/control | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("state"); print("PURGE801_HA_CONTROL_MQTT=PASS state="+str(d["state"]))'
