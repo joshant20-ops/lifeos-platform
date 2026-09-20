@@ -33,7 +33,8 @@ class Step11LiveClosureContract(unittest.TestCase):
         self.assertNotIn("eval(", text)
 
     def test_archived_acceptance_evidence_refreshes_gateway_then_closes_step11(self):
-        # Stage 3 is complete. Preserve the historical live-acceptance proof as\n        # evidence, but do not require the completed workflow to remain active.\n        text = ARCHIVED_WORKFLOW.read_text()
+        # Stage 3 is complete. Preserve the historical live-acceptance proof as
+        # evidence, but do not require the completed workflow to remain active.\n        text = ARCHIVED_WORKFLOW.read_text()
         refresh = text.index("lifeos-deploy-gateway deploy-ha-control-bridge")
         closure = text.index("lifeos-deploy-gateway step11-live-closure")
         self.assertLess(refresh, closure)
