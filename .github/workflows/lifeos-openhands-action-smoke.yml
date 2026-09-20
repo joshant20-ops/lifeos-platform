@@ -2,8 +2,8 @@ name: LifeOS OpenHands Action Smoke
 
 on:
   workflow_dispatch:
-  # Temporary deterministic trigger for the isolated #759 diagnostic. This is
-  # intentionally path-scoped so normal repository pushes do not run the smoke.
+  # #759 direct OpenHands diagnostic. Path-scoped push is retained only so the
+  # connected GitHub surface can start this workflow without workflow_dispatch.
   push:
     branches: [main]
     paths:
@@ -74,7 +74,7 @@ jobs:
           test "$ready" -eq 1
           echo 'ENGINEER_WAKE=PASS'
 
-      - name: Prove local model route (Governor job loop bypassed)
+      - name: Prove local model transport (Governor job lifecycle bypassed)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -127,7 +127,7 @@ jobs:
           print('GOVERNOR_PRIVATE_TOOL_ROUTE=LOCAL_OLLAMA')
           PY
 
-      - name: Direct OpenHands engineering proof (Governor job loop bypassed)
+      - name: Direct OpenHands filesystem action (Governor job lifecycle bypassed)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -135,7 +135,7 @@ jobs:
           job_id="openhands-action-gate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           marker="OPENHANDS_REAL_ACTION_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           runtime_path="governor/runtime_jobs/${job_id}.sh"
-          request="Direct OpenHands diagnostic; Governor autonomous job loop is intentionally bypassed. Use your actual shell/file-writing tool in the disposable Engineer worktree to create ${runtime_path}. The file must contain exactly three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Execute it and verify stdout is exactly ${marker}. Do not change any other file. Do not commit, push, fetch, clone, or access GitHub. When the engineering task and test are complete, stop."
+          request="Direct OpenHands diagnostic. The Governor autonomous job lifecycle is intentionally bypassed. Use your shell/file-writing tools in the disposable Engineer worktree to create ${runtime_path}. The file must contain exactly three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Execute it and verify stdout is exactly ${marker}. Do not change any other file. Do not commit, push, fetch, clone, or access GitHub. When the task and test are complete, stop."
           log=$(mktemp)
           runtime=$(mktemp)
           cleanup() { rm -f "$log" "$runtime"; }
