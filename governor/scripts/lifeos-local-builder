@@ -97,7 +97,8 @@ cfg="$HOME/.config/lifeos/governor-broker.env"
 if [[ -f "$cfg" && ! -L "$cfg" && "$(stat -c '%a' "$cfg")" == 600 ]] && grep -q '^LIFEOS_GOVERNOR_BROKER_URL=' "$cfg" && grep -q '^LIFEOS_GOVERNOR_BROKER_TOKEN=' "$cfg"; then echo 'GOVERNOR_BROKER=present'; else echo 'GOVERNOR_BROKER=absent'; fi
 REMOTE
 )
-printf '%s\n' "$DISCOVERY"
+printf '%s
+' "$DISCOVERY"
 grep -q '^OPENHANDS=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=openhands_unavailable'; exit 21; }
 grep -q '^GOVERNOR_BROKER=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=governor_broker_capability_unavailable'; exit 21; }
 
@@ -158,12 +159,16 @@ HELPER=$(mktemp)
 trap 'rm -f "$HELPER" "$SNAPSHOT"' EXIT
 git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$HELPER"
 chmod 700 "$HELPER"
-# Keep one local Engineer attempt comfortably inside the Governor/controller budget.\n# Governor owns retries; a 240s OpenHands bound leaves time for a diagnostic retry\n# and terminal evidence instead of letting two iterations consume the 20m mission window.\nLIFEOS_AGENT_TIMEOUT_SECONDS=240 "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
+# Keep one local Engineer attempt comfortably inside the Governor/controller budget.
+# Governor owns retries; a 240s OpenHands bound leaves time for a diagnostic retry
+# and terminal evidence instead of letting two iterations consume the 20m mission window.
+LIFEOS_AGENT_TIMEOUT_SECONDS=240 "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
 REMOTE
   )
   RC=$?
   set -e
-  printf '%s\n' "$OUTPUT"
+  printf '%s
+' "$OUTPUT"
   echo "LOCAL_BUILDER_ATTEMPT_RC=$RC"
   if (( RC != 0 )); then
     if grep -q '^HANDOFF_ERROR=' <<<"$OUTPUT"; then
