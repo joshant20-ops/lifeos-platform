@@ -407,16 +407,19 @@ def milestone_decision(job, iteration_verdict, evidence):
         # A terminal BLOCKED result must identify the actual external boundary.
         # Model prose that merely says a user-only blocker exists, or describes
         # missing engineering/evidence output, is retryable work.
+        actionable_markers = (
+            "engineering", "deployment", "implementation", "current gap",
+            "further engineering", "further deployment", "missing evidence",
+            "not yet satisfied", "not satisfied", "requires repair",
+        )
         generic = (
             not reason
             or "without providing a structured reason" in lower_reason
             or "genuine user-only blocker" in lower_reason
             or "user-only blocker exists" in lower_reason
             or "cannot resolve itself" in lower_reason
-            or (
-                "not possible to determine" in lower_reason
-                and not any(marker in lower_reason for marker in external_markers)
-            )
+            or any(marker in lower_reason for marker in actionable_markers)
+            or not any(marker in lower_reason for marker in external_markers)
         )
         if generic:
             result["milestone_result"] = "RETRY"
