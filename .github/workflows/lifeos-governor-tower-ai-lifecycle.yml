@@ -110,13 +110,16 @@ jobs:
           journalctl -u lifeos-tower-control.service -u lifeos-autonomous-agent.service -u lifeos-engineer.service -n 160 --no-pager -o short-iso
 
       - name: Prove lease release and automatic shutdown
+        timeout-minutes: 8
         run: |
           set -Eeuo pipefail
           lease=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t 'lifeos/tower/lease/+' || true)
           python3 -c 'import json,sys; assert json.loads(sys.argv[1]).get("state") == "released"' "$lease"
           echo 'MODEL_LEASE_RELEASE=PASS'
           stopped=0
-          for _ in $(seq 1 150); do
+          # Bound this proof tightly so a shutdown fault cannot monopolise the only Pi runner.
+          # 48 x (5s state read + 5s sleep worst case) is < 8 minutes; the step-level timeout is the hard ceiling.
+          for _ in $(seq 1 48); do
             state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true)
             if python3 -c 'import json,sys; raise SystemExit(0 if not json.loads(sys.argv[1]).get("accessible") else 1)' "$state" 2>/dev/null; then stopped=1; break; fi
             sleep 5
