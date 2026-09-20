@@ -6,6 +6,7 @@ on:
       - 'scripts/lifeos-ots-purge-gated-runner.sh'
       - 'scripts/lifeos-semaphore-terminal-observer.sh'
       - 'governor/ha_issue_queue_bridge.py'
+      - '.github/workflows/lifeos-801-temporary-acceptance.yml'
       - '.github/workflows/lifeos-ots-purge-gated-runner.yml'
   workflow_dispatch:
 permissions:
