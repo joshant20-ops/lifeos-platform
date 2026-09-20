@@ -144,7 +144,7 @@ REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
 ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
 scp -q -o BatchMode=yes -o ConnectTimeout=8 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
 
-for attempt in 1 2; do
+for attempt in 1; do
   echo "AGENT_ATTEMPT=openhands provider=governor-broker-local-only attempt=$attempt"
   set +e
   OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE'
@@ -182,5 +182,5 @@ REMOTE
 done
 
 echo 'RESULT=RETRY'
-echo 'REASON=local_openhands_attempts_exhausted'
+echo 'REASON=local_openhands_attempt_exhausted'
 exit 21
