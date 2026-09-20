@@ -1,0 +1,91 @@
+name: LifeOS OTS Purge 797 Live Cutover
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-ots-purge-797.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  live-cutover:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - name: Reconcile canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+          echo "PURGE797_CANONICAL_SYNC=PASS"
+          git rev-parse HEAD
+
+      - name: Live pre-cutover audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          bash scripts/lifeos-legacy-dispatcher-retirement-audit.sh | tee /tmp/purge797-pre.txt
+          grep -qx 'LEGACY_DISPATCHER_RETIREMENT_READY=YES' /tmp/purge797-pre.txt
+          grep -qx 'ONE_REAL_AUTHORITATIVE_SEMAPHORE_SUBMISSION=PROVEN' /tmp/purge797-pre.txt
+          grep -qx 'ONE_REAL_TERMINAL_COMPLETION_HANDLING=PROVEN' /tmp/purge797-pre.txt
+          grep -qx 'SEMAPHORE_API=PASS' /tmp/purge797-pre.txt
+          echo "PURGE797_PRECUTOVER_LIVE_PROOF=PASS"
+
+      - name: Disable superseded dispatch timers through bounded script
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n bash scripts/lifeos-retire-superseded-dispatch-timers.sh | tee /tmp/purge797-cutover.txt
+          grep -qx 'RESULT=PASS' /tmp/purge797-cutover.txt
+          grep -qx 'BACKLOG_RUNNER_TIMER_DISABLED=YES' /tmp/purge797-cutover.txt
+          grep -qx 'SEMAPHORE_API=PASS' /tmp/purge797-cutover.txt
+          echo "PURGE797_CUTOVER=PASS"
+
+      - name: Live post-cutover duplicate-dispatch and safety audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sleep 5
+          test "$(systemctl is-active lifeos-backlog-runner.timer 2>/dev/null || true)" != active
+          test "$(systemctl is-enabled lifeos-backlog-runner.timer 2>/dev/null || true)" = disabled
+          test "$(systemctl is-active lifeos-engineer-dispatcher.timer 2>/dev/null || true)" != active
+          test "$(systemctl is-enabled lifeos-engineer-dispatcher.timer 2>/dev/null || true)" = disabled
+          for u in lifeos-control-job-submit.socket lifeos-root-broker.socket lifeos-autonomous-agent.service lifeos-engineer.service lifeos-ha-issue-queue-bridge.service; do
+            test "$(systemctl is-active "$u" 2>/dev/null || true)" = active
+            echo "PURGE797_PROTECTED_UNIT=PASS unit=$u"
+          done
+          before=$(python3 - <<'PY'
+          import json,urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8790/jobs',timeout=10) as r: d=json.load(r)
+          if isinstance(d,dict): d=d.get('jobs',d.get('items',[]))
+          print(sum(str(x.get('status','')).upper() in {'QUEUED','RUNNING'} for x in d))
+          PY
+          )
+          sleep 65
+          after=$(python3 - <<'PY'
+          import json,urllib.request
+          with urllib.request.urlopen('http://127.0.0.1:8790/jobs',timeout=10) as r: d=json.load(r)
+          if isinstance(d,dict): d=d.get('jobs',d.get('items',[]))
+          print(sum(str(x.get('status','')).upper() in {'QUEUED','RUNNING'} for x in d))
+          PY
+          )
+          echo "PURGE797_ACTIVE_JOBS_BEFORE=$before"
+          echo "PURGE797_ACTIVE_JOBS_AFTER=$after"
+          test "$before" = "$after"
+          echo "PURGE797_NO_DUPLICATE_LEGACY_DISPATCH=PASS"
+          echo "PURGE797_SYSTEMD_PERSISTENCE=PASS disabled_units_are_persistently_disabled"
+          bash scripts/lifeos-legacy-dispatcher-retirement-audit.sh
+          echo "PURGE797_POSTCUTOVER_LIVE_AUDIT=PASS"
