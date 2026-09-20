@@ -104,7 +104,36 @@ m._publish_lease('active')
 m._wake_local_ai()
 PY
 checkpoint tower_wake_requested
-trap release_lease EXIT
+
+# Keep the session-level compute lease alive for the whole OTS engineering
+# session. Per-request broker leases are intentionally short-lived, but releasing
+# one must not allow the Tower controller to power down while OpenHands is between
+# model/tool turns. Refresh faster than the configured broker lease TTL.
+LEASE_REFRESH_SECONDS=${LIFEOS_SESSION_LEASE_REFRESH_SECONDS:-60}
+[[ "$LEASE_REFRESH_SECONDS" =~ ^[0-9]+$ ]] && (( LEASE_REFRESH_SECONDS >= 15 && LEASE_REFRESH_SECONDS <= 300 )) || {
+  echo 'RESULT=BLOCKED'; echo 'REASON=invalid_session_lease_refresh'; exit 42;
+}
+refresh_session_lease() {
+  while true; do
+    sleep "$LEASE_REFRESH_SECONDS"
+    python3 - "$CONTROLLER_REPO" <<'PY' >/dev/null 2>&1 || exit 1
+import importlib.util, pathlib, sys
+p=pathlib.Path(sys.argv[1])/'governor'/'ai_broker.py'
+s=importlib.util.spec_from_file_location('lifeos_local_builder_lease_refresh',p)
+m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+m._publish_lease('active')
+PY
+  done
+}
+refresh_session_lease &
+LEASE_REFRESH_PID=$!
+cleanup_session() {
+  kill "$LEASE_REFRESH_PID" >/dev/null 2>&1 || true
+  wait "$LEASE_REFRESH_PID" >/dev/null 2>&1 || true
+  release_lease
+}
+trap cleanup_session EXIT
+echo "SESSION_COMPUTE_LEASE=active refresh_s=$LEASE_REFRESH_SECONDS"
 
 READY=0
 echo 'ENGINEER_READINESS=waiting'
@@ -170,7 +199,7 @@ EOF
 )
 PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
 SNAPSHOT=$(mktemp --suffix=.bundle)
-trap 'rm -f "$SNAPSHOT"; release_lease' EXIT
+trap 'rm -f "$SNAPSHOT"; cleanup_session' EXIT
 git -C "$CONTROLLER_REPO" bundle create "$SNAPSHOT" HEAD
 test -s "$SNAPSHOT"
 REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
@@ -194,7 +223,7 @@ checkpoint remote_agent_launch
   # output until SSH exited, making a healthy/running OpenHands session look hung.
   # tee preserves live evidence while a temp file retains the bounded handoff.
   OUTPUT_FILE=$(mktemp)
-  trap 'rm -f "$SNAPSHOT" "$OUTPUT_FILE"; release_lease' EXIT
+  trap 'rm -f "$SNAPSHOT" "$OUTPUT_FILE"; cleanup_session' EXIT
   timeout --signal=TERM --kill-after=15s 960s ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" 2>&1 <<'REMOTE' | tee "$OUTPUT_FILE"
 set -euo pipefail
 REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}; SNAPSHOT_REL=${6:?snapshot required}; MODEL=${7:?model required}
