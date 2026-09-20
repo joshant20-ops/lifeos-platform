@@ -48,6 +48,7 @@ LOCAL_BUILDER = os.environ.get("LIFEOS_AGENT_LOCAL_BUILDER", "")
 ENGINEER_HOST = os.environ.get("LIFEOS_ENGINEER_HOST", "192.168.0.204")
 ENGINEER_SSH_PORT = int(os.environ.get("LIFEOS_ENGINEER_SSH_PORT", "22"))
 ENGINEER_WAKE_TIMEOUT = int(os.environ.get("LIFEOS_ENGINEER_WAKE_TIMEOUT", "300"))
+BUILDER_TIMEOUT_SECONDS = int(os.environ.get("LIFEOS_BUILDER_TIMEOUT_SECONDS", "720"))
 DISPATCH_TOKEN_FILE = os.environ.get("LIFEOS_BACKLOG_DISPATCH_TOKEN_FILE", "")
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
@@ -588,7 +589,7 @@ def run_builder(job, iteration, verifier_feedback=None):
     if tower_lease:
         _prepare_engineer_builder_host()
     try:
-        cp = subprocess.run(args, text=True, capture_output=True, timeout=1800, env=env)
+        cp = subprocess.run(args, text=True, capture_output=True, timeout=BUILDER_TIMEOUT_SECONDS, env=env)
     finally:
         if tower_lease:
             _AI_BROKER._publish_lease("released", required=False)
