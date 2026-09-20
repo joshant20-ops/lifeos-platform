@@ -26,6 +26,8 @@ on:
       - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py'
       - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
       - 'tests/test_energy_opportunity_service.py'
+      - 'deploy-triggers/ha-control-bridge'
+      - 'deploy-triggers/tower-metrics'
   issues:
     types: [opened]
 
@@ -57,7 +59,7 @@ jobs:
       # expression as a plain YAML scalar makes the workflow invalid before
       # any job can be created.
       LIFEOS_OPERATION: >-
-        ${{ github.event_name == 'push' && 'deploy-energy-opportunity-api' || github.event_name == 'issues' &&
+        ${{ github.event_name == 'push' && (github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || 'deploy-energy-opportunity-api') || github.event_name == 'issues' &&
         (github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' && 'capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' && 'deploy-tower-metrics' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' && 'deploy-governor-managed-engineer' ||
