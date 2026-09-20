@@ -68,7 +68,7 @@ jobs:
           test "$ready" -eq 1
           echo 'ENGINEER_WAKE=PASS'
 
-      - name: Prove authenticated Governor tool route
+      - name: Prove local model route (Governor job loop bypassed)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -121,7 +121,7 @@ jobs:
           print('GOVERNOR_PRIVATE_TOOL_ROUTE=LOCAL_OLLAMA')
           PY
 
-      - name: Require genuine OpenHands filesystem action
+      - name: Direct OpenHands engineering proof (Governor job loop bypassed)
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -129,7 +129,7 @@ jobs:
           job_id="openhands-action-gate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           marker="OPENHANDS_REAL_ACTION_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
           runtime_path="governor/runtime_jobs/${job_id}.sh"
-          request="Disposable action smoke only. Use your actual shell/file-writing tool in the disposable Engineer worktree to create ${runtime_path}; do not merely describe or print the file contents. The file must contain exactly three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Then execute that created file with a shell tool and confirm its stdout is exactly ${marker}. Do not change any other file. Do not commit, push, fetch, clone, or access GitHub. Finish with RESULT=PASS, TESTS=created-file-and-executed-it, NEXT_RUNTIME_CHECK=none."
+          request="Direct OpenHands diagnostic; Governor autonomous job loop is intentionally bypassed. Use your actual shell/file-writing tool in the disposable Engineer worktree to create ${runtime_path}. The file must contain exactly three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Execute it and verify stdout is exactly ${marker}. Do not change any other file. Do not commit, push, fetch, clone, or access GitHub. When the engineering task and test are complete, stop."
           log=$(mktemp)
           runtime=$(mktemp)
           cleanup() { rm -f "$log" "$runtime"; }
@@ -140,8 +140,79 @@ jobs:
           rc=${PIPESTATUS[0]}
           set -e
           test "$rc" -eq 0
-          grep -q '^AGENT_RESULT=openhands PASS$' "$log"
-          ! grep -q '^AGENT_RESULT=codex PASS$' "$log"
+          grep -q '^AGENT_SESSION=openhands provider=governor-broker-local-only          grep -q '^HANDOFF_BASE=' "$log"
+          b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
+          test -n "$b64"
+          printf '%s' "$b64" | base64 -d >"$runtime"
+          python3 - "$runtime" "$marker" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]); marker=sys.argv[2]
+          expected=["#!/usr/bin/env bash", "set -euo pipefail", f"printf '%s\\n' '{marker}'"]
+          actual=p.read_text().splitlines()
+          assert actual == expected, repr(actual)
+          print('OPENHANDS_FILESYSTEM_ACTION_EVIDENCE=PASS')
+          PY
+          chmod 700 "$runtime"
+          output=$("$runtime")
+          test "$output" = "$marker"
+          echo 'OPENHANDS_HARMLESS_ACTION_EXECUTION=PASS'
+          echo 'OPENHANDS_DIRECT_GOVERNOR_JOB_BYPASS=PASS'
+          echo 'OPENHANDS_ACTION_SMOKE=PASS'
+
+      - name: Prove canonical repository remained clean
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'REPOSITORY_FINAL=PASS'
+
+      - name: Release smoke-time Tower power
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
+          echo 'TOWER_RELEASE_REQUESTED=PASS'
+ "$log"
+          ! grep -q '^AGENT_RESULT=codex PASS          grep -q '^HANDOFF_BASE=' "$log"
+          b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
+          test -n "$b64"
+          printf '%s' "$b64" | base64 -d >"$runtime"
+          python3 - "$runtime" "$marker" <<'PY'
+          import pathlib,sys
+          p=pathlib.Path(sys.argv[1]); marker=sys.argv[2]
+          expected=["#!/usr/bin/env bash", "set -euo pipefail", f"printf '%s\\n' '{marker}'"]
+          actual=p.read_text().splitlines()
+          assert actual == expected, repr(actual)
+          print('OPENHANDS_FILESYSTEM_ACTION_EVIDENCE=PASS')
+          PY
+          chmod 700 "$runtime"
+          output=$("$runtime")
+          test "$output" = "$marker"
+          echo 'OPENHANDS_HARMLESS_ACTION_EXECUTION=PASS'
+          echo 'OPENHANDS_ACTION_SMOKE=PASS'
+
+      - name: Prove canonical repository remained clean
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'REPOSITORY_FINAL=PASS'
+
+      - name: Release smoke-time Tower power
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
+          echo 'TOWER_RELEASE_REQUESTED=PASS'
+ "$log"
           grep -q '^HANDOFF_BASE=' "$log"
           b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
           test -n "$b64"
