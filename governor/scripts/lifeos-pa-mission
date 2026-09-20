@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 import time
 
-VERSION = "2026.09.20-10"
+VERSION = "2026.09.20-11"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
@@ -176,7 +176,7 @@ def run_executor(faults):
 
 def run_autonomous_mission(faults):
     """Submit the bounded backlog objective to the already-deployed Governor and wait for terminal evidence."""
-    request = """Process exactly one autonomous-safe unresolved LifeOS issue: #418 — Engineer: GitHub issue-to-Engineer/Governor pickup path.
+    request = """Process exactly one autonomous-safe unresolved LifeOS issue: #418 — Engineer: GitHub issue-to-Engineer/Governor pickup path.\n\nThis is the post-smoke end-to-end acceptance run. Component smoke is green; exercise the real governed pickup path and do not declare PASS unless current item-specific evidence proves the complete transaction.
 
 Inspect canonical main and the live current architecture. Determine whether the historical issue-to-Engineer pickup requirement is already satisfied by the current Governor, mission-control, backlog, and governed engineering paths, or whether a current gap remains. Test the actual current path end-to-end where safe. Prefer the current architecture over recreating obsolete historical mechanisms.
 
