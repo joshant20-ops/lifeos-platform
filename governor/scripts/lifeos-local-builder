@@ -86,7 +86,10 @@ if [[ "$MODEL" != *local-only* ]]; then
   exit 42
 fi
 
+PIPELINE_T0=$(date +%s)
+checkpoint() { printf 'OPENHANDS_TRANSPORT_STAGE=%s elapsed_s=%s\n' "$1" "$(( $(date +%s)-PIPELINE_T0 ))"; }
 echo 'LOCAL_BUILDER_ROUTE=Pi5_Governor_to_Tower_Ollama'
+checkpoint local_builder_start
 echo 'LOCAL_BUILDER_CLOUD_FALLBACK=DISABLED'
 
 # Acquire the same Pi Governor/Tower lease used by local verification, then wait
@@ -100,6 +103,7 @@ m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
 m._publish_lease('active')
 m._wake_local_ai()
 PY
+checkpoint tower_wake_requested
 trap release_lease EXIT
 
 READY=0
@@ -108,6 +112,7 @@ for attempt in $(seq 1 60); do
   if ssh -o BatchMode=yes -o ConnectTimeout=3 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$ENGINEER" true >/dev/null 2>&1; then
     READY=1
     echo "ENGINEER_READINESS=ready attempt=$attempt"
+    checkpoint engineer_ssh_ready
     break
   fi
   (( attempt % 5 == 0 )) && echo "ENGINEER_READINESS=waiting attempt=$attempt"
@@ -130,6 +135,7 @@ REMOTE
 )
 printf '%s\n' "$DISCOVERY"
 echo 'ENGINEER_DISCOVERY=PASS'
+checkpoint engineer_discovery_pass
 grep -q '^OPENHANDS=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=openhands_unavailable'; exit 21; }
 grep -q '^GOVERNOR_BROKER=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=governor_broker_capability_unavailable'; exit 21; }
 
@@ -171,11 +177,14 @@ REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
 echo 'ENGINEER_HANDOFF_PREPARE=START'
 timeout --signal=TERM --kill-after=5s 30s ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
 echo 'ENGINEER_HANDOFF_PREPARE=PASS'
+checkpoint engineer_handoff_prepare_pass
 echo 'ENGINEER_SNAPSHOT_TRANSFER=START'
 timeout --signal=TERM --kill-after=5s 60s scp -q -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
 echo 'ENGINEER_SNAPSHOT_TRANSFER=PASS'
+checkpoint engineer_snapshot_transfer_pass
 
 echo "AGENT_SESSION=openhands provider=governor-broker-local-only"
+checkpoint remote_agent_launch
   set +e
   # Preserve stderr with stdout: OpenHands/timeout/SSH diagnostics are part of
   # the governed handoff evidence. #759 attempt 4 exposed that command
@@ -212,6 +221,7 @@ REMOTE
   OUTPUT=$(cat "$OUTPUT_FILE")
   rm -f "$OUTPUT_FILE"
   echo "LOCAL_BUILDER_ATTEMPT_RC=$RC"
+checkpoint remote_agent_return
   if (( RC != 0 )); then
     echo "LOCAL_BUILDER_FAILURE_EVIDENCE_BEGIN"
     printf '%s\n' "$OUTPUT" | tail -80
