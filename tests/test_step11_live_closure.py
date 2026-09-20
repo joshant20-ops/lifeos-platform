@@ -5,7 +5,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATEWAY = ROOT / "homelab/live/usr/local/sbin/lifeos-deploy-gateway"
 CLOSURE = ROOT / "scripts/lifeos-step11-live-closure.sh"
-WORKFLOW = ROOT / ".github/workflows/lifeos-stage3-gateway-refresh.yml"
+ARCHIVED_WORKFLOW = ROOT / "archive/workflows/lifeos-stage3-gateway-refresh.yml"
 
 
 class Step11LiveClosureContract(unittest.TestCase):
@@ -32,8 +32,10 @@ class Step11LiveClosureContract(unittest.TestCase):
         self.assertNotIn("shell=True", text)
         self.assertNotIn("eval(", text)
 
-    def test_self_hosted_workflow_refreshes_gateway_then_closes_step11(self):
-        text = WORKFLOW.read_text()
+    def test_archived_acceptance_evidence_refreshes_gateway_then_closes_step11(self):
+        # Stage 3 is complete. Preserve the historical live-acceptance proof as
+        # evidence, but do not require the completed workflow to remain active.
+        text = ARCHIVED_WORKFLOW.read_text()
         refresh = text.index("lifeos-deploy-gateway deploy-ha-control-bridge")
         closure = text.index("lifeos-deploy-gateway step11-live-closure")
         self.assertLess(refresh, closure)
