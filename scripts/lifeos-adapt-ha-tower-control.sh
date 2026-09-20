@@ -216,6 +216,7 @@ for card in [
     if card:
         cards.append(card)
 
+# Regression: Jinja in this literal must never be parsed as a Python f-string.
 # Never silently publish a Z97 view without the fixed core history cards.
 # Their entity availability may be unknown/offline; Recorder history remains valid.
 core_titles={'CPU & RAM — 24 hours','GPU utilisation & VRAM — 24 hours','Temperatures — 24 hours','Network throughput — 24 hours','Activity state — 24 hours'}
