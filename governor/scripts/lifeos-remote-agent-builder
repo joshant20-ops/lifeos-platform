@@ -103,6 +103,15 @@ run_agent() {
 }
 
 resolve_agent
+if [[ "$ADAPTER" == openhands ]]; then
+  OPENHANDS_VERSION=$("$AGENT" --version 2>&1 | head -1 || true)
+  OPENHANDS_HELP=$("$AGENT" --help 2>&1 || true)
+  grep -q -- '--headless' <<<"$OPENHANDS_HELP" || { echo 'PROVIDER_ERROR=openhands_headless_flag_missing'; exit 54; }
+  grep -q -- '--always-approve' <<<"$OPENHANDS_HELP" || { echo 'PROVIDER_ERROR=openhands_always_approve_flag_missing'; exit 54; }
+  echo "OPENHANDS_VERSION=$OPENHANDS_VERSION"
+  echo 'OPENHANDS_HEADLESS_CAPABILITY=PASS'
+  echo 'OPENHANDS_NONINTERACTIVE_APPROVAL_CAPABILITY=PASS'
+fi
 echo "PROVIDER_SELECTED=$PROVIDER"
 echo "PROVIDER_ADAPTER=$ADAPTER"
 [[ -n "$MODEL" ]] && echo "PROVIDER_MODEL=$MODEL"
