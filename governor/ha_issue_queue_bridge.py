@@ -24,7 +24,6 @@ GOV = os.environ.get("LIFEOS_BACKLOG_GOVERNOR", "http://127.0.0.1:8790").rstrip(
 MQTT_HOST = os.environ.get("LIFEOS_MQTT_HOST", "127.0.0.1")
 REFRESH = max(10, int(os.environ.get("LIFEOS_ISSUE_QUEUE_REFRESH", "30")))
 STALL_SECONDS = max(300, int(os.environ.get("LIFEOS_CONTROL_STALL_SECONDS", "2700")))
-BACKLOG_STATE = Path(os.environ.get("LIFEOS_BACKLOG_STATE_FILE", "/var/lib/lifeos-backlog-runner/state.json"))
 BRIDGE_STATE = Path(os.environ.get("LIFEOS_ISSUE_QUEUE_STATE", "/var/lib/lifeos-ha-issue-queue/state.json"))
 HIGH_LABEL = "lifeos-high-priority"
 DISCOVERY_ROOT = "homeassistant"
@@ -104,43 +103,22 @@ def get_jobs():
     return value
 
 
-def issue_status(number, durable, active, jobs_by_id):
-    if active and int(active.get("issue", -1)) == number:
-        job = jobs_by_id.get(str(active.get("job_id")))
-        if job:
-            return str(job.get("status") or "RUNNING").upper(), str(job.get("stage") or "unknown"), str(job.get("stage_detail") or "")
-        return "RUNNING", "unknown", ""
-    entry = durable.get("issues", {}).get(str(number), {})
-    work = str(entry.get("work_state") or "").upper()
-    retry_after = entry.get("retry_after")
-    if retry_after and int(retry_after) > int(time.time()):
-        return "COOLDOWN", "waiting", str(entry.get("barrier") or "")
-    if work in {"BLOCKED", "WAITING_HUMAN", "WAITING_DEPENDENCY", "FAIL", "ERROR"}:
-        return "BLOCKED", "blocked", str(entry.get("barrier") or "")
-    return "READY", "eligible", ""
-
-
-def issue_plan_progress(number, durable):
-    plan = durable.get("issues", {}).get(str(number), {}).get("plan") or {}
-    milestones = plan.get("milestones") or []
-    targets = [target for milestone in milestones for target in milestone.get("targets", [])
-               if target.get("state") != "SUPERSEDED"]
-    current = next((target for target in targets if target.get("state") == "IN_PROGRESS"), None)
-    if current is None:
-        passed = {target.get("id") for target in targets if target.get("state") == "PASS"}
-        current = next((target for target in targets if target.get("state") in {"PLANNED", "READY", "FAILED"}
-                        and set(target.get("depends_on", [])) <= passed), None)
-    current_milestone = next((milestone for milestone in milestones
-                              if current in milestone.get("targets", [])), None)
-    return {
-        "plan_state": plan.get("state"),
-        "completed_targets": sum(target.get("state") == "PASS" for target in targets),
-        "total_targets": len(targets),
-        "current_milestone": current_milestone.get("id") if current_milestone else None,
-        "current_target": current.get("id") if current else None,
-        "blocker": next((target.get("evidence", [{}])[-1].get("summary") for target in targets
-                         if target.get("state") in {"BLOCKED", "WAITING_HUMAN"} and target.get("evidence")), None),
-    }
+def issue_status(number, jobs_by_issue):
+    candidates = jobs_by_issue.get(number, [])
+    if not candidates:
+        return "READY", "eligible", ""
+    candidates = sorted(candidates, key=lambda j: _epoch(j.get("completed_at") or j.get("stage_changed_at") or j.get("created_at")), reverse=True)
+    job = candidates[0]
+    status = str(job.get("status") or "UNKNOWN").upper()
+    stage = str(job.get("stage") or "unknown")
+    detail = str(job.get("stage_detail") or job.get("blocked_reason") or "")
+    if status in {"QUEUED", "RUNNING"}:
+        return status, stage, detail
+    if status in {"BLOCKED", "WAITING_HUMAN", "WAITING_DEPENDENCY", "FAIL", "ERROR", "REJECTED"}:
+        return "BLOCKED", stage, detail
+    if status == "PASS":
+        return "PASS", stage, detail
+    return "READY", stage, detail
 
 
 def systemd_state(unit):
@@ -200,10 +178,10 @@ def _epoch(value):
         return 0
 
 
-def control_state(rows, durable, jobs):
+def control_state(rows, jobs):
     now = int(time.time())
-    active = durable.get("active") or None
-    jobs_by_id = {str(j.get("id")): j for j in jobs if j.get("id")}
+    active_jobs = [j for j in jobs if str(j.get("status") or "").upper() in {"QUEUED", "RUNNING"}]
+    active_job = sorted(active_jobs, key=lambda j: _epoch(j.get("stage_changed_at") or j.get("created_at")), reverse=True)[0] if active_jobs else None
     active_job = jobs_by_id.get(str(active.get("job_id"))) if active else None
     protected = {unit: systemd_state(unit) for unit in PROTECTED_UNITS}
     runner = runner_health()
@@ -218,8 +196,11 @@ def control_state(rows, durable, jobs):
     blocked = [r for r in rows if r["status"] == "BLOCKED"]
     eligible = [r for r in rows if r["status"] == "READY"]
     current = None
-    if active:
-        current = next((r for r in rows if r["number"] == int(active.get("issue", -1))), None)
+    if active_job:
+        try:
+            current = next((r for r in rows if r["number"] == int(active_job.get("issue") or active_job.get("issue_number") or -1)), None)
+        except (TypeError, ValueError):
+            current = None
     if current is None and blocked:
         current = blocked[0]
     if current is None and eligible:
@@ -241,7 +222,7 @@ def control_state(rows, durable, jobs):
     if degraded:
         state = "DEGRADED"
         blocker = "unhealthy control-plane component: " + ", ".join(degraded)
-    elif active:
+    elif active_job:
         state = "WORKING"
     elif blocked:
         state = "BLOCKED"
@@ -257,7 +238,7 @@ def control_state(rows, durable, jobs):
         "generated_at": now,
         "current_issue": current.get("number") if current else None,
         "current_title": current.get("title") if current else None,
-        "current_job": active.get("job_id") if active else None,
+        "current_job": (active_job or {}).get("id"),
         "current_job_status": str((active_job or {}).get("status") or "") or None,
         "current_stage": str((active_job or {}).get("stage") or (current or {}).get("stage") or "") or None,
         "stage_detail": str((active_job or {}).get("stage_detail") or (current or {}).get("detail") or "")[:500] or None,
@@ -332,10 +313,15 @@ def publish_discovery():
 
 def refresh():
     issues = get_open_issues()
-    durable = load_json(BACKLOG_STATE, {"active": None, "issues": {}})
-    active = durable.get("active") or None
     jobs = get_jobs()
-    jobs_by_id = {str(j.get("id")): j for j in jobs if j.get("id")}
+    jobs_by_issue = {}
+    for job in jobs:
+        raw_issue = job.get("issue") or job.get("issue_number")
+        try:
+            issue_number = int(raw_issue)
+        except (TypeError, ValueError):
+            continue
+        jobs_by_issue.setdefault(issue_number, []).append(job)
     previous = load_json(BRIDGE_STATE, {"issues": []})
     previous_numbers = {int(x) for x in previous.get("issues", [])}
 
@@ -346,12 +332,13 @@ def refresh():
         current_numbers.add(number)
         ls = labels(issue)
         high = HIGH_LABEL in ls
-        status, stage, detail = issue_status(number, durable, active, jobs_by_id)
+        status, stage, detail = issue_status(number, jobs_by_issue)
         rows.append({
             "number": number, "priority": native_priority(issue), "high_priority": high,
             "title": str(issue.get("title") or ""), "status": status, "stage": stage, "detail": detail[:500],
             "url": str(issue.get("html_url") or f"https://github.com/{REPO}/issues/{number}"), "created_at": str(issue.get("created_at") or ""),
-            **issue_plan_progress(number, durable),
+            "plan_state": None, "completed_targets": 0, "total_targets": 0,
+            "current_milestone": None, "current_target": None, "blocker": None,
         })
         mqtt_pub(f"{DISCOVERY_ROOT}/switch/lifeos_issue_queue/issue_{number}_high_priority/config", json.dumps(switch_discovery(number, issue.get("title", "")), separators=(",", ":")))
         mqtt_pub(f"{BASE}/{number}/high_priority/state", "ON" if high else "OFF")
@@ -362,7 +349,7 @@ def refresh():
 
     rows.sort(key=lambda r: (0 if r["high_priority"] else 1, r["priority"], r["created_at"], r["number"]))
     payload = {"count": len(rows), "high_priority_count": sum(1 for r in rows if r["high_priority"]), "issues": rows, "generated_at": int(time.time())}
-    control = control_state(rows, durable, jobs)
+    control = control_state(rows, jobs)
     mqtt_pub(f"{BASE}/state", json.dumps(payload, separators=(",", ":")))
     mqtt_pub(f"{BASE}/control", json.dumps(control, separators=(",", ":")))
     mqtt_pub(f"{BASE}/availability", "online")
