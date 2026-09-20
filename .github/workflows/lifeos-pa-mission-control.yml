@@ -1,12 +1,6 @@
 name: LifeOS PA Mission Control
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/lifeos-pa-mission-control.yml'
-      - 'governor/scripts/lifeos-pa-mission'
-      - 'governor/autonomous_agent.py'
   workflow_dispatch:
     inputs:
       mode:
