@@ -184,7 +184,11 @@ chmod 700 "$HELPER"
 # Keep one local Engineer attempt comfortably inside the Governor/controller budget.
 # Governor owns retries; a 240s OpenHands bound leaves time for a diagnostic retry
 # and terminal evidence instead of letting two iterations consume the 20m mission window.
-LIFEOS_AGENT_TIMEOUT_SECONDS=240 "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
+# OpenHands owns the engineering loop. This is an overall safety ceiling, not a
+# Governor pseudo-iteration deadline. The old 240s cap killed even the isolated
+# #759 filesystem proof before OpenHands emitted its first action (run 35526223801).
+# Callers may lower/raise it within the remote helper's validated 60..1200s range.
+LIFEOS_AGENT_TIMEOUT_SECONDS="${LIFEOS_AGENT_TIMEOUT_SECONDS:-900}" "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
 REMOTE
   )
   RC=$?
