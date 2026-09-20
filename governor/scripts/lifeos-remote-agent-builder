@@ -89,7 +89,16 @@ run_agent() {
       elif "$AGENT" --help 2>&1 | grep -q -- '--full-auto'; then run_bounded "$AGENT" --full-auto exec "$PROMPT" </dev/null
       else run_bounded "$AGENT" exec "$PROMPT" </dev/null; fi
       ;;
-    openhands) run_bounded "$AGENT" --headless --override-with-envs -t "$PROMPT" </dev/null ;;
+    openhands)
+      # Headless OpenHands has no human available to approve tool actions. Without
+      # an explicit non-interactive approval policy it can emit the correct action
+      # and immediately finish without executing it (direct #759 proof,
+      # run 35526869274 attempt 2: terminal action security_risk=MEDIUM).
+      # --always-approve delegates the engineering loop to OpenHands as intended.
+      # The security boundary remains the disposable Engineer worktree/VM plus the
+      # Governor's routing, publication and independent acceptance controls.
+      run_bounded "$AGENT" --headless --always-approve --override-with-envs -t "$PROMPT" </dev/null
+      ;;
   esac
 }
 
