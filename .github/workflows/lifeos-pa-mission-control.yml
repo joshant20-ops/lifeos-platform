@@ -108,6 +108,8 @@ jobs:
         shell: bash
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
+          # #418 staged bootstrap: run the trivial child issue first; advance only after live PASS.
+          LIFEOS_PA_TARGET_ISSUE: '759'
         run: |
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
