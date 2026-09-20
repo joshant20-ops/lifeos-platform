@@ -1,0 +1,38 @@
+name: LifeOS #801 Gateway Refresh
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-801-gateway-refresh.yml'
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-801-gateway-refresh
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Sync canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+      - name: Refresh established root-owned gateway
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n bash scripts/lifeos-install-github-runner-gateway.sh
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          set +e
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway cleanup-retired-backlog-runtime >/tmp/801-retired-op.out 2>&1
+          rc=$?
+          set -e
+          cat /tmp/801-retired-op.out
+          test "$rc" -eq 64
+          echo '801_GATEWAY_REFRESH=PASS'
