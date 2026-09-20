@@ -47,7 +47,13 @@ token=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_TOKEN=//p' "$cfg" | tail -1)
 echo 'ENGINEER_BROKER_CONFIG=PASS'
 python3 - "$url" "$token" <<'PY'
 import json,sys,urllib.request,urllib.error,time
-url=sys.argv[1].rstrip('/')+'/v1/chat/completions'; token=sys.argv[2]
+# Engineer config is an OpenAI base URL and already ends in /v1 (the same
+# contract consumed by OpenHands via LLM_BASE_URL). Run 35532979915 attempt 2
+# incorrectly appended another /v1 and therefore probed /v1/v1/chat/completions,
+# yielding a diagnostic-generated HTTP 404 rather than a broker failure.
+base=sys.argv[1].rstrip('/')
+url=base+'/chat/completions' if base.endswith('/v1') else base+'/v1/chat/completions'
+token=sys.argv[2]
 def call(payload,label):
     req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Content-Type':'application/json','Authorization':'Bearer '+token})
     t=time.monotonic()
