@@ -212,7 +212,8 @@ Only emit RESULT=PASS/CLOSED_COUNT=1 when #{target} has an evidence-backed termi
               "Repair Governor job submission response and rerun.")
         return {"rc": 20, "job_id": None, "status": "SUBMISSION_INVALID"}
 
-    print(f"TARGET_ISSUE={target}", flush=True)\n    print(f"GOVERNOR_JOB_ID={job_id}", flush=True)
+    print(f"TARGET_ISSUE={target}", flush=True)
+    print(f"GOVERNOR_JOB_ID={job_id}", flush=True)
     deadline = time.monotonic() + 1140
     latest = job
     while time.monotonic() < deadline:
