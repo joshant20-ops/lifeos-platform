@@ -86,6 +86,12 @@ gate 801-03 "no active script depends on retired backlog state" "" bash -c '
   test -z "$active"
 '
 
+gate 801-04 "retired backlog deploy capability absent" "" bash -c '
+  ! grep -q "deploy-backlog-runner" governor/autonomous_agent.py &&
+  ! grep -q "deploy-backlog-runner" homelab/live/usr/local/sbin/lifeos-root-broker &&
+  python -m pytest -q tests/test_bounded_deployment_broker.py tests/test_privileged_target_identity.py
+'
+
 echo "================================================================"
 echo "BATCH_PHASE=CONSOLIDATED_REPORT"
 echo "BATCH_FINISHED_AT=$(date --iso-8601=seconds)"
