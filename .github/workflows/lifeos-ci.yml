@@ -1,6 +1,6 @@
 name: LifeOS CI
 # HA Tower dashboard Jinja regression proof
-# Tower runtime cold-neighbor fallback proof
+# Tower runtime cold-neighbor fallback proof 2
 # Pass 7 regression: canonical Energy acceptance/reporting contract — rerun 2
 # Pass 5 semantic restoration: fresh PR check trigger
 
