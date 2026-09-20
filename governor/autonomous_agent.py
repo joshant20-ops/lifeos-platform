@@ -393,6 +393,28 @@ def milestone_decision(job, iteration_verdict, evidence):
         "reason": str((iteration_verdict or {}).get("reason") or ""),
         "next_instruction": str((iteration_verdict or {}).get("next_instruction") or ""),
     }
+    if verdict == "BLOCKED":
+        # BLOCKED is terminal only when the verifier supplies a concrete
+        # external/user-only boundary. Generic or self-referential blocker
+        # prose is actionable engineering uncertainty and must be retried.
+        reason = result["reason"].strip()
+        generic = (
+            not reason
+            or "without providing a structured reason" in reason.lower()
+            or "genuine user-only blocker" in reason.lower()
+            or "cannot resolve itself" in reason.lower() and not any(
+                marker in reason.lower()
+                for marker in ("credential", "hardware", "physical", "policy", "authorization", "authorisation")
+            )
+        )
+        if generic:
+            result["milestone_result"] = "RETRY"
+            result["reason"] = "BLOCKED verdict lacked a concrete evidenced external boundary"
+            result["next_instruction"] = (
+                "Continue autonomously: repair actionable engineering gaps or provide "
+                "specific evidence of the exact external/user-only boundary."
+            )
+        return result
     if verdict != "PASS":
         return result
     fields = list(job.get("mandatory_final_fields") or [])
