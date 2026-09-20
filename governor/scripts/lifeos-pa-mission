@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 import time
 
-VERSION = "2026.09.19-9"
+VERSION = "2026.09.20-10"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
@@ -327,14 +327,15 @@ def main():
             state["phase"] = "audit_passed"
             state["executor_rc"] = None
         else:
-            execution = run_executor(faults)
-            state["executor_rc"] = execution["rc"]
-            if execution["rc"] == 0:
-                mission = run_autonomous_mission(faults)
-                state["governor_job_id"] = mission.get("job_id")
-                state["phase"] = "autonomous_mission_passed" if mission["rc"] == 0 else "autonomous_mission_blocked"
-            else:
-                state["phase"] = "scripted_execution_blocked"
+            # Targeted ledger missions are already explicitly scoped below. Do not
+            # gate them on the broad PA planning executor: that planner can fail on
+            # unrelated PA source/JSON planning and previously invoked a cloud
+            # repair path, preventing the local-only #418 mission from starting.
+            print("STAGE=targeted_issue_mission", flush=True)
+            state["executor_rc"] = 0
+            mission = run_autonomous_mission(faults)
+            state["governor_job_id"] = mission.get("job_id")
+            state["phase"] = "autonomous_mission_passed" if mission["rc"] == 0 else "autonomous_mission_blocked"
 
         state_save(state)
         render(faults, state, audit_result)
