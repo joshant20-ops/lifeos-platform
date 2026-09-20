@@ -103,8 +103,14 @@ PY
 trap release_lease EXIT
 
 READY=0
-for _ in $(seq 1 100); do
-  if ssh -o BatchMode=yes -o ConnectTimeout=3 "$ENGINEER" true >/dev/null 2>&1; then READY=1; break; fi
+echo 'ENGINEER_READINESS=waiting'
+for attempt in $(seq 1 60); do
+  if ssh -o BatchMode=yes -o ConnectTimeout=3 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$ENGINEER" true >/dev/null 2>&1; then
+    READY=1
+    echo "ENGINEER_READINESS=ready attempt=$attempt"
+    break
+  fi
+  (( attempt % 5 == 0 )) && echo "ENGINEER_READINESS=waiting attempt=$attempt"
   sleep 3
 done
 if (( READY == 0 )); then
@@ -113,7 +119,8 @@ if (( READY == 0 )); then
   exit 21
 fi
 
-DISCOVERY=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s <<'REMOTE'
+echo 'ENGINEER_DISCOVERY=START'
+DISCOVERY=$(timeout --signal=TERM --kill-after=5s 30s ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$ENGINEER" bash -s <<'REMOTE'
 set -euo pipefail
 export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 if command -v openhands >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/openhands" ]]; then echo 'OPENHANDS=present'; else echo 'OPENHANDS=absent'; fi
@@ -121,8 +128,8 @@ cfg="$HOME/.config/lifeos/governor-broker.env"
 if [[ -f "$cfg" && ! -L "$cfg" && "$(stat -c '%a' "$cfg")" == 600 ]] && grep -q '^LIFEOS_GOVERNOR_BROKER_URL=' "$cfg" && grep -q '^LIFEOS_GOVERNOR_BROKER_TOKEN=' "$cfg"; then echo 'GOVERNOR_BROKER=present'; else echo 'GOVERNOR_BROKER=absent'; fi
 REMOTE
 )
-printf '%s
-' "$DISCOVERY"
+printf '%s\n' "$DISCOVERY"
+echo 'ENGINEER_DISCOVERY=PASS'
 grep -q '^OPENHANDS=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=openhands_unavailable'; exit 21; }
 grep -q '^GOVERNOR_BROKER=present$' <<<"$DISCOVERY" || { echo 'RESULT=RETRY'; echo 'REASON=governor_broker_capability_unavailable'; exit 21; }
 
@@ -161,8 +168,12 @@ trap 'rm -f "$SNAPSHOT"; release_lease' EXIT
 git -C "$CONTROLLER_REPO" bundle create "$SNAPSHOT" HEAD
 test -s "$SNAPSHOT"
 REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
-ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
-scp -q -o BatchMode=yes -o ConnectTimeout=8 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
+echo 'ENGINEER_HANDOFF_PREPARE=START'
+timeout --signal=TERM --kill-after=5s 30s ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
+echo 'ENGINEER_HANDOFF_PREPARE=PASS'
+echo 'ENGINEER_SNAPSHOT_TRANSFER=START'
+timeout --signal=TERM --kill-after=5s 60s scp -q -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
+echo 'ENGINEER_SNAPSHOT_TRANSFER=PASS'
 
 echo "AGENT_SESSION=openhands provider=governor-broker-local-only"
   set +e
@@ -170,7 +181,12 @@ echo "AGENT_SESSION=openhands provider=governor-broker-local-only"
   # the governed handoff evidence. #759 attempt 4 exposed that command
   # substitution captured stdout only, collapsing a real agent failure into the
   # generic local_openhands_attempt_exhausted reason and hiding what to repair.
-  OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" 2>&1 <<'REMOTE'
+  # Stream the remote session live. Command substitution previously buffered all
+  # output until SSH exited, making a healthy/running OpenHands session look hung.
+  # tee preserves live evidence while a temp file retains the bounded handoff.
+  OUTPUT_FILE=$(mktemp)
+  trap 'rm -f "$SNAPSHOT" "$OUTPUT_FILE"; release_lease' EXIT
+  timeout --signal=TERM --kill-after=15s 960s ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" 2>&1 <<'REMOTE' | tee "$OUTPUT_FILE"
 set -euo pipefail
 REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}; SNAPSHOT_REL=${6:?snapshot required}; MODEL=${7:?model required}
 SNAPSHOT="$HOME/$SNAPSHOT_REL"
@@ -191,10 +207,10 @@ chmod 700 "$HELPER"
 LIFEOS_AGENT_TIMEOUT_SECONDS="${LIFEOS_AGENT_TIMEOUT_SECONDS:-900}" "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
 REMOTE
   )
-  RC=$?
+  RC=${PIPESTATUS[0]}
   set -e
-  printf '%s
-' "$OUTPUT"
+  OUTPUT=$(cat "$OUTPUT_FILE")
+  rm -f "$OUTPUT_FILE"
   echo "LOCAL_BUILDER_ATTEMPT_RC=$RC"
   if (( RC != 0 )); then
     echo "LOCAL_BUILDER_FAILURE_EVIDENCE_BEGIN"
