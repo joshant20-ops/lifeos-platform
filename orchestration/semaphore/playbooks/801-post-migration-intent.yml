@@ -1,0 +1,21 @@
+---
+- name: LifeOS #801 post-migration authoritative intent proof
+  hosts: localhost
+  gather_facts: false
+  connection: local
+  become: false
+  tasks:
+    - name: Verify canonical OTS boundary document
+      ansible.builtin.stat:
+        path: /workspace/lifeos-platform/docs/governor-ots-boundary.md
+      register: boundary
+      changed_when: false
+    - name: Require boundary document
+      ansible.builtin.assert:
+        that:
+          - boundary.stat.exists
+          - boundary.stat.isreg
+        quiet: true
+    - name: Emit exact bounded intent
+      ansible.builtin.debug:
+        msg: "LIFEOS_801_SEMAPHORE_INTENT=PASS issue=862 action=verify_governor_ots_boundary mutation=none"
