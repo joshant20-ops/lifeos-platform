@@ -1,25 +1,14 @@
 name: LifeOS OpenHands Action Smoke
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/lifeos-openhands-action-smoke.yml'
-      - 'governor/scripts/lifeos-cloud-builder'
-      - 'governor/scripts/lifeos-remote-agent-builder'
-      - 'governor/agent_contract.py'
-      - 'governor/autonomous_agent_server.py'
-      - 'governor/ai_broker.py'
-      - 'governor/openai_compat.py'
-      - 'scripts/reconcile-canonical-checkout.py'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: lifeos-pi5-control
-  cancel-in-progress: false
+  group: lifeos-openhands-action-smoke
+  cancel-in-progress: true
 
 jobs:
   prove-openhands-action:

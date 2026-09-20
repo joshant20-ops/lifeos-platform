@@ -71,7 +71,6 @@ fi
 
 REQUEST=${1:?request required}
 ITERATION=${2:?iteration required}
-FEEDBACK=${3:-}
 PRIVACY=${LIFEOS_JOB_PRIVACY:-}
 JOB_ID=${LIFEOS_JOB_ID:-unknown}
 RUNTIME_PATH="governor/runtime_jobs/${JOB_ID}.sh"
@@ -151,14 +150,9 @@ USER GOAL:
 $REQUEST
 
 ITERATION: $ITERATION
-LOCAL VERIFIER FEEDBACK:
-${FEEDBACK:-none yet}
 
-FINAL OUTPUT CONTRACT:
-Print these lines at the end:
-RESULT=PASS|RETRY|BLOCKED
-TESTS=<concise result>
-NEXT_RUNTIME_CHECK=<concise check or none>
+Complete the engineering work and leave the worktree in the best testable state you can.
+Governor, not the agent, makes the final acceptance decision.
 EOF
 )
 PROMPT_B64=$(printf '%s' "$PROMPT" | base64 -w0)
@@ -170,8 +164,7 @@ REMOTE_SNAPSHOT=".cache/lifeos/${JOB_ID}.bundle"
 ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" 'install -d -m 0700 "$HOME/.cache/lifeos"'
 scp -q -o BatchMode=yes -o ConnectTimeout=8 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPSHOT"
 
-for attempt in 1; do
-  echo "AGENT_ATTEMPT=openhands provider=governor-broker-local-only attempt=$attempt"
+echo "AGENT_SESSION=openhands provider=governor-broker-local-only"
   set +e
   # Preserve stderr with stdout: OpenHands/timeout/SSH diagnostics are part of
   # the governed handoff evidence. #759 attempt 4 exposed that command
@@ -215,9 +208,5 @@ REMOTE
     echo 'AGENT_RESULT=openhands PASS'
     exit 0
   fi
-  echo "AGENT_RESULT=openhands RETRY exit=$RC"
-done
-
-echo 'RESULT=RETRY'
-echo 'REASON=local_openhands_attempt_exhausted'
-exit 21
+  echo "AGENT_RESULT=openhands FAILED exit=$RC"
+  exit "$RC"
