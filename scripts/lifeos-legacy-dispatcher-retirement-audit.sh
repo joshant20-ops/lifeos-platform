@@ -186,7 +186,10 @@ echo "PROOF_ISSUE_CHECKPOINT=$PROOF_CHECKPOINT"
 REAL_SUBMISSION=NOT_YET_PROVEN
 TERMINAL_HANDLING=NOT_YET_PROVEN
 if [[ "$PROOF_GOV_STATUS" == PASS ]]; then REAL_SUBMISSION=PROVEN; fi
-if [[ "$PROOF_GOV_STATUS" == PASS && "$PROOF_ACTIVE_JOB" == none && "$PROOF_WORK_STATE" == PASS && "$PROOF_VALIDITY" == VALID && "$PROOF_CHECKPOINT" == yes ]]; then
+# The backlog is single-flight, but a later active job must not invalidate proof that
+# the historical Semaphore proof job was terminally handled. The relevant
+# invariant is that the proof job itself is no longer the active record.
+if [[ "$PROOF_GOV_STATUS" == PASS && "$PROOF_ACTIVE_JOB" != "$PROOF_JOB" && "$PROOF_WORK_STATE" == PASS && "$PROOF_VALIDITY" == VALID && "$PROOF_CHECKPOINT" == yes ]]; then
   TERMINAL_HANDLING=PROVEN
 fi
 
