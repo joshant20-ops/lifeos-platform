@@ -599,7 +599,18 @@ def run_builder(job, iteration, verifier_feedback=None):
     if tower_lease:
         _prepare_engineer_builder_host()
     try:
-        cp = subprocess.run(args, text=True, capture_output=True, timeout=BUILDER_TIMEOUT_SECONDS, env=env)
+        try:
+            cp = subprocess.run(args, text=True, capture_output=True, timeout=BUILDER_TIMEOUT_SECONDS, env=env)
+        except subprocess.TimeoutExpired as exc:
+            # A bounded builder timeout is an actionable engineering result, not
+            # an uncaught worker exception that leaves the Governor job RUNNING.
+            stdout = exc.stdout.decode(errors="replace") if isinstance(exc.stdout, bytes) else (exc.stdout or "")
+            stderr = exc.stderr.decode(errors="replace") if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            raw = stdout + "\n" + stderr
+            handoff, evidence = parse_handoff(raw)
+            handoff["_builder_route"] = route
+            evidence += f"\nHANDOFF_ERROR=builder_timeout_{BUILDER_TIMEOUT_SECONDS}s\nRESULT=RETRY\nREASON=builder_timeout\n"
+            return 124, f"BUILDER_ROUTE={route}\n" + evidence, handoff
     finally:
         if tower_lease:
             _AI_BROKER._publish_lease("released", required=False)
