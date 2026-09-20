@@ -89,6 +89,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
+          # Other main merges can land while Engineer preflight is waking. Reconcile
+          # again immediately before the deploy so source verification cannot race.
+          git fetch --prune origin main
+          git show origin/main:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
+          echo 'DEPLOY_CHECKPOINT=pre-deploy-checkout-reconciled'
           LOG=$(mktemp)
           cleanup() { rm -f "$LOG"; }
           trap cleanup EXIT
