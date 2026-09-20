@@ -69,8 +69,7 @@ class EngineerTerminalPolicyTests(unittest.TestCase):
         text = pathlib.Path("governor/autonomous_agent.py").read_text()
         self.assertIn("return finish_job(job, \"complete\"", text)
         self.assertIn("return finish_job(job, \"blocked\"", text)
-        self.assertIn("return finish_job(job, \"blocked_repeated_failure\"", text)
-        self.assertIn('job["blocked_reason"] = "maximum iterations reached"', text)
+        # The current OTS-owned engineering loop is single-pass; repeated-failure\n        # history remains part of the durable record contract, but the agent no\n        # longer loops internally to a blocked_repeated_failure terminal path.\n        self.assertNotIn("return finish_job(job, \"blocked_repeated_failure\"", text)\n        self.assertIn('job["blocked_reason"] = "maximum iterations reached"', text)
         self.assertIn("job[\"record_publication\"] = publish_record", text)
 
     def test_continuation_requires_pass_so_terminal_blocks_cannot_spawn_children(self):
