@@ -37,7 +37,12 @@ jobs:
       - name: Deploy through fixed root broker operation
         run: |
           set -Eeuo pipefail
-          python3 - <<'PY'
+          echo "RUNNER_ID=$(id)"
+          stat -c 'BROKER_SOCKET=%A %U %G %n' /run/lifeos-root-broker.sock
+          getent group lifeos-control
+          helper=$(mktemp)
+          trap 'rm -f "$helper"' EXIT
+          cat >"$helper" <<'PY'
           import json, socket
           from pathlib import Path
 
@@ -67,6 +72,11 @@ jobs:
               raise SystemExit(json.dumps(result, sort_keys=True))
           print('GOVERNED_DEPLOYMENT=PASS')
           PY
+          chmod 0600 "$helper"
+          # The Actions runner can predate a group-membership change. Enter the
+          # existing lifeos-control group explicitly rather than using sudo or
+          # widening the root-broker socket permissions.
+          sg lifeos-control -c "python3 '$helper'"
 
       - name: Live privacy acceptance
         run: |
