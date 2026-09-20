@@ -35,17 +35,9 @@ AUTONOMOUS_FILES = (
     ('governor/target_identity.py', pathlib.Path('/usr/local/libexec/target_identity.py')),
     ('governor/systemd/lifeos-autonomous-agent.service', pathlib.Path('/etc/systemd/system/lifeos-autonomous-agent.service')),
 )
-BACKLOG_FILES = (
-    ('governor/backlog_runner.py', pathlib.Path('/usr/local/libexec/lifeos-backlog-runner')),
-    ('governor/systemd/lifeos-backlog-runner.service', pathlib.Path('/etc/systemd/system/lifeos-backlog-runner.service')),
-    ('governor/systemd/lifeos-backlog-runner.timer', pathlib.Path('/etc/systemd/system/lifeos-backlog-runner.timer')),
-    ('governor/systemd/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf', pathlib.Path('/etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf')),
-)
 DEPLOYMENT_SPECS = {
     'deploy-engineer-runtime': {'files': DEPLOY_FILES, 'units': DEPLOY_UNITS, 'health': DEPLOY_HEALTH},
     'deploy-autonomous-agent': {'files': AUTONOMOUS_FILES, 'units': ('lifeos-autonomous-agent.service',), 'health': ('http://127.0.0.1:8790/health',)},
-    # The timer remains stopped until a separate runtime verification.
-    'deploy-backlog-runner': {'files': BACKLOG_FILES, 'units': (), 'health': (), 'must_remain_inactive': ('lifeos-backlog-runner.timer',)},
 }
 
 APPROVED_RESTART_UNITS = {
@@ -653,7 +645,7 @@ def main():
     if operation == 'deploy-engineer-runtime':
         deploy_engineer_runtime(request, canonical)
         return
-    if operation in {'deploy-autonomous-agent', 'deploy-backlog-runner'}:
+    if operation == 'deploy-autonomous-agent':
         deploy_bounded_operation(request, canonical, operation, DEPLOYMENT_SPECS[operation])
         return
 
