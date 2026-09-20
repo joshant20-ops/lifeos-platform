@@ -117,6 +117,31 @@ gate 801-06 "active runtime source has no retired backlog-runner references" "" 
   test -z "$refs"
 '
 
+
+gate 801-06 "retired backlog runtime artifacts inventory" "" bash -c '
+  echo "RUNTIME_ARTIFACT_AUDIT=START"
+  state=/var/lib/lifeos-backlog-runner/state.json
+  dropin=/etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf
+  for p in "$state" "$dropin"; do
+    if test -e "$p"; then
+      echo "RETIRED_RUNTIME_ARTIFACT=PRESENT path=$p"
+    else
+      echo "RETIRED_RUNTIME_ARTIFACT=ABSENT path=$p"
+    fi
+  done
+  systemctl show lifeos-autonomous-agent.service -p DropInPaths -p ActiveState -p SubState --no-pager || true
+  echo "RUNTIME_ARTIFACT_AUDIT=PASS"
+'
+
+gate 801-07 "retired backlog runtime artifacts absent" "801-06" bash -c '
+  state=/var/lib/lifeos-backlog-runner/state.json
+  dropin=/etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf
+  test ! -e "$state"
+  test ! -e "$dropin"
+  echo "RETIRED_BACKLOG_STATE=ABSENT"
+  echo "RETIRED_BACKLOG_DROPIN=ABSENT"
+'
+
 echo "================================================================"
 echo "BATCH_PHASE=CONSOLIDATED_REPORT"
 echo "BATCH_FINISHED_AT=$(date --iso-8601=seconds)"
