@@ -197,9 +197,9 @@ HELPER=$(mktemp)
 trap 'rm -f "$HELPER" "$SNAPSHOT"' EXIT
 git -C "$REPO" show origin/main:governor/scripts/lifeos-remote-agent-builder >"$HELPER"
 chmod 700 "$HELPER"
-# Keep one local Engineer attempt comfortably inside the Governor/controller budget.
-# Governor owns retries; a 240s OpenHands bound leaves time for a diagnostic retry
-# and terminal evidence instead of letting two iterations consume the 20m mission window.
+# One local Engineer/OpenHands session owns its engineering loop. Governor does
+# not run a second engineering retry loop. The timeout below is only an overall
+# safety ceiling; it is deliberately larger than the obsolete 240s cap.
 # OpenHands owns the engineering loop. This is an overall safety ceiling, not a
 # Governor pseudo-iteration deadline. The old 240s cap killed even the isolated
 # #759 filesystem proof before OpenHands emitted its first action (run 35526223801).

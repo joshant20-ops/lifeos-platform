@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - 'scripts/test-direct-openhands.sh'
+      - 'governor/scripts/lifeos-local-builder'
+      - 'governor/scripts/lifeos-remote-agent-builder'
 
 permissions:
   contents: read
