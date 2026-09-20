@@ -97,15 +97,15 @@ jobs:
           # #759 controlled attempt 3 proved the broker and required tool-call
           # contract PASS, while the installed OpenHands SDK v1.21.0 emitted
           # invoke_skill(bash-runner) and exited without executing it. Move the
-          # pinned OTS harness to current upstream v1.49.2 before adding custom
+          # pinned OTS harness to current upstream v1.20.0 before adding custom
           # LifeOS execution machinery.
           if command -v openhands >/dev/null 2>&1; then
             current=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('openhands'))" 2>/dev/null || echo unknown)
-            if [[ "$current" != 1.49.2 ]]; then
-              uv tool install --force 'openhands==1.49.2' --python 3.12
+            if [[ "$current" != 1.20.0 ]]; then
+              uv tool install --force 'openhands==1.20.0' --python 3.12
             fi
           else
-            uv tool install 'openhands==1.49.2' --python 3.12
+            uv tool install 'openhands==1.20.0' --python 3.12
           fi
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           command -v openhands
@@ -114,7 +114,7 @@ jobs:
           grep -q -- '--override-with-envs' <<<"$help"
           grep -q -- '--always-approve' <<<"$help"
           installed=$(openhands --version 2>&1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-          [[ "$installed" == 1.49.2 ]]
+          [[ "$installed" == 1.20.0 ]]
           echo 'OPENHANDS_HEADLESS=PASS'
           echo 'OPENHANDS_ENV_OVERRIDE=PASS'
           echo 'OPENHANDS_NONINTERACTIVE_APPROVAL=PASS'
