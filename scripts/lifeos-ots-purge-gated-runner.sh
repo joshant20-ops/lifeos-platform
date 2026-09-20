@@ -56,6 +56,7 @@ set -e
 # 801-01 was already live-proven in Actions run 35536667941. Re-audit it
 # independently here so this harness never trusts a historical green tick.
 echo "BATCH_PHASE=801_CONSUMER_REAUDIT"
+echo "BATCH_RUNNER_REVISION=2"
 echo "BATCH_POLICY=failure_is_logged_then_continue"
 echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
 echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
