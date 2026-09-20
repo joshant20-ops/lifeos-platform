@@ -37,11 +37,11 @@ jobs:
         shell: bash
         run: |
           cd /home/joshan/lifeos-platform
-          # Main can advance while this self-hosted run waits between steps.
-          # Reconcile again immediately before loading the gated runner.
-          git fetch --prune origin main
-          git merge --ff-only origin/main
+          # Use the exact checkout already reconciled by the preceding step.
+          # A second network fetch made acceptance depend on transient DNS and could
+          # silently move the tested revision after the run had started.
           test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo "ACCEPTANCE_GATE_HEAD=$(git rev-parse HEAD)"
           grep -q 'gate 801-05 ' scripts/lifeos-ots-purge-gated-runner.sh
           rm -rf /tmp/lifeos-ots-purge-gates
