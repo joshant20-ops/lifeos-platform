@@ -8,6 +8,10 @@ set -Eeuo pipefail
 # Run 35526223801 proved OpenHands starts correctly but the transport killed it at
 # the former hard-coded 240s ceiling before any agent action. This proof therefore
 # uses the builder's overall OpenHands safety ceiling; it does not add retries.
+# Attempt 2 then proved the model emitted the correct MEDIUM-risk terminal action,
+# but headless OpenHands exited without executing it. The remote adapter now uses
+# OpenHands' non-interactive --always-approve mode; isolation is provided by the
+# disposable Engineer worktree/VM, while Governor retains publication/acceptance.
 job_id="direct-openhands-${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}"
 marker="OPENHANDS_DIRECT_ACTION_${GITHUB_RUN_ID:-manual}_${GITHUB_RUN_ATTEMPT:-1}"
 runtime_path="governor/runtime_jobs/${job_id}.sh"
