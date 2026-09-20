@@ -34,49 +34,13 @@ jobs:
           test "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse origin/main)"
           echo "CANONICAL_SYNC=PASS"
 
-      - name: Deploy through fixed root broker operation
+      - name: Deploy through fixed privileged gateway
         run: |
           set -Eeuo pipefail
-          echo "RUNNER_ID=$(id)"
-          stat -c 'BROKER_SOCKET=%A %U %G %n' /run/lifeos-root-broker.sock
-          getent group lifeos-control
-          helper=$(mktemp)
-          trap 'rm -f "$helper"' EXIT
-          cat >"$helper" <<'PY'
-          import json, socket
-          from pathlib import Path
-
-          identity = json.loads(Path('/etc/lifeos-control/identity.json').read_text())
-          request = {
-              'operation': 'deploy-autonomous-agent',
-              'job_id': 'privacy-' + '${{ github.run_id }}' + '-' + '${{ github.run_attempt }}',
-              'target': identity['target_id'],
-          }
-          with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-              client.settimeout(180)
-              client.connect('/run/lifeos-root-broker.sock')
-              client.sendall((json.dumps(request, sort_keys=True) + '\n').encode())
-              client.shutdown(socket.SHUT_WR)
-              chunks = []
-              while True:
-                  chunk = client.recv(65536)
-                  if not chunk:
-                      break
-                  chunks.append(chunk)
-          result = json.loads(b''.join(chunks))
-          print('BROKER_STATUS=' + str(result.get('status')))
-          print('BROKER_OPERATION=' + str(result.get('operation')))
-          print('BROKER_ROLLBACK=' + str(result.get('rollback_result')))
-          print('BROKER_SOURCE_COMMIT=' + str(result.get('source_commit')))
-          if result.get('status') != 'PASS' or result.get('operation') != 'deploy-autonomous-agent':
-              raise SystemExit(json.dumps(result, sort_keys=True))
-          print('GOVERNED_DEPLOYMENT=PASS')
-          PY
-          chmod 0600 "$helper"
-          # The Actions runner can predate a group-membership change. Enter the
-          # existing lifeos-control group explicitly rather than using sudo or
-          # widening the root-broker socket permissions.
-          sg lifeos-control -c "python3 '$helper'"
+          # GitHub Actions stays unprivileged. The installed root-owned gateway
+          # exposes only fixed reviewed operations and performs the broker call.
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
+          echo 'GOVERNED_DEPLOYMENT=PASS'
 
       - name: Live privacy acceptance
         run: |
