@@ -8,12 +8,10 @@ intent, maps it through a constant allowlist, and sends only `operation`,
 fresh root-owned approval containing verifier, policy, commit, publication, and
 exact source-hash evidence.
 
-Supported deployment transactions are `deploy-engineer-runtime`,
-`deploy-autonomous-agent`, and `deploy-backlog-runner`. Each has a compiled
-source/destination/unit/health manifest. The backlog transaction installs the
-canonical worker and fixed units but requires its timer to remain inactive;
-enabling it is deliberately outside this deployment milestone until post-deploy
-behavior is verified. `restart-approved-unit` remains a separate constant unit
+Supported deployment transactions are `deploy-engineer-runtime` and
+`deploy-autonomous-agent`. Each has a compiled source/destination/unit/health
+manifest. The retired backlog runner is deliberately absent from the privileged
+broker allowlist, so automation cannot resurrect it. `restart-approved-unit` remains a separate constant unit
 allowlist. Systemd daemon reload is internal to a transaction that installs a
 mapped unit and is not exposed as a caller-selectable operation.
 
