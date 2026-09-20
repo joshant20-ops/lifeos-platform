@@ -173,7 +173,11 @@ scp -q -o BatchMode=yes -o ConnectTimeout=8 "$SNAPSHOT" "$ENGINEER:$REMOTE_SNAPS
 for attempt in 1; do
   echo "AGENT_ATTEMPT=openhands provider=governor-broker-local-only attempt=$attempt"
   set +e
-  OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" <<'REMOTE'
+  # Preserve stderr with stdout: OpenHands/timeout/SSH diagnostics are part of
+  # the governed handoff evidence. #759 attempt 4 exposed that command
+  # substitution captured stdout only, collapsing a real agent failure into the
+  # generic local_openhands_attempt_exhausted reason and hiding what to repair.
+  OUTPUT=$(ssh -o BatchMode=yes -o ConnectTimeout=8 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" 2>&1 <<'REMOTE'
 set -euo pipefail
 REPO=${1:?repo required}; PROMPT_B64=${2:?prompt required}; JOB_ID=${3:?job id required}; ITERATION=${4:?iteration required}; RUNTIME_PATH=${5:?runtime path required}; SNAPSHOT_REL=${6:?snapshot required}; MODEL=${7:?model required}
 SNAPSHOT="$HOME/$SNAPSHOT_REL"
@@ -196,6 +200,9 @@ REMOTE
 ' "$OUTPUT"
   echo "LOCAL_BUILDER_ATTEMPT_RC=$RC"
   if (( RC != 0 )); then
+    echo "LOCAL_BUILDER_FAILURE_EVIDENCE_BEGIN"
+    printf '%s\n' "$OUTPUT" | tail -80
+    echo "LOCAL_BUILDER_FAILURE_EVIDENCE_END"
     if grep -q '^HANDOFF_ERROR=' <<<"$OUTPUT"; then
       grep '^HANDOFF_ERROR=' <<<"$OUTPUT" | tail -1
     elif grep -q '^PROVIDER_ERROR=' <<<"$OUTPUT"; then
