@@ -505,12 +505,15 @@ def _marker(text, name):
 
 
 def parse_handoff(raw):
+    deployment_operation = _marker(raw, "DEPLOYMENT_OPERATION")
+    if deployment_operation not in DEPLOYMENT_OPERATIONS:
+        deployment_operation = None
     handoff = {
         "base": _marker(raw, "HANDOFF_BASE"),
         "patch_b64": _marker(raw, "HANDOFF_PATCH_B64"),
         "runtime_b64": _marker(raw, "HANDOFF_RUNTIME_B64"),
         "run_script": _marker(raw, "RUN_SCRIPT"),
-        "deployment_operation": _marker(raw, "DEPLOYMENT_OPERATION"),
+        "deployment_operation": deployment_operation,
     }
     sanitized = re.sub(r"(?m)^HANDOFF_(?:PATCH|RUNTIME)_B64=.*$", "HANDOFF_PAYLOAD=[redacted from verifier evidence]", raw)
     sanitized = re.sub(
