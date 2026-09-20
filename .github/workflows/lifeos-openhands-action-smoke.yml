@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
     paths:
+      - '.github/workflows/lifeos-openhands-action-smoke.yml'
+  push:
+    branches: [main]
+    paths:
       - 'scripts/test-direct-openhands.sh'
 
 permissions:
@@ -15,6 +19,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Direct diagnostic only. Push trigger is path-scoped to this workflow so normal
+  # repository changes cannot consume the Pi runner; workflow_dispatch remains
+  # available for future isolated OpenHands checks.
   direct-openhands:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
