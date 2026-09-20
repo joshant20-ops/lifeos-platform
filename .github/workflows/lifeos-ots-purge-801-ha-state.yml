@@ -35,12 +35,15 @@ jobs:
           ! grep -q '/var/lib/lifeos-backlog-runner/state.json' governor/systemd/lifeos-ha-issue-queue-bridge.service
           python3 -m py_compile governor/ha_issue_queue_bridge.py
           echo "PURGE801_HA_LEGACY_STATE_REFERENCE=ABSENT"
-      - name: Deploy HA bridge through bounded implementation
+      - name: Deploy only HA bridge through bounded existing files
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          sudo -n bash scripts/lifeos-deploy-ha-control-bridge-impl.sh | tee /tmp/purge801-deploy.txt
+          sudo -n install -o root -g root -m 0755 governor/ha_issue_queue_bridge.py /usr/local/libexec/lifeos-ha-issue-queue-bridge
+          sudo -n install -o root -g root -m 0644 governor/systemd/lifeos-ha-issue-queue-bridge.service /etc/systemd/system/lifeos-ha-issue-queue-bridge.service
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl restart lifeos-ha-issue-queue-bridge.service
           echo "PURGE801_HA_DEPLOY=PASS"
       - name: Live HA bridge proof
         shell: bash
