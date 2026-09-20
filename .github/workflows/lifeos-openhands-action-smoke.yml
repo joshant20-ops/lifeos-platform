@@ -1,23 +1,21 @@
-name: LifeOS OpenHands Action Smoke
+name: LifeOS Direct OpenHands Proof
 
 on:
   workflow_dispatch:
-  # #759 direct OpenHands diagnostic. Path-scoped push is retained only so the
-  # connected GitHub surface can start this workflow without workflow_dispatch.
   push:
     branches: [main]
     paths:
-      - '.github/workflows/lifeos-openhands-action-smoke.yml'
+      - 'scripts/test-direct-openhands.sh'
 
 permissions:
   contents: read
 
 concurrency:
-  group: lifeos-openhands-action-smoke
+  group: lifeos-direct-openhands-proof
   cancel-in-progress: true
 
 jobs:
-  prove-openhands-action:
+  direct-openhands:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
     steps:
@@ -28,226 +26,14 @@ jobs:
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
           git show origin/main:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
-          echo "CANONICAL_HEAD=$(git -C /home/joshan/lifeos-platform rev-parse HEAD)"
-
-      - name: Ensure Engineer available
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
-            echo 'ENGINEER_ALREADY_READY=PASS'
-            exit 0
-          fi
-          wol_helper=''
-          for candidate in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
-            if test -x "$candidate"; then
-              wol_helper="$candidate"
-              break
-            fi
-          done
-          wake_engineer() {
-            if test -n "$wol_helper"; then
-              "$wol_helper"
-            else
-              command -v wakeonlan >/dev/null
-              wakeonlan 40:8d:5c:84:41:64 >/dev/null
-            fi
-          }
-          wake_engineer
-          echo "ENGINEER_WAKE_PATH=${wol_helper:-direct-wol}"
-          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
-          ready=0
-          deadline=$((SECONDS + 600))
-          attempt=0
-          while (( SECONDS < deadline )); do
-            attempt=$((attempt + 1))
-            if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
-              ready=1
-              break
-            fi
-            if (( attempt % 6 == 0 )); then
-              wake_engineer
-              echo "ENGINEER_WAKE_RETRY=$attempt"
-            fi
-            sleep 5
-          done
-          test "$ready" -eq 1
-          echo 'ENGINEER_WAKE=PASS'
-
-      - name: Prove local model transport (Governor job lifecycle bypassed)
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          token="$HOME/.config/lifeos/ai-broker.token"
-          test -s "$token"
-
-          # This is a demand-powered local route. Do not spend one opaque 180s
-          # curl waiting on a cold Ollama backend while holding the shared Pi5
-          # control concurrency group (#759). Use the local-builder readiness
-          # probe first so progress/failure is bounded and visible.
-          echo 'OPENHANDS_SMOKE_LOCAL_ROUTE_READINESS=START'
-          /usr/local/libexec/lifeos-local-builder --self-test
-          echo 'OPENHANDS_SMOKE_LOCAL_ROUTE_READINESS=PASS'
-
-          request=$(python3 - <<'PY'
-          import json
-          print(json.dumps({
-              'model':'lifeos-local-only-normal',
-              'messages':[{'role':'user','content':'Call report_test_value with value OPENHANDS_GATE_BROKER_OK. Do not answer normally.'}],
-              'tools':[{'type':'function','function':{
-                  'name':'report_test_value',
-                  'description':'Report a harmless smoke-test value.',
-                  'parameters':{'type':'object','properties':{'value':{'type':'string'}},'required':['value']}
-              }}],
-              'tool_choice':'required'
-          }))
-          PY
-          )
-          out=$(curl -fsS --max-time 180 \
-            -H 'Content-Type: application/json' \
-            -H "Authorization: Bearer $(cat "$token")" \
-            -d "$request" http://127.0.0.1:8790/v1/chat/completions)
-          python3 - "$out" <<'PY'
-          import json,sys
-          j=json.loads(sys.argv[1])
-          assert j.get('lifeos_privacy') == 'local-only', j
-          assert j.get('lifeos_provider') == 'ollama', j
-          c=j['choices'][0]
-          assert c.get('finish_reason') == 'tool_calls', c
-          ok=False
-          for call in c.get('message',{}).get('tool_calls') or []:
-              fn=call.get('function') or {}
-              if fn.get('name') != 'report_test_value':
-                  continue
-              args=fn.get('arguments') or '{}'
-              if isinstance(args,str): args=json.loads(args)
-              if args.get('value') == 'OPENHANDS_GATE_BROKER_OK': ok=True
-          assert ok, c
-          print('GOVERNOR_AUTHENTICATED_TOOL_ROUTE=PASS')
-          print('GOVERNOR_PRIVATE_TOOL_ROUTE=LOCAL_OLLAMA')
-          PY
-
-      - name: Direct OpenHands filesystem action (Governor job lifecycle bypassed)
+          echo "CANONICAL_HEAD=$(git rev-parse HEAD)"
+      - name: Run direct OpenHands isolation proof
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          job_id="openhands-action-gate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          marker="OPENHANDS_REAL_ACTION_${GITHUB_RUN_ID}_${GITHUB_RUN_ATTEMPT}"
-          runtime_path="governor/runtime_jobs/${job_id}.sh"
-          request="Direct OpenHands diagnostic. The Governor autonomous job lifecycle is intentionally bypassed. Use your shell/file-writing tools in the disposable Engineer worktree to create ${runtime_path}. The file must contain exactly three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Execute it and verify stdout is exactly ${marker}. Do not change any other file. Do not commit, push, fetch, clone, or access GitHub. When the task and test are complete, stop."
-          log=$(mktemp)
-          runtime=$(mktemp)
-          cleanup() { rm -f "$log" "$runtime"; }
-          trap cleanup EXIT
-          set +e
-          LIFEOS_JOB_ID="$job_id" LIFEOS_JOB_TASK_CLASS=normal LIFEOS_JOB_PRIVACY=local-only \
-            /usr/local/libexec/lifeos-local-builder "$request" 1 '' | tee "$log"
-          rc=${PIPESTATUS[0]}
-          set -e
-          test "$rc" -eq 0
-          grep -q '^AGENT_SESSION=openhands provider=governor-broker-local-only          grep -q '^HANDOFF_BASE=' "$log"
-          b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
-          test -n "$b64"
-          printf '%s' "$b64" | base64 -d >"$runtime"
-          python3 - "$runtime" "$marker" <<'PY'
-          import pathlib,sys
-          p=pathlib.Path(sys.argv[1]); marker=sys.argv[2]
-          expected=["#!/usr/bin/env bash", "set -euo pipefail", f"printf '%s\\n' '{marker}'"]
-          actual=p.read_text().splitlines()
-          assert actual == expected, repr(actual)
-          print('OPENHANDS_FILESYSTEM_ACTION_EVIDENCE=PASS')
-          PY
-          chmod 700 "$runtime"
-          output=$("$runtime")
-          test "$output" = "$marker"
-          echo 'OPENHANDS_HARMLESS_ACTION_EXECUTION=PASS'
-          echo 'OPENHANDS_DIRECT_GOVERNOR_JOB_BYPASS=PASS'
-          echo 'OPENHANDS_ACTION_SMOKE=PASS'
-
-      - name: Prove canonical repository remained clean
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          git fetch --prune origin main
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
-
-      - name: Release smoke-time Tower power
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
-          echo 'TOWER_RELEASE_REQUESTED=PASS'
- "$log"
-          ! grep -q '^AGENT_RESULT=codex PASS          grep -q '^HANDOFF_BASE=' "$log"
-          b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
-          test -n "$b64"
-          printf '%s' "$b64" | base64 -d >"$runtime"
-          python3 - "$runtime" "$marker" <<'PY'
-          import pathlib,sys
-          p=pathlib.Path(sys.argv[1]); marker=sys.argv[2]
-          expected=["#!/usr/bin/env bash", "set -euo pipefail", f"printf '%s\\n' '{marker}'"]
-          actual=p.read_text().splitlines()
-          assert actual == expected, repr(actual)
-          print('OPENHANDS_FILESYSTEM_ACTION_EVIDENCE=PASS')
-          PY
-          chmod 700 "$runtime"
-          output=$("$runtime")
-          test "$output" = "$marker"
-          echo 'OPENHANDS_HARMLESS_ACTION_EXECUTION=PASS'
-          echo 'OPENHANDS_ACTION_SMOKE=PASS'
-
-      - name: Prove canonical repository remained clean
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          git fetch --prune origin main
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
-
-      - name: Release smoke-time Tower power
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
-          echo 'TOWER_RELEASE_REQUESTED=PASS'
- "$log"
-          grep -q '^HANDOFF_BASE=' "$log"
-          b64=$(sed -n 's/^HANDOFF_RUNTIME_B64=//p' "$log" | tail -1)
-          test -n "$b64"
-          printf '%s' "$b64" | base64 -d >"$runtime"
-          python3 - "$runtime" "$marker" <<'PY'
-          import pathlib,sys
-          p=pathlib.Path(sys.argv[1]); marker=sys.argv[2]
-          expected=["#!/usr/bin/env bash", "set -euo pipefail", f"printf '%s\\n' '{marker}'"]
-          actual=p.read_text().splitlines()
-          assert actual == expected, repr(actual)
-          print('OPENHANDS_FILESYSTEM_ACTION_EVIDENCE=PASS')
-          PY
-          chmod 700 "$runtime"
-          output=$("$runtime")
-          test "$output" = "$marker"
-          echo 'OPENHANDS_HARMLESS_ACTION_EXECUTION=PASS'
-          echo 'OPENHANDS_ACTION_SMOKE=PASS'
-
-      - name: Prove canonical repository remained clean
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          git fetch --prune origin main
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
-
-      - name: Release smoke-time Tower power
+          bash scripts/test-direct-openhands.sh
+      - name: Release Tower
         if: always()
         shell: bash
         run: |
