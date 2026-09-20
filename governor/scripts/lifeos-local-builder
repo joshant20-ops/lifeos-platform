@@ -222,6 +222,8 @@ checkpoint remote_agent_launch
   # Stream the remote session live. Command substitution previously buffered all
   # output until SSH exited, making a healthy/running OpenHands session look hung.
   # tee preserves live evidence while a temp file retains the bounded handoff.
+  # Keep this as a pipeline, not command substitution: an orphan `)` here broke
+  # `bash -n` and blocked deploy preflight in run 35530512634 attempt 2.
   OUTPUT_FILE=$(mktemp)
   trap 'rm -f "$SNAPSHOT" "$OUTPUT_FILE"; cleanup_session' EXIT
   timeout --signal=TERM --kill-after=15s 960s ssh -o BatchMode=yes -o ConnectTimeout=8 -o ServerAliveInterval=10 -o ServerAliveCountMax=3 "$ENGINEER" bash -s -- "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" "$REMOTE_SNAPSHOT" "$MODEL" 2>&1 <<'REMOTE' | tee "$OUTPUT_FILE"
@@ -244,7 +246,6 @@ chmod 700 "$HELPER"
 # Callers may lower/raise it within the remote helper's validated 60..1200s range.
 LIFEOS_AGENT_TIMEOUT_SECONDS="${LIFEOS_AGENT_TIMEOUT_SECONDS:-900}" "$HELPER" "$REPO" "$PROMPT_B64" "$JOB_ID" "$ITERATION" "$RUNTIME_PATH" governor-broker openhands "$MODEL" ""
 REMOTE
-  )
   RC=${PIPESTATUS[0]}
   set -e
   OUTPUT=$(cat "$OUTPUT_FILE")
