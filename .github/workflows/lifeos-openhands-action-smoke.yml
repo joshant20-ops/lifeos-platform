@@ -2,6 +2,12 @@ name: LifeOS OpenHands Action Smoke
 
 on:
   workflow_dispatch:
+  # Temporary deterministic trigger for the isolated #759 diagnostic. This is
+  # intentionally path-scoped so normal repository pushes do not run the smoke.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-openhands-action-smoke.yml'
 
 permissions:
   contents: read
