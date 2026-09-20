@@ -85,6 +85,15 @@ jobs:
           set -Eeuo pipefail
           token="$HOME/.config/lifeos/ai-broker.token"
           test -s "$token"
+
+          # This is a demand-powered local route. Do not spend one opaque 180s
+          # curl waiting on a cold Ollama backend while holding the shared Pi5
+          # control concurrency group (#759). Use the local-builder readiness
+          # probe first so progress/failure is bounded and visible.
+          echo 'OPENHANDS_SMOKE_LOCAL_ROUTE_READINESS=START'
+          /usr/local/libexec/lifeos-local-builder --self-test
+          echo 'OPENHANDS_SMOKE_LOCAL_ROUTE_READINESS=PASS'
+
           request=$(python3 - <<'PY'
           import json
           print(json.dumps({
