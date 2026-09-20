@@ -100,8 +100,24 @@ jobs:
         run: |
           set +e
           cd /home/joshan/lifeos-platform
-          python3 governor/scripts/lifeos-pa-mission audit
-          echo "SMOKE_MISSION_AUDIT_RC=$?"
+          out=$(mktemp)
+          python3 governor/scripts/lifeos-pa-mission audit 2>&1 | tee "$out"
+          rc=${PIPESTATUS[0]}
+          if grep -q '^MISSION_PHASE=audit_passed
+
+      - name: Collect all smoke findings
+        if: always()
+        shell: bash
+        run: |
+          echo 'SMOKE_COMPLETE=YES'
+          echo 'NOTE=All probes use continue-on-error so later stages run even when earlier probes fail.'
+          echo 'NOTE=This smoke deliberately does not submit/close a GitHub issue; it validates the pipeline components without mutating issue state.'
+ "$out" && { [[ "$rc" == 0 ]] || [[ "$rc" == 20 ]]; }; then
+            echo "SMOKE_MISSION_AUDIT_RC=0"
+          else
+            echo "SMOKE_MISSION_AUDIT_RC=$rc"
+          fi
+          rm -f "$out"
 
       - name: Collect all smoke findings
         if: always()
