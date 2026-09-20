@@ -22,12 +22,37 @@ self_test() {
   [[ -s "$BROKER_TOKEN" && ! -L "$BROKER_TOKEN" && "$(stat -c '%a' "$BROKER_TOKEN")" == 600 ]] || {
     echo 'LOCAL_BUILDER_SELFTEST=FAIL'; echo 'REASON=broker_token_unavailable'; return 20;
   }
-  local req out
+  local req out rc
   req='{"model":"openai/lifeos-local-only-normal","messages":[{"role":"user","content":"Reply with exactly LOCAL_ONLY_ROUTE_OK"}]}'
-  out=$(curl -fsS --max-time 180 -H 'Content-Type: application/json' \
-    -H "Authorization: Bearer $(cat "$BROKER_TOKEN")" -d "$req" "$BROKER_URL") || {
-      echo 'LOCAL_BUILDER_SELFTEST=FAIL'; echo 'REASON=local_broker_unavailable'; return 20;
-    }
+
+  # The local-only broker is demand powered. A route self-test must exercise the
+  # same lease/WoL readiness contract as a real local job instead of treating a
+  # cold Tower as a broken route. Keep this fail-closed: no cloud fallback.
+  python3 - "$CONTROLLER_REPO" <<'PY'
+import importlib.util, pathlib, sys
+p=pathlib.Path(sys.argv[1])/'governor'/'ai_broker.py'
+s=importlib.util.spec_from_file_location('lifeos_local_builder_selftest_broker',p)
+m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+m._publish_lease('active')
+m._wake_local_ai()
+PY
+  trap release_lease RETURN
+
+  out=''
+  rc=1
+  for attempt in $(seq 1 24); do
+    set +e
+    out=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer $(cat "$BROKER_TOKEN")" -d "$req" "$BROKER_URL")
+    rc=$?
+    set -e
+    (( rc == 0 )) && break
+    echo "LOCAL_BUILDER_SELFTEST_WAIT=local_route_not_ready attempt=$attempt" >&2
+    sleep 5
+  done
+  if (( rc != 0 )); then
+    echo 'LOCAL_BUILDER_SELFTEST=FAIL'; echo 'REASON=local_broker_unavailable_after_demand_wake'; return 20
+  fi
   python3 - "$out" <<'PY'
 import json,sys
 j=json.loads(sys.argv[1])
