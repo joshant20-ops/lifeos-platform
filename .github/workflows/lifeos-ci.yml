@@ -1,5 +1,6 @@
 name: LifeOS CI
 # Pass 7 regression: canonical Energy acceptance/reporting contract — rerun 2
+# Pass 5 semantic restoration: fresh PR check trigger
 
 on:
   push:
@@ -124,6 +125,10 @@ jobs:
             scripts/lifeos-deploy-tower-metrics-wrapper.sh >/dev/null
           grep -F "deploy-tower-metrics" \
             .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F "deploy-triggers/ha-control-bridge" .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F "deploy-triggers/tower-metrics" .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F "Run Governor privacy live acceptance" .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F "LIVE_PRIVACY_ACCEPTANCE=PASS" .github/workflows/lifeos-pi-deploy.yml >/dev/null
 
       - name: Validate specialist Energy Opportunity integration
         run: |
