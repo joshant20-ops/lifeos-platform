@@ -1173,16 +1173,18 @@ class Handler(BaseHTTPRequestHandler):
                 if not messages:
                     raise ValueError("messages_required")
                 if tools:
+                    effective_privacy = "normal"
                     result = _AI_BROKER.chat(
                         messages,
                         tools=tools,
                         tool_choice=tool_choice,
-                        privacy="normal",
+                        privacy=effective_privacy,
                         task_class="normal",
                     )
                     message = result["message"]
                     finish_reason = result["finish_reason"]
                 else:
+                    effective_privacy = "local-only"
                     prompt = "\n".join(
                         f"{str(item.get('role') or 'user').upper()}: {str(item.get('content') or '')}"
                         for item in messages if isinstance(item, dict)
@@ -1198,6 +1200,7 @@ class Handler(BaseHTTPRequestHandler):
                     "created": int(time.time()),
                     "model": result["model"],
                     "lifeos_provider": result["provider"],
+                    "lifeos_privacy": effective_privacy,
                     "choices": [{"index": 0, "message": message, "finish_reason": finish_reason}],
                 })
             except Exception as exc:
