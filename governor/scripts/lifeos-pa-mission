@@ -210,7 +210,7 @@ Only emit RESULT=PASS/CLOSED_COUNT=1 when #418 has an evidence-backed terminal d
         return {"rc": 20, "job_id": None, "status": "SUBMISSION_INVALID"}
 
     print(f"GOVERNOR_JOB_ID={job_id}", flush=True)
-    deadline = time.monotonic() + 1050
+    deadline = time.monotonic() + 1140
     latest = job
     while time.monotonic() < deadline:
         try:
