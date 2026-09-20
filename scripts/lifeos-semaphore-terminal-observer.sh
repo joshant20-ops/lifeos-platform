@@ -58,7 +58,11 @@ echo "LEGACY_BACKLOG_STATE=NOT_REQUIRED"
 # interpreted as Python source on some shells).
 COMMENTS_FILE=$(mktemp)
 trap 'rm -f "$COMMENTS_FILE"' EXIT
-runuser -u joshan -- gh api "repos/$REPO_FULL/issues/$ISSUE/comments?per_page=100" >"$COMMENTS_FILE" 2>/dev/null || printf '[]\n' >"$COMMENTS_FILE"
+if [[ $(id -u) -eq 0 ]]; then
+  runuser -u joshan -- gh api "repos/$REPO_FULL/issues/$ISSUE/comments?per_page=100" >"$COMMENTS_FILE" 2>/dev/null || printf '[]\n' >"$COMMENTS_FILE"
+else
+  gh api "repos/$REPO_FULL/issues/$ISSUE/comments?per_page=100" >"$COMMENTS_FILE" 2>/dev/null || printf '[]\n' >"$COMMENTS_FILE"
+fi
 checkpoint=$(python3 - "$COMMENTS_FILE" "$JOB_ID" <<'PY'
 import json,sys
 path,job=sys.argv[1:]
@@ -95,7 +99,12 @@ print(sum(str(j.get('status','')).upper() in {'QUEUED','RUNNING'} for j in data)
 PY
 )"
 
-[[ -z "$(runuser -u joshan -- git -C "$PLATFORM" status --porcelain)" ]] || { echo 'ERROR: platform repository dirty during observation'; exit 1; }
+if [[ $(id -u) -eq 0 ]]; then
+  repo_status=$(runuser -u joshan -- git -C "$PLATFORM" status --porcelain)
+else
+  repo_status=$(git -C "$PLATFORM" status --porcelain)
+fi
+[[ -z "$repo_status" ]] || { echo 'ERROR: platform repository dirty during observation'; exit 1; }
 
 if [[ "$handled" == yes && "$checkpoint" == yes ]]; then
   echo
