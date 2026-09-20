@@ -889,8 +889,32 @@ def _execute_job_locked(job):
             job["completed_at"] = now()
             return finish_job(job, "complete", "local verifier accepted result")
         if v == "BLOCKED":
+            reason = str(decision.get("reason") or "").strip()
+            # BLOCKED is valid only when the verifier identifies the concrete
+            # external/user-only boundary. A bare BLOCKED result is not a
+            # terminal disposition: retry so the agent can repair or produce
+            # structured evidence instead of silently closing work.
+            if not reason:
+                signature = failure_signature(rec["evidence"], verdict)
+                repeat_count = update_failure_history(job, signature)
+                if repeat_count >= REPEATED_FAILURE_LIMIT:
+                    job["status"] = "BLOCKED"
+                    job["blocked_reason"] = (
+                        "verifier repeatedly returned BLOCKED without a concrete reason; "
+                        "terminal disposition rejected"
+                    )
+                    job["completed_at"] = now()
+                    return finish_job(job, "blocked_invalid_verdict", job["blocked_reason"])
+                feedback = (
+                    "Verifier returned BLOCKED without a concrete external/user-only reason. "
+                    "Do not close the issue. Re-evaluate the evidence, repair any actionable "
+                    "engineering gap, or identify and evidence the exact external boundary."
+                )
+                set_stage(job, "retry_planning", f"iteration {iteration}: rejected unstructured BLOCKED verdict")
+                save(job)
+                continue
             job["status"] = "BLOCKED"
-            job["blocked_reason"] = decision.get("reason")
+            job["blocked_reason"] = reason
             job["completed_at"] = now()
             return finish_job(job, "blocked", job["blocked_reason"])
 
