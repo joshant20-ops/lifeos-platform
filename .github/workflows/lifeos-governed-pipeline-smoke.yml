@@ -72,8 +72,13 @@ jobs:
           if (( ready == 0 )); then echo 'SMOKE_ENGINEER_WAKE_RC=1'; else echo 'SMOKE_ENGINEER_WAKE_RC=0'; fi
           ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
           set +e
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           echo "ENGINEER_HOST=$(hostname)"
-          command -v openhands >/dev/null 2>&1; echo "SMOKE_OPENHANDS_RC=$?"
+          if command -v openhands >/dev/null 2>&1 || test -x "$HOME/.local/bin/openhands"; then
+            echo "SMOKE_OPENHANDS_RC=0"
+          else
+            echo "SMOKE_OPENHANDS_RC=1"
+          fi
           test -f "$HOME/.config/lifeos/governor-broker.env"; echo "SMOKE_BROKER_CONFIG_EXISTS_RC=$?"
           test "$(stat -c '%a' "$HOME/.config/lifeos/governor-broker.env" 2>/dev/null)" = 600; echo "SMOKE_BROKER_CONFIG_MODE_RC=$?"
           test -d /home/joshan/workspace/lifeos-platform/.git; echo "SMOKE_ENGINEER_REPO_RC=$?"
