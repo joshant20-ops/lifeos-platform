@@ -42,13 +42,13 @@ _AI_BROKER_SPEC.loader.exec_module(_AI_BROKER)
 ROOT = pathlib.Path(os.environ.get("LIFEOS_AGENT_STATE", "/var/lib/lifeos-agent"))
 ROOT.mkdir(parents=True, exist_ok=True)
 PORT = int(os.environ.get("LIFEOS_AGENT_PORT", "8790"))
-MAX_ITERATIONS = int(os.environ.get("LIFEOS_AGENT_MAX_ITERATIONS", "8"))
+MAX_ITERATIONS = int(os.environ.get("LIFEOS_AGENT_MAX_ITERATIONS", "3"))
 BUILDER = os.environ.get("LIFEOS_AGENT_BUILDER", "/usr/local/libexec/lifeos-cloud-builder")
 LOCAL_BUILDER = os.environ.get("LIFEOS_AGENT_LOCAL_BUILDER", "")
 ENGINEER_HOST = os.environ.get("LIFEOS_ENGINEER_HOST", "192.168.0.204")
 ENGINEER_SSH_PORT = int(os.environ.get("LIFEOS_ENGINEER_SSH_PORT", "22"))
-ENGINEER_WAKE_TIMEOUT = int(os.environ.get("LIFEOS_ENGINEER_WAKE_TIMEOUT", "300"))
-BUILDER_TIMEOUT_SECONDS = int(os.environ.get("LIFEOS_BUILDER_TIMEOUT_SECONDS", "720"))
+ENGINEER_WAKE_TIMEOUT = int(os.environ.get("LIFEOS_ENGINEER_WAKE_TIMEOUT", "120"))
+BUILDER_TIMEOUT_SECONDS = int(os.environ.get("LIFEOS_BUILDER_TIMEOUT_SECONDS", "300"))
 DISPATCH_TOKEN_FILE = os.environ.get("LIFEOS_BACKLOG_DISPATCH_TOKEN_FILE", "")
 VERIFIER_URL = os.environ.get("LIFEOS_LOCAL_VERIFIER_URL", "http://192.168.0.201:11434/api/generate")
 VERIFIER_MODEL = os.environ.get("LIFEOS_LOCAL_VERIFIER_MODEL", "qwen2.5-coder:7b-instruct")
@@ -835,11 +835,11 @@ def run_pi5_runtime(job, handoff):
         return publication
     target = PLATFORM_REPO / rel
     cp = subprocess.run(
-        ["/usr/bin/timeout", "900s", str(target)],
+        ["/usr/bin/timeout", "240s", str(target)],
         cwd=PLATFORM_REPO,
         text=True,
         capture_output=True,
-        timeout=930,
+        timeout=270,
         env={**os.environ, "LIFEOS_JOB_ID": job["id"], "LIFEOS_JOB_REQUEST": job["request"]},
     )
     out = (cp.stdout or "") + "\n" + (cp.stderr or "")
