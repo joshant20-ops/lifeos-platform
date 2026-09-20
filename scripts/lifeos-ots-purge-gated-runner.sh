@@ -59,7 +59,7 @@ echo "BATCH_PHASE=801_CONSUMER_REAUDIT"
 echo "BATCH_POLICY=failure_is_logged_then_continue"
 echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
 echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
-echo "BATCH_GATE_COUNT=3"
+echo "BATCH_GATE_COUNT=4"
 
 gate 801-01 "HA bridge legacy-state removal" "" bash -c '
   ! grep -q "/var/lib/lifeos-backlog-runner/state.json" governor/ha_issue_queue_bridge.py &&

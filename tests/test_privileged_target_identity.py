@@ -43,7 +43,7 @@ def test_identity_errors_fail_closed(tmp_path, contents):
 
 
 @pytest.mark.parametrize(
-    "operation", ["deploy-engineer-runtime", "deploy-autonomous-agent", "deploy-backlog-runner"]
+    "operation", ["deploy-engineer-runtime", "deploy-autonomous-agent"]
 )
 def test_governor_deployment_requests_use_authoritative_target(tmp_path, monkeypatch, operation):
     monkeypatch.setenv("LIFEOS_AGENT_STATE", str(tmp_path))

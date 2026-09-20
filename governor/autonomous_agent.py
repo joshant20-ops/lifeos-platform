@@ -73,7 +73,7 @@ ACTIVE_JOB_LOCK = threading.Lock()
 ACTIVE_JOB_ID = None
 DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})
 DEPLOYMENT_OPERATIONS = frozenset({
-    "deploy-engineer-runtime", "deploy-autonomous-agent", "deploy-backlog-runner",
+    "deploy-engineer-runtime", "deploy-autonomous-agent",
 })
 
 INCOMPLETE_CONTRACT_STATES = frozenset({
