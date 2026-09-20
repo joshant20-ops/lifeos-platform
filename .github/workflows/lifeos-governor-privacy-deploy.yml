@@ -29,6 +29,7 @@ jobs:
           set -Eeuo pipefail
           REPO=/home/joshan/lifeos-platform
           git -C "$REPO" fetch origin main
+          git -C "$REPO" checkout -B main origin/main
           git -C "$REPO" reset --hard origin/main
           test -z "$(git -C "$REPO" status --porcelain --untracked-files=no)"
           test "$(git -C "$REPO" rev-parse HEAD)" = "$(git -C "$REPO" rev-parse origin/main)"
