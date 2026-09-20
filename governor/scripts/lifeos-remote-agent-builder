@@ -122,18 +122,10 @@ if (( AGENT_RC == 124 || AGENT_RC == 137 )); then
   exit "$AGENT_RC"
 fi
 (( AGENT_RC == 0 )) || { echo "HANDOFF_ERROR=agent_exit_${AGENT_RC}"; exit "$AGENT_RC"; }
-# The OTS agent owns the engineering session, but Governor owns acceptance.
-# Preserve the agent's declared result as evidence when parseable; do not make
-# an agent self-assessment a second terminal gate in front of the independent
-# Governor verifier.  #759 exposed this duplication when OpenHands completed
-# its bounded session but omitted an exact RESULT=PASS line (exit 64), so the
-# verifier never saw the work/evidence.
-if python3 "$WORKTREE/governor/agent_contract.py" "$AGENT_LOG"; then
-  echo "AGENT_DECLARED_RESULT=PASS"
-else
-  echo "AGENT_DECLARED_RESULT=NONPASS_OR_UNPARSEABLE"
-  echo "AGENT_ACCEPTANCE_AUTHORITY=governor_verifier"
-fi
+# OpenHands/Codex owns the engineering session; Governor owns acceptance.
+# Do not parse or gate on an agent self-verdict here. A zero-exit OTS session
+# hands its artifacts and evidence to Governor's independent verifier (#759/#764).
+echo "AGENT_SESSION=completed"
 
 git reset --mixed "$BASE" >/dev/null 2>&1 || true
 git add -A
@@ -146,9 +138,7 @@ RUNTIME_PRESENT=0
 if (( PATCH_BYTES == 0 && RUNTIME_PRESENT == 0 )); then
   # A verification/disposition job can legitimately prove the requested state
   # is already satisfied without changing source or launching Pi runtime work.
-  # The agent contract above already requires an explicit RESULT=PASS; preserve
-  # its sanitised test evidence instead of turning a successful inspection into
-  # a deterministic no_material_handoff failure.
+  # Evidence-only sessions are valid; Governor decides whether they satisfy the goal.
   echo "HANDOFF_BASE=$BASE"
   echo "HANDOFF_PATCH_BYTES=0"
   echo "HANDOFF_NO_CHANGE=PASS"
