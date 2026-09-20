@@ -14,7 +14,7 @@ import urllib.request
 import urllib.error
 import time
 
-VERSION = "2026.09.20-14"
+VERSION = "2026.09.20-15"
 REPO = pathlib.Path(os.getenv("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform"))
 STATE = pathlib.Path(os.getenv("LIFEOS_PA_MISSION_STATE", str(pathlib.Path.home() / ".local/state/lifeos-pa-autonomy")))
 SF = STATE / "state.json"
@@ -175,20 +175,23 @@ def run_executor(faults):
 
 
 def run_autonomous_mission(faults):
-    """Submit the bounded backlog objective to the already-deployed Governor and wait for terminal evidence."""
-    request = """Process exactly one autonomous-safe unresolved LifeOS issue: #418 — Engineer: GitHub issue-to-Engineer/Governor pickup path.\n\nThis is the post-smoke end-to-end acceptance run. Component smoke is green; exercise the real governed pickup path and do not declare PASS unless current item-specific evidence proves the complete transaction.
+    """Submit the staged Level-1 acceptance issue to Governor and wait for terminal evidence."""
+    target = os.getenv("LIFEOS_PA_TARGET_ISSUE", "759").strip()
+    request = f"""Process exactly one autonomous-safe LifeOS issue: #{target} — #418 staged acceptance Level 1.
 
-Inspect canonical main and the live current architecture. Determine whether the historical issue-to-Engineer pickup requirement is already satisfied by the current Governor, mission-control, backlog, and governed engineering paths, or whether a current gap remains. Test the actual current path end-to-end where safe. Prefer the current architecture over recreating obsolete historical mechanisms.
+This is deliberately the smallest acceptance workload. Use the normal governed issue-to-Engineer path. For #759, create or update a dedicated harmless acceptance fixture in the canonical repository so it contains exactly:
+LIFEOS_ISSUE_PICKUP_LEVEL1=PASS
+Do not modify production behaviour. Add or use a deterministic assertion for that exact marker. Publish repository changes through the governed branch/PR path, verify the canonical result, and archive sanitised disposition/evidence in lifeos-jobs.
 
-Close #418 only with item-specific current evidence proving COMPLETE, OBSOLETE/SUPERSEDED, or DUPLICATE, and archive sanitised disposition/evidence in lifeos-jobs before closure. If a genuine user-only blocker exists, leave it open and state it precisely.
+Record evidence for issue pickup, Governor job, Tower/local route, Engineer execution, deterministic assertion, archive/disposition, Governor iteration count, and elapsed stage timings where available. Close #{target} only after all Level-1 acceptance evidence is current and live-proven. If the pipeline itself fails, leave it open and identify the exact failed checkpoint.
 
-Preserve invariants: Pi5 orchestration/control only; private data local-only; Tower Ollama demand-powered via governed lease/WoL; no cloud fallback for private work; no sudo assumption; Git changes through governed branch/PR publication.
+Preserve invariants: Pi5 orchestration/control only; private/local-only work uses Tower Ollama; Tower demand-powered via governed lease/WoL; no cloud fallback for private work; no sudo assumption; Git changes through governed branch/PR publication.
 
 Final status must explicitly report:
 RESULT=PASS
 CLOSED_COUNT=1
-ISSUE_DISPOSITIONS=#418 with tests/simulations, live evidence references and closure state
-Only emit RESULT=PASS/CLOSED_COUNT=1 when #418 has an evidence-backed terminal disposition."""
+ISSUE_DISPOSITIONS=#{target} with live evidence references and closure state
+Only emit RESULT=PASS/CLOSED_COUNT=1 when #{target} has an evidence-backed terminal disposition."""
     payload = json.dumps({"request": request, "privacy_domain": "personal-administration"}).encode()
     req = urllib.request.Request(
         AGENT_URL + "/jobs?async=1", data=payload,
@@ -198,7 +201,7 @@ Only emit RESULT=PASS/CLOSED_COUNT=1 when #418 has an evidence-backed terminal d
             job = json.loads(response.read())
     except Exception as exc:
         fault(faults, "GOVERNOR_SUBMISSION_FAILED", "critical", "governor",
-              "Could not submit the ten-issue mission to Governor.", type(exc).__name__,
+              "Could not submit the staged single-issue mission to Governor.", type(exc).__name__,
               "Repair the local Governor API/service and rerun.")
         return {"rc": 20, "job_id": None, "status": "SUBMISSION_FAILED"}
 
@@ -209,7 +212,7 @@ Only emit RESULT=PASS/CLOSED_COUNT=1 when #418 has an evidence-backed terminal d
               "Repair Governor job submission response and rerun.")
         return {"rc": 20, "job_id": None, "status": "SUBMISSION_INVALID"}
 
-    print(f"GOVERNOR_JOB_ID={job_id}", flush=True)
+    print(f"TARGET_ISSUE={target}", flush=True)\n    print(f"GOVERNOR_JOB_ID={job_id}", flush=True)
     deadline = time.monotonic() + 1140
     latest = job
     while time.monotonic() < deadline:
@@ -234,7 +237,7 @@ Only emit RESULT=PASS/CLOSED_COUNT=1 when #418 has an evidence-backed terminal d
     if not passed:
         fault(faults, "GOVERNOR_MISSION_INCOMPLETE", "high", "governor",
               "Autonomous single-issue mission did not prove the required terminal contract.",
-              {"job_id": job_id, "status": status, "blocked_reason": latest.get("blocked_reason")},
+              {"target_issue": target, "job_id": job_id, "status": status, "blocked_reason": latest.get("blocked_reason")},
               "Resume/fix the Governor job; do not claim the issue complete.")
     return {"rc": 0 if passed else 20, "job_id": job_id, "status": status}
 
