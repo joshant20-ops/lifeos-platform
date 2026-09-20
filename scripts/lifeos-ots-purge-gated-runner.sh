@@ -92,6 +92,24 @@ gate 801-04 "retired backlog deploy capability absent" "" bash -c '
   python -m pytest -q tests/test_bounded_deployment_broker.py tests/test_privileged_target_identity.py
 '
 
+gate 801-05 "obsolete backlog-runner migration proofs absent" "" bash -c '
+  stale=(
+    scripts/lifeos-semaphore-dispatch-fixture-proof.sh
+    scripts/lifeos-semaphore-replacement-scope-audit.sh
+    scripts/lifeos-semaphore-shadow-audit.sh
+    tests/test_backlog_runner.py
+  )
+  for path in "${stale[@]}"; do
+    if test -e "$path"; then
+      echo "STALE_MIGRATION_ASSET=$path"
+      exit 1
+    fi
+  done
+  refs=$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude-dir=runtime_jobs --exclude=lifeos-ots-purge-gated-runner.sh -E "governor/backlog_runner.py|install-backlog-runner-pi5.sh" . 2>/dev/null || true)
+  printf "ACTIVE_RETIRED_BACKLOG_CODE_REFS=%s\\n" "$refs"
+  test -z "$refs"
+'
+
 echo "================================================================"
 echo "BATCH_PHASE=CONSOLIDATED_REPORT"
 echo "BATCH_FINISHED_AT=$(date --iso-8601=seconds)"
