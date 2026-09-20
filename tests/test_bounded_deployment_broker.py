@@ -30,9 +30,6 @@ def test_deployments_are_fixed_declarative_manifests():
             assert not pathlib.PurePosixPath(source).is_absolute()
             assert ".." not in pathlib.PurePosixPath(source).parts
             assert destination.is_absolute()
-    assert broker.DEPLOYMENT_SPECS["deploy-backlog-runner"]["must_remain_inactive"] == (
-        "lifeos-backlog-runner.timer",
-    )
 
 
 @pytest.mark.parametrize("operation", ["deploy-autonomous-agent"])
@@ -50,12 +47,12 @@ def test_governor_maps_only_exact_deployment_intents(tmp_path, monkeypatch):
     monkeypatch.setenv("LIFEOS_AGENT_STATE", str(tmp_path))
     agent = load(AGENT, "bounded_agent")
     assert agent.DEPLOYMENT_OPERATIONS == {
-        "deploy-engineer-runtime", "deploy-autonomous-agent", "deploy-backlog-runner"
+        "deploy-engineer-runtime", "deploy-autonomous-agent"
     }
     for intent in ("restart-approved-unit", "deploy-backlog-runner;id", "../../bin/sh", ""):
         assert agent.request_bounded_deployment("job-1", intent)["status"] == "REJECTED"
     handoff, _ = agent.parse_handoff("DEPLOYMENT_OPERATION=deploy-backlog-runner\n")
-    assert handoff["deployment_operation"] == "deploy-backlog-runner"
+    assert handoff["deployment_operation"] is None
 
 
 def test_restart_allowlist_rejects_arbitrary_unit():
