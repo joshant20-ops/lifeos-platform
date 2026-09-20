@@ -5,6 +5,9 @@ set -Eeuo pipefail
 # Deliberately bypasses Governor autonomous job submission, milestone decisions,
 # publication, archive and issue disposition. lifeos-local-builder is retained
 # only as the thin Tower/Engineer/local-model transport into OpenHands.
+# Run 35526223801 proved OpenHands starts correctly but the transport killed it at
+# the former hard-coded 240s ceiling before any agent action. This proof therefore
+# uses the builder's overall OpenHands safety ceiling; it does not add retries.
 job_id="direct-openhands-${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}"
 marker="OPENHANDS_DIRECT_ACTION_${GITHUB_RUN_ID:-manual}_${GITHUB_RUN_ATTEMPT:-1}"
 runtime_path="governor/runtime_jobs/${job_id}.sh"
