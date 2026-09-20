@@ -137,7 +137,7 @@ jobs:
           grep -F "'deploy-energy-opportunity-api'" \
             homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
           grep -F 'deploy-energy-opportunity-api' \
-            .github/workflows/lifeos-energy-opportunity-deploy.yml >/dev/null
+            .github/workflows/lifeos-pi-deploy.yml >/dev/null
 
       - name: Validate bounded Tower shutdown integration
         run: |

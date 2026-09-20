@@ -13,8 +13,19 @@ on:
           - deploy-ha-control-bridge
           - deploy-tower-metrics
           - deploy-governor-managed-engineer
+          - deploy-energy-opportunity-api
           - capability-stage3-systemd-cleanup
           - verify-transaction-core
+  push:
+    branches: [main]
+    paths:
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py'
+      - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_energy_attention.yaml'
+      - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py'
+      - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
+      - 'tests/test_energy_opportunity_service.py'
   issues:
     types: [opened]
 
@@ -30,10 +41,12 @@ jobs:
   deploy:
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
       (github.event_name == 'issues' && (
         github.event.issue.title == 'LifeOS Deploy: deploy-ha-control-bridge' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core'
       ))
@@ -44,10 +57,11 @@ jobs:
       # expression as a plain YAML scalar makes the workflow invalid before
       # any job can be created.
       LIFEOS_OPERATION: >-
-        ${{ github.event_name == 'issues' &&
+        ${{ github.event_name == 'push' && 'deploy-energy-opportunity-api' || github.event_name == 'issues' &&
         (github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' && 'capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' && 'deploy-tower-metrics' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' && 'deploy-governor-managed-engineer' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' && 'deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core' && 'verify-transaction-core' ||
         'deploy-ha-control-bridge') || inputs.operation }}
     steps:
@@ -87,6 +101,17 @@ jobs:
           grep -E '^[A-Z0-9_]+=' "$RUNNER_TEMP/lifeos-evidence/gateway.log" \
             > "$RUNNER_TEMP/lifeos-evidence/result.env" || true
           exit "$rc"
+
+      - name: Run Energy Opportunity live acceptance
+        if: env.LIFEOS_OPERATION == 'deploy-energy-opportunity-api' && steps.gateway.outputs.gateway_rc == '0'
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/audit-wave-a-live-acceptance.py
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo ENERGY_OPPORTUNITY_LIVE_ACCEPTANCE=PASS
 
       - name: Upload deployment evidence
         if: always()
