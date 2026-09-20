@@ -60,7 +60,7 @@ echo "BATCH_RUNNER_REVISION=2"
 echo "BATCH_POLICY=failure_is_logged_then_continue"
 echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
 echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
-echo "BATCH_GATE_COUNT=5"
+echo "BATCH_GATE_COUNT=6"
 
 gate 801-01 "HA bridge legacy-state removal" "" bash -c '
   ! grep -q "/var/lib/lifeos-backlog-runner/state.json" governor/ha_issue_queue_bridge.py &&
@@ -107,6 +107,13 @@ gate 801-05 "obsolete backlog-runner migration proofs absent" "" bash -c '
   done
   refs=$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude-dir=runtime_jobs --exclude=lifeos-ots-purge-gated-runner.sh -E "governor/backlog_runner.py|install-backlog-runner-pi5.sh" . 2>/dev/null || true)
   printf "ACTIVE_RETIRED_BACKLOG_CODE_REFS=%s\\n" "$refs"
+  test -z "$refs"
+'
+
+
+gate 801-06 "active runtime source has no retired backlog-runner references" "" bash -c '
+  refs=$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude-dir=runtime_jobs --exclude=lifeos-ots-purge-gated-runner.sh --exclude=lifeos-semaphore-terminal-observer.sh -E "lifeos-backlog-runner|governor/backlog_runner.py|install-backlog-runner-pi5.sh|design_shadow_adapter_for_backlog_runner_replacement" governor scripts homelab orchestration 2>/dev/null || true)
+  printf "ACTIVE_RUNTIME_RETIRED_BACKLOG_REFS=%s\\n" "$refs"
   test -z "$refs"
 '
 
