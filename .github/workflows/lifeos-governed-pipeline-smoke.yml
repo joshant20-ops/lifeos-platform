@@ -1,0 +1,91 @@
+name: LifeOS Governed Pipeline Smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-governed-pipeline-smoke.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 25
+    steps:
+      - name: Sync and static validation
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main; echo "SMOKE_SYNC_FETCH_RC=$?"
+          git merge --ff-only origin/main; echo "SMOKE_SYNC_MERGE_RC=$?"
+          python3 -m py_compile governor/autonomous_agent.py governor/scripts/lifeos-pa-mission; echo "SMOKE_COMPILE_RC=$?"
+          bash -n governor/scripts/lifeos-local-builder; echo "SMOKE_LOCAL_BUILDER_SYNTAX_RC=$?"
+          bash -n governor/scripts/lifeos-remote-agent-builder; echo "SMOKE_REMOTE_BUILDER_SYNTAX_RC=$?"
+
+      - name: Governor API health
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          curl -fsS --max-time 10 http://127.0.0.1:8790/health
+          echo
+          echo "SMOKE_GOVERNOR_HEALTH_RC=$?"
+
+      - name: Local-only broker and Tower lifecycle
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          cd /home/joshan/lifeos-platform
+          bash governor/scripts/lifeos-local-builder --self-test
+          echo "SMOKE_LOCAL_ROUTE_RC=$?"
+
+      - name: Engineer reachability and capabilities
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set +e
+          echo "ENGINEER_HOST=$(hostname)"
+          command -v openhands >/dev/null 2>&1; echo "SMOKE_OPENHANDS_RC=$?"
+          test -f "$HOME/.config/lifeos/governor-broker.env"; echo "SMOKE_BROKER_CONFIG_EXISTS_RC=$?"
+          test "$(stat -c '%a' "$HOME/.config/lifeos/governor-broker.env" 2>/dev/null)" = 600; echo "SMOKE_BROKER_CONFIG_MODE_RC=$?"
+          test -d /home/joshan/workspace/lifeos-platform/.git; echo "SMOKE_ENGINEER_REPO_RC=$?"
+          REMOTE
+          echo "SMOKE_ENGINEER_SSH_RC=$?"
+
+      - name: Agent contract regression
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          cd /home/joshan/lifeos-platform
+          python3 -m pytest -q governor/tests 2>&1
+          echo "SMOKE_GOVERNOR_TESTS_RC=$?"
+
+      - name: Mission audit without execution
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          cd /home/joshan/lifeos-platform
+          python3 governor/scripts/lifeos-pa-mission audit
+          echo "SMOKE_MISSION_AUDIT_RC=$?"
+
+      - name: Collect all smoke findings
+        if: always()
+        shell: bash
+        run: |
+          echo 'SMOKE_COMPLETE=YES'
+          echo 'NOTE=All probes use continue-on-error so later stages run even when earlier probes fail.'
+          echo 'NOTE=This smoke deliberately does not submit/close a GitHub issue; it validates the pipeline components without mutating issue state.'
