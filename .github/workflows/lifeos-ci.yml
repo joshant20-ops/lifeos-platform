@@ -1,5 +1,5 @@
 name: LifeOS CI
-# Tower runtime configured-host fallback regression
+# Tower runtime configured-host fallback regression exact-head
 # HA Tower dashboard Jinja regression proof
 # Pass 7 regression: canonical Energy acceptance/reporting contract — rerun 2
 # Pass 5 semantic restoration: fresh PR check trigger
