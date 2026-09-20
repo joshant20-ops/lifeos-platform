@@ -1,0 +1,51 @@
+name: LifeOS OTS Purge Gated Runner
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-ots-purge-gated-runner.sh'
+      - 'scripts/lifeos-semaphore-terminal-observer.sh'
+      - 'governor/ha_issue_queue_bridge.py'
+      - '.github/workflows/lifeos-ots-purge-gated-runner.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  gated-audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 12
+    steps:
+      - name: Sync canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+      - name: Run every independent gate
+        id: gates
+        continue-on-error: true
+        shell: bash
+        run: |
+          cd /home/joshan/lifeos-platform
+          rm -rf /tmp/lifeos-ots-purge-gates
+          bash scripts/lifeos-ots-purge-gated-runner.sh
+      - name: Publish consolidated evidence
+        if: always()
+        shell: bash
+        run: |
+          set -u
+          echo '### OTS purge gated audit' >> "$GITHUB_STEP_SUMMARY"
+          if [[ -f /tmp/lifeos-ots-purge-gates/summary.tsv ]]; then
+            echo '~~~' >> "$GITHUB_STEP_SUMMARY"
+            cat /tmp/lifeos-ots-purge-gates/summary.tsv >> "$GITHUB_STEP_SUMMARY"
+            echo '~~~' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          echo "GATED_STEP_OUTCOME=${{ steps.gates.outcome }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          # The workflow itself stays green so faults do not halt the serial purge.
+          # FINAL_ACCEPTANCE inside the evidence remains fail-closed.
+          echo 'BATCH_CONTINUATION=ENABLED'
