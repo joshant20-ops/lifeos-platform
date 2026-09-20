@@ -138,6 +138,10 @@ jobs:
             homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
           grep -F 'deploy-energy-opportunity-api' \
             .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F 'archive/closed-gates/scripts/audit-wave-a-live-acceptance.py' \
+            .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F "const jobOk = '${{ job.status }}' === 'success';" \
+            .github/workflows/lifeos-pi-deploy.yml >/dev/null
 
       - name: Validate bounded Tower shutdown integration
         run: |
