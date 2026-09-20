@@ -164,7 +164,9 @@ jobs:
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
           grep -q 'RESULT=PASS' "$STATE/github-mission.log"
-          grep -q 'CLOSED_COUNT=1' "$STATE/github-mission.log"
+          grep -q 'LEVEL1_CANONICAL_MARKER=PASS' "$STATE/github-mission.log"
+          grep -q 'LEVEL1_DETERMINISTIC_ASSERTION=PASS' "$STATE/github-mission.log"
+          grep -q 'ISSUE_DISPOSITIONS=#759 ready_for_evidence_backed_closure' "$STATE/github-mission.log"
           echo 'ARCHIVED_DISPOSITION_CONTRACT=PASS'
 
       - name: Surface consolidated bundle
