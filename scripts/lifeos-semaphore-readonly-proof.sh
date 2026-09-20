@@ -19,7 +19,6 @@ HEAD_BEFORE=$(runuser -u joshan -- git -C "$PLATFORM" rev-parse HEAD)
 INDEX_OWNER_BEFORE=$(stat -c '%U:%G' "$PLATFORM/.git/index")
 
 units=(
-  lifeos-backlog-runner.timer
   lifeos-engineer-dispatcher.timer
   lifeos-control-job-submit.socket
   lifeos-root-broker.socket
@@ -281,4 +280,4 @@ echo 'RESULT_PROPAGATION=PASS'
 echo 'PLATFORM_MUTATION=NONE'
 echo 'CUSTOM_EXECUTION_PATH_CHANGED=NO'
 echo 'ROOT_BROKER_CHANGED=NO'
-echo 'NEXT_ACTION=design_shadow_adapter_for_backlog_runner_replacement'
+echo 'NEXT_ACTION=use_semaphore_as_authoritative_ots_orchestrator'
