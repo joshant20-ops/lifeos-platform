@@ -50,13 +50,7 @@ jobs:
           probe=$(curl -fsS --max-time 20 -H 'Content-Type: application/json' \
             -d '{"messages":[{"role":"user","content":"Reply with exactly OK"}],"privacy":"local-only","task_class":"normal","max_tokens":8}' \
             http://127.0.0.1:8788/v1/chat/completions)
-          PROBE_JSON="$probe" python3 - <<'PY'
-import json, os
-j=json.loads(os.environ['PROBE_JSON'])
-assert j.get('lifeos_provider') == 'ollama', j
-assert j.get('lifeos_privacy') == 'local-only', j
-print('lifeos-local-only-normal=PASS')
-PY
+          PROBE_JSON="$probe" python3 -c "import json,os; j=json.loads(os.environ['PROBE_JSON']); assert j.get('lifeos_provider') == 'ollama', j; assert j.get('lifeos_privacy') == 'local-only', j; print('lifeos-local-only-normal=PASS')"
       - name: Run direct OpenHands isolation proof
         shell: bash
         run: |
