@@ -73,7 +73,16 @@ if 'BROKER_BASIC_PASS' not in content:
 print('ENGINEER_BROKER_BASIC_ASSERTION=PASS')
 tool={'type':'function','function':{'name':'lifeos_probe','description':'Return a diagnostic marker','parameters':{'type':'object','properties':{'marker':{'type':'string'}},'required':['marker']}}}
 payload={'model':'openai/lifeos-local-only-normal','messages':[{'role':'user','content':'Call lifeos_probe exactly once with marker BROKER_TOOL_PASS. Do not answer normally.'}],'tools':[tool],'tool_choice':'required','temperature':0}
-body=call(payload,'ENGINEER_BROKER_TOOL')
+try:
+    body=call(payload,'ENGINEER_BROKER_TOOL')
+except urllib.error.HTTPError as e:
+    # Local Ollama can transiently be ready for plain chat before tool-capable
+    # inference is ready after Tower wake. One bounded readiness retry is not an
+    # engineering retry loop; the second failure remains fail-closed.
+    if e.code != 502: raise
+    print('ENGINEER_BROKER_TOOL_READINESS_RETRY=1')
+    time.sleep(5)
+    body=call(payload,'ENGINEER_BROKER_TOOL')
 msg=((body.get('choices') or [{}])[0].get('message') or {})
 calls=msg.get('tool_calls') or []
 if not calls:
