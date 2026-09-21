@@ -15,14 +15,6 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
-    'audit-dispatcher-retirement': {
-        'script': 'scripts/lifeos-worker-dispatcher-split-audit.sh',
-        'privileged': False,
-    },
-    'retire-engineer-dispatcher': {
-        'script': 'scripts/lifeos-retire-engineer-dispatcher.sh',
-        'privileged': True,
-    },
     'deploy-ha-control-bridge': {
         'script': 'scripts/lifeos-deploy-ha-control-bridge.sh',
         'privileged': True,
