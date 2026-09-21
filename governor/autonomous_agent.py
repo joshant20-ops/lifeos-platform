@@ -60,7 +60,8 @@ PRIVACY_DOMAIN_POLICY_PATH = pathlib.Path(
     )
 )
 UI_PATH = PLATFORM_REPO / "governor" / "agent_ui.html"
-RUNTIME_ROOT = pathlib.Path(os.environ.get("LIFEOS_RUNTIME_ARTIFACT_ROOT", str(ROOT / "runtime_jobs"))).resolve()\nRUNTIME_PREFIX = "runtime_jobs/"
+RUNTIME_ROOT = pathlib.Path(os.environ.get("LIFEOS_RUNTIME_ARTIFACT_ROOT", str(ROOT / "runtime_jobs"))).resolve()
+RUNTIME_PREFIX = "runtime_jobs/"
 JOB_ID_PATTERN = re.compile(r"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\Z")
 MAX_PATCH_BYTES = 1048576
 MAX_RUNTIME_BYTES = 65536
