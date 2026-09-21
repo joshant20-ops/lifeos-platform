@@ -110,107 +110,30 @@ jobs:
           echo 'CLOUD_EXHAUSTION_FALLBACK_CONTRACT=Tower_Ollama'
           echo 'LOCAL_ONLY_CLOUD_ESCAPE=FORBIDDEN'
           echo 'M6_STATIC_BOUNDARY=PASS'
-
           set +e
           out="$(LIFEOS_JOB_PRIVACY=local-only LIFEOS_JOB_ID=878-m6-local-escape "$cloud" 'M6 local-only cloud escape probe' 1 2>&1)"
           rc=$?
           set -e
-          printf '%s\n' "$out"
+          printf '%s\\n' "$out"
           test "$rc" = 42
-          grep -q '^RESULT=BLOCKED
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
-          grep -q '^REASON=cloud_builder_forbidden_for_local_only_job
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
+          grep -q 'RESULT=BLOCKED' <<<"$out"
+          grep -q 'REASON=cloud_builder_forbidden_for_local_only_job' <<<"$out"
           echo 'LOCAL_ONLY_CLOUD_ESCAPE_LIVE=PASS'
-
-          # Force cloud-agent exhaustion without invoking Codex: a temporary Engineer
-          # alias reports CODEX=absent while preserving SSH transport. The production
-          # cloud builder must then invoke the governed local builder/Tower Ollama.
           td="$(mktemp -d)"
           trap 'rm -rf "$td"' EXIT
-          cat >"$td/ssh" <<'SH'
-          #!/usr/bin/env bash
-          if [[ "$*" == *"bash -s"* ]]; then
-            cat >/dev/null
-            printf '%s\n' 'OPENHANDS=present' 'CODEX=absent' 'GOVERNOR_BROKER=present'
-            exit 0
-          fi
-          exec /usr/bin/ssh "$@"
-          SH
+          printf '%s\\n' '#!/usr/bin/env bash' 'if [[ "$*" == *"bash -s"* ]]; then cat >/dev/null; printf "%s\\n" "OPENHANDS=present" "CODEX=absent" "GOVERNOR_BROKER=present"; exit 0; fi' 'exec /usr/bin/ssh "$@"' >"$td/ssh"
           chmod 700 "$td/ssh"
           set +e
           out="$(PATH="$td:$PATH" LIFEOS_JOB_PRIVACY=normal LIFEOS_JOB_ID=878-m6-fallback "$cloud" 'Create runtime_jobs/878-m6-fallback.sh with exactly three lines: shebang, set -euo pipefail, and printf M6_FALLBACK_PASS; execute and verify it.' 1 2>&1)"
           rc=$?
           set -e
-          printf '%s\n' "$out"
-          grep -q '^CLOUD_AGENTS_EXHAUSTED=YES
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
-          grep -q '^FALLBACK_ROUTE=Tower_Ollama
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
-          grep -q '^LOCAL_BUILDER_ROUTE=Pi5_Governor_to_Tower_Ollama
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
-          grep -q '^LOCAL_BUILDER_CLOUD_FALLBACK=DISABLED
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
-          grep -q '^AGENT_RESULT=openhands PASS
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
-          grep -q '^FALLBACK_RESULT=local_builder PASS
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'REPOSITORY_FINAL=PASS'
- <<<"$out"
+          printf '%s\\n' "$out"
+          grep -q 'CLOUD_AGENTS_EXHAUSTED=YES' <<<"$out"
+          grep -q 'FALLBACK_ROUTE=Tower_Ollama' <<<"$out"
+          grep -q 'LOCAL_BUILDER_ROUTE=Pi5_Governor_to_Tower_Ollama' <<<"$out"
+          grep -q 'LOCAL_BUILDER_CLOUD_FALLBACK=DISABLED' <<<"$out"
+          grep -q 'AGENT_RESULT=openhands PASS' <<<"$out"
+          grep -q 'FALLBACK_RESULT=local_builder PASS' <<<"$out"
           test "$rc" = 0
           echo 'CLOUD_EXHAUSTION_LOCAL_FALLBACK_LIVE=PASS'
           echo 'M6_LIVE_ACCEPTANCE=PASS'
