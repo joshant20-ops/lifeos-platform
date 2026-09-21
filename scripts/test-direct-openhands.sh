@@ -14,8 +14,8 @@ set -Eeuo pipefail
 # disposable Engineer worktree/VM, while Governor retains publication/acceptance.
 job_id="direct-openhands-${GITHUB_RUN_ID:-manual}-${GITHUB_RUN_ATTEMPT:-1}"
 marker="OPENHANDS_DIRECT_ACTION_${GITHUB_RUN_ID:-manual}_${GITHUB_RUN_ATTEMPT:-1}"
-runtime_path="governor/runtime_jobs/${job_id}.sh"
-request="Direct OpenHands isolation test. Create ${runtime_path} in the disposable worktree with exactly three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Execute it and verify stdout is exactly ${marker}. Change no other file. Do not commit, push, fetch, clone, or access GitHub. Stop when the task and test are complete."
+runtime_path="runtime_jobs/${job_id}.sh"
+request="Direct OpenHands isolation test. First create the runtime_jobs directory in the disposable worktree if it does not exist. Then create ${runtime_path} in the disposable worktree with exactly three lines: #!/usr/bin/env bash ; set -euo pipefail ; printf '%s\\n' '${marker}'. Execute it and verify stdout is exactly ${marker}. Change no other file. Do not commit, push, fetch, clone, or access GitHub. Stop when the task and test are complete."
 
 log=$(mktemp)
 runtime=$(mktemp)
