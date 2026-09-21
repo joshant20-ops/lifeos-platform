@@ -75,6 +75,7 @@ printf '\n===== 4/8 — INSTALL =====\n'
 sudo install -m 0755 "$AGENT_CORE" /usr/local/libexec/lifeos-autonomous-agent-core
 sudo install -m 0755 "$AGENT_SERVER" /usr/local/libexec/lifeos-autonomous-agent
 sudo install -m 0644 "$AI_BROKER" /usr/local/libexec/lifeos-ai-broker.py
+sudo install -m 0644 "$REPO/engineer/provider_router.py" /usr/local/libexec/lifeos-provider-router.py
 sudo install -m 0644 "$REPO/governor/policy.json" /usr/local/libexec/lifeos-ai-policy.json
 sudo install -m 0644 "$JOB_RECORDS" /usr/local/libexec/job_records.py
 sudo install -m 0644 "$PRIVACY_POLICY" /usr/local/libexec/privacy-domain-policy.json
@@ -101,6 +102,7 @@ Environment=LIFEOS_AGENT_CORE=/usr/local/libexec/lifeos-autonomous-agent-core
 Environment=LIFEOS_PRIVACY_DOMAIN_POLICY=/usr/local/libexec/privacy-domain-policy.json
 Environment=LIFEOS_AI_POLICY=/usr/local/libexec/lifeos-ai-policy.json
 Environment=LIFEOS_AI_BROKER=/usr/local/libexec/lifeos-ai-broker.py
+Environment=LIFEOS_PROVIDER_ROUTER=/usr/local/libexec/lifeos-provider-router.py
 Environment=LIFEOS_LOCAL_VERIFIER_URL=http://192.168.0.201:11434/api/generate
 Environment=LIFEOS_LOCAL_VERIFIER_MODEL=qwen2.5-coder:7b-instruct
 Environment=LIFEOS_PLATFORM_REPO=/home/joshan/lifeos-platform
