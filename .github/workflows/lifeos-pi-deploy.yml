@@ -8,8 +8,6 @@ on:
         required: true
         type: choice
         options:
-          - audit-dispatcher-retirement
-          - retire-engineer-dispatcher
           - deploy-ha-control-bridge
           - deploy-tower-metrics
           - deploy-governor-managed-engineer
