@@ -60,6 +60,10 @@ def call(payload,label):
     try:
         with urllib.request.urlopen(req,timeout=90) as r:
             body=json.load(r)
+    except urllib.error.HTTPError as e:
+        detail=e.read(2000).decode('utf-8','replace')
+        print(f'{label}=FAIL type=HTTPError code={e.code} detail={detail}')
+        raise
     except Exception as e:
         print(f'{label}=FAIL type={type(e).__name__}')
         raise
