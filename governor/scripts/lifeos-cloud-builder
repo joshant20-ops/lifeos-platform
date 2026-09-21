@@ -22,7 +22,7 @@ case "$TASK_CLASS" in
   *) TASK_CLASS=normal ;;
 esac
 
-RUNTIME_PATH="governor/runtime_jobs/${JOB_ID}.sh"
+RUNTIME_PATH="runtime_jobs/${JOB_ID}.sh"
 SAFE_REQUEST=$(printf '%s' "$REQUEST" | python3 -c '
 import re,sys
 s=sys.stdin.read()
