@@ -205,7 +205,9 @@ def test_governor_deploy_repeats_proven_wol_until_wall_clock_deadline():
     workflow = (ROOT / ".github/workflows/lifeos-governor-broker-deploy.yml").read_text()
     preflight = workflow.split("- name: Ensure Engineer available for deploy preflight", 1)[1]
     preflight = preflight.split("- name: Deploy Governor with live phase checkpoints", 1)[0]
-    assert "deadline=$((SECONDS + 600))" in preflight
+    assert 'echo "ENGINEER_PREFLIGHT_BOOT_GRACE_SECONDS=120"' in preflight
+    assert "sleep 120" in preflight
+    assert "deadline=$((SECONDS + 480))" in preflight
     assert "while (( SECONDS < deadline ))" in preflight
     assert "/usr/local/sbin/lifeos-engineer-wake" in preflight
     assert "/usr/local/sbin/lifeos-tower-wake" in preflight
