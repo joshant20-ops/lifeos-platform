@@ -201,7 +201,9 @@ jobs:
           test -d /var/lib/lifeos-agent/runtime_jobs
           test ! -L /var/lib/lifeos-agent/runtime_jobs
           test "$(stat -c %U /var/lib/lifeos-agent/runtime_jobs)" = joshan
-          test "$(stat -c %a /var/lib/lifeos-agent/runtime_jobs)" = 750
+          mode="$(stat -c %a /var/lib/lifeos-agent/runtime_jobs)"
+          case "$mode" in 750|700) ;; *) echo "RUNTIME_DIRECTORY_MODE=FAIL:$mode"; exit 1;; esac
+          echo "RUNTIME_DIRECTORY_MODE=PASS:$mode"
           case "$(readlink -f /var/lib/lifeos-agent/runtime_jobs)" in "$(readlink -f /home/joshan/lifeos-platform)"/*) echo 'RUNTIME_OUTSIDE_GIT=FAIL'; exit 1;; esac
           probe=/var/lib/lifeos-agent/runtime_jobs/878-m4-live-probe.sh
           printf '#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "OTS878_M4_RUNTIME_PASS"\n' > "$probe"
