@@ -188,10 +188,10 @@ fi
 [[ ! -e /etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf ]]
 runuser -u joshan -- gh issue comment "$ISSUE" --repo "$REPO_FULL" --body "### #801 post-migration live proof terminal
 - Governor job: $JOB_ID
-- Governor terminal: `PASS`
-- Semaphore task terminal: `PASS`
-- Retired backlog state recreated: `NO`
-- Result: `PASS`" >/dev/null
+- Governor terminal: PASS
+- Semaphore task terminal: PASS
+- Retired backlog state recreated: NO
+- Result: PASS" >/dev/null
 echo 'POST_MIGRATION_RETIRED_STATE_ABSENT=PASS'
 echo 'FRESH_SEMAPHORE_TO_GOVERNOR_TERMINAL=PASS'
 echo "FRESH_GOVERNOR_JOB_ID=$JOB_ID"
