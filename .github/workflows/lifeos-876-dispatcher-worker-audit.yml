@@ -1,0 +1,34 @@
+name: LifeOS #876 Dispatcher Worker Audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-worker-dispatcher-split-audit.sh'
+      - '.github/workflows/lifeos-876-dispatcher-worker-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-876-dispatcher-worker-audit
+  cancel-in-progress: false
+jobs:
+  live-audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 12
+    steps:
+      - name: Sync canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "AUDIT_HEAD=$(git rev-parse HEAD)"
+      - name: Run fail-closed post-retirement audit
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          bash scripts/lifeos-worker-dispatcher-split-audit.sh
