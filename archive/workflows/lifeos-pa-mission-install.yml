@@ -1,0 +1,67 @@
+name: LifeOS PA Mission Install
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'governor/scripts/lifeos-pa-mission'
+      - '.github/workflows/lifeos-pa-mission-install.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pa-mission-install
+  cancel-in-progress: false
+
+jobs:
+  install:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Safely synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)" || {
+            echo 'INSTALL=BLOCKED'
+            echo 'REASON=canonical_checkout_dirty'
+            exit 20
+          }
+          current=$(git rev-parse HEAD)
+          target=$(git rev-parse origin/main)
+          if [[ "$current" != "$target" ]]; then
+            git merge-base --is-ancestor "$current" "$target" || {
+              echo 'INSTALL=BLOCKED'
+              echo 'REASON=canonical_checkout_not_fast_forwardable'
+              exit 21
+            }
+            git merge --ff-only origin/main
+          fi
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+      - name: Validate and install runner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          SRC=governor/scripts/lifeos-pa-mission
+          test -f "$SRC"
+          python3 -m py_compile "$SRC"
+          install -d -m 0755 /home/joshan/.local/bin
+          install -d -m 0700 /home/joshan/.local/state/lifeos-pa-autonomy
+          install -m 0755 "$SRC" /home/joshan/.local/bin/lifeos-pa-mission
+          /home/joshan/.local/bin/lifeos-pa-mission --help >/dev/null
+          echo "INSTALLED_SHA256=$(sha256sum /home/joshan/.local/bin/lifeos-pa-mission | awk '{print $1}')"
+          echo 'INSTALL=PASS'
+
+      - name: Verify installation without starting mission
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          /home/joshan/.local/bin/lifeos-pa-mission status
+          test -x /home/joshan/.local/bin/lifeos-pa-mission
+          echo 'INSTALL_VERIFY=PASS'
