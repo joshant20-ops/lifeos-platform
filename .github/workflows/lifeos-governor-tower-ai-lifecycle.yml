@@ -37,14 +37,14 @@ jobs:
             git status --short
             exit 20
           fi
+          # A clean deployment mirror may lag origin/main while another workflow
+          # held the single Pi runner. Reconcile it deterministically instead of
+          # failing merely because this run was queued behind newer main.
+          git reset --hard origin/main
           head="$(git rev-parse HEAD)"
           origin="$(git rev-parse origin/main)"
-          if [[ "$head" != "$origin" ]]; then
-            echo 'CANONICAL_CHECKOUT_NOT_READY=not_at_origin_main'
-            echo "PLATFORM_HEAD=$head"
-            echo "ORIGIN_MAIN=$origin"
-            exit 20
-          fi
+          test "$head" = "$origin"
+          test -z "$(git status --porcelain --untracked-files=all)"
           echo 'CANONICAL_CHECKOUT_READY=PASS'
 
       - name: Verify bounded Engineer deployment gateway
