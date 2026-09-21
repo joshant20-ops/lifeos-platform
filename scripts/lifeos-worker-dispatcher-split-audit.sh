@@ -8,7 +8,8 @@ QUEUE=/home/joshan/automation/queues/engineer_job_queue.jsonl
 failures=()
 record_failure(){ failures+=("$1"); }
 
-printf '%s\n' 'LIFEOS_POST_RETIREMENT_HEALTH_AUDIT_VERSION=1'
+printf '%s\n' 'LIFEOS_POST_RETIREMENT_HEALTH_AUDIT_VERSION=2
+PURGE_ITEM=876'
 printf '%s\n' 'MUTATIONS=NONE'
 printf 'PLATFORM_HEAD=%s\n' "$(git -C "$PLATFORM" rev-parse HEAD)"
 
