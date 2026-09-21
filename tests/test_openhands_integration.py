@@ -259,3 +259,14 @@ def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
     assert '| tee "$ATTEMPT_LOG"' in script
     assert 'RC=${PIPESTATUS[0]}' in script
     assert "OUTPUT=$(ssh" not in script
+
+
+def test_cloud_builder_codex_exhaustion_falls_back_local_only_to_tower_ollama():
+    script = (ROOT / "governor/scripts/lifeos-cloud-builder").read_text()
+    assert 'if [[ "$PRIVACY" == "local-only" ]]' in script
+    assert 'REASON=cloud_builder_forbidden_for_local_only_job' in script
+    assert 'CLOUD_AGENTS_EXHAUSTED=YES' in script
+    assert 'FALLBACK_ROUTE=Tower_Ollama' in script
+    assert 'LIFEOS_JOB_PRIVACY=local-only' in script
+    assert '"$LOCAL_BUILDER" "$REQUEST" "$ITERATION" "$FEEDBACK"' in script
+    assert 'FALLBACK_RESULT=local_builder PASS' in script
