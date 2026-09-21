@@ -17,7 +17,7 @@ from http.server import ThreadingHTTPServer
 
 PLATFORM_REPO = pathlib.Path(os.environ.get("LIFEOS_PLATFORM_REPO", "/home/joshan/lifeos-platform")).resolve()
 CORE_PATH = pathlib.Path(os.environ.get("LIFEOS_AGENT_CORE", "/usr/local/libexec/lifeos-autonomous-agent-core"))
-BROKER_PATH = PLATFORM_REPO / "governor" / "ai_broker.py"
+BROKER_PATH = pathlib.Path(os.environ.get("LIFEOS_AI_BROKER", "/usr/local/libexec/lifeos-ai-broker.py"))
 COMPAT_PATH = PLATFORM_REPO / "governor" / "openai_compat.py"
 BROKER_TOKEN_FILE = pathlib.Path(
     os.environ.get("LIFEOS_AI_BROKER_TOKEN_FILE", pathlib.Path.home() / ".config/lifeos/ai-broker.token")
