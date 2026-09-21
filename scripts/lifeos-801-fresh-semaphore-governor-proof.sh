@@ -136,6 +136,15 @@ PY
 JOB_ID=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("id",""))' "$RESP")
 [[ -n "$JOB_ID" ]] || { echo 'RESULT=FAIL'; echo 'REASON=no_governor_job_id'; exit 1; }
 echo "GOVERNOR_JOB_ID=$JOB_ID"
+echo "801_DIAGNOSTIC_PRE_SUBMISSION_BEGIN"
+echo "GOVERNOR_HEALTH=$(curl -fsS --max-time 10 "$GOV/health" || echo unavailable)"
+echo "GOVERNOR_STUCK=$(curl -fsS --max-time 10 "$GOV/jobs/stuck" || echo unavailable)"
+echo "CODEX_PATH=$(command -v codex || true)"
+if command -v codex >/dev/null 2>&1; then
+  echo "CODEX_VERSION=$(codex --version 2>&1 | head -1 || true)"
+fi
+echo "ENGINEER_HEALTH=$(curl -fsS --max-time 10 http://127.0.0.1:8793/health || echo unavailable)"
+echo "801_DIAGNOSTIC_PRE_SUBMISSION_END"
 runuser -u joshan -- gh issue comment "$ISSUE" --repo "$REPO_FULL" --body "### #801 post-migration live proof started
 - Semaphore task: $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["task_id"])' "$TASK_META")
 - Exact Semaphore intent: PASS
@@ -161,6 +170,15 @@ with urllib.request.urlopen(sys.argv[1]+'/jobs/'+sys.argv[2],timeout=10) as r:
     print(json.dumps(json.load(r),indent=2,sort_keys=True))
 PY
   echo "GOVERNOR_TERMINAL_DIAGNOSTIC_END"
+  echo "801_PROVIDER_DIAGNOSTIC_BEGIN"
+  echo "ENGINEER_HEALTH=$(curl -fsS --max-time 10 http://127.0.0.1:8793/health || echo unavailable)"
+  echo "CODEX_PATH=$(command -v codex || true)"
+  if command -v codex >/dev/null 2>&1; then
+    echo "CODEX_VERSION=$(codex --version 2>&1 | head -1 || true)"
+  fi
+  echo "GOVERNOR_STUCK=$(curl -fsS --max-time 10 "$GOV/jobs/stuck" || echo unavailable)"
+  echo "NOTE=Provider stderr is preserved in GOVERNOR_TERMINAL_DIAGNOSTIC evidence above; usage-limit/provider-exhaustion is an external-capacity blocker, not an OTS migration failure."
+  echo "801_PROVIDER_DIAGNOSTIC_END"
   echo "RESULT=FAIL"
   echo "REASON=governor_terminal_$STATUS"
   exit 1
