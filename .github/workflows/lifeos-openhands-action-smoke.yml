@@ -9,6 +9,7 @@ on:
       - 'scripts/test-engineer-governor-broker.sh'
       - 'tests/test_governor_local_tool_routing.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
+      - 'governor/scripts/lifeos-remote-agent-builder'
       - 'governor/ai_broker.py'
       - 'engineer/provider_router.py'
       - '.github/workflows/lifeos-openhands-action-smoke.yml'
