@@ -60,7 +60,7 @@ def _publish_lease(state: str, *, required: bool = True) -> None:
 
 
 def _router_module():
-    path = ROOT / "engineer" / "provider_router.py"
+    path = pathlib.Path(os.environ.get("LIFEOS_PROVIDER_ROUTER", ROOT / "engineer" / "provider_router.py"))
     spec = importlib.util.spec_from_file_location("lifeos_provider_router", path)
     if spec is None or spec.loader is None:
         raise BrokerError("provider router unavailable")
