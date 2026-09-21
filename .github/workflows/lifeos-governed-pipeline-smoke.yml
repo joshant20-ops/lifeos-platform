@@ -6,6 +6,9 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-governed-pipeline-smoke.yml'
+      - 'governor/autonomous_agent.py'
+      - 'governor/scripts/lifeos-cloud-builder'
+      - 'governor/scripts/lifeos-local-builder'
 
 permissions:
   contents: read
