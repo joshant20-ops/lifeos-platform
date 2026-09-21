@@ -66,7 +66,6 @@
 - `privacy-guardian`
 - `prometheus`
 - `qbittorrent`
-- `qbittorrent_backup_2026-07-01_171445`
 - `uptime-kuma`
 - `vaultwarden`
 - `watchtower`
@@ -92,5 +91,5 @@
 - Personal Privacy Guardian profiles/data
 
 ## Snapshot Coverage
-- Managed files: 272
+- Managed files: 263
 
