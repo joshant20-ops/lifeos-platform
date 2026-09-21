@@ -60,7 +60,7 @@ echo "BATCH_RUNNER_REVISION=2"
 echo "BATCH_POLICY=failure_is_logged_then_continue"
 echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
 echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
-echo "BATCH_GATE_COUNT=8"
+echo "BATCH_GATE_COUNT=10"
 
 gate 801-01 "HA bridge legacy-state removal" "" bash -c '
   ! grep -q "/var/lib/lifeos-backlog-runner/state.json" governor/ha_issue_queue_bridge.py &&
@@ -158,6 +158,33 @@ gate 801-08 "installed gateway aligned and retired cleanup capability rejected" 
   printf "%s\n" "$out"
   test "$rc" -eq 64 || { echo "RETIRED_CLEANUP_CAPABILITY_REJECTION=FAIL rc=$rc"; exit 1; }
   echo "RETIRED_CLEANUP_CAPABILITY_REJECTION=PASS"
+'
+
+
+gate 801-09 "HA visibility remains live after retired-state removal" "801-07" bash -c '
+  test ! -e /var/lib/lifeos-backlog-runner/state.json
+  test "$(systemctl is-active lifeos-ha-issue-queue-bridge.service)" = active
+  cmp -s governor/ha_issue_queue_bridge.py /usr/local/libexec/lifeos-ha-issue-queue-bridge
+  journalctl -u lifeos-ha-issue-queue-bridge.service --since "-5 minutes" --no-pager | grep -q "QUEUE_REFRESH=PASS"
+  payload=$(mosquitto_sub -h 127.0.0.1 -t lifeos/issue_queue/control -C 1 -W 5 2>/dev/null)
+  python3 - "$payload" <<"PY"
+import json,sys
+value=json.loads(sys.argv[1])
+assert value.get("state") in {"WORKING","IDLE","BLOCKED","STALLED","DEGRADED"}
+assert "open_issue_count" in value
+print("POST_REMOVAL_HA_CONTROL=PASS state="+str(value["state"]))
+PY
+'
+
+gate 801-10 "final active runtime is free of retired backlog runner" "801-07" bash -c '
+  test ! -e /var/lib/lifeos-backlog-runner/state.json
+  test ! -e /etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf
+  ! systemctl show lifeos-autonomous-agent.service -p DropInPaths --value | grep -q "backlog-dispatcher.conf"
+  refs=$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude-dir=runtime_jobs --exclude=lifeos-ots-purge-gated-runner.sh --exclude=lifeos-semaphore-terminal-observer.sh -E "lifeos-backlog-runner|governor/backlog_runner.py|install-backlog-runner-pi5.sh|design_shadow_adapter_for_backlog_runner_replacement" governor scripts homelab orchestration tests 2>/dev/null || true)
+  printf "FINAL_ACTIVE_RETIRED_BACKLOG_REFS=%s\\n" "$refs"
+  test -z "$refs"
+  ! systemctl list-unit-files --no-legend 2>/dev/null | grep -Eq "^lifeos-backlog-runner\\.(service|timer)"
+  echo "FINAL_RETIRED_RUNTIME_AUDIT=PASS"
 '
 
 echo "================================================================"
