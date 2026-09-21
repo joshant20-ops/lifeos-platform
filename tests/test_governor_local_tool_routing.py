@@ -137,3 +137,8 @@ def test_local_only_tool_chat_fails_closed_after_local_provider_failure():
 
     assert candidates.call_count == 1
     cloud.assert_not_called()
+
+
+def test_real_policy_keeps_ollama_eligible_for_local_only_normal_tool_chat():
+    eligible, considered = broker.candidates(privacy="local-only", task_class="normal")
+    assert any(p.get("id") == "ollama" for p in eligible), considered
