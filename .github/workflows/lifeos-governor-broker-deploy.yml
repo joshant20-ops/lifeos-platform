@@ -211,9 +211,15 @@ jobs:
           probe=/var/lib/lifeos-agent/runtime_jobs/878-m4-live-probe.sh
           rm -f "$probe"
           printf '#!/usr/bin/env bash\nset -euo pipefail\nprintf "%s\\n" "OTS878_M4_RUNTIME_PASS"\n' > "$probe"
+          echo 'RUNTIME_PROBE_WRITE=PASS'
           chmod 0700 "$probe"
-          test -f "$probe" && test ! -L "$probe" && test -x "$probe"
-          test "$($probe)" = OTS878_M4_RUNTIME_PASS
+          echo "RUNTIME_PROBE_MODE=$(stat -c %a "$probe")"
+          test -f "$probe" || { echo 'RUNTIME_PROBE_FILE=FAIL'; exit 1; }
+          test ! -L "$probe" || { echo 'RUNTIME_PROBE_SYMLINK=FAIL'; exit 1; }
+          test -x "$probe" || { echo 'RUNTIME_PROBE_EXECUTABLE=FAIL'; exit 1; }
+          probe_out="$("$probe")"
+          echo "RUNTIME_PROBE_OUTPUT=$probe_out"
+          test "$probe_out" = OTS878_M4_RUNTIME_PASS || { echo 'RUNTIME_PROBE_EXECUTION=FAIL'; exit 1; }
           rm -f "$probe"
           test -z "$(git status --porcelain --untracked-files=all)"
           echo 'RUNTIME_OUTSIDE_GIT=PASS'
