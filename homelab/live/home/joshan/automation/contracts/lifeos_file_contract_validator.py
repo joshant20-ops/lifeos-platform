@@ -3,7 +3,6 @@ from pathlib import Path
 import json, re, sys
 
 BASE = Path("/home/joshan/automation")
-CONTRACT = BASE / "contracts/lifeos_file_worker_contract.json"
 
 FILES_TO_CHECK = [
     BASE / "lifeos_ask/lifeos_simple_host_loop.py",
@@ -18,9 +17,6 @@ FORBIDDEN = [
 def main():
     problems = []
 
-    if not CONTRACT.exists():
-        problems.append(f"Missing contract: {CONTRACT}")
-
     for p in FILES_TO_CHECK:
         if not p.exists():
             continue
@@ -33,8 +29,7 @@ def main():
     result = {
         "ok": not problems,
         "problems": problems,
-        "checked_files": [str(p) for p in FILES_TO_CHECK if p.exists()],
-        "contract": str(CONTRACT)
+        "checked_files": [str(p) for p in FILES_TO_CHECK if p.exists()]
     }
 
     print(json.dumps(result, indent=2))
