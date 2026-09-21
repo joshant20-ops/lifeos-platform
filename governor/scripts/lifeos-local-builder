@@ -73,7 +73,7 @@ REQUEST=${1:?request required}
 ITERATION=${2:?iteration required}
 PRIVACY=${LIFEOS_JOB_PRIVACY:-}
 JOB_ID=${LIFEOS_JOB_ID:-unknown}
-RUNTIME_PATH="governor/runtime_jobs/${JOB_ID}.sh"
+RUNTIME_PATH="runtime_jobs/${JOB_ID}.sh"
 
 if [[ "$PRIVACY" != local-only ]]; then
   echo 'RESULT=BLOCKED'
