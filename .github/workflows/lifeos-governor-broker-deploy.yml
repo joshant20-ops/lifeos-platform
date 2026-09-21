@@ -12,6 +12,7 @@ on:
       - 'governor/job_records.py'
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
+      - 'engineer/provider_router.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-local-builder'
