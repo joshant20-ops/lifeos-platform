@@ -195,7 +195,9 @@ jobs:
           git fetch --prune origin main
           test -z "$(git status --porcelain --untracked-files=all)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          systemctl show lifeos-autonomous-agent.service -p Environment --value | grep -Fq "LIFEOS_RUNTIME_ARTIFACT_ROOT=/var/lib/lifeos-agent/runtime_jobs"
+          envline="$(systemctl show lifeos-autonomous-agent.service -p Environment --value)"
+          case "$envline" in *"LIFEOS_RUNTIME_ARTIFACT_ROOT=/var/lib/lifeos-agent/runtime_jobs"*) ;; *) echo "RUNTIME_ENVIRONMENT=FAIL"; exit 1;; esac
+          echo "RUNTIME_ENVIRONMENT=PASS"
           test -d /var/lib/lifeos-agent/runtime_jobs
           test ! -L /var/lib/lifeos-agent/runtime_jobs
           test -w /var/lib/lifeos-agent/runtime_jobs
