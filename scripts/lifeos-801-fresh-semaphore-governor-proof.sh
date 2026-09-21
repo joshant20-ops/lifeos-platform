@@ -139,7 +139,7 @@ echo "GOVERNOR_JOB_ID=$JOB_ID"
 runuser -u joshan -- gh issue comment "$ISSUE" --repo "$REPO_FULL" --body "### #801 post-migration live proof started
 - Semaphore task: $(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["task_id"])' "$TASK_META")
 - Exact Semaphore intent: PASS
-- Governor job: `$JOB_ID`
+- Governor job: $JOB_ID
 - Retired backlog state absent before submission: PASS" >/dev/null
 
 STATUS=''
@@ -153,11 +153,22 @@ PY
   case "$STATUS" in PASS|FAILED|BLOCKED) break;; esac
   sleep 5
 done
-[[ "$STATUS" == PASS ]] || { echo "RESULT=FAIL"; echo "REASON=governor_terminal_$STATUS"; exit 1; }
+if [[ "$STATUS" != PASS ]]; then
+  echo "GOVERNOR_TERMINAL_DIAGNOSTIC_BEGIN"
+  python3 - "$GOV" "$JOB_ID" <<'PY'
+import json,sys,urllib.request
+with urllib.request.urlopen(sys.argv[1]+'/jobs/'+sys.argv[2],timeout=10) as r:
+    print(json.dumps(json.load(r),indent=2,sort_keys=True))
+PY
+  echo "GOVERNOR_TERMINAL_DIAGNOSTIC_END"
+  echo "RESULT=FAIL"
+  echo "REASON=governor_terminal_$STATUS"
+  exit 1
+fi
 [[ ! -e /var/lib/lifeos-backlog-runner/state.json ]]
 [[ ! -e /etc/systemd/system/lifeos-autonomous-agent.service.d/backlog-dispatcher.conf ]]
 runuser -u joshan -- gh issue comment "$ISSUE" --repo "$REPO_FULL" --body "### #801 post-migration live proof terminal
-- Governor job: `$JOB_ID`
+- Governor job: $JOB_ID
 - Governor terminal: `PASS`
 - Semaphore task terminal: `PASS`
 - Retired backlog state recreated: `NO`
