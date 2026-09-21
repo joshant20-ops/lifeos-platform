@@ -5,6 +5,10 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-governor-ai-routing-deploy.yml'
+      - 'governor/scripts/lifeos-cloud-builder'
+      - 'governor/scripts/lifeos-local-builder'
+      - 'governor/policy.json'
+      - 'engineer/provider_router.py'
   workflow_dispatch:
 
 permissions:
