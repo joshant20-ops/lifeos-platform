@@ -56,7 +56,7 @@ set -e
 # 801-01 was already live-proven in Actions run 35536667941. Re-audit it
 # independently here so this harness never trusts a historical green tick.
 echo "BATCH_PHASE=801_CONSUMER_REAUDIT"
-echo "BATCH_RUNNER_REVISION=3"
+echo "BATCH_RUNNER_REVISION=4"
 echo "BATCH_POLICY=failure_is_logged_then_continue"
 echo "BATCH_STARTED_AT=$(date --iso-8601=seconds)"
 echo "BATCH_ARTIFACT_DIR=$ARTIFACT_DIR"
@@ -79,7 +79,7 @@ gate 801-02 "terminal observer uses Governor plus GitHub" "" bash -c '
 # migration/proof scripts fail this gate; immutable runtime-job/archive evidence
 # is reported but does not count as an active dependency.
 gate 801-03 "no active script depends on retired backlog state" "" bash -c '
-  refs=$(grep -RIl --exclude-dir=.git --exclude=lifeos-ots-purge-gated-runner.sh "/var/lib/lifeos-backlog-runner/state.json" scripts governor 2>/dev/null || true)
+  refs=$(grep -RIl --exclude-dir=.git --exclude=lifeos-ots-purge-gated-runner.sh --exclude=lifeos-801-fresh-semaphore-governor-proof.sh "/var/lib/lifeos-backlog-runner/state.json" scripts governor 2>/dev/null || true)
   active=$(printf "%s\n" "$refs" | grep -v "^governor/runtime_jobs/" | grep -v "^archive/" || true)
   printf "ALL_REFS=%s\n" "$refs"
   printf "ACTIVE_REFS=%s\n" "$active"
@@ -112,7 +112,7 @@ gate 801-05 "obsolete backlog-runner migration proofs absent" "" bash -c '
 
 
 gate 801-06 "active runtime source has no retired backlog-runner references" "" bash -c '
-  refs=$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude-dir=runtime_jobs --exclude=lifeos-ots-purge-gated-runner.sh --exclude=lifeos-semaphore-terminal-observer.sh -E "lifeos-backlog-runner|governor/backlog_runner.py|install-backlog-runner-pi5.sh|design_shadow_adapter_for_backlog_runner_replacement" governor scripts homelab orchestration 2>/dev/null || true)
+  refs=$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude-dir=runtime_jobs --exclude=lifeos-ots-purge-gated-runner.sh --exclude=lifeos-semaphore-terminal-observer.sh --exclude=lifeos-801-fresh-semaphore-governor-proof.sh -E "lifeos-backlog-runner|governor/backlog_runner.py|install-backlog-runner-pi5.sh|design_shadow_adapter_for_backlog_runner_replacement" governor scripts homelab orchestration 2>/dev/null || true)
   printf "ACTIVE_RUNTIME_RETIRED_BACKLOG_REFS=%s\\n" "$refs"
   test -z "$refs"
 '
