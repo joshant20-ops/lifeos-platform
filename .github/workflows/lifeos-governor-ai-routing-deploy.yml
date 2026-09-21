@@ -41,7 +41,7 @@ jobs:
           source=/home/joshan/lifeos-platform/governor/scripts/lifeos-cloud-builder
           destination=/usr/local/libexec/lifeos-cloud-builder
           expected=$(sha256sum "$source" | awk '{print $1}')
-          tx="governor-ai-routing-${GITHUB_RUN_ID}"
+          tx="governor-ai-routing-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           proposal=$(mktemp)
           trap 'rm -f "$proposal"' EXIT
           python3 - "$source" "$destination" "$expected" >"$proposal" <<'PY'
