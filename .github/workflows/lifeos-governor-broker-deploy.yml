@@ -66,8 +66,13 @@ jobs:
           wake_engineer
           echo "ENGINEER_PREFLIGHT_WAKE_PATH=${wol_helper:-direct-wol}"
           mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON
+          # Allow the physical Tower/Engineer a full 120s cold-boot grace period
+          # before the first SSH readiness probe. This avoids treating normal boot
+          # latency as a failed preflight or repeatedly issuing WoL during boot.
+          echo "ENGINEER_PREFLIGHT_BOOT_GRACE_SECONDS=120"
+          sleep 120
           ready=0
-          deadline=$((SECONDS + 600))
+          deadline=$((SECONDS + 480))
           attempt=0
           while (( SECONDS < deadline )); do
             attempt=$((attempt + 1))
