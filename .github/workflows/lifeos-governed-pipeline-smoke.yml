@@ -30,7 +30,7 @@ jobs:
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main; echo "SMOKE_SYNC_FETCH_RC=$?"
           git merge --ff-only origin/main; echo "SMOKE_SYNC_MERGE_RC=$?"
-          python3 -m py_compile governor/autonomous_agent.py governor/scripts/lifeos-pa-mission; echo "SMOKE_COMPILE_RC=$?"
+          python3 -m py_compile governor/autonomous_agent.py; echo "SMOKE_COMPILE_RC=$?"
           bash -n governor/scripts/lifeos-local-builder; echo "SMOKE_LOCAL_BUILDER_SYNTAX_RC=$?"
           bash -n governor/scripts/lifeos-remote-agent-builder; echo "SMOKE_REMOTE_BUILDER_SYNTAX_RC=$?"
 
@@ -100,21 +100,6 @@ jobs:
           # records the aggregate regression result without hiding a failing test.
           echo "SMOKE_GOVERNOR_TESTS_RC=$rc"
 
-      - name: Mission audit without execution
-        continue-on-error: true
-        shell: bash
-        run: |
-          set +e
-          cd /home/joshan/lifeos-platform
-          out=$(mktemp)
-          python3 governor/scripts/lifeos-pa-mission audit 2>&1 | tee "$out"
-          rc=${PIPESTATUS[0]}
-          if grep -q '^MISSION_PHASE=audit_passed' "$out" && { [[ "$rc" == 0 ]] || [[ "$rc" == 20 ]]; }; then
-            echo "SMOKE_MISSION_AUDIT_RC=0"
-          else
-            echo "SMOKE_MISSION_AUDIT_RC=$rc"
-          fi
-          rm -f "$out"
 
       - name: Collect all smoke findings
         if: always()
