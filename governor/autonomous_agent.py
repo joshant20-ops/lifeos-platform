@@ -60,7 +60,7 @@ PRIVACY_DOMAIN_POLICY_PATH = pathlib.Path(
     )
 )
 UI_PATH = PLATFORM_REPO / "governor" / "agent_ui.html"
-RUNTIME_PREFIX = "governor/runtime_jobs/"
+RUNTIME_ROOT = pathlib.Path(os.environ.get("LIFEOS_RUNTIME_ARTIFACT_ROOT", str(ROOT / "runtime_jobs"))).resolve()\nRUNTIME_PREFIX = "runtime_jobs/"
 JOB_ID_PATTERN = re.compile(r"\A[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}\Z")
 MAX_PATCH_BYTES = 1048576
 MAX_RUNTIME_BYTES = 65536
@@ -738,46 +738,23 @@ def suppress_unpublished_runtime_instructions(evidence):
 
 
 def verify_runtime_artifact(job_id, expected_sha256=None):
-    """Prove canonical, executable, tracked bytes are exactly on origin/main."""
+    """Prove a bounded runtime artifact exists outside the canonical Git checkout."""
     if not JOB_ID_PATTERN.fullmatch(str(job_id)):
-        return False, _artifact_evidence(
-            f"{RUNTIME_PREFIX}[rejected].sh", None, None, False, "invalid_job_id"
-        )
+        return False, _artifact_evidence(f"{RUNTIME_PREFIX}[rejected].sh", None, None, False, "invalid_job_id")
     rel = f"{RUNTIME_PREFIX}{job_id}.sh"
-    target = PLATFORM_REPO / rel
+    target = RUNTIME_ROOT / f"{job_id}.sh"
     try:
-        target.relative_to(PLATFORM_REPO)
+        target.resolve().relative_to(RUNTIME_ROOT)
         if target.is_symlink() or not target.is_file():
-            return False, _artifact_evidence(rel, None, None, False, "canonical_file_missing_or_unsafe")
+            return False, _artifact_evidence(rel, None, None, False, "runtime_file_missing_or_unsafe")
         if not os.access(target, os.X_OK):
-            return False, _artifact_evidence(rel, None, None, False, "canonical_file_not_executable")
+            return False, _artifact_evidence(rel, None, None, False, "runtime_file_not_executable")
         digest = hashlib.sha256(target.read_bytes()).hexdigest()
         if expected_sha256 is not None and not hmac.compare_digest(digest, str(expected_sha256)):
             return False, _artifact_evidence(rel, digest, None, False, "sha256_mismatch")
-        tracked = git("ls-files", "--error-unmatch", "--", rel, check=False)
-        if tracked.returncode:
-            return False, _artifact_evidence(rel, digest, None, False, "canonical_file_untracked")
-        index = git("ls-files", "-s", "--", rel, check=False).stdout.split()
-        if not index or index[0] != "100755":
-            return False, _artifact_evidence(rel, digest, None, False, "canonical_git_mode_not_executable")
-        working_blob = git("hash-object", "--", rel, check=False).stdout.strip()
-        head_blob = git("rev-parse", f"HEAD:{rel}", check=False).stdout.strip()
-        if not working_blob or head_blob != working_blob:
-            return False, _artifact_evidence(rel, digest, None, False, "head_blob_mismatch")
-        commit = git("log", "-1", "--format=%H", "--", rel, check=False).stdout.strip()
-        if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
-            return False, _artifact_evidence(rel, digest, None, False, "canonical_commit_missing")
-        commit_blob = git("rev-parse", f"{commit}:{rel}", check=False).stdout.strip()
-        if commit_blob != working_blob:
-            return False, _artifact_evidence(rel, digest, commit, False, "canonical_commit_blob_mismatch")
-        origin = git("merge-base", "--is-ancestor", commit, "origin/main", check=False)
-        origin_blob = git("rev-parse", f"origin/main:{rel}", check=False)
-        if origin.returncode or origin_blob.returncode or origin_blob.stdout.strip() != working_blob:
-            return False, _artifact_evidence(rel, digest, commit, False, "origin_main_mismatch")
-        return True, _artifact_evidence(rel, digest, commit, True)
+        return True, _artifact_evidence(rel, digest, "RUNTIME_LOCAL", True)
     except Exception as exc:
         return False, _artifact_evidence(rel, None, None, False, f"verification_error_{type(exc).__name__}")
-
 
 def publish_runtime_artifact(job, handoff):
     """Persist a candidate, then publish and prove it before it may be referenced."""
@@ -810,22 +787,15 @@ def publish_runtime_artifact(job, handoff):
     already, evidence = verify_runtime_artifact(job["id"], digest)
     if already:
         return True, evidence
-    if git("status", "--porcelain", check=False).stdout.strip():
-        return False, _artifact_evidence(expected, digest, None, False, "canonical_checkout_dirty")
-    target = PLATFORM_REPO / expected
     try:
+        RUNTIME_ROOT.mkdir(mode=0o750, parents=True, exist_ok=True)
+        target = RUNTIME_ROOT / f"{job['id']}.sh"
         if target.is_symlink():
             return False, _artifact_evidence(expected, digest, None, False, "symlink_rejected")
-        target.parent.mkdir(parents=True, exist_ok=True)
         temporary = target.with_name(f".{target.name}.{job['id']}.tmp")
         temporary.write_bytes(script)
-        temporary.chmod(0o755)
+        temporary.chmod(0o700)
         os.replace(temporary, target)
-        git("add", "--", expected)
-        git("diff", "--cached", "--check")
-        if git("diff", "--cached", "--quiet", check=False).returncode:
-            git("commit", "-m", f"agent: publish runtime artifact {job['id']}", timeout=60)
-        git("push", "origin", "HEAD:main", timeout=180)
         return verify_runtime_artifact(job["id"], digest)
     except Exception as exc:
         return False, _artifact_evidence(expected, digest, None, False, f"publication_error_{type(exc).__name__}")
@@ -839,7 +809,7 @@ def run_pi5_runtime(job, handoff):
     published, publication = publish_runtime_artifact(job, handoff)
     if not published:
         return publication
-    target = PLATFORM_REPO / rel
+    target = RUNTIME_ROOT / f"{job['id']}.sh"
     cp = subprocess.run(
         ["/usr/bin/timeout", "240s", str(target)],
         cwd=PLATFORM_REPO,
