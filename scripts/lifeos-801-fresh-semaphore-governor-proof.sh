@@ -95,17 +95,28 @@ PY
 
 # Semaphore owns the OTS execution decision; the host boundary performs the
 # credential-free normal Governor submission only after exact intent validation.
+# Governor already exposes its deterministic stuck-job classifier.  Stale
+# persisted RUNNING records are observability/history, not live capacity, so
+# exclude only IDs that Governor itself classifies as stuck.  Fresh active jobs
+# continue to block this acceptance proof fail-closed.
 ACTIVE=1
 for idle_poll in $(seq 1 30); do
   ACTIVE=$(python3 - "$GOV" "$idle_poll" <<'PY'
 import json,sys,urllib.request
-with urllib.request.urlopen(sys.argv[1]+'/jobs',timeout=10) as r: d=json.load(r)
+base=sys.argv[1]
+def get(path):
+    with urllib.request.urlopen(base+path,timeout=10) as r: return json.load(r)
+d=get('/jobs')
 jobs=d.get('jobs',[]) if isinstance(d,dict) else d
-active=[j for j in jobs if str(j.get('status','')).upper() in {'QUEUED','RUNNING'}]
+stuck_payload=get('/jobs/stuck')
+stuck_ids={str(j.get('id')) for j in (stuck_payload.get('stuck_jobs',[]) or []) if j.get('id')}
+active=[j for j in jobs if str(j.get('status','')).upper() in {'QUEUED','RUNNING'} and str(j.get('id')) not in stuck_ids]
 print(len(active))
-for j in active:
-    print("GOVERNOR_ACTIVE_JOB id=%s status=%s stage=%s created=%s changed=%s" % (
-        j.get('id'),j.get('status'),j.get('stage'),j.get('created_at'),j.get('stage_changed_at')
+for j in jobs:
+    if str(j.get('status','')).upper() not in {'QUEUED','RUNNING'}: continue
+    stale=str(j.get('id')) in stuck_ids
+    print("GOVERNOR_ACTIVE_JOB id=%s status=%s stage=%s created=%s changed=%s deterministic_stuck=%s" % (
+        j.get('id'),j.get('status'),j.get('stage'),j.get('created_at'),j.get('stage_changed_at'),str(stale).lower()
     ), file=sys.stderr)
 PY
   )
