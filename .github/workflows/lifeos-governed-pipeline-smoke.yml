@@ -182,6 +182,24 @@ jobs:
           echo 'M7_DIFF_UNCHANGED=PASS'
           echo 'M7_CHECKOUT_IMMUTABILITY=PASS'
 
+      - name: Prove M8 retired Git runtime launchers
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test ! -d governor/runtime_jobs || test -z "$(find governor/runtime_jobs -type f -name '*.sh' -print -quit)"
+          test -z "$(git ls-files 'governor/runtime_jobs/*.sh')"
+          runtime_real="$(readlink -f /var/lib/lifeos-agent/runtime_jobs)"
+          repo_real="$(readlink -f /home/joshan/lifeos-platform)"
+          case "$runtime_real" in "$repo_real"/*) echo 'M8_RUNTIME_ROOT=FAIL'; exit 1;; esac
+          test -d "$runtime_real"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'M8_GIT_RUNTIME_LAUNCHERS=0'
+          echo "M8_ACTIVE_RUNTIME_ROOT=PASS:$runtime_real"
+          echo 'M8_JOB_RECORDS_DEFERRED_TO_M9=PASS'
+          echo 'M8_REPOSITORY_CLEAN=PASS'
+          echo 'M8_RETIREMENT_ACCEPTANCE=PASS'
+
       - name: Agent contract regression
         continue-on-error: true
         shell: bash
