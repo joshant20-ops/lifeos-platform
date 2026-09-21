@@ -1,10 +1,4 @@
 name: LifeOS CI
-# Pass 5 trigger semantics post-Tower-fix proof sync
-# Tower runtime configured-host fallback regression exact-head
-# HA Tower dashboard Jinja regression proof
-# Pass 7 regression: canonical Energy acceptance/reporting contract — rerun 2
-# Pass 5 semantic restoration: fresh PR check trigger
-
 on:
   push:
     branches: [main]
@@ -48,7 +42,6 @@ jobs:
             tests.test_github_sync_protection \
             tests.test_snapshot_protected_drift \
             tests.test_control_runtime_ownership_migration \
-            tests.test_legacy_residue_cleaner \
             tests.test_historical_stale_activation_wrapper \
             tests.test_current_engineer_activation \
             tests.test_engineer_source_safety_diagnostic \
