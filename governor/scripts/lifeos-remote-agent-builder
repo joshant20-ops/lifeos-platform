@@ -143,6 +143,12 @@ stage worktree_prepare_pass
 cleanup() { git -C "$REPO" worktree remove --force "$WORKTREE" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 cd "$WORKTREE"
+# The runtime launcher is an ephemeral handoff, not Git state. Prepare its
+# bounded parent directory deterministically so OpenHands only creates content.
+RUNTIME_ABS="$WORKTREE/$RUNTIME_PATH"
+case "$RUNTIME_ABS" in "$WORKTREE"/*) ;; *) echo "RUNTIME_PATH_BOUNDARY=FAIL"; exit 65 ;; esac
+mkdir -p "$(dirname "$RUNTIME_ABS")"
+echo "RUNTIME_HANDOFF_DIRECTORY=PASS"
 BASE=$(git rev-parse HEAD)
 echo "WORKTREE_BASE=$BASE"
 
