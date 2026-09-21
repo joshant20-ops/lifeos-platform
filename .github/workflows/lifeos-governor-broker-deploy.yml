@@ -215,11 +215,7 @@ jobs:
           echo "RUNTIME_OUTSIDE_GIT_PATH=PASS:$runtime_real"
           probe=/var/lib/lifeos-agent/runtime_jobs/878-m4-live-probe.sh
           rm -f "$probe"
-          cat >"$probe" <<'RUNTIME_PROBE'
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' 'OTS878_M4_RUNTIME_PASS'
-RUNTIME_PROBE
+          printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "printf '%s\\n' 'OTS878_M4_RUNTIME_PASS'" >"$probe"
           echo 'RUNTIME_PROBE_WRITE=PASS' # M4 bounded live acceptance
           chmod 0700 "$probe"
           probe_mode="$(stat -c %a "$probe")"
