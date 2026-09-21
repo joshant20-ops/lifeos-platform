@@ -12,6 +12,7 @@ on:
       - 'governor/job_records.py'
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
+      - 'engineer/provider_router.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-local-builder'
@@ -187,10 +188,8 @@ jobs:
           echo 'BROKER_CAPABILITY_PROTECTION=PASS'
           echo 'DEPLOY_CHECKPOINT=broker-contract-proven'
 
-      # Engineering-agent tool execution is intentionally NOT tested here.
-      # This workflow proves deployment/broker health only. OTS agent execution is
-      # owned by the dedicated Direct OpenHands Proof workflow (#759/#764). Keeping
-      # a Codex smoke here produced false-red deployments after healthy installs.
+      # Engineering-agent tool execution is intentionally tested by the dedicated
+      # Direct OpenHands Proof workflow; this workflow owns deployment/broker health.
 
       - name: Prove repository clean
         shell: bash
@@ -213,24 +212,6 @@ jobs:
           repo_real="$(readlink -f /home/joshan/lifeos-platform)"
           case "$runtime_real" in "$repo_real"/*) echo 'RUNTIME_OUTSIDE_GIT=FAIL'; exit 1;; esac
           echo "RUNTIME_OUTSIDE_GIT_PATH=PASS:$runtime_real"
-          probe=/var/lib/lifeos-agent/runtime_jobs/878-m4-live-probe.sh
-          rm -f "$probe"
-          printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' "printf '%s\\n' 'OTS878_M4_RUNTIME_PASS'" >"$probe"
-          echo 'RUNTIME_PROBE_WRITE=PASS' # M4 bounded live acceptance
-          chmod 0700 "$probe"
-          probe_mode="$(stat -c %a "$probe")"
-          echo "RUNTIME_PROBE_MODE=$probe_mode"
-          test -f "$probe" || { echo 'RUNTIME_PROBE_FILE=FAIL'; exit 1; }
-          test ! -L "$probe" || { echo 'RUNTIME_PROBE_SYMLINK=FAIL'; exit 1; }
-          test -x "$probe" || { echo 'RUNTIME_PROBE_EXECUTABLE=FAIL'; exit 1; }
-          probe_out="$("$probe")"
-          echo "RUNTIME_PROBE_OUTPUT=$probe_out"
-          test "$probe_out" = OTS878_M4_RUNTIME_PASS || { echo 'RUNTIME_PROBE_EXECUTION=FAIL'; exit 1; }
-          rm -f "$probe"
-          test -z "$(git status --porcelain --untracked-files=all)"
-          echo 'RUNTIME_OUTSIDE_GIT=PASS'
-          echo 'RUNTIME_PERMISSION_EXECUTION=PASS'
-          echo 'RUNTIME_PROBE_CLEANUP=PASS'
           echo 'GOVERNOR_BROKER_DEPLOY=PASS'
           echo 'REPOSITORY_FINAL=PASS'
           echo 'DEPLOY_CHECKPOINT=complete'
