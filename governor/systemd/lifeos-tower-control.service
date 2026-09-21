@@ -9,6 +9,9 @@ User=joshan
 Group=joshan
 Environment=LIFEOS_TOWER_CONFIG=/etc/lifeos/tower.json
 Environment=LIFEOS_MQTT_HOST=127.0.0.1
+# Governor-owned compute should be released promptly after its final lease.
+# Keep the production grace bounded but non-zero to avoid shutdown churn.
+Environment=LIFEOS_TOWER_IDLE_GRACE=120
 ExecStart=/usr/local/libexec/lifeos-tower-control
 Restart=on-failure
 RestartSec=5
