@@ -19,6 +19,10 @@ OPS = {
         'script': 'scripts/lifeos-deploy-ha-control-bridge.sh',
         'privileged': True,
     },
+    'deploy-snapshot-exporter': {
+        'script': 'scripts/lifeos-deploy-snapshot-exporter.sh',
+        'privileged': True,
+    },
     'deploy-tower-metrics': {
         'script': 'scripts/lifeos-deploy-tower-metrics-wrapper.sh',
         'privileged': True,
