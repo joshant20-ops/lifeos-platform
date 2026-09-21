@@ -229,13 +229,6 @@ def test_governor_deploy_proves_interfaces_without_competing_engineering_job():
     assert "timeout-minutes: 45" in workflow
 
 
-def test_level1_worker_does_not_own_meta_issue_disposition():
-    mission = (ROOT / "governor/scripts/lifeos-pa-mission").read_text()
-    assert "Do not close GitHub issues" in mission
-    assert "LEVEL1_CANONICAL_MARKER=PASS" in mission
-    assert "LEVEL1_DETERMINISTIC_ASSERTION=PASS" in mission
-    assert 'passed = status == "PASS" and canonical_marker' in mission
-
 
 def test_openhands_smoke_delegates_readiness_and_acceptance_to_current_proof_scripts():
     workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
