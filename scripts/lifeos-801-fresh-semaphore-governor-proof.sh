@@ -6,6 +6,7 @@ SECRETS=/etc/lifeos/semaphore-secrets
 ISSUE=862
 REPO_FULL=joshant20-ops/lifeos-platform
 GOV=http://127.0.0.1:8790
+# #801 rerun trigger: cloud exhaustion now falls back to governed Tower Ollama
 PROJECT_NAME='LifeOS 801 Acceptance'
 TEMPLATE_NAME='801 post-migration intent'
 
