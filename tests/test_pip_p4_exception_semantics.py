@@ -1,6 +1,6 @@
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
-SELECTOR=(ROOT/"scripts/lifeos-pip-p4-exception-selector.py").read_text()
+SELECTOR=(ROOT/"archive/scripts/lifeos-pip-p4-exception-selector.py").read_text()
 BRIDGE=(ROOT/"homelab/live/home/joshan/automation/lifeos_paperless_local_ai.py").read_text()
 
 def test_selector_reuses_accepted_native_evaluator_and_is_read_only():
