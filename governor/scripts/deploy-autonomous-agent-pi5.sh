@@ -82,6 +82,7 @@ sudo install -m 0644 "$PRIVACY_POLICY" /usr/local/libexec/privacy-domain-policy.
 sudo install -m 0755 "$BUILDER_SRC" /usr/local/libexec/lifeos-cloud-builder
 sudo install -m 0755 "$LOCAL_BUILDER_SRC" /usr/local/libexec/lifeos-local-builder
 sudo install -d -m 0750 -o joshan -g joshan /var/lib/lifeos-agent
+sudo install -d -m 0750 -o joshan -g joshan /var/lib/lifeos-agent/runtime_jobs
 
 sudo tee /etc/systemd/system/lifeos-autonomous-agent.service >/dev/null <<'UNIT'
 [Unit]
@@ -95,6 +96,7 @@ User=joshan
 Group=joshan
 Environment=LIFEOS_AGENT_PORT=8790
 Environment=LIFEOS_AGENT_STATE=/var/lib/lifeos-agent
+Environment=LIFEOS_RUNTIME_ARTIFACT_ROOT=/var/lib/lifeos-agent/runtime_jobs
 Environment=LIFEOS_AGENT_MAX_ITERATIONS=8
 Environment=LIFEOS_AGENT_BUILDER=/usr/local/libexec/lifeos-cloud-builder
 Environment=LIFEOS_AGENT_LOCAL_BUILDER=/usr/local/libexec/lifeos-local-builder
