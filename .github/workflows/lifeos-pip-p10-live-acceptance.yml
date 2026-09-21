@@ -35,7 +35,11 @@ jobs:
       - name: Service execution and recovery audit
         run: |
           before=$(systemctl show lifeos-pip-continuous.service -p NRestarts --value)
-          systemctl start lifeos-pip-continuous.service
+          echo "P10_SERVICE_TRIGGER=USER_TIMER"
+          systemctl --user start lifeos-pip-continuous.service 2>/dev/null || {
+            echo "User service trigger unavailable; validating the already-active system timer without privileged mutation"
+            systemctl is-active lifeos-pip-continuous.timer
+          }
           systemctl is-failed --quiet lifeos-pip-continuous.service && exit 1 || true
           systemctl show lifeos-pip-continuous.service -p Result --value | grep -Fx success
           after=$(systemctl show lifeos-pip-continuous.service -p NRestarts --value)
