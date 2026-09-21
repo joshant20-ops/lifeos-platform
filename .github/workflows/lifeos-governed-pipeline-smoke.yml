@@ -107,6 +107,19 @@ jobs:
           python3 -m pytest -q tests/test_governor_local_tool_routing.py
           echo "SMOKE_LOCAL_TOOL_ROUTING_RC=$?"
 
+      - name: Capture M7 canonical checkout baseline
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git rev-parse HEAD > /tmp/lifeos-m7-head
+          git status --porcelain=v1 --untracked-files=all > /tmp/lifeos-m7-status
+          git diff --binary HEAD > /tmp/lifeos-m7-diff
+          git ls-files -s > /tmp/lifeos-m7-index
+          echo "M7_BASELINE_HEAD=$(cat /tmp/lifeos-m7-head)"
+          echo 'M7_BASELINE_CLEAN=PASS'
+
       - name: M6 cloud and fallback acceptance
         shell: bash
         run: |
@@ -146,6 +159,28 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           echo 'M6_REPOSITORY_CLEAN=PASS'
           echo 'M6_LIVE_ACCEPTANCE=PASS'
+
+      - name: Prove M7 canonical checkout immutability
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test "$(git rev-parse HEAD)" = "$(cat /tmp/lifeos-m7-head)"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git status --porcelain=v1 --untracked-files=all)" = "$(cat /tmp/lifeos-m7-status)"
+          git diff --binary HEAD > /tmp/lifeos-m7-diff-after
+          git ls-files -s > /tmp/lifeos-m7-index-after
+          cmp -s /tmp/lifeos-m7-diff /tmp/lifeos-m7-diff-after
+          cmp -s /tmp/lifeos-m7-index /tmp/lifeos-m7-index-after
+          runtime_real="$(readlink -f /var/lib/lifeos-agent/runtime_jobs)"
+          repo_real="$(readlink -f /home/joshan/lifeos-platform)"
+          case "$runtime_real" in "$repo_real"/*) echo 'M7_RUNTIME_OUTSIDE_GIT=FAIL'; exit 1;; esac
+          echo "M7_RUNTIME_OUTSIDE_GIT=PASS:$runtime_real"
+          echo 'M7_HEAD_UNCHANGED=PASS'
+          echo 'M7_WORKTREE_UNCHANGED=PASS'
+          echo 'M7_INDEX_UNCHANGED=PASS'
+          echo 'M7_DIFF_UNCHANGED=PASS'
+          echo 'M7_CHECKOUT_IMMUTABILITY=PASS'
 
       - name: Agent contract regression
         continue-on-error: true
