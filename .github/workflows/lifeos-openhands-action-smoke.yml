@@ -8,6 +8,9 @@ on:
       - 'scripts/test-direct-openhands.sh'
       - 'scripts/test-engineer-governor-broker.sh'
       - 'tests/test_governor_local_tool_routing.py'
+      - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
+      - 'governor/ai_broker.py'
+      - 'engineer/provider_router.py'
       - '.github/workflows/lifeos-openhands-action-smoke.yml'
   workflow_run:
     workflows: ['LifeOS Governor Broker Deploy']
