@@ -192,11 +192,6 @@ opt/stacks/homeassistant/config/scripts/lifeos_action_processor_ha_sensor.py
 opt/stacks/homeassistant/config/scripts/lifeos_action_request.py
 opt/stacks/homeassistant/config/scripts/lifeos_action_run_watchman.sh
 opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py
-opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py.bak_hostloop_20260523_002011
-opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py.bak_hostloop_20260523_002018
-opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py.bak_immediate_process_20260523_000834
-opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py.bak_simple_qa_only_20260523_001851
-opt/stacks/homeassistant/config/scripts/lifeos_ask_submit.py.bak_wire_submit_once_20260522_231341
 opt/stacks/homeassistant/config/scripts/lifeos_ha_ask.py
 opt/stacks/homeassistant/config/scripts/lifeos_human_trust_ha_sensor.py
 opt/stacks/homeassistant/config/scripts/lifeos_pa_lifecycle_export.py
@@ -213,7 +208,6 @@ opt/stacks/homeassistant/config/scripts.yaml
 opt/stacks/homeassistant/docker-compose.yml
 opt/stacks/lifeos-energy/forecast-learning/collector.py
 opt/stacks/lifeos-energy/forecast-learning/shadow_learner.py
-opt/stacks/lifeos-energy/forecast-learning/shadow_learner.py.pre_battery_entity_fix.20260824-094155.bak
 opt/stacks/lifeos-energy/forecast-learning/wait_for_ha_energy.py
 opt/stacks/lifeos-energy/ops/LIFEOS_GITHUB_FIRST_CHANGE_SOP.md
 opt/stacks/lifeos-energy/ops/lifeos-github-first-gate
@@ -244,7 +238,6 @@ opt/stacks/prometheus/alerts.yml
 opt/stacks/prometheus/docker-compose.yml
 opt/stacks/prometheus/prometheus.yml
 opt/stacks/prometheus/rules/day8-alerts.yml
-opt/stacks/qbittorrent_backup_2026-07-01_171445/docker-compose.yml
 opt/stacks/qbittorrent/docker-compose.yml
 opt/stacks/uptime-kuma/docker-compose.yml
 opt/stacks/vaultwarden/docker-compose.yml
@@ -255,8 +248,6 @@ usr/local/sbin/lifeos-ansible-adopt
 usr/local/sbin/lifeos-export-powerdown-state
 usr/local/sbin/lifeos-github-first-gate
 usr/local/sbin/lifeos-github-sync
-usr/local/sbin/lifeos-github-sync.bak_energy_source_20260826_222151
-usr/local/sbin/lifeos-github-sync.bak_memory_20260826_221911
 usr/local/sbin/lifeos-gitleaks-gate
 usr/local/sbin/lifeos-job-publisher
 usr/local/sbin/lifeos_network_identity_refresh_root_wrapper.sh
