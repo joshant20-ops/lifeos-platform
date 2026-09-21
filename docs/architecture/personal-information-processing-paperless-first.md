@@ -1,8 +1,12 @@
 # Personal Information Processing — Paperless-first reset
 
-Status: revised Paperless-first **P0, P1 and P2 accepted**. Earlier custom-first P0–P2
+Status: revised Paperless-first **P0–P10 accepted**. Earlier custom-first P0–P2
 implementation evidence remains historically useful but its gate acceptance is
-**superseded/incomplete**. Revised P3 is next; later gates remain blocked.
+**superseded**. P3–P10 were re-evaluated against the native Paperless evidence
+rather than mechanically rebuilding the old design. Final live P10 acceptance
+passed on 2026-09-21 in GitHub Actions run 35574743097 at commit
+79c436a8179c5ea396ba1a9dbff94eaeb8c79735. Post-P10 whole-system audit and
+document-quality learning are separate follow-on acceptance work.
 
 ## Paperless-first invariant
 
