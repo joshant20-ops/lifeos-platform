@@ -1,0 +1,179 @@
+name: LifeOS PA Mission Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Runner mode'
+        required: true
+        default: 'run'
+        type: choice
+        options:
+          - run
+          - resume
+          - audit
+          - status
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pa-mission-control
+  cancel-in-progress: true
+
+jobs:
+  control:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 25
+    steps:
+      - name: Safely synchronize canonical Pi checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          test -z "$(git status --porcelain --untracked-files=all)" || {
+            echo 'RESULT=BLOCKED'
+            echo 'REASON=canonical_checkout_dirty'
+            exit 20
+          }
+          current=$(git rev-parse HEAD)
+          target=$(git rev-parse origin/main)
+          if [[ "$current" != "$target" ]]; then
+            git merge-base --is-ancestor "$current" "$target" || {
+              echo 'RESULT=BLOCKED'
+              echo 'REASON=canonical_checkout_not_fast_forwardable'
+              exit 21
+            }
+            git merge --ff-only origin/main
+          fi
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo 'CANONICAL_SYNC=PASS'
+
+      - name: Ensure runner is current
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          SRC=governor/scripts/lifeos-pa-mission
+          DEST=/home/joshan/.local/bin/lifeos-pa-mission
+          python3 -m py_compile "$SRC"
+          install -d -m 0755 /home/joshan/.local/bin
+          install -d -m 0700 /home/joshan/.local/state/lifeos-pa-autonomy
+          if [[ ! -x "$DEST" ]] || ! cmp -s "$SRC" "$DEST"; then
+            install -m 0755 "$SRC" "$DEST"
+          fi
+          echo "RUNNER_SHA256=$(sha256sum "$DEST" | awk '{print $1}')"
+
+      - name: Preflight mission controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          set +e
+          /home/joshan/.local/bin/lifeos-pa-mission audit
+          rc=$?
+          set -e
+          echo "AUDIT_RUNNER_RC=$rc"
+          [[ "$rc" == 0 || "$rc" == 20 ]]
+
+      # Do not pre-run the local builder or a second planning audit here.
+      # Governor owns routing/readiness and OpenHands owns planning; duplicating
+      # those checks made #759 wake/test the same path multiple times.
+
+      # Keep the governed mission as one process so it is never executed twice, but
+      # expose its internal checkpoints as separate Actions steps. The background
+      # process writes one log/state bundle; observer steps only wait/read it.
+      - name: Start governed issue mission
+        shell: bash
+        env:
+          MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
+          # #418 staged bootstrap: run the trivial child issue first; advance only after live PASS.
+          LIFEOS_PA_TARGET_ISSUE: '759'
+        run: |
+          set -Eeuo pipefail
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          mkdir -p "$STATE"
+          rm -f "$STATE/github-mission.log" "$STATE/github-mission.rc"
+          (
+            set +e
+            timeout --signal=TERM --kill-after=30s 20m /home/joshan/.local/bin/lifeos-pa-mission "$MODE" >"$STATE/github-mission.log" 2>&1
+            echo "$?" >"$STATE/github-mission.rc"
+          ) &
+          echo "$!" >"$STATE/github-mission.pid"
+          echo 'MISSION_PROCESS_STARTED=PASS'
+
+      - name: Wait for Governor submission
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          for _ in $(seq 1 45); do
+            grep -q '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" 2>/dev/null && break
+            [[ -f "$STATE/github-mission.rc" ]] && break
+            sleep 2
+          done
+          grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1
+          grep -q '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log"
+
+      - name: Monitor Governor and Engineer execution
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          last=''
+          while [[ ! -f "$STATE/github-mission.rc" ]]; do
+            current=$(grep '^GOVERNOR_JOB_STATUS=' "$STATE/github-mission.log" 2>/dev/null | tail -1 || true)
+            if [[ -n "$current" && "$current" != "$last" ]]; then
+              echo "$current"
+              last="$current"
+            fi
+            sleep 5
+          done
+          grep '^GOVERNOR_JOB_STATUS=' "$STATE/github-mission.log" 2>/dev/null | tail -10 || true
+          echo 'MISSION_PROCESS_TERMINATED=PASS'
+
+      - name: Verify Governor terminal decision
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          rc=$(cat "$STATE/github-mission.rc")
+          echo "MISSION_RUNNER_RC=$rc"
+          tail -80 "$STATE/github-mission.log"
+          if [[ "$rc" == 124 || "$rc" == 137 || "$rc" == 143 ]]; then
+            echo 'RESULT=BLOCKED'
+            echo 'REASON=governed_issue_mission_timeout'
+            exit 40
+          fi
+          case "$rc" in
+            0) echo 'GOVERNOR_TERMINAL_CONTRACT=PASS' ;;
+            20|30|40) exit "$rc" ;;
+            *) exit "$rc" ;;
+          esac
+
+      - name: Verify archived disposition evidence
+        if: success()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          grep -q 'RESULT=PASS' "$STATE/github-mission.log"
+          grep -q 'LEVEL1_CANONICAL_MARKER=PASS' "$STATE/github-mission.log"
+          grep -q 'LEVEL1_DETERMINISTIC_ASSERTION=PASS' "$STATE/github-mission.log"
+          grep -q 'ISSUE_DISPOSITIONS=#759 ready_for_evidence_backed_closure' "$STATE/github-mission.log"
+          echo 'ARCHIVED_DISPOSITION_CONTRACT=PASS'
+
+      - name: Surface consolidated bundle
+        if: always()
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
+          if [[ -f "$STATE/WORK_BUNDLE.md" ]]; then
+            echo '--- WORK_BUNDLE.md ---'
+            cat "$STATE/WORK_BUNDLE.md"
+          fi
+          if [[ -f "$STATE/SUMMARY.md" ]]; then
+            echo '--- SUMMARY.md ---'
+            cat "$STATE/SUMMARY.md"
+          fi
