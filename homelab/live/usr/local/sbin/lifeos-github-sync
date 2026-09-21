@@ -123,6 +123,8 @@ excluded() {
         */backups/*|\
         *_backup_*/*|\
         *.bak|*.bak_*|*.old|*.orig|*.tmp|\
+        *_backup_*/*|\
+        *.bak|*.bak_*|*.old|*.orig|*.tmp|\
         */downloads/*)
 
             return 0
