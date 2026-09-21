@@ -129,6 +129,22 @@ REMOTE
   done
 done
 
+# Sanitised cloud-eligible engineering falls back to governed Tower/Ollama when cloud agents exhaust.
+# This is one-way only: local-only jobs still never fall through to cloud.
+LOCAL_BUILDER=${LIFEOS_AGENT_LOCAL_BUILDER:-/usr/local/libexec/lifeos-local-builder}
+if [[ -x "$LOCAL_BUILDER" ]]; then
+  echo "CLOUD_AGENTS_EXHAUSTED=YES"
+  echo "FALLBACK_ROUTE=Tower_Ollama"
+  set +e
+  LIFEOS_JOB_PRIVACY=local-only LIFEOS_JOB_ID="$JOB_ID" LIFEOS_JOB_TASK_CLASS="$TASK_CLASS" "$LOCAL_BUILDER" "$REQUEST" "$ITERATION" "$FEEDBACK"
+  RC=$?
+  set -e
+  if (( RC == 0 )); then echo "FALLBACK_RESULT=local_builder PASS"; exit 0; fi
+  echo "FALLBACK_RESULT=local_builder RETRY exit=$RC"
+else
+  echo "FALLBACK_ROUTE=unavailable"
+fi
+
 echo "RESULT=RETRY"
-echo "REASON=eligible_engineering_agents_exhausted"
+echo "REASON=eligible_engineering_agents_exhausted_and_local_fallback_failed"
 exit 21
