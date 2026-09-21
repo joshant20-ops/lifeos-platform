@@ -10,6 +10,8 @@ on:
       - 'governor/autonomous_agent.py'
       - 'governor/systemd/lifeos-engineer.service.d/governor-ai-broker.conf'
       - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
+      - 'governor/tower_control.py'
+      - 'governor/systemd/lifeos-tower-control.service'
   workflow_dispatch:
 
 permissions:
@@ -58,6 +60,9 @@ jobs:
 
       - name: Deploy protected Engineer runtime
         run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
+
+      - name: Refresh Tower controller runtime
+        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge
 
       - name: Capture Engineer diagnostics on deployment failure
         if: failure()
