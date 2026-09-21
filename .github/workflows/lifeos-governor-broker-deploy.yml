@@ -220,7 +220,7 @@ jobs:
 set -euo pipefail
 printf '%s\n' 'OTS878_M4_RUNTIME_PASS'
 RUNTIME_PROBE
-          echo 'RUNTIME_PROBE_WRITE=PASS'
+          echo 'RUNTIME_PROBE_WRITE=PASS' # M4 bounded live acceptance
           chmod 0700 "$probe"
           echo "RUNTIME_PROBE_MODE=$(stat -c %a "$probe")"
           test -f "$probe" || { echo 'RUNTIME_PROBE_FILE=FAIL'; exit 1; }
