@@ -71,7 +71,12 @@ try:
         if 'LIFEOS_801_SEMAPHORE_INTENT=PASS issue=862 action=verify_governor_ots_boundary mutation=none' in output: break
         time.sleep(2)
     marker='LIFEOS_801_SEMAPHORE_INTENT=PASS issue=862 action=verify_governor_ots_boundary mutation=none'
-    if marker not in output:
+    # Ansible/Semaphore may wrap a debug message at whitespace. Preserve an
+    # exact semantic marker while normalising only transport whitespace/ANSI.
+    import re
+    normalised=re.sub(r'\\x1b\\[[0-9;]*m','',output)
+    normalised=' '.join(normalised.split())
+    if marker not in normalised:
         print('SEMAPHORE_RAW_OUTPUT_DIAGNOSTIC_BEGIN')
         print(output[-8000:])
         print('SEMAPHORE_RAW_OUTPUT_DIAGNOSTIC_END')
