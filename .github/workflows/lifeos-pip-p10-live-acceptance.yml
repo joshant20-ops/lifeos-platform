@@ -17,7 +17,11 @@ jobs:
           test -z "$(git -C /home/joshan/lifeos-platform status --porcelain)"
           git -C /home/joshan/lifeos-platform merge --ff-only origin/main
       - name: P5-P10 regression contracts
-        run: python3 -m pytest -q tests/test_pip_p6_p10_functional.py tests/test_pip_p4_exception_semantics.py
+        run: |
+          cd /home/joshan/lifeos-platform
+          echo "P10_REGRESSION_CHECKOUT=$(git rev-parse HEAD)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          python3 -m pytest -q tests/test_pip_p6_p10_functional.py tests/test_pip_p4_exception_semantics.py
       - name: Continuous runtime audit
         run: |
           systemctl is-enabled lifeos-pip-continuous.timer
