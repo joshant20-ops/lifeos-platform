@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/test-direct-openhands.sh'
+      - 'scripts/test-engineer-governor-broker.sh'
       - '.github/workflows/lifeos-openhands-action-smoke.yml'
   workflow_run:
     workflows: ['LifeOS Governor Broker Deploy']
