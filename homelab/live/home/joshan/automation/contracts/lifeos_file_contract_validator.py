@@ -18,9 +18,7 @@ FORBIDDEN = [
 def main():
     problems = []
 
-    if not CONTRACT.exists():
-        problems.append(f"Missing contract: {CONTRACT}")
-
+    # The historical JSON contract was retired with the file-worker layer.\n    # Keep this validator focused on the remaining live cross-import boundary.\n
     for p in FILES_TO_CHECK:
         if not p.exists():
             continue
