@@ -95,14 +95,25 @@ PY
 
 # Semaphore owns the OTS execution decision; the host boundary performs the
 # credential-free normal Governor submission only after exact intent validation.
-ACTIVE=$(python3 - "$GOV" <<'PY'
+ACTIVE=1
+for idle_poll in $(seq 1 30); do
+  ACTIVE=$(python3 - "$GOV" "$idle_poll" <<'PY'
 import json,sys,urllib.request
 with urllib.request.urlopen(sys.argv[1]+'/jobs',timeout=10) as r: d=json.load(r)
 jobs=d.get('jobs',[]) if isinstance(d,dict) else d
-print(sum(str(j.get('status','')).upper() in {'QUEUED','RUNNING'} for j in jobs))
+active=[j for j in jobs if str(j.get('status','')).upper() in {'QUEUED','RUNNING'}]
+print(len(active))
+for j in active:
+    print("GOVERNOR_ACTIVE_JOB id=%s status=%s stage=%s created=%s changed=%s" % (
+        j.get('id'),j.get('status'),j.get('stage'),j.get('created_at'),j.get('stage_changed_at')
+    ), file=sys.stderr)
 PY
-)
-[[ "$ACTIVE" == 0 ]] || { echo "RESULT=RETRY"; echo "REASON=governor_busy active=$ACTIVE"; exit 75; }
+  )
+  echo "GOVERNOR_IDLE_POLL=$idle_poll ACTIVE=$ACTIVE"
+  [[ "$ACTIVE" == 0 ]] && break
+  sleep 10
+done
+[[ "$ACTIVE" == 0 ]] || { echo "RESULT=RETRY"; echo "REASON=governor_busy_after_bounded_wait active=$ACTIVE"; exit 75; }
 PROMPT='Acceptance fixture #862. Read-only task: verify docs/governor-ots-boundary.md exists in the canonical repository. Do not change files, services, configuration, credentials, GitHub issue state, or household state. Return evidence only.'
 RESP=$(python3 - "$GOV" "$PROMPT" <<'PY'
 import json,sys,urllib.request
