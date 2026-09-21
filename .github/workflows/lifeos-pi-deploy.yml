@@ -10,6 +10,7 @@ on:
         options:
           - deploy-ha-control-bridge
           - deploy-tower-metrics
+          - deploy-snapshot-exporter
           - deploy-governor-managed-engineer
           - deploy-energy-opportunity-api
           - capability-stage3-systemd-cleanup
@@ -26,6 +27,10 @@ on:
       - 'tests/test_energy_opportunity_service.py'
       - 'deploy-triggers/ha-control-bridge'
       - 'deploy-triggers/tower-metrics'
+      - 'governor/systemd/lifeos-snapshots-export.service'
+      - 'governor/systemd/lifeos-snapshots-export.timer'
+      - 'governor/scripts/snapshot-lifeos-observed-state.sh'
+      - 'scripts/lifeos-deploy-snapshot-exporter.sh'
       - 'governor/autonomous_agent.py'
       - 'governor/privacy-domain-policy.json'
       - 'governor/systemd/lifeos-autonomous-agent.service'
@@ -48,6 +53,7 @@ jobs:
       (github.event_name == 'issues' && (
         github.event.issue.title == 'LifeOS Deploy: deploy-ha-control-bridge' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-snapshot-exporter' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' ||
@@ -63,6 +69,7 @@ jobs:
         ${{ github.event_name == 'push' && (github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'governor/privacy-domain-policy.json') && 'deploy-governor-managed-engineer' || github.event.head_commit.added && contains(github.event.head_commit.added, 'governor/privacy-domain-policy.json') && 'deploy-governor-managed-engineer' || 'deploy-energy-opportunity-api') || github.event_name == 'issues' &&
         (github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' && 'capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' && 'deploy-tower-metrics' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-snapshot-exporter' && 'deploy-snapshot-exporter' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' && 'deploy-governor-managed-engineer' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' && 'deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core' && 'verify-transaction-core' ||
