@@ -35,3 +35,4 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo -n /usr/local/sbin/lifeos-deploy-gateway proof-801-semaphore-governor
+# #801 rerun trigger: post-PR-864 diagnostics acceptance
