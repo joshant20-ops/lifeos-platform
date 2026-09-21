@@ -2,7 +2,7 @@ name: LifeOS P10 Live Continuous Acceptance
 on:
   push:
     branches: [main]
-    paths: ['scripts/lifeos-pip-p10-live-acceptance.py','scripts/lifeos-pip-p6-p10-core.py','governor/systemd/lifeos-pip-continuous.service','governor/systemd/lifeos-pip-continuous.timer']
+    paths: ['scripts/lifeos-pip-p10-live-acceptance.py','scripts/lifeos-pip-p6-p10-core.py','governor/systemd/lifeos-pip-continuous.service','governor/systemd/lifeos-pip-continuous.timer','.github/workflows/lifeos-pip-p10-live-acceptance.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
