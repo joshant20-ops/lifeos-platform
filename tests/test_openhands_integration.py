@@ -237,18 +237,12 @@ def test_level1_worker_does_not_own_meta_issue_disposition():
     assert 'passed = status == "PASS" and canonical_marker' in mission
 
 
-def test_openhands_smoke_delegates_readiness_and_acceptance_to_current_proof_scripts():
-    workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
+def test_governed_pipeline_smoke_owns_openhands_routing_proof():
+    workflow = (ROOT / ".github/workflows/lifeos-governed-pipeline-smoke.yml").read_text()
     assert "bash scripts/test-engineer-governor-broker.sh" in workflow
     assert "bash scripts/test-direct-openhands.sh" in workflow
-    assert "- name: Probe Engineer to Governor broker boundary" in workflow
-    assert "- name: Run direct OpenHands isolation proof" in workflow
-
-
-def test_openhands_smoke_does_not_duplicate_retired_inline_acceptance_logic():
-    workflow = (ROOT / ".github/workflows/lifeos-openhands-action-smoke.yml").read_text()
-    assert "- name: Ensure Engineer available" not in workflow
-    assert "p.read_text().splitlines()" not in workflow
+    assert "tests/test_governor_local_tool_routing.py" in workflow
+    assert "- name: Direct OpenHands governed routing proof" in workflow
 
 
 def test_cloud_builder_preserves_bundle_across_retries_and_streams_evidence():
