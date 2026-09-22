@@ -25,11 +25,11 @@ fi
   exit 30
 }
 
-# Refresh the remote-tracking ref explicitly. A plain `git fetch origin main`
-# may update only FETCH_HEAD when this checkout has a restricted/nonstandard
-# fetch refspec, leaving origin/main stale and causing a false no_change.
-git -C "$JOBS_REPO" fetch origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null
-git -C "$JOBS_REPO" worktree add --detach "$EXPORT_WORKTREE" refs/remotes/origin/main >/dev/null
+# Use FETCH_HEAD as the authoritative snapshot. The persistent checkout's
+# remote-tracking refs may legitimately be stale or locally divergent.
+git -C "$JOBS_REPO" fetch origin refs/heads/main >/dev/null
+REMOTE_MAIN=$(git -C "$JOBS_REPO" rev-parse FETCH_HEAD)
+git -C "$JOBS_REPO" worktree add --detach "$EXPORT_WORKTREE" "$REMOTE_MAIN" >/dev/null
 OUT_DIR="$EXPORT_WORKTREE/jobs"
 mkdir -p "$OUT_DIR"
 
@@ -114,8 +114,9 @@ git -C "$EXPORT_WORKTREE" diff --cached --check
 git -C "$EXPORT_WORKTREE" -c user.name=lifeos-job-exporter -c user.email=lifeos@localhost \
   commit -m "jobs: export sanitised LifeOS job records" >/dev/null
 git -C "$EXPORT_WORKTREE" push origin HEAD:main >/dev/null
-git -C "$JOBS_REPO" fetch origin "+refs/heads/main:refs/remotes/origin/main" >/dev/null
-test "$(git -C "$EXPORT_WORKTREE" rev-parse HEAD)" = "$(git -C "$JOBS_REPO" rev-parse refs/remotes/origin/main)"
+remote_head=$(git -C "$JOBS_REPO" ls-remote origin refs/heads/main | awk '{print $1}')
+test -n "$remote_head"
+test "$(git -C "$EXPORT_WORKTREE" rev-parse HEAD)" = "$remote_head"
 
 echo "RESULT=PASS"
 echo "JOBS_EXPORT=updated"
