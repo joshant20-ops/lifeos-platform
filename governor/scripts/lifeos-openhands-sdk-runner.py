@@ -56,7 +56,15 @@ def main() -> int:
     # A normal SDK return is transport completion only. Require the OTS session to
     # have actually exercised an engineering tool before reporting success; otherwise
     # a model that merely explains the requested edit is indistinguishable from work.
-    tool_events = [event for event in events if "tool" in type(event).__name__.lower()]
+    # OpenHands records native tool use as AgentAction events (for example
+    # FileEditorAction/TerminalAction), not as event classes containing "tool".
+    # Detect the SDK's action payload generically rather than interpreting or
+    # executing individual actions in LifeOS.
+    tool_events = [
+        event for event in events
+        if getattr(event, "action", None) is not None
+        and type(getattr(event, "action", None)).__name__.lower().endswith("action")
+    ]
     if not tool_events:
         print("OPENHANDS_SDK_ERROR=no_engineering_tool_activity", file=sys.stderr, flush=True)
         return 22
