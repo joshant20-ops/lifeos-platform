@@ -3,7 +3,9 @@ name: LifeOS PA Mission Control
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/lifeos-pa-mission-control.yml']
+    paths:
+      - '.github/workflows/lifeos-pa-mission-control.yml'
+      - 'deploy-triggers/issue-706-live'
   workflow_dispatch:
     inputs:
       target_issue:
