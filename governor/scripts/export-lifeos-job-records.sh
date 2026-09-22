@@ -3,8 +3,15 @@ set -euo pipefail
 
 STATE_DIR=${LIFEOS_AGENT_STATE:-/var/lib/lifeos-agent}
 JOBS_REPO=${LIFEOS_JOBS_REPO:-/home/joshan/lifeos-jobs}
-OUT_DIR="$JOBS_REPO/jobs"
 JOB_ID_FILTER=${LIFEOS_JOB_ID_FILTER:-}
+EXPORT_ROOT=$(mktemp -d)
+EXPORT_WORKTREE="$EXPORT_ROOT/repo"
+
+cleanup() {
+  git -C "$JOBS_REPO" worktree remove --force "$EXPORT_WORKTREE" >/dev/null 2>&1 || true
+  rm -rf -- "$EXPORT_ROOT"
+}
+trap cleanup EXIT
 
 if [[ -n "$JOB_ID_FILTER" && ! "$JOB_ID_FILTER" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ ]]; then
   echo "RESULT=BLOCKED"
@@ -18,16 +25,10 @@ fi
   exit 30
 }
 
+git -C "$JOBS_REPO" fetch origin main >/dev/null
+git -C "$JOBS_REPO" worktree add --detach "$EXPORT_WORKTREE" origin/main >/dev/null
+OUT_DIR="$EXPORT_WORKTREE/jobs"
 mkdir -p "$OUT_DIR"
-
-cd "$JOBS_REPO"
-test -z "$(git status --porcelain --untracked-files=all)" || {
-  echo "RESULT=BLOCKED"
-  echo "REASON=lifeos_jobs_checkout_dirty"
-  exit 30
-}
-git fetch origin main >/dev/null
-git merge --ff-only origin/main >/dev/null
 
 python3 - "$STATE_DIR" "$OUT_DIR" "$JOB_ID_FILTER" <<'PY'
 import json
@@ -37,6 +38,7 @@ import sys
 state = pathlib.Path(sys.argv[1])
 out = pathlib.Path(sys.argv[2])
 job_filter = sys.argv[3]
+matched = False
 
 for path in sorted(state.glob('*.json')):
     try:
@@ -45,6 +47,7 @@ for path in sorted(state.glob('*.json')):
         continue
     if job_filter and str(job.get('id') or '') != job_filter:
         continue
+    matched = True
 
     iterations = []
     platform_commits = []
@@ -89,19 +92,27 @@ for path in sorted(state.glob('*.json')):
     # Never export raw evidence or any unknown fields from local job state.
     target = out / f"{safe['id']}.json"
     target.write_text(json.dumps(safe, indent=2, sort_keys=True) + '\n')
+
+if job_filter and not matched:
+    raise SystemExit("requested_job_record_not_found")
 PY
 
-git add jobs
+git -C "$EXPORT_WORKTREE" add jobs
 
-if git diff --cached --quiet; then
+if git -C "$EXPORT_WORKTREE" diff --cached --quiet; then
+  [[ -z "$JOB_ID_FILTER" ]] || git -C "$EXPORT_WORKTREE" cat-file -e "HEAD:jobs/$JOB_ID_FILTER.json"
   echo "RESULT=PASS"
   echo "JOBS_EXPORT=no_change"
+  [[ -z "$JOB_ID_FILTER" ]] || echo "JOBS_EXPORT_JOB_ID=$JOB_ID_FILTER"
   exit 0
 fi
 
-git diff --cached --check
-git commit -m "jobs: export sanitised LifeOS job records" >/dev/null
-git push origin HEAD:main >/dev/null
+git -C "$EXPORT_WORKTREE" diff --cached --check
+git -C "$EXPORT_WORKTREE" -c user.name=lifeos-job-exporter -c user.email=lifeos@localhost \
+  commit -m "jobs: export sanitised LifeOS job records" >/dev/null
+git -C "$EXPORT_WORKTREE" push origin HEAD:main >/dev/null
+git -C "$JOBS_REPO" fetch origin main >/dev/null
+test "$(git -C "$EXPORT_WORKTREE" rev-parse HEAD)" = "$(git -C "$JOBS_REPO" rev-parse origin/main)"
 
 echo "RESULT=PASS"
 echo "JOBS_EXPORT=updated"
