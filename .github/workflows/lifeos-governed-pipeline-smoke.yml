@@ -254,6 +254,22 @@ jobs:
           echo 'M10_REPOSITORY_CLEAN=PASS'
           echo 'M10_FULL_LIVE_ACCEPTANCE=PASS'
 
+      - name: M11 final cleanup and closure acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git ls-files 'governor/runtime_jobs/*.sh')"
+          test -z "$(git ls-files 'governor/job_records/*')"
+          stale="$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude='test_*' --exclude='lifeos-ots-purge-gated-runner.sh' -E 'governor/runtime_jobs/[A-Za-z0-9._/-]+\.sh' engineer orchestration docs 2>/dev/null || true)"
+          test -z "$stale"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'M11_STALE_LIVE_DOC_REFS=0'
+          echo 'M11_TRACKED_RUNTIME_LAUNCHERS=0'
+          echo 'M11_TRACKED_JOB_RECORDS=0'
+          echo 'M11_REPOSITORY_CLEAN=PASS'
+          echo 'M11_CLEANUP_CLOSURE=PASS'
+
       - name: Agent contract regression
         continue-on-error: true
         shell: bash
