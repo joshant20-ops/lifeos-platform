@@ -43,7 +43,11 @@ def main() -> int:
     )
     conversation = Conversation(agent=agent, workspace=os.getcwd())
     print("OPENHANDS_SDK_RUNTIME=START", flush=True)
-    engineering_prompt = """You are the repository engineering agent. Work autonomously in the supplied workspace.\nDo not stop at describing, summarising, or proposing commands. Inspect the repository, make the requested repository changes with your native tools, run focused deterministic verification, and only finish when the requested task is actually satisfied or a genuine external blocker prevents it.\n\n""" + prompt
+    engineering_prompt = """You are the repository engineering agent. Work autonomously in the supplied workspace.
+Your first action must use the native terminal tool to print the working directory and inspect the repository's real top-level structure. Treat those tool results as the authority for paths: never guess a file or directory, and re-list the relevant parent before creating a new path.
+Do not stop at describing, summarising, or proposing commands. Inspect the repository, make the requested repository changes with your native tools, run focused deterministic verification, and only finish when the requested task is actually satisfied or a genuine external blocker prevents it.
+
+""" + prompt
     conversation.send_message(engineering_prompt)
     # Conversation.run() drives the session to completion but the installed SDK
     # returns None. Read the persisted conversation event log afterwards instead
