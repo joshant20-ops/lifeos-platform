@@ -175,9 +175,9 @@ jobs:
           import json
           import subprocess
           import sys
-          job_id, repo = sys.argv[1:]
+          job_id, repo, remote_main = sys.argv[1:]
           payload = subprocess.check_output(
-              ["git", "-C", repo, "show", f"origin/main:jobs/{job_id}.json"],
+              ["git", "-C", repo, "show", f"{remote_main}:jobs/{job_id}.json"],
               text=True,
           )
           record = json.loads(payload)
