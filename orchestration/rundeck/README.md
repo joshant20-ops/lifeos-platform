@@ -64,7 +64,7 @@ history, successful backup/restore rehearsal, and absence of host/Docker/root
 mounts. Until that evidence exists this deployment remains shadow-only.
 
 The first bounded acceptance launcher is
-`governor/runtime_jobs/80f20f03755d.sh`. It validates the repository contract,
+the governed runtime launcher staged outside Git. It validates the repository contract,
 starts only the named shadow Compose project, checks health and privilege/network
 boundaries, proves database persistence across a restart, and verifies that the
 existing backlog timer and service retain their exact pre-test states. The older
