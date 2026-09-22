@@ -161,6 +161,29 @@ jobs:
           grep -q 'LEVEL1_CANONICAL_MARKER=PASS' "$STATE/github-mission.log"
           grep -q 'LEVEL1_DETERMINISTIC_ASSERTION=PASS' "$STATE/github-mission.log"
           grep -q 'ISSUE_DISPOSITIONS=#759 ready_for_evidence_backed_closure' "$STATE/github-mission.log"
+          job_id=$(grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2)
+          test -n "$job_id"
+          LIFEOS_JOB_ID_FILTER="$job_id" bash governor/scripts/export-lifeos-job-records.sh
+          record="/home/joshan/lifeos-jobs/jobs/$job_id.json"
+          python3 - "$record" "$job_id" <<'PY'
+          import json
+          import pathlib
+          import sys
+          record = json.loads(pathlib.Path(sys.argv[1]).read_text())
+          assert record["id"] == sys.argv[2]
+          assert record["status"] == "PASS"
+          assert record["stage"] == "complete"
+          assert record["privacy"] == "local-only"
+          assert record["request"] == "[LOCAL-ONLY REQUEST REDACTED]"
+          assert record["started_at"] and record["completed_at"]
+          assert len(record["iterations"]) == 1
+          assert record["iterations"][0]["verdict"] == "PASS"
+          PY
+          test -z "$(git -C /home/joshan/lifeos-jobs status --porcelain --untracked-files=all)"
+          git -C /home/joshan/lifeos-jobs fetch origin main >/dev/null
+          test "$(git -C /home/joshan/lifeos-jobs rev-parse HEAD)" = "$(git -C /home/joshan/lifeos-jobs rev-parse origin/main)"
+          git -C /home/joshan/lifeos-jobs cat-file -e "origin/main:jobs/$job_id.json"
+          echo "ARCHIVED_JOB_RECORD=$job_id"
           echo 'ARCHIVED_DISPOSITION_CONTRACT=PASS'
 
       - name: Surface consolidated bundle
