@@ -14,7 +14,7 @@ spec.loader.exec_module(broker)
 
 def test_runtime_acceptance_probes_use_explicit_private_local_policy():
     deploy = (ROOT / "governor" / "scripts" / "deploy-autonomous-agent-pi5.sh").read_text()
-    smoke = (ROOT / ".github" / "workflows" / "lifeos-openhands-action-smoke.yml").read_text()
+    smoke = (ROOT / ".github" / "workflows" / "lifeos-governed-pipeline-smoke.yml").read_text()
     for probe in (deploy, smoke):
         assert "lifeos_provider') == 'ollama'" in probe or "j['lifeos_provider']=='ollama'" in probe
         assert "lifeos-local-only-normal" in probe
