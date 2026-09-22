@@ -1,6 +1,10 @@
 name: LifeOS PA Mission Control
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pa-mission-control.yml'
   workflow_dispatch:
     inputs:
       mode:
@@ -156,6 +160,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
           grep -q 'RESULT=PASS' "$STATE/github-mission.log"
           grep -q 'LEVEL1_CANONICAL_MARKER=PASS' "$STATE/github-mission.log"
