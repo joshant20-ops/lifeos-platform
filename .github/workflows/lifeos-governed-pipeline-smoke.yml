@@ -15,6 +15,7 @@ on:
       - 'scripts/test-direct-openhands.sh'
       - 'scripts/test-engineer-governor-broker.sh'
       - 'tests/test_governor_local_tool_routing.py'
+      - 'tests/test_engineer_job_records.py'
 
 permissions:
   contents: read
