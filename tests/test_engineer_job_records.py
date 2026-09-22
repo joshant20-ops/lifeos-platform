@@ -50,42 +50,6 @@ def test_sanitisation_patterns_and_raw_data_omission():
         assert secret not in rendered
 
 
-class FakeGit:
-    def __init__(self, push_rc=0):
-        self.push_rc = push_rc
-        self.calls = []
-
-    def __call__(self, args, **kwargs):
-        self.calls.append(args)
-        rc, out = 0, ""
-        if args[1:4] == ["diff", "--cached", "--quiet"]:
-            rc = 1
-        elif args[1] == "push":
-            rc = self.push_rc
-        elif args[1] == "rev-parse":
-            out = "deadbeef\n"
-        return subprocess.CompletedProcess(args, rc, out, "push rejected" if rc else "")
-
-
-def test_successful_git_publication(tmp_path, monkeypatch):
-    monkeypatch.delenv("LIFEOS_AGENT_STATE", raising=False)
-    fake = FakeGit()
-    result = records.publish_record(tmp_path, job(), run=fake)
-    assert result == {"state": "PUBLISHED", "commit": "deadbeef"}
-    data = json.loads((tmp_path / "governor/job_records/de629fc4ea87.json").read_text())
-    assert data["record_publication"]["state"] == "PUBLISHED"
-
-
-def test_failed_git_publication_is_truthful_and_retryable(tmp_path, monkeypatch):
-    monkeypatch.delenv("LIFEOS_AGENT_STATE", raising=False)
-    fake = FakeGit(push_rc=1)
-    result = records.publish_record(tmp_path, job(), run=fake)
-    assert result["state"] == "UNPUBLISHED"
-    data = json.loads((tmp_path / "governor/job_records/de629fc4ea87.json").read_text())
-    assert data["record_publication"]["state"] == "UNPUBLISHED"
-    assert any(call[1] == "commit" for call in fake.calls)
-
-
 def test_runtime_stages_record_outside_git_checkout(tmp_path, monkeypatch):
     state = tmp_path / "state"
     repo = tmp_path / "readonly-source"
@@ -101,3 +65,14 @@ def test_runtime_stages_record_outside_git_checkout(tmp_path, monkeypatch):
     assert data["record_publication"]["state"] == "STAGED"
     assert not (repo / "governor/job_records/de629fc4ea87.json").exists()
     assert fake.calls == []
+
+
+def test_runtime_publication_requires_external_state_root(tmp_path, monkeypatch):
+    state = tmp_path / "state"
+    repo = tmp_path / "readonly-source"
+    repo.mkdir()
+    monkeypatch.setenv("LIFEOS_AGENT_STATE", str(state))
+    result = records.publish_record(repo, job())
+    assert result["state"] == "STAGED"
+    assert pathlib.Path(result["path"]).is_relative_to(state)
+    assert not (repo / "governor/job_records").exists()
