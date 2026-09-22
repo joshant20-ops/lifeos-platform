@@ -270,6 +270,21 @@ jobs:
           echo 'M11_REPOSITORY_CLEAN=PASS'
           echo 'M11_CLEANUP_CLOSURE=PASS'
 
+      - name: M11 cleanup and closure acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git ls-files 'governor/runtime_jobs/*.sh')"
+          test -z "$(git ls-files 'governor/job_records/*')"
+          stale="$(grep -RIl --exclude-dir=.git --exclude-dir=archive --exclude-dir=tests --exclude=autonomous_agent.py --exclude=lifeos-ots-purge-gated-runner.sh --exclude=lifeos-governed-pipeline-smoke.yml -E 'governor/runtime_jobs/[A-Za-z0-9._/-]+\\.sh|governor/job_records/[A-Za-z0-9._/-]+\\.json' . || true)"
+          test -z "$stale"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'M11_STALE_LIVE_GIT_RUNTIME_REFERENCES=0'
+          echo 'M11_TRACKED_TRANSIENT_STATE=0'
+          echo 'M11_REPOSITORY_CLEAN=PASS'
+          echo 'M11_CLEANUP_ACCEPTANCE=PASS'
+
       - name: Agent contract regression
         continue-on-error: true
         shell: bash
