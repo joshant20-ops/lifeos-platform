@@ -73,6 +73,7 @@ EXECUTION_LOCK = threading.Lock()
 ACTIVE_JOB_LOCK = threading.Lock()
 ACTIVE_JOB_ID = None
 DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})
+CANONICAL_ASSERTION_KINDS = frozenset({"tracked_text_contains"})
 DEPLOYMENT_OPERATIONS = frozenset({
     "deploy-engineer-runtime", "deploy-autonomous-agent",
 })
@@ -500,6 +501,86 @@ Evidence:\n{evidence[-18000:]}
         return {"verdict": "RETRY", "reason": "verifier returned invalid JSON", "next_instruction": "Repeat focused local verification and return valid JSON."}
 
 
+def validate_canonical_assertions(value):
+    """Validate bounded, data-only assertions supplied by a trusted controller."""
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > 8:
+        raise ValueError("invalid_canonical_assertions")
+    assertions = []
+    seen = set()
+    for item in value:
+        if not isinstance(item, dict) or set(item) != {"id", "kind", "value"}:
+            raise ValueError("invalid_canonical_assertion")
+        assertion_id = str(item.get("id") or "")
+        kind = str(item.get("kind") or "")
+        expected = item.get("value")
+        if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", assertion_id) or assertion_id in seen:
+            raise ValueError("invalid_canonical_assertion_id")
+        if kind not in CANONICAL_ASSERTION_KINDS:
+            raise ValueError("invalid_canonical_assertion_kind")
+        if not isinstance(expected, str) or not expected or len(expected) > 512 or "\n" in expected:
+            raise ValueError("invalid_canonical_assertion_value")
+        seen.add(assertion_id)
+        assertions.append({"id": assertion_id, "kind": kind, "value": expected})
+    return assertions
+
+
+def verify_canonical_assertions(job):
+    """Independently verify declared outcomes against the clean canonical checkout."""
+    assertions = list(job.get("canonical_assertions") or [])
+    if not assertions:
+        return None, "CANONICAL_ASSERTIONS=none\n"
+    try:
+        git("fetch", "origin", "main")
+        head = git("rev-parse", "HEAD").stdout.strip()
+        origin_main = git("rev-parse", "origin/main").stdout.strip()
+        dirty = bool(git("status", "--porcelain", check=False).stdout.strip())
+    except Exception as exc:
+        return False, f"CANONICAL_ASSERTIONS=FAIL reason=repository_unavailable_{type(exc).__name__}\n"
+    lines = [
+        f"CANONICAL_HEAD={head}",
+        f"CANONICAL_ORIGIN_MAIN={origin_main}",
+        f"CANONICAL_CLEAN={'PASS' if not dirty else 'FAIL'}",
+        f"CANONICAL_ALIGNED={'PASS' if head == origin_main else 'FAIL'}",
+    ]
+    passed = not dirty and head == origin_main
+    for assertion in assertions:
+        result = subprocess.run(
+            ["git", "grep", "-F", "-q", "--", assertion["value"], "HEAD"],
+            cwd=PLATFORM_REPO,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=30,
+        )
+        item_passed = result.returncode == 0
+        passed = passed and item_passed
+        lines.append(
+            "CANONICAL_ASSERTION_"
+            + assertion["id"].upper().replace("-", "_")
+            + f"={'PASS' if item_passed else 'FAIL'} kind={assertion['kind']}"
+        )
+    lines.append(f"CANONICAL_ASSERTIONS={'PASS' if passed else 'FAIL'}")
+    return passed, "\n".join(lines) + "\n"
+
+
+def independent_verify(job, iteration, evidence, canonical_result):
+    """Use deterministic canonical assertions when declared, else local AI review."""
+    if canonical_result is True:
+        return {
+            "verdict": "PASS",
+            "reason": "declared canonical assertions passed independent deterministic verification",
+            "next_instruction": "",
+        }
+    if canonical_result is False:
+        return {
+            "verdict": "RETRY",
+            "reason": "declared canonical assertions are not satisfied in the clean aligned canonical checkout",
+            "next_instruction": "Continue governed engineering until the declared canonical assertions pass.",
+        }
+    return local_verify(job, iteration, evidence)
+
+
 def _marker(text, name):
     m = re.findall(rf"(?m)^{re.escape(name)}=(.*)$", text)
     return m[-1].strip() if m else None
@@ -879,15 +960,17 @@ def _execute_job_locked(job):
     runtime = retain_runtime_publication(job, run_pi5_runtime(job, handoff))
     if "RUNTIME_ARTIFACT_PUBLISHED=FAIL" in runtime:
         build_evidence = suppress_unpublished_runtime_instructions(build_evidence)
+    canonical_result, canonical_evidence = verify_canonical_assertions(job)
     evidence = (
         f"ENGINEERING_LOOP=ots-owned\nBUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\n"
-        f"PUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}"
+        f"PUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}\n"
+        f"INDEPENDENT_CANONICAL_EVIDENCE:\n{canonical_evidence}"
     )
     rec["evidence"] = evidence[-26000:]
 
     set_stage(job, "verifier", "independent local acceptance gate")
     try:
-        verdict = local_verify(job, 1, rec["evidence"])
+        verdict = independent_verify(job, 1, rec["evidence"], canonical_result)
     except Exception as exc:
         verdict = {
             "verdict": "RETRY",
@@ -985,7 +1068,8 @@ def execute_job(job):
 
 def new_job(request, retry_of=None, continuation_enabled=False, continuation_parent=None,
             continuation_depth=0, continuation_reason=None, continuation_request=None,
-            deploy_engineer_runtime=False, dispatch_builder=None, privacy_domain=None):
+            deploy_engineer_runtime=False, dispatch_builder=None, privacy_domain=None,
+            canonical_assertions=None):
     normalized_domain = None
     if privacy_domain:
         normalized_domain = re.sub(r"[\s_]+", "-", str(privacy_domain).strip().lower())
@@ -1009,6 +1093,7 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
         "continuation_depth": int(continuation_depth or 0),
         "deploy_engineer_runtime": bool(deploy_engineer_runtime),
         "mandatory_final_fields": extract_mandatory_final_fields(request),
+        "canonical_assertions": validate_canonical_assertions(canonical_assertions),
     }
     if normalized_domain:
         job["privacy_domain"] = normalized_domain
@@ -1164,6 +1249,7 @@ class Handler(BaseHTTPRequestHandler):
                 old["request"], async_mode=True, retry_of=job_id,
                 dispatch_builder=old.get("dispatch_builder"),
                 privacy_domain=old.get("privacy_domain"),
+                canonical_assertions=old.get("canonical_assertions"),
             )
             self.send_json(409 if job.get("status") == "BUSY" else 202, job)
             return
@@ -1194,8 +1280,13 @@ class Handler(BaseHTTPRequestHandler):
             "deploy_engineer_runtime": bool(body.get("deploy_engineer_runtime", False)),
             "dispatch_builder": dispatch_builder,
             "privacy_domain": body.get("privacy_domain"),
+            "canonical_assertions": body.get("canonical_assertions"),
         }
-        job = create_job(request, async_mode=async_mode, **continuation)
+        try:
+            job = create_job(request, async_mode=async_mode, **continuation)
+        except ValueError as exc:
+            self.send_json(400, {"error": str(exc)})
+            return
         if job.get("status") == "BUSY":
             self.send_json(409, job)
         else:
