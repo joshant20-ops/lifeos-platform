@@ -272,3 +272,10 @@ def test_openhands_sdk_runner_requires_real_tool_activity():
     assert "OPENHANDS_SDK_ERROR=no_engineering_tool_activity" in runner
     assert "OPENHANDS_SDK_TOOL_EVENTS=" in runner
     assert 'if not tool_events:' in runner
+
+
+def test_openhands_sdk_runner_reads_events_from_conversation_state():
+    runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    assert "conversation.run()" in runner
+    assert "events = list(conversation.state.events)" in runner
+    assert "events = conversation.run()" not in runner
