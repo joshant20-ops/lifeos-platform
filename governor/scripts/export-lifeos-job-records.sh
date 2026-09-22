@@ -117,6 +117,9 @@ git -C "$EXPORT_WORKTREE" push origin HEAD:main >/dev/null
 remote_head=$(git -C "$JOBS_REPO" ls-remote origin refs/heads/main | awk '{print $1}')
 test -n "$remote_head"
 test "$(git -C "$EXPORT_WORKTREE" rev-parse HEAD)" = "$remote_head"
+# Keep the persistent checkout's conventional tracking ref coherent for
+# downstream readers, while remote truth remains verified via ls-remote.
+git -C "$JOBS_REPO" update-ref refs/remotes/origin/main "$remote_head"
 
 echo "RESULT=PASS"
 echo "JOBS_EXPORT=updated"
