@@ -104,6 +104,9 @@ git -C "$EXPORT_WORKTREE" add jobs
 
 if git -C "$EXPORT_WORKTREE" diff --cached --quiet; then
   [[ -z "$JOB_ID_FILTER" ]] || git -C "$EXPORT_WORKTREE" cat-file -e "HEAD:jobs/$JOB_ID_FILTER.json"
+  # A no-change export still proves REMOTE_MAIN contains the requested
+  # record; synchronize the conventional tracking ref for downstream readers.
+  git -C "$JOBS_REPO" update-ref refs/remotes/origin/main "$REMOTE_MAIN"
   echo "RESULT=PASS"
   echo "JOBS_EXPORT=no_change"
   [[ -z "$JOB_ID_FILTER" ]] || echo "JOBS_EXPORT_JOB_ID=$JOB_ID_FILTER"
