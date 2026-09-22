@@ -383,7 +383,11 @@ def main():
         if roots & hard:
             print("RESULT=SAFE_STOP")
             return 40
-        if state.get("phase") in {"scripted_execution_blocked", "autonomous_mission_blocked"} or faults:
+        blocking_faults = any(
+            str(item.get("severity") or "").lower() in {"high", "critical"}
+            for item in faults
+        )
+        if state.get("phase") in {"scripted_execution_blocked", "autonomous_mission_blocked"} or blocking_faults:
             print("RESULT=WORK_BUNDLE_READY")
             return 20
         print("RESULT=PASS")
