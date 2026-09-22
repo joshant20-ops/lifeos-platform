@@ -150,3 +150,21 @@ def test_targeted_export_fails_when_requested_state_record_is_missing(tmp_path):
 
     assert result.returncode != 0
     assert "requested_job_record_not_found" in result.stderr
+
+
+def test_targeted_issue_runner_requires_explicit_objective_for_non_benchmark():
+    runner = (ROOT / "governor/scripts/lifeos-pa-mission").read_text()
+    assert 'LIFEOS_PA_TARGET_OBJECTIVE' in runner
+    assert 'TARGET_OBJECTIVE_MISSING' in runner
+    assert 'if target == "759" and not objective:' in runner
+    assert 'TARGETED_ISSUE_ACCEPTANCE=PASS' in runner
+
+
+def test_mission_control_accepts_generic_target_issue_inputs():
+    workflow = (ROOT / ".github/workflows/lifeos-pa-mission-control.yml").read_text()
+    assert "target_issue:" in workflow
+    assert "target_objective:" in workflow
+    assert "canonical_assertions:" in workflow
+    assert "LIFEOS_PA_TARGET_OBJECTIVE:" in workflow
+    assert "TARGETED_ISSUE_ACCEPTANCE=PASS" in workflow
+    assert "ISSUE_DISPOSITIONS=#$target_issue ready_for_evidence_backed_closure" in workflow
