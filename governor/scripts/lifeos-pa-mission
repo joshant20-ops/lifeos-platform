@@ -174,30 +174,50 @@ def run_executor(faults):
 
 
 def run_autonomous_mission(faults):
-    """Submit the staged Level-1 acceptance issue to Governor and wait for terminal evidence."""
+    """Submit one explicitly supplied issue objective to Governor and wait for terminal evidence."""
     target = os.getenv("LIFEOS_PA_TARGET_ISSUE", "759").strip()
-    request = f"""Engineering acceptance workload for LifeOS issue #{target}.
+    objective = os.getenv("LIFEOS_PA_TARGET_OBJECTIVE", "").strip()
+    assertions_raw = os.getenv("LIFEOS_PA_CANONICAL_ASSERTIONS", "").strip()
 
-Use the normal governed local-only issue-to-Engineer path. This worker owns only the engineering task:
-- create or update one dedicated harmless acceptance fixture in the repository so it contains exactly:
-  LIFEOS_ISSUE_PICKUP_LEVEL1=PASS
-- add or use a deterministic repository test/assertion for that exact marker;
-- run that focused test;
-- leave the tested source changes in the disposable worktree for the normal governed handoff.
+    if target == "759" and not objective:
+        objective = """Create or update one dedicated harmless acceptance fixture in the repository so it contains exactly:
+LIFEOS_ISSUE_PICKUP_LEVEL1=PASS
+Add or use a deterministic repository test/assertion for that exact marker and run the focused test.
+Do not modify production behaviour."""
+        assertions = [{"id": "level1-marker", "kind": "tracked_text_contains",
+                       "value": "LIFEOS_ISSUE_PICKUP_LEVEL1=PASS"}]
+    else:
+        if not objective:
+            fault(faults, "TARGET_OBJECTIVE_MISSING", "critical", "governor",
+                  "A non-benchmark targeted issue requires an explicit issue-derived objective.",
+                  {"target_issue": target},
+                  "Supply LIFEOS_PA_TARGET_OBJECTIVE from the trusted control plane.")
+            return {"rc": 20, "job_id": None, "status": "OBJECTIVE_MISSING"}
+        try:
+            assertions = json.loads(assertions_raw) if assertions_raw else []
+        except json.JSONDecodeError:
+            fault(faults, "TARGET_ASSERTIONS_INVALID", "critical", "governor",
+                  "Canonical assertions are not valid JSON.", {"target_issue": target},
+                  "Supply a JSON array in LIFEOS_PA_CANONICAL_ASSERTIONS.")
+            return {"rc": 20, "job_id": None, "status": "ASSERTIONS_INVALID"}
+        if not isinstance(assertions, list):
+            return {"rc": 20, "job_id": None, "status": "ASSERTIONS_INVALID"}
 
-Do not modify production behaviour. Do not close GitHub issues, archive LifeOS jobs, publish branches/PRs, or perform disposition bookkeeping: those are control-plane responsibilities outside the OTS engineering session. Do not require GitHub/network access from OpenHands.
+    request = f"""Engineering workload for LifeOS issue #{target}.
 
-Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallback; no sudo assumption. Governor owns routing/power, bounded canonical publication and independent acceptance. The surrounding mission controller verifies the canonical marker and handles the meta-issue disposition after the governed engineering job passes."""
+Issue-derived objective:
+{objective}
 
-    payload = json.dumps({
-        "request": request,
-        "privacy_domain": "personal-administration",
-        "canonical_assertions": [{
-            "id": "level1-marker",
-            "kind": "tracked_text_contains",
-            "value": "LIFEOS_ISSUE_PICKUP_LEVEL1=PASS",
-        }],
-    }).encode()
+Use the normal governed local-only issue-to-Engineer path. Diagnose the current canonical repository state yourself and perform only the bounded work needed to satisfy the objective. Do not invent unrelated work.
+
+Do not close GitHub issues, archive LifeOS jobs, publish branches/PRs, or perform disposition bookkeeping: those are control-plane responsibilities outside the OTS engineering session. Do not require GitHub/network access from OpenHands.
+
+Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallback; no sudo assumption. Governor owns routing/power, bounded canonical publication and independent acceptance."""
+
+    payload_obj = {"request": request, "privacy_domain": "personal-administration"}
+    if assertions:
+        payload_obj["canonical_assertions"] = assertions
+    payload = json.dumps(payload_obj).encode()
     req = urllib.request.Request(
         AGENT_URL + "/jobs?async=1", data=payload,
         headers={"Content-Type": "application/json"}, method="POST")
@@ -206,15 +226,12 @@ Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallbac
             job = json.loads(response.read())
     except Exception as exc:
         fault(faults, "GOVERNOR_SUBMISSION_FAILED", "critical", "governor",
-              "Could not submit the staged single-issue mission to Governor.", type(exc).__name__,
+              "Could not submit the targeted issue mission to Governor.", type(exc).__name__,
               "Repair the local Governor API/service and rerun.")
         return {"rc": 20, "job_id": None, "status": "SUBMISSION_FAILED"}
 
     job_id = str(job.get("id") or "")
     if not job_id:
-        fault(faults, "GOVERNOR_SUBMISSION_INVALID", "critical", "governor",
-              "Governor accepted no usable job id.", job,
-              "Repair Governor job submission response and rerun.")
         return {"rc": 20, "job_id": None, "status": "SUBMISSION_INVALID"}
 
     print(f"TARGET_ISSUE={target}", flush=True)
@@ -238,14 +255,11 @@ Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallbac
     if time.monotonic() >= deadline and status not in {"PASS", "BLOCKED", "FAIL", "FAILED", "CANCELLED"}:
         status = "TIMEOUT"
         print("GOVERNOR_JOB_STATUS=TIMEOUT", flush=True)
-    evidence = "\n".join(str(x.get("evidence") or "") for x in latest.get("iterations", []))
-    # #759 is a meta acceptance issue. The OTS worker must not be asked to close
-    # its own benchmark issue or archive control-plane records. Governor PASS plus
-    # a canonical deterministic marker is the engineering acceptance boundary;
-    # the outer controller records/disposes the meta issue afterwards.
-    marker = "LIFEOS_ISSUE_PICKUP_LEVEL1=PASS"
-    canonical_marker = False
-    if status == "PASS":
+
+    passed = status == "PASS"
+    if passed and target == "759":
+        marker = "LIFEOS_ISSUE_PICKUP_LEVEL1=PASS"
+        canonical_marker = False
         for path in REPO.rglob("*"):
             if not path.is_file() or ".git" in path.parts:
                 continue
@@ -256,33 +270,29 @@ Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallbac
                     break
             except (UnicodeDecodeError, OSError):
                 continue
-    passed = status == "PASS" and canonical_marker
+        passed = canonical_marker
+        if passed:
+            print("LEVEL1_DETERMINISTIC_ASSERTION=PASS", flush=True)
+
     if passed:
-        print("LEVEL1_DETERMINISTIC_ASSERTION=PASS", flush=True)
+        print("TARGETED_ISSUE_ACCEPTANCE=PASS", flush=True)
         print("RESULT=PASS", flush=True)
         print(f"ISSUE_DISPOSITIONS=#{target} ready_for_evidence_backed_closure", flush=True)
-    if not passed:
+    else:
         iterations = latest.get("iterations") or []
         last_iteration = iterations[-1] if iterations else {}
         diagnostic = {
-            "target_issue": target,
-            "job_id": job_id,
-            "status": status,
+            "target_issue": target, "job_id": job_id, "status": status,
             "blocked_reason": latest.get("blocked_reason"),
             "builder_rc": last_iteration.get("builder_rc"),
             "iteration_result": last_iteration.get("iteration_result"),
-            "milestone_result": last_iteration.get("milestone_result"),
             "verification": last_iteration.get("verification"),
-            # Job evidence is already redacted by the Governor handoff parser. Keep a
-            # bounded tail here so Mission Control exposes the failed reusable boundary
-            # instead of forcing bespoke SSH/debug scripts for each acceptance issue.
-            "evidence_tail": str(last_iteration.get("evidence") or "")[-6000:],
         }
-        print("GOVERNOR_FAILURE_DIAGNOSTIC=" + json.dumps(diagnostic, sort_keys=True), flush=True)
-        fault(faults, "GOVERNOR_MISSION_INCOMPLETE", "high", "governor",
-              "Autonomous single-issue mission did not prove the required terminal contract.",
-              diagnostic,
-              "Repair the evidenced reusable pipeline boundary; do not claim the issue complete.")
+        print("TARGETED_ISSUE_DIAGNOSTIC=" + json.dumps(diagnostic, sort_keys=True), flush=True)
+        fault(faults, "TARGETED_ISSUE_BLOCKED", "critical", "governor",
+              "Targeted governed issue mission did not reach independent Governor PASS.",
+              diagnostic, "Repair the failed generic pipeline boundary and rerun the same issue unchanged.")
+        print("RESULT=BLOCKED", flush=True)
     return {"rc": 0 if passed else 20, "job_id": job_id, "status": status}
 
 def render(faults, state, audit_result):
