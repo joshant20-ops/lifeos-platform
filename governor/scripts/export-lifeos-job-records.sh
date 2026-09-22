@@ -4,6 +4,13 @@ set -euo pipefail
 STATE_DIR=${LIFEOS_AGENT_STATE:-/var/lib/lifeos-agent}
 JOBS_REPO=${LIFEOS_JOBS_REPO:-/home/joshan/lifeos-jobs}
 OUT_DIR="$JOBS_REPO/jobs"
+JOB_ID_FILTER=${LIFEOS_JOB_ID_FILTER:-}
+
+if [[ -n "$JOB_ID_FILTER" && ! "$JOB_ID_FILTER" =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$ ]]; then
+  echo "RESULT=BLOCKED"
+  echo "REASON=invalid_job_id_filter"
+  exit 30
+fi
 
 [[ -d "$JOBS_REPO/.git" ]] || {
   echo "RESULT=BLOCKED"
@@ -13,18 +20,30 @@ OUT_DIR="$JOBS_REPO/jobs"
 
 mkdir -p "$OUT_DIR"
 
-python3 - "$STATE_DIR" "$OUT_DIR" <<'PY'
+cd "$JOBS_REPO"
+test -z "$(git status --porcelain --untracked-files=all)" || {
+  echo "RESULT=BLOCKED"
+  echo "REASON=lifeos_jobs_checkout_dirty"
+  exit 30
+}
+git fetch origin main >/dev/null
+git merge --ff-only origin/main >/dev/null
+
+python3 - "$STATE_DIR" "$OUT_DIR" "$JOB_ID_FILTER" <<'PY'
 import json
 import pathlib
 import sys
 
 state = pathlib.Path(sys.argv[1])
 out = pathlib.Path(sys.argv[2])
+job_filter = sys.argv[3]
 
 for path in sorted(state.glob('*.json')):
     try:
         job = json.loads(path.read_text())
     except Exception:
+        continue
+    if job_filter and str(job.get('id') or '') != job_filter:
         continue
 
     iterations = []
@@ -49,7 +68,11 @@ for path in sorted(state.glob('*.json')):
     safe = {
         'schema_version': 1,
         'id': job.get('id'),
-        'request': job.get('request'),
+        'request': (
+            '[LOCAL-ONLY REQUEST REDACTED]'
+            if job.get('privacy') == 'local-only'
+            else job.get('request')
+        ),
         'privacy': job.get('privacy'),
         'created_at': job.get('created_at'),
         'started_at': job.get('started_at'),
@@ -68,8 +91,6 @@ for path in sorted(state.glob('*.json')):
     target.write_text(json.dumps(safe, indent=2, sort_keys=True) + '\n')
 PY
 
-cd "$JOBS_REPO"
-git fetch origin main >/dev/null 2>&1 || true
 git add jobs
 
 if git diff --cached --quiet; then
@@ -84,3 +105,4 @@ git push origin HEAD:main >/dev/null
 
 echo "RESULT=PASS"
 echo "JOBS_EXPORT=updated"
+[[ -z "$JOB_ID_FILTER" ]] || echo "JOBS_EXPORT_JOB_ID=$JOB_ID_FILTER"
