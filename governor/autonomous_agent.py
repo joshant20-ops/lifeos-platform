@@ -532,7 +532,6 @@ def verify_canonical_assertions(job):
     if not assertions:
         return None, "CANONICAL_ASSERTIONS=none\n"
     try:
-        git("fetch", "origin", "main")
         head = git("rev-parse", "HEAD").stdout.strip()
         origin_main = git("rev-parse", "origin/main").stdout.strip()
         dirty = bool(git("status", "--porcelain", check=False).stdout.strip())
