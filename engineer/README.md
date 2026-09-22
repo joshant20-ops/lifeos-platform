@@ -38,7 +38,7 @@ read-only dry-run inventory. It always preserves `.codex`, `.config/gh`,
 backups remain `REVIEW_REQUIRED`; `SAFE_TO_REMOVE` is deliberately empty and
 automatic deletion remains disabled pending separate evidence and approval.
 
-The job launcher `governor/runtime_jobs/43110cd9baa0.sh` is the sole live Pi5
+The governed runtime launcher staged under `/var/lib/lifeos-agent/runtime_jobs` is the live Pi5
 entry point for this iteration. It verifies OpenHands/workspace availability,
 credential-file permissions, and cleanup dry-run behavior without printing
 credentials, installing packages, deleting files, or mutating either host.
