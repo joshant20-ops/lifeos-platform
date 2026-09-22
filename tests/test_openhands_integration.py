@@ -296,3 +296,13 @@ def test_openhands_sdk_runner_requires_tool_grounded_repository_discovery_first(
     assert first_action < no_guessing < perform_work
     assert "inspect the repository's real top-level structure" in runner
     assert "re-list the relevant parent before creating a new path" in runner
+
+
+def test_openhands_sdk_runner_uses_ots_cli_autonomous_agent_preset():
+    runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    builder = (ROOT / "governor/scripts/lifeos-remote-agent-builder").read_text()
+    assert "from openhands_cli.utils import get_default_cli_agent" in runner
+    assert "agent = get_default_cli_agent(llm)" in runner
+    assert "Agent(" not in runner
+    assert "get_default_cli_agent" in builder
+    assert "OPENHANDS_NATIVE_ENGINEERING_PRESET=cli_default" in builder
