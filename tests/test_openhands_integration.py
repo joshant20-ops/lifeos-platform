@@ -237,6 +237,14 @@ def test_level1_worker_does_not_own_meta_issue_disposition():
     assert 'passed = status == "PASS" and canonical_marker' in mission
 
 
+def test_warning_only_audit_does_not_override_targeted_mission_pass():
+    mission = (ROOT / "governor/scripts/lifeos-pa-mission").read_text()
+    assert 'blocking_faults = any(' in mission
+    assert 'in {"high", "critical"}' in mission
+    assert 'or blocking_faults:' in mission
+    assert 'or faults:' not in mission
+
+
 def test_governed_pipeline_smoke_owns_openhands_routing_proof():
     workflow = (ROOT / ".github/workflows/lifeos-governed-pipeline-smoke.yml").read_text()
     assert "bash scripts/test-engineer-governor-broker.sh" in workflow
