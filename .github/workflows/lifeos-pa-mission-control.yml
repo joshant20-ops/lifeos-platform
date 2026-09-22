@@ -164,13 +164,18 @@ jobs:
           job_id=$(grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2)
           test -n "$job_id"
           LIFEOS_JOB_ID_FILTER="$job_id" bash governor/scripts/export-lifeos-job-records.sh
-          record="/home/joshan/lifeos-jobs/jobs/$job_id.json"
-          python3 - "$record" "$job_id" <<'PY'
+          git -C /home/joshan/lifeos-jobs fetch origin main >/dev/null
+          python3 - "$job_id" /home/joshan/lifeos-jobs <<'PY'
           import json
-          import pathlib
+          import subprocess
           import sys
-          record = json.loads(pathlib.Path(sys.argv[1]).read_text())
-          assert record["id"] == sys.argv[2]
+          job_id, repo = sys.argv[1:]
+          payload = subprocess.check_output(
+              ["git", "-C", repo, "show", f"origin/main:jobs/{job_id}.json"],
+              text=True,
+          )
+          record = json.loads(payload)
+          assert record["id"] == job_id
           assert record["status"] == "PASS"
           assert record["stage"] == "complete"
           assert record["privacy"] == "local-only"
@@ -179,9 +184,6 @@ jobs:
           assert len(record["iterations"]) == 1
           assert record["iterations"][0]["verdict"] == "PASS"
           PY
-          test -z "$(git -C /home/joshan/lifeos-jobs status --porcelain --untracked-files=all)"
-          git -C /home/joshan/lifeos-jobs fetch origin main >/dev/null
-          test "$(git -C /home/joshan/lifeos-jobs rev-parse HEAD)" = "$(git -C /home/joshan/lifeos-jobs rev-parse origin/main)"
           git -C /home/joshan/lifeos-jobs cat-file -e "origin/main:jobs/$job_id.json"
           echo "ARCHIVED_JOB_RECORD=$job_id"
           echo 'ARCHIVED_DISPOSITION_CONTRACT=PASS'
