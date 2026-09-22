@@ -13,7 +13,8 @@ def test_exporter_supports_exact_job_filter_and_redacts_local_only_request():
     assert "if job_filter and str(job.get('id') or '') != job_filter" in EXPORTER
     assert 'raise SystemExit("requested_job_record_not_found")' in EXPORTER
     assert "[LOCAL-ONLY REQUEST REDACTED]" in EXPORTER
-    assert 'worktree add --detach "$EXPORT_WORKTREE" origin/main' in EXPORTER
+    assert 'fetch origin "+refs/heads/main:refs/remotes/origin/main"' in EXPORTER
+    assert 'worktree add --detach "$EXPORT_WORKTREE" refs/remotes/origin/main' in EXPORTER
     assert 'push origin HEAD:main' in EXPORTER
 
 
@@ -58,6 +59,14 @@ def test_targeted_export_ignores_stale_local_history_and_publishes_redacted_reco
     _git("clone", str(remote), str(checkout))
     _git("config", "user.name", "test", cwd=checkout)
     _git("config", "user.email", "test@example.invalid", cwd=checkout)
+
+    # Reproduce the live runner's nonstandard fetch behaviour: a plain
+    # `git fetch origin main` updates FETCH_HEAD but leaves origin/main stale.
+    _git("config", "--unset-all", "remote.origin.fetch", cwd=checkout)
+    (seed / "REMOTE_ADVANCED.md").write_text("new remote state\n")
+    _git("add", "REMOTE_ADVANCED.md", cwd=seed)
+    _git("commit", "-m", "advance remote after checkout", cwd=seed)
+    _git("push", "origin", "main", cwd=seed)
 
     # Reproduce the live failure: the persistent checkout is clean but ahead
     # with a stale, unredacted job record that must never be pushed.
