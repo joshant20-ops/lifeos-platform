@@ -11,6 +11,7 @@ from pathlib import Path
 
 from pydantic import SecretStr
 from openhands.sdk import LLM, Agent, Conversation
+from openhands.sdk.event import AgentErrorEvent
 from openhands.sdk.tool import Tool
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
@@ -43,7 +44,19 @@ def main() -> int:
     conversation = Conversation(agent=agent, workspace=os.getcwd())
     print("OPENHANDS_SDK_RUNTIME=START", flush=True)
     conversation.send_message(prompt)
-    conversation.run()
+    events = conversation.run()
+    errors = [event for event in events if isinstance(event, AgentErrorEvent)]
+    if errors:
+        print(f"OPENHANDS_SDK_ERROR=agent_error_event count={len(errors)}", file=sys.stderr, flush=True)
+        return 21
+    # A normal SDK return is transport completion only. Require the OTS session to
+    # have actually exercised an engineering tool before reporting success; otherwise
+    # a model that merely explains the requested edit is indistinguishable from work.
+    tool_events = [event for event in events if "tool" in type(event).__name__.lower()]
+    if not tool_events:
+        print("OPENHANDS_SDK_ERROR=no_engineering_tool_activity", file=sys.stderr, flush=True)
+        return 22
+    print(f"OPENHANDS_SDK_TOOL_EVENTS={len(tool_events)}", flush=True)
     print("OPENHANDS_SDK_RUNTIME=COMPLETE", flush=True)
     return 0
 
