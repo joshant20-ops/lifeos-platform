@@ -279,3 +279,10 @@ def test_openhands_sdk_runner_reads_events_from_conversation_state():
     assert "conversation.run()" in runner
     assert "events = list(conversation.state.events)" in runner
     assert "events = conversation.run()" not in runner
+
+
+def test_openhands_sdk_runner_requires_autonomous_repository_completion_prompt():
+    runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    assert "Do not stop at describing, summarising, or proposing commands." in runner
+    assert "make the requested repository changes with your native tools" in runner
+    assert "run focused deterministic verification" in runner
