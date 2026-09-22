@@ -26,7 +26,7 @@ unusable. `runtime.env.example` documents the non-secret settings for a
 deliberate pre-provisioned configuration.
 
 Only the reviewed launcher
-`governor/runtime_jobs/c3751aaff97b.sh` may inspect or start this shadow on Pi5.
+Governor may inspect or start this shadow on Pi5 through the governed runtime boundary.
 It validates secret metadata, host/image architecture, LAN binding, health,
 mount and capability boundaries, and confirms the compatibility services were
 not disturbed.
