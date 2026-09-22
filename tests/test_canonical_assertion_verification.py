@@ -53,6 +53,9 @@ def assertion_job(module):
 def test_no_change_handoff_passes_when_canonical_assertion_is_satisfied(tmp_path):
     module = load_agent(tmp_path)
     module.PLATFORM_REPO = canonical_repo(tmp_path, "GENERIC_ACCEPTANCE=PASS\n")
+    # Verification is a local acceptance boundary. Mission Control/publication
+    # already synchronize origin/main, so it must not require network access.
+    (tmp_path / "remote.git").rename(tmp_path / "remote-offline.git")
     job = assertion_job(module)
 
     result, evidence = module.verify_canonical_assertions(job)
