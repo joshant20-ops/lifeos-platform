@@ -221,6 +221,38 @@ jobs:
           echo 'M9_REPOSITORY_CLEAN=PASS'
           echo 'M9_JOB_RECORD_DISPOSITION=PASS'
 
+      - name: M10 full fail-closed live acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test -z "$(git ls-files 'governor/runtime_jobs/*.sh')"
+          test -z "$(git ls-files 'governor/job_records/*')"
+          runtime_real="$(readlink -f /var/lib/lifeos-agent/runtime_jobs)"
+          records_real="$(readlink -f /var/lib/lifeos-agent/job_records)"
+          repo_real="$(readlink -f /home/joshan/lifeos-platform)"
+          for p in "$runtime_real" "$records_real"; do
+            case "$p" in "$repo_real"/*) echo "M10_EXTERNAL_STATE=FAIL:$p"; exit 1;; esac
+          done
+          envline="$(systemctl show lifeos-autonomous-agent.service -p Environment --value)"
+          case "$envline" in *"LIFEOS_AGENT_STATE=/var/lib/lifeos-agent"*) ;; *) echo 'M10_AGENT_STATE=FAIL'; exit 1;; esac
+          python3 -m pytest -q tests/test_governor_local_tool_routing.py tests/test_engineer_job_records.py
+          cloud=governor/scripts/lifeos-cloud-builder
+          set +e
+          reject="$(LIFEOS_JOB_PRIVACY=local-only LIFEOS_JOB_ID=878-m10-escape bash "$cloud" 'M10 fail-closed privacy probe' 1 2>&1)"
+          reject_rc=$?
+          set -e
+          test "$reject_rc" = 42
+          grep -q 'REASON=cloud_builder_forbidden_for_local_only_job' <<<"$reject"
+          echo 'M10_PRIVACY_FAIL_CLOSED=PASS'
+          echo "M10_RUNTIME_STATE=PASS:$runtime_real"
+          echo "M10_RECORD_STATE=PASS:$records_real"
+          echo 'M10_GIT_TRANSIENT_STATE=0'
+          echo 'M10_CONTRACT_TESTS=PASS'
+          echo 'M10_REPOSITORY_CLEAN=PASS'
+          echo 'M10_FULL_LIVE_ACCEPTANCE=PASS'
+
       - name: Agent contract regression
         continue-on-error: true
         shell: bash
