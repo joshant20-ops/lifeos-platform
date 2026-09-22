@@ -44,7 +44,11 @@ def main() -> int:
     conversation = Conversation(agent=agent, workspace=os.getcwd())
     print("OPENHANDS_SDK_RUNTIME=START", flush=True)
     conversation.send_message(prompt)
-    events = conversation.run()
+    # Conversation.run() drives the session to completion but the installed SDK
+    # returns None. Read the persisted conversation event log afterwards instead
+    # of treating run()'s transport return value as an event collection.
+    conversation.run()
+    events = list(conversation.state.events)
     errors = [event for event in events if isinstance(event, AgentErrorEvent)]
     if errors:
         print(f"OPENHANDS_SDK_ERROR=agent_error_event count={len(errors)}", file=sys.stderr, flush=True)
