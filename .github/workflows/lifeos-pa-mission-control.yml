@@ -164,8 +164,9 @@ jobs:
           job_id=$(grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2)
           test -n "$job_id"
           LIFEOS_JOB_ID_FILTER="$job_id" bash governor/scripts/export-lifeos-job-records.sh
-          git -C /home/joshan/lifeos-jobs fetch origin main >/dev/null
-          python3 - "$job_id" /home/joshan/lifeos-jobs <<'PY'
+          git -C /home/joshan/lifeos-jobs fetch origin refs/heads/main >/dev/null
+          remote_main=$(git -C /home/joshan/lifeos-jobs rev-parse FETCH_HEAD)
+          python3 - "$job_id" /home/joshan/lifeos-jobs "$remote_main" <<'PY'
           import json
           import subprocess
           import sys
@@ -184,7 +185,7 @@ jobs:
           assert len(record["iterations"]) == 1
           assert record["iterations"][0]["verdict"] == "PASS"
           PY
-          git -C /home/joshan/lifeos-jobs cat-file -e "origin/main:jobs/$job_id.json"
+          git -C /home/joshan/lifeos-jobs cat-file -e "$remote_main:jobs/$job_id.json"
           echo "ARCHIVED_JOB_RECORD=$job_id"
           echo 'ARCHIVED_DISPOSITION_CONTRACT=PASS'
 
