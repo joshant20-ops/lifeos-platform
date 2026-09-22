@@ -15,10 +15,13 @@ spec.loader.exec_module(broker)
 def test_runtime_acceptance_probes_use_explicit_private_local_policy():
     deploy = (ROOT / "governor" / "scripts" / "deploy-autonomous-agent-pi5.sh").read_text()
     smoke = (ROOT / ".github" / "workflows" / "lifeos-governed-pipeline-smoke.yml").read_text()
-    for probe in (deploy, smoke):
-        assert "lifeos_provider') == 'ollama'" in probe or "j['lifeos_provider']=='ollama'" in probe
-        assert "lifeos-local-only-normal" in probe
-        assert "lifeos_privacy') == 'local-only'" in probe or "j['lifeos_privacy']=='local-only'" in probe
+    assert "lifeos_provider') == 'ollama'" in deploy or "j['lifeos_provider']=='ollama'" in deploy
+    assert "lifeos-local-only-normal" in deploy
+    assert "lifeos_privacy') == 'local-only'" in deploy or "j['lifeos_privacy']=='local-only'" in deploy
+    assert "private=route(p,'normal',set(),privacy='local-only'" in smoke
+    assert "private['selected_provider']=='ollama'" in smoke
+    assert "M6_LOCAL_ONLY_ROUTE=ollama" in smoke
+    assert "M6_PRIVACY_FAIL_CLOSED=PASS" in smoke
 
 
 def test_broker_candidates_expose_only_local_adapter_but_privacy_policy_decides_eligibility():
