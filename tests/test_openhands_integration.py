@@ -234,7 +234,9 @@ def test_level1_worker_does_not_own_meta_issue_disposition():
     assert "Do not close GitHub issues" in mission
     assert "LEVEL1_CANONICAL_MARKER=PASS" in mission
     assert "LEVEL1_DETERMINISTIC_ASSERTION=PASS" in mission
-    assert 'passed = status == "PASS" and canonical_marker' in mission
+    assert 'passed = status == "PASS"' in mission
+    assert 'passed = canonical_marker' in mission
+    assert 'if passed and target == "759":' in mission
 
 
 def test_warning_only_audit_does_not_override_targeted_mission_pass():
