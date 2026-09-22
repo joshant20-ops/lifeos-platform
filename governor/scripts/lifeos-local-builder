@@ -137,7 +137,7 @@ echo "SESSION_COMPUTE_LEASE=active refresh_s=$LEASE_REFRESH_SECONDS"
 
 READY=0
 echo 'ENGINEER_READINESS=waiting'
-for attempt in $(seq 1 60); do
+for attempt in $(seq 1 70); do
   if ssh -o BatchMode=yes -o ConnectTimeout=3 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 "$ENGINEER" true >/dev/null 2>&1; then
     READY=1
     echo "ENGINEER_READINESS=ready attempt=$attempt"
@@ -149,7 +149,7 @@ for attempt in $(seq 1 60); do
 done
 if (( READY == 0 )); then
   echo 'RESULT=RETRY'
-  echo 'REASON=engineer_not_ready_after_local_tower_wake'
+  echo 'REASON=engineer_not_ready_after_210s_local_tower_wake'
   exit 21
 fi
 
