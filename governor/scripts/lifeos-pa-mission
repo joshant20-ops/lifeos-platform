@@ -254,10 +254,27 @@ Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallbac
         print("RESULT=PASS", flush=True)
         print(f"ISSUE_DISPOSITIONS=#{target} ready_for_evidence_backed_closure", flush=True)
     if not passed:
+        iterations = latest.get("iterations") or []
+        last_iteration = iterations[-1] if iterations else {}
+        diagnostic = {
+            "target_issue": target,
+            "job_id": job_id,
+            "status": status,
+            "blocked_reason": latest.get("blocked_reason"),
+            "builder_rc": last_iteration.get("builder_rc"),
+            "iteration_result": last_iteration.get("iteration_result"),
+            "milestone_result": last_iteration.get("milestone_result"),
+            "verification": last_iteration.get("verification"),
+            # Job evidence is already redacted by the Governor handoff parser. Keep a
+            # bounded tail here so Mission Control exposes the failed reusable boundary
+            # instead of forcing bespoke SSH/debug scripts for each acceptance issue.
+            "evidence_tail": str(last_iteration.get("evidence") or "")[-6000:],
+        }
+        print("GOVERNOR_FAILURE_DIAGNOSTIC=" + json.dumps(diagnostic, sort_keys=True), flush=True)
         fault(faults, "GOVERNOR_MISSION_INCOMPLETE", "high", "governor",
               "Autonomous single-issue mission did not prove the required terminal contract.",
-              {"target_issue": target, "job_id": job_id, "status": status, "blocked_reason": latest.get("blocked_reason")},
-              "Resume/fix the Governor job; do not claim the issue complete.")
+              diagnostic,
+              "Repair the evidenced reusable pipeline boundary; do not claim the issue complete.")
     return {"rc": 0 if passed else 20, "job_id": job_id, "status": status}
 
 def render(faults, state, audit_result):
