@@ -189,7 +189,15 @@ Do not modify production behaviour. Do not close GitHub issues, archive LifeOS j
 
 Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallback; no sudo assumption. Governor owns routing/power, bounded canonical publication and independent acceptance. The surrounding mission controller verifies the canonical marker and handles the meta-issue disposition after the governed engineering job passes."""
 
-    payload = json.dumps({"request": request, "privacy_domain": "personal-administration"}).encode()
+    payload = json.dumps({
+        "request": request,
+        "privacy_domain": "personal-administration",
+        "canonical_assertions": [{
+            "id": "level1-marker",
+            "kind": "tracked_text_contains",
+            "value": "LIFEOS_ISSUE_PICKUP_LEVEL1=PASS",
+        }],
+    }).encode()
     req = urllib.request.Request(
         AGENT_URL + "/jobs?async=1", data=payload,
         headers={"Content-Type": "application/json"}, method="POST")
