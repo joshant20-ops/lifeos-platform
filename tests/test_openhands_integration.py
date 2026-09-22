@@ -316,3 +316,13 @@ def test_openhands_sdk_runner_uses_ots_cli_autonomous_agent_preset():
     assert "Agent(" not in runner
     assert "get_default_cli_agent" in builder
     assert "OPENHANDS_NATIVE_ENGINEERING_PRESET=cli_default" in builder
+
+
+def test_local_ai_cold_start_allows_full_tower_boot_window():
+    broker = (ROOT / "governor/ai_broker.py").read_text()
+    builder = (ROOT / "governor/scripts/lifeos-local-builder").read_text()
+    assert 'LIFEOS_LOCAL_AI_WAKE_TIMEOUT", "180"' in broker
+    assert "m._publish_lease('active')" in builder
+    assert "m._wake_local_ai()" in builder
+    assert "for attempt in $(seq 1 70)" in builder
+    assert "engineer_not_ready_after_210s_local_tower_wake" in builder
