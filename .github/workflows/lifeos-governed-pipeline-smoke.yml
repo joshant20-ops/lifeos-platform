@@ -16,6 +16,7 @@ on:
       - 'scripts/test-engineer-governor-broker.sh'
       - 'tests/test_governor_local_tool_routing.py'
       - 'tests/test_engineer_job_records.py'
+      # #878 M10 canonical acceptance trigger retained with the consolidated smoke.
 
 permissions:
   contents: read
