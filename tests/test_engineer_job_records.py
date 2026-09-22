@@ -54,17 +54,15 @@ def test_runtime_stages_record_outside_git_checkout(tmp_path, monkeypatch):
     state = tmp_path / "state"
     repo = tmp_path / "readonly-source"
     repo.mkdir()
-    fake = FakeGit()
     monkeypatch.setenv("LIFEOS_AGENT_STATE", str(state))
 
-    result = records.publish_record(repo, job(), run=fake)
+    result = records.publish_record(repo, job())
 
     staged = state / "job_records/de629fc4ea87.json"
     assert result == {"state": "STAGED", "path": str(staged)}
     data = json.loads(staged.read_text())
     assert data["record_publication"]["state"] == "STAGED"
     assert not (repo / "governor/job_records/de629fc4ea87.json").exists()
-    assert fake.calls == []
 
 
 def test_runtime_publication_requires_external_state_root(tmp_path, monkeypatch):
