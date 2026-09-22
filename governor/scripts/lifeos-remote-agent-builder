@@ -121,10 +121,10 @@ if [[ "$ADAPTER" == openhands ]]; then
   OPENHANDS_VERSION=$("$AGENT" --version 2>&1 | tail -1 || true)
   OPENHANDS_PYTHON="$(dirname "$(readlink -f "$AGENT")")/python"
   [[ -x "$OPENHANDS_PYTHON" ]] || { echo 'PROVIDER_ERROR=openhands_sdk_python_missing'; exit 54; }
-  "$OPENHANDS_PYTHON" -c 'from openhands.sdk import LLM,Agent,Conversation; from openhands.tools.terminal import TerminalTool; from openhands.tools.file_editor import FileEditorTool'
+  "$OPENHANDS_PYTHON" -c 'from openhands.sdk import LLM,Conversation; from openhands_cli.utils import get_default_cli_agent'
   echo "OPENHANDS_VERSION=$OPENHANDS_VERSION"
   echo 'OPENHANDS_SDK_CAPABILITY=PASS'
-  echo 'OPENHANDS_NATIVE_ENGINEERING_TOOLS=terminal,file_editor'
+  echo 'OPENHANDS_NATIVE_ENGINEERING_PRESET=cli_default'
   stage openhands_cli_capabilities_pass
 fi
 echo "PROVIDER_SELECTED=$PROVIDER"

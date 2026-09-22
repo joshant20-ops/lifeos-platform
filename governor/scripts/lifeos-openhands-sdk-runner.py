@@ -10,11 +10,9 @@ import sys
 from pathlib import Path
 
 from pydantic import SecretStr
-from openhands.sdk import LLM, Agent, Conversation
+from openhands.sdk import LLM, Conversation
 from openhands.sdk.event import AgentErrorEvent
-from openhands.sdk.tool import Tool
-from openhands.tools.file_editor import FileEditorTool
-from openhands.tools.terminal import TerminalTool
+from openhands_cli.utils import get_default_cli_agent
 
 
 def main() -> int:
@@ -35,12 +33,11 @@ def main() -> int:
         base_url=base_url,
         api_key=SecretStr(api_key),
     )
-    # Give the OTS agent its native engineering tools directly. Do not make
-    # LifeOS execute/interpret invoke_skill or terminal actions on its behalf.
-    agent = Agent(
-        llm=llm,
-        tools=[Tool(name=TerminalTool.name), Tool(name=FileEditorTool.name)],
-    )
+    # Use OpenHands CLI's own non-interactive agent preset. Besides native
+    # engineering tools, this supplies the OTS cli_mode completion discipline
+    # and condenser. A plain SDK Agent defaults to conversational behaviour and
+    # may legitimately finish after an inspection-only message.
+    agent = get_default_cli_agent(llm)
     conversation = Conversation(agent=agent, workspace=os.getcwd())
     print("OPENHANDS_SDK_RUNTIME=START", flush=True)
     engineering_prompt = """You are the repository engineering agent. Work autonomously in the supplied workspace.
