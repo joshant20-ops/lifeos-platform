@@ -3,6 +3,21 @@ name: LifeOS PA Mission Control
 on:
   workflow_dispatch:
     inputs:
+      target_issue:
+        description: 'GitHub issue number (759 keeps the legacy benchmark)'
+        required: false
+        default: '759'
+        type: string
+      target_objective:
+        description: 'Trusted issue-derived objective for non-759 targeted runs'
+        required: false
+        default: ''
+        type: string
+      canonical_assertions:
+        description: 'Optional JSON canonical assertions for Governor'
+        required: false
+        default: ''
+        type: string
       mode:
         description: 'Runner mode'
         required: true
@@ -87,8 +102,9 @@ jobs:
         shell: bash
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
-          # #418 staged bootstrap: run the trivial child issue first; advance only after live PASS.
-          LIFEOS_PA_TARGET_ISSUE: '759'
+          LIFEOS_PA_TARGET_ISSUE: ${{ inputs.target_issue || '759' }}
+          LIFEOS_PA_TARGET_OBJECTIVE: ${{ inputs.target_objective || '' }}
+          LIFEOS_PA_CANONICAL_ASSERTIONS: ${{ inputs.canonical_assertions || '' }}
         run: |
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
@@ -159,9 +175,10 @@ jobs:
           cd /home/joshan/lifeos-platform
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
           grep -q 'RESULT=PASS' "$STATE/github-mission.log"
-          grep -q 'LEVEL1_CANONICAL_MARKER=PASS' "$STATE/github-mission.log"
-          grep -q 'LEVEL1_DETERMINISTIC_ASSERTION=PASS' "$STATE/github-mission.log"
-          grep -q 'ISSUE_DISPOSITIONS=#759 ready_for_evidence_backed_closure' "$STATE/github-mission.log"
+          grep -q 'TARGETED_ISSUE_ACCEPTANCE=PASS' "$STATE/github-mission.log"
+          target_issue=$(grep '^TARGET_ISSUE=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2)
+          test -n "$target_issue"
+          grep -q "ISSUE_DISPOSITIONS=#$target_issue ready_for_evidence_backed_closure" "$STATE/github-mission.log"
           job_id=$(grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2)
           test -n "$job_id"
           LIFEOS_JOB_ID_FILTER="$job_id" bash governor/scripts/export-lifeos-job-records.sh
