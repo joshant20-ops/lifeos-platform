@@ -200,6 +200,26 @@ jobs:
           echo 'M8_REPOSITORY_CLEAN=PASS'
           echo 'M8_RETIREMENT_ACCEPTANCE=PASS'
 
+      - name: Prove M9 job-record disposition
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git ls-files 'governor/job_records/*')"
+          envline="$(systemctl show lifeos-autonomous-agent.service -p Environment --value)"
+          case "$envline" in *"LIFEOS_AGENT_STATE=/var/lib/lifeos-agent"*) ;; *) echo 'M9_AGENT_STATE=FAIL'; exit 1;; esac
+          test -d /var/lib/lifeos-agent/job_records
+          state_real="$(readlink -f /var/lib/lifeos-agent/job_records)"
+          repo_real="$(readlink -f /home/joshan/lifeos-platform)"
+          case "$state_real" in "$repo_real"/*) echo 'M9_JOB_RECORD_STATE_OUTSIDE_GIT=FAIL'; exit 1;; esac
+          python3 -m pytest -q tests/test_engineer_job_records.py
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'M9_TRACKED_JOB_RECORDS=0'
+          echo "M9_JOB_RECORD_STATE_OUTSIDE_GIT=PASS:$state_real"
+          echo 'M9_RUNTIME_STAGING_CONTRACT=PASS'
+          echo 'M9_REPOSITORY_CLEAN=PASS'
+          echo 'M9_JOB_RECORD_DISPOSITION=PASS'
+
       - name: Agent contract regression
         continue-on-error: true
         shell: bash
