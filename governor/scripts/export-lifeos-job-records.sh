@@ -29,6 +29,9 @@ fi
 # remote-tracking refs may legitimately be stale or locally divergent.
 git -C "$JOBS_REPO" fetch origin refs/heads/main >/dev/null
 REMOTE_MAIN=$(git -C "$JOBS_REPO" rev-parse FETCH_HEAD)
+echo "JOBS_EXPORT_FETCH_URL=$(git -C "$JOBS_REPO" remote get-url origin)"
+echo "JOBS_EXPORT_PUSH_URL=$(git -C "$JOBS_REPO" remote get-url --push origin)"
+echo "JOBS_EXPORT_REMOTE_MAIN=$REMOTE_MAIN"
 git -C "$JOBS_REPO" worktree add --detach "$EXPORT_WORKTREE" "$REMOTE_MAIN" >/dev/null
 OUT_DIR="$EXPORT_WORKTREE/jobs"
 mkdir -p "$OUT_DIR"
