@@ -30,7 +30,7 @@ OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://192.168.0.201:11434/a
 OLLAMA_MODEL = os.environ.get("LIFEOS_LOCAL_AI_MODEL", "qwen2.5-coder:7b-instruct")
 OLLAMA_CONTEXT_LENGTH = int(os.environ.get("LIFEOS_LOCAL_AI_CONTEXT_LENGTH", "8192"))
 HTTP_TIMEOUT = int(os.environ.get("LIFEOS_AI_HTTP_TIMEOUT", "120"))
-WAKE_TIMEOUT = int(os.environ.get("LIFEOS_LOCAL_AI_WAKE_TIMEOUT", "90"))
+WAKE_TIMEOUT = int(os.environ.get("LIFEOS_LOCAL_AI_WAKE_TIMEOUT", "180"))
 LEASE_TTL = int(os.environ.get("LIFEOS_LOCAL_AI_LEASE_TTL", "1200"))
 MQTT_HOST = os.environ.get("LIFEOS_MQTT_HOST", "127.0.0.1")
 
