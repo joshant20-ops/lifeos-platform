@@ -264,3 +264,11 @@ def test_cloud_builder_codex_exhaustion_falls_back_local_only_to_tower_ollama():
     assert 'LIFEOS_JOB_PRIVACY=local-only' in script
     assert '"$LOCAL_BUILDER" "$REQUEST" "$ITERATION" "$FEEDBACK"' in script
     assert 'FALLBACK_RESULT=local_builder PASS' in script
+
+
+def test_openhands_sdk_runner_requires_real_tool_activity():
+    runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    assert "AgentErrorEvent" in runner
+    assert "OPENHANDS_SDK_ERROR=no_engineering_tool_activity" in runner
+    assert "OPENHANDS_SDK_TOOL_EVENTS=" in runner
+    assert 'if not tool_events:' in runner
