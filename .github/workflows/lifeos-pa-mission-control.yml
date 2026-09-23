@@ -116,7 +116,7 @@ jobs:
             failure yourself, determine the cause, make the smallest appropriate repository change, and run focused
             regression verification. Do not add issue-specific Governor logic.
           LIFEOS_PA_CANONICAL_ASSERTIONS: >-
-            [{"id":"inventory-status-contract","kind":"tracked_text_contains","value":"Reserved |"}]
+            [{"id":"inventory-status-contract","kind":"tracked_text_contains","value":"| laptop-board-01 | Candidate / details required |"}]
         run: |
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
