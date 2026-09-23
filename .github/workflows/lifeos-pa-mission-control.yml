@@ -7,6 +7,7 @@ on:
       - '.github/workflows/lifeos-pa-mission-control.yml'
       - 'deploy-triggers/issue-706-live'
       - 'deploy-triggers/issue-706-retry'
+      - 'deploy-triggers/issue-706-concrete-evidence'
   workflow_dispatch:
     inputs:
       target_issue:
