@@ -303,6 +303,7 @@ def test_openhands_sdk_runner_normalizes_unhandled_conversation_failures():
     assert "OPENHANDS_UPSTREAM_HTTP_STATUS=" in runner
     assert "OPENHANDS_UPSTREAM_ERROR_CODE=" in runner
     assert "OPENHANDS_PROVIDER_HTTP_STATUS=" in runner
+    assert "OPENHANDS_UPSTREAM_CLASS=" in runner
     assert "OPENHANDS_UPSTREAM_CATEGORY=" in runner
     assert "return 24" in runner
     assert "str(exc)" not in runner
