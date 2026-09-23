@@ -1,0 +1,47 @@
+name: OpenHands Runtime Audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/openhands-runtime-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Audit Engineer OpenHands runtime
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          echo "=== VERSION ==="
+          openhands --version || true
+          uv tool list || true
+          echo "=== COMMANDS ==="
+          openhands --help || true
+          echo "=== DOCKER ==="
+          docker version --format '{{.Server.Version}}' || true
+          docker info --format '{{.Architecture}} {{.OSType}}' || true
+          docker ps -a --format '{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}' || true
+          echo "=== SERVICE ==="
+          systemctl --user cat lifeos-openhands-ui.service || true
+          systemctl --user show lifeos-openhands-ui.service -p ActiveState -p SubState -p NRestarts -p MainPID || true
+          echo "=== SETTINGS ==="
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path.home()/'.openhands/agent_settings.json'
+          d=json.loads(p.read_text())
+          if d.get('llm',{}).get('api_key'): d['llm']['api_key']='<redacted>'
+          print(json.dumps(d,indent=2))
+          PY
+          echo "=== RECENT ERRORS ==="
+          journalctl --user -u lifeos-openhands-ui.service -n 300 --no-pager | grep -Ei 'error|exception|traceback|warning|reload|disconnect|failed' | tail -100 || true
+          echo "=== DIRECT MODEL ==="
+          curl -fsS http://192.168.0.201:11434/api/tags | python3 -c 'import json,sys; print([m["name"] for m in json.load(sys.stdin)["models"]])'
+          curl -fsS http://192.168.0.201:11434/api/chat -H 'Content-Type: application/json' -d '{"model":"qwen2.5-coder:7b-instruct","messages":[{"role":"user","content":"Reply OK"}],"stream":false,"think":false}' | python3 -c 'import json,sys; d=json.load(sys.stdin); print("MODEL_REPLY="+d["message"]["content"][:80])'
+          REMOTE
