@@ -2,9 +2,7 @@
 
 This directory is the provider-independent boundary between OpenHands and the
 LifeOS governor. `provider_router.py` applies the zero-spend policy in
-`governor/policy.json`; `openhands_worker.py` supplies the selected provider to
-OpenHands through `LIFEOS_PROVIDER`, `LLM_MODEL`, and a selected-provider-only
-`LLM_API_KEY`. Provider-specific runtime configuration
+`governor/policy.json`; the canonical Governor/OpenHands adapter supplies the authorized broker endpoint and bounded capability to OpenHands. Provider-specific runtime configuration
 belongs on Engineer, not in Git.
 
 The worker defaults to dry-run and requires a non-main branch. Execution needs
@@ -25,11 +23,7 @@ marker and the worker moves to the next eligible free provider.
 
 Example dry-run on Engineer (normally exercised by Pi5 automation):
 
-```text
-python3 engineer/openhands_worker.py --repo /home/joshan/workspace/lifeos-platform \
-  --task /path/to/redacted-task.txt --task-class normal \
-  --secrets /home/joshan/.openhands/provider-secrets.env
-```
+OpenHands engineering is launched through the canonical governed builder path; this directory no longer contains a second standalone worker.
 
 `review_packet.py --repo PATH` creates the daily Codex senior-review packet
 from bounded Git metadata, without repository contents. `cleanup_audit.py` is a
