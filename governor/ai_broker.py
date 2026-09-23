@@ -197,13 +197,30 @@ def _ollama_tool_call_from_content(content, tools: list[dict]) -> dict | None:
     arguments = value.get("arguments")
     if not isinstance(name, str) or not name or not isinstance(arguments, dict):
         return None
-    allowed = {
-        str((tool.get("function") or {}).get("name") or "")
+    allowed_tools = {
+        str((tool.get("function") or {}).get("name") or ""): tool
         for tool in tools
         if isinstance(tool, dict) and tool.get("type") == "function"
+        and str((tool.get("function") or {}).get("name") or "")
     }
-    if name not in allowed:
-        return None
+    if name not in allowed_tools:
+        # Some local models serialize a tool's command enum value as the tool
+        # name (for example `view`) instead of calling the containing tool
+        # (for example `file_editor(command="view", ...)`). Recover this only
+        # when the declared schemas identify exactly one unambiguous owner.
+        owners = []
+        for tool_name, tool in allowed_tools.items():
+            fn = tool.get("function") or {}
+            params = fn.get("parameters") or {}
+            props = params.get("properties") or {}
+            command = props.get("command") or {}
+            enum = command.get("enum") or []
+            if isinstance(enum, list) and name in enum:
+                owners.append(tool_name)
+        if len(owners) != 1:
+            return None
+        arguments = {"command": name, **arguments}
+        name = owners[0]
     return {
         "id": f"call_ollama_{os.urandom(6).hex()}",
         "type": "function",
