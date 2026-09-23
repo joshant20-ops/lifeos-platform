@@ -214,8 +214,10 @@ jobs:
           assert record["privacy"] == "local-only"
           assert record["request"] == "[LOCAL-ONLY REQUEST REDACTED]"
           assert record["started_at"] and record["completed_at"]
-          assert len(record["iterations"]) == 1
-          assert record["iterations"][0]["verdict"] == "PASS"
+          iterations = record.get("iterations") or []
+          assert iterations
+          assert iterations[-1]["verdict"] == "PASS"
+          assert all(item.get("iteration") == index for index, item in enumerate(iterations, start=1))
           PY
           git -C /home/joshan/lifeos-jobs cat-file -e "$remote_main:jobs/$job_id.json"
           echo "ARCHIVED_JOB_RECORD=$job_id"
