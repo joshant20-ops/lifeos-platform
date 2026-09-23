@@ -80,11 +80,21 @@ jobs:
         shell: bash
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
-          LIFEOS_PA_TARGET_ISSUE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_issue || '935' }}
-          LIFEOS_PA_TARGET_OBJECTIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_objective || 'Diagnose and fix the tiny real hardware-inventory status-contract bug described by issue #935. A deterministic failing acceptance test has been supplied by the harness. Inspect the repository and test failure yourself, determine the cause, make the smallest appropriate repository change, and run focused regression verification. Do not add issue-specific Governor logic.' }}
-          LIFEOS_PA_CANONICAL_ASSERTIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.canonical_assertions || '[{"id":"inventory-status-contract","kind":"tracked_text_contains","path":"docs/operations/available-hardware.md","value":"| laptop-board-01 | Candidate / details required |"}]' }}
+          DISPATCH_TARGET_ISSUE: ${{ inputs.target_issue }}
+          DISPATCH_TARGET_OBJECTIVE: ${{ inputs.target_objective }}
+          DISPATCH_CANONICAL_ASSERTIONS: ${{ inputs.canonical_assertions }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -Eeuo pipefail
+          if [[ "$EVENT_NAME" == workflow_dispatch ]]; then
+            export LIFEOS_PA_TARGET_ISSUE="$DISPATCH_TARGET_ISSUE"
+            export LIFEOS_PA_TARGET_OBJECTIVE="$DISPATCH_TARGET_OBJECTIVE"
+            export LIFEOS_PA_CANONICAL_ASSERTIONS="$DISPATCH_CANONICAL_ASSERTIONS"
+          else
+            export LIFEOS_PA_TARGET_ISSUE=935
+            export LIFEOS_PA_TARGET_OBJECTIVE='Diagnose and fix the tiny real hardware-inventory status-contract bug described by issue #935. A deterministic failing acceptance test has been supplied by the harness. Inspect the repository and test failure yourself, determine the cause, make the smallest appropriate repository change, and run focused regression verification. Do not add issue-specific Governor logic.'
+            export LIFEOS_PA_CANONICAL_ASSERTIONS='[{"id":"inventory-status-contract","kind":"tracked_text_contains","path":"docs/operations/available-hardware.md","value":"| laptop-board-01 | Candidate / details required |"}]'
+          fi
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
           mkdir -p "$STATE"; rm -f "$STATE/github-mission.log" "$STATE/github-mission.rc"
           set +e
