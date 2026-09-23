@@ -73,7 +73,7 @@ EXECUTION_LOCK = threading.Lock()
 ACTIVE_JOB_LOCK = threading.Lock()
 ACTIVE_JOB_ID = None
 DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})
-CANONICAL_ASSERTION_KINDS = frozenset({"tracked_text_contains"})
+CANONICAL_ASSERTION_KINDS = frozenset({"tracked_text_contains", "tracked_path_absent"})
 DEPLOYMENT_OPERATIONS = frozenset({
     "deploy-engineer-runtime", "deploy-autonomous-agent",
 })
@@ -545,14 +545,24 @@ def verify_canonical_assertions(job):
     ]
     passed = not dirty and head == origin_main
     for assertion in assertions:
-        result = subprocess.run(
-            ["git", "grep", "-F", "-q", "--", assertion["value"], "HEAD"],
-            cwd=PLATFORM_REPO,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=30,
-        )
-        item_passed = result.returncode == 0
+        if assertion["kind"] == "tracked_text_contains":
+            result = subprocess.run(
+                ["git", "grep", "-F", "-q", "--", assertion["value"], "HEAD"],
+                cwd=PLATFORM_REPO,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            item_passed = result.returncode == 0
+        else:
+            result = subprocess.run(
+                ["git", "cat-file", "-e", f"HEAD:{assertion['value']}"],
+                cwd=PLATFORM_REPO,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=30,
+            )
+            item_passed = result.returncode != 0
         passed = passed and item_passed
         lines.append(
             "CANONICAL_ASSERTION_"
