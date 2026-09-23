@@ -215,7 +215,14 @@ def _ollama_tool_call_from_content(content, tools: list[dict]) -> dict | None:
             props = params.get("properties") or {}
             command = props.get("command") or {}
             enum = command.get("enum") or []
-            if isinstance(enum, list) and name in enum:
+            description = str(command.get("description") or "")
+            enum_match = isinstance(enum, list) and name in enum
+            # Pydantic/OpenHands schemas do not always retain Literal values as
+            # JSON-schema enum entries after compatibility sanitization. Their
+            # command field still advertises allowed values in its description.
+            # Treat an exact backticked advertised value as schema ownership.
+            described_match = f"`{name}`" in description
+            if enum_match or described_match:
                 owners.append(tool_name)
         if len(owners) != 1:
             return None
