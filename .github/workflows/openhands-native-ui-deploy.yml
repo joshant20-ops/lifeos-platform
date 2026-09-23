@@ -72,7 +72,22 @@ jobs:
           UNIT
           systemctl --user daemon-reload
           systemctl --user enable --now lifeos-openhands-ui.service
-          for _ in $(seq 1 60); do curl -fsS --connect-timeout 2 http://127.0.0.1:8000/canvas/ >/dev/null 2>&1 && break; sleep 2; done
+          ready=0
+          for _ in $(seq 1 60); do
+            if curl -fsS --connect-timeout 2 http://127.0.0.1:8000/canvas/ >/dev/null 2>&1; then ready=1; break; fi
+            if ! systemctl --user is-active --quiet lifeos-openhands-ui.service; then break; fi
+            sleep 2
+          done
+          if [ "$ready" != 1 ]; then
+            echo '=== CANVAS SERVICE ==='
+            systemctl --user --no-pager --full status lifeos-openhands-ui.service || true
+            echo '=== CANVAS CONTAINER ==='
+            docker ps -a --filter name=lifeos-agent-canvas --no-trunc || true
+            docker inspect lifeos-agent-canvas --format 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' || true
+            echo '=== CANVAS LOGS ==='
+            docker logs --tail 250 lifeos-agent-canvas 2>&1 || true
+            exit 20
+          fi
           curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
           docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
           echo OPENHANDS_AGENT_CANVAS_1_23=PASS
