@@ -110,16 +110,13 @@ jobs:
           fi
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           command -v openhands
-          help=$(openhands --help 2>&1)
-          grep -q -- '--headless' <<<"$help"
-          grep -q -- '--override-with-envs' <<<"$help"
-          grep -q -- '--always-approve' <<<"$help"
-          installed=$(openhands --version 2>&1 | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          installed=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('openhands'))")
           [[ "$installed" == 1.16.0 ]]
-          echo 'OPENHANDS_HEADLESS=PASS'
-          echo 'OPENHANDS_ENV_OVERRIDE=PASS'
-          echo 'OPENHANDS_NONINTERACTIVE_APPROVAL=PASS'
+          sdk=$(python3 -c "import importlib.metadata; print(importlib.metadata.version('openhands-sdk'))")
+          python3 -c 'from openhands.sdk import LLM,Conversation; from openhands_cli.utils import get_default_cli_agent'
           echo "OPENHANDS_PINNED_VERSION=$installed"
+          echo "OPENHANDS_SDK_VERSION=$sdk"
+          echo 'OPENHANDS_SDK_CAPABILITY=PASS'
           echo 'ENGINEER_AGENT_TOOLING_DEPLOY=PASS'
           REMOTE
 
