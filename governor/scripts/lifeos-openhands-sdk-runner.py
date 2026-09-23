@@ -74,6 +74,17 @@ Only finish when the requested task is actually satisfied or a genuine external 
     if not tool_events:
         print("OPENHANDS_SDK_ERROR=no_engineering_tool_activity", file=sys.stderr, flush=True)
         return 22
+    # A compulsory initial pwd/list plus immediate finish is still not engineering.
+    # For repository-change tasks, require activity beyond that bootstrap inspection.
+    # Evidence-only/audit work remains allowed to finish without edits, but must have
+    # enough tool activity to perform the concrete inspection/verification contract.
+    if len(tool_events) < 3:
+        print(
+            f"OPENHANDS_SDK_ERROR=insufficient_engineering_tool_activity count={len(tool_events)}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 23
     print(f"OPENHANDS_SDK_TOOL_EVENTS={len(tool_events)}", flush=True)
     print("OPENHANDS_SDK_RUNTIME=COMPLETE", flush=True)
     return 0
