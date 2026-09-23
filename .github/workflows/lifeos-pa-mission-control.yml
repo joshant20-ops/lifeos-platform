@@ -1,6 +1,11 @@
 name: LifeOS PA Mission Control
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pa-mission-control.yml'
+      - 'deploy-triggers/issue-961-level3'
   workflow_dispatch:
     inputs:
       target_issue:
@@ -102,9 +107,16 @@ jobs:
         shell: bash
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
-          LIFEOS_PA_TARGET_ISSUE: ${{ inputs.target_issue || '759' }}
-          LIFEOS_PA_TARGET_OBJECTIVE: ${{ inputs.target_objective || '' }}
-          LIFEOS_PA_CANONICAL_ASSERTIONS: ${{ inputs.canonical_assertions || '' }}
+          # Temporary push harness for staged acceptance #961; remove after terminal evidence.
+          LIFEOS_PA_TARGET_ISSUE: '961'
+          LIFEOS_PA_TARGET_OBJECTIVE: >-
+            Enforce deterministic deployment-trigger hygiene across implementation, tests, and operator documentation.
+            Add an executable deterministic checker that detects stale issue-specific files under deploy-triggers, add
+            regression tests covering clean and stale-trigger cases, document the contract and how to run the checker,
+            and remove the stale #706 acceptance trigger files currently violating the contract. Inspect the repository
+            and choose implementation details yourself; do not add issue-specific Governor logic or duplicate OpenHands.
+          LIFEOS_PA_CANONICAL_ASSERTIONS: >-
+            [{"id":"issue-706-live-absent","kind":"tracked_path_absent","value":"deploy-triggers/issue-706-live"},{"id":"issue-706-retry-absent","kind":"tracked_path_absent","value":"deploy-triggers/issue-706-retry"},{"id":"issue-706-evidence-absent","kind":"tracked_path_absent","value":"deploy-triggers/issue-706-concrete-evidence"}]
         run: |
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
