@@ -57,12 +57,14 @@ jobs:
           # default, so browsers on our trusted plain-HTTP LAN origin drop them
           # and workspace previews return 401. Until upstream PR #16364 lands,
           # apply its narrowly-scoped proxy fix inside the image at deploy time.
-          mkdir -p "$HOME/.openhands/patches"
-          curl -fsSL https://raw.githubusercontent.com/hudsonwa/OpenHands/a162da805caf9a62a506958bb6effb84862bc986/scripts/proxy-utils.mjs -o "$HOME/.openhands/patches/proxy-utils.mjs"
-          curl -fsSL https://raw.githubusercontent.com/hudsonwa/OpenHands/a162da805caf9a62a506958bb6effb84862bc986/scripts/static-server.mjs -o "$HOME/.openhands/patches/static-server.mjs"
+          patch_dir="$HOME/lifeos-canvas-patches"
+          rm -rf "$patch_dir"
+          mkdir -p "$patch_dir"
+          curl -fsSL https://raw.githubusercontent.com/hudsonwa/OpenHands/a162da805caf9a62a506958bb6effb84862bc986/scripts/proxy-utils.mjs -o "$patch_dir/proxy-utils.mjs"
+          curl -fsSL https://raw.githubusercontent.com/hudsonwa/OpenHands/a162da805caf9a62a506958bb6effb84862bc986/scripts/static-server.mjs -o "$patch_dir/static-server.mjs"
           # The all-in-one image does not forward container argv to static-server,
           # so enable the upstream opt-in in our mounted copy only.
-          sed -i 's/disableSecure: false,/disableSecure: true,/' "$HOME/.openhands/patches/static-server.mjs"
+          sed -i 's/disableSecure: false,/disableSecure: true,/' "$patch_dir/static-server.mjs"
           # A prior container left the persistent bind mount unwritable by the
           # image's non-root openhands user. Repair ownership from a short-lived
           # root container rather than requiring host sudo.
@@ -79,7 +81,7 @@ jobs:
           [Service]
           Type=simple
           ExecStartPre=-/usr/bin/docker rm -f lifeos-agent-canvas
-          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -e AGENT_SERVER_PORT=11800 -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-projects:/projects -v %h/.openhands/patches/proxy-utils.mjs:/opt/agent-canvas/proxy-utils.mjs:ro -v %h/.openhands/patches/static-server.mjs:/opt/agent-canvas/static-server.mjs:ro ghcr.io/openhands/agent-canvas:1.23.0
+          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -e AGENT_SERVER_PORT=11800 -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-projects:/projects -v %h/lifeos-canvas-patches/proxy-utils.mjs:/opt/agent-canvas/proxy-utils.mjs:ro -v %h/lifeos-canvas-patches/static-server.mjs:/opt/agent-canvas/static-server.mjs:ro ghcr.io/openhands/agent-canvas:1.23.0
           ExecStop=/usr/bin/docker stop -t 20 lifeos-agent-canvas
           Restart=on-failure
           RestartSec=5
