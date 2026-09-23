@@ -364,4 +364,6 @@ def test_sdk_runner_reprompts_unsupported_early_completion():
     assert "for continuation in range(3):" in text
     assert "Completion rejected:" in text
     assert "conversation.send_message(" in text
-    assert "if len(current_tools) >= 3:" in text
+    assert "if len(current_engineering_tools) >= 3:" in text
+    assert '"finishaction"' in text
+    assert "engineering_tool_events" in text
