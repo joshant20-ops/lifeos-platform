@@ -98,11 +98,30 @@ Only finish when the requested task is actually satisfied or a genuine external 
 
 """ + prompt
     conversation.send_message(engineering_prompt)
-    # Conversation.run() drives the session to completion but the installed SDK
-    # returns None. Read the persisted conversation event log afterwards instead
-    # of treating run()'s transport return value as an event collection.
+    # Conversation.run() drives one agent turn to completion. A small local model
+    # can occasionally mistake the mandatory bootstrap inspection for the whole
+    # objective and finish immediately. Keep completion discipline inside
+    # OpenHands: reject that unsupported completion and ask the same conversation
+    # to continue, preserving its tool observations and task context.
     try:
-        conversation.run()
+        for continuation in range(3):
+            conversation.run()
+            current_events = list(conversation.state.events)
+            current_tools = [
+                event for event in current_events
+                if getattr(event, "action", None) is not None
+                and type(getattr(event, "action", None)).__name__.lower().endswith("action")
+            ]
+            if len(current_tools) >= 3:
+                break
+            if continuation == 2:
+                break
+            conversation.send_message(
+                "Completion rejected: the requested repository engineering objective is not yet "
+                "supported by sufficient tool evidence. Continue the SAME objective now. Inspect "
+                "the relevant files, diagnose the actual defect, make any required repository "
+                "change yourself, and run focused deterministic verification before finishing."
+            )
     except Exception as exc:
         # Keep local/private prompts and exception messages out of workflow
         # evidence while preserving categorical SDK boundaries for diagnosis.
