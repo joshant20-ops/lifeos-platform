@@ -357,3 +357,11 @@ def test_openhands_sdk_rejects_bootstrap_only_sessions():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "insufficient_engineering_tool_activity" in runner
     assert "len(tool_events) < 3" in runner
+
+
+def test_sdk_runner_reprompts_unsupported_early_completion():
+    text = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    assert "for continuation in range(3):" in text
+    assert "Completion rejected:" in text
+    assert "conversation.send_message(" in text
+    assert "if len(current_tools) >= 3:" in text
