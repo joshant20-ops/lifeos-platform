@@ -46,10 +46,5 @@ jobs:
           ss -ltn 2>/dev/null | grep -E ':(3000|3001|8792|8793|12000)\\b' || true
           echo 'LISTENERS_END'
           tool_python="$(dirname "$(readlink -f "$(command -v openhands)")")/python"
-          "$tool_python" - <<'PY'
-import importlib.metadata as m
-for n in ("openhands","openhands-sdk","openhands-ai"):
-    try: print(f"PACKAGE_{n}={m.version(n)}")
-    except m.PackageNotFoundError: pass
-PY
+          "$tool_python" -c 'import importlib.metadata as m; print("PACKAGE_openhands="+m.version("openhands")); print("PACKAGE_openhands-sdk="+m.version("openhands-sdk"))'
           REMOTE
