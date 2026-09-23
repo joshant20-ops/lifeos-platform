@@ -286,7 +286,7 @@ Preserve invariants: private/local-only work uses Tower Ollama; no cloud fallbac
         safe_markers = []
         marker_patterns = (
             re.compile(r"^(OPENHANDS_SDK_ERROR)=(?:[a-z0-9_.-]+)(?: count=\d+)?$", re.I),
-            re.compile(r"^(OPENHANDS_SDK_TOOL_EVENTS|OPENHANDS_AGENT_PROCESS_RC|OPENHANDS_WORKTREE_PATCH_BYTES|LOCAL_BUILDER_ATTEMPT_RC)=\d+$"),
+            re.compile(r"^(OPENHANDS_SDK_TOOL_EVENTS|OPENHANDS_SDK_EVENTS_ON_EXCEPTION|OPENHANDS_SDK_ERROR_EVENTS_ON_EXCEPTION|OPENHANDS_SDK_TOOL_EVENTS_ON_EXCEPTION|OPENHANDS_AGENT_PROCESS_RC|OPENHANDS_WORKTREE_PATCH_BYTES|LOCAL_BUILDER_ATTEMPT_RC)=\d+$"),
             re.compile(r"^(HANDOFF_ERROR|PROVIDER_ERROR)=[a-z0-9_.-]+(?:_[0-9]+s)?$", re.I),
             re.compile(r"^AGENT_RESULT=openhands (?:PASS|FAILED exit=\d+)$"),
             re.compile(r"^PI5_PATCH=(?:none|APPLIED|no_effect|blocked_for_cloud_authored_private_job)$"),
