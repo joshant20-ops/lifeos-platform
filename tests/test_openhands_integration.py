@@ -333,3 +333,9 @@ def test_openhands_sdk_requires_concrete_audit_evidence():
     assert "actually enumerate and inspect the relevant repository estate" in runner
     assert "Before finishing, run at least one focused deterministic command" in runner
     assert "treat it as mandatory work for this session rather than restating it" in runner
+
+
+def test_openhands_sdk_rejects_bootstrap_only_sessions():
+    runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    assert "insufficient_engineering_tool_activity" in runner
+    assert "len(tool_events) < 3" in runner
