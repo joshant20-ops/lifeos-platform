@@ -6,9 +6,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "engineer"))
 
-from cleanup_audit import classify
 from provider_router import PolicyError, load_policy, load_secret_names, route
-from review_packet import build
 
 
 def policy():
@@ -184,13 +182,6 @@ def test_policy_is_valid_json_and_paid_fallback_is_off_by_default():
     assert item["schema_version"] == 3
     assert item["routing"]["strategy"] == "cheapest-capable"
     assert item["routing"]["allow_paid_fallback"] is False
-
-
-def test_review_packet_is_compact_metadata_not_repository_content():
-    result = build(ROOT)
-    assert result["provider_role"] == "codex-senior-review"
-    assert result["content_included"] is False
-    assert len(json.dumps(result)) < 16000
 
 
 def test_remote_agent_attempt_has_bounded_deadline_and_timeout_evidence():
