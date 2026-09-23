@@ -11,3 +11,5 @@ rerun-after-progress-fix
 rerun-after-openhands-owned-completion
 
 rerun-after-native-completion-deployed
+
+rerun-after-native-openhands-completion
