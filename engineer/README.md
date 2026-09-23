@@ -25,10 +25,7 @@ Example dry-run on Engineer (normally exercised by Pi5 automation):
 
 OpenHands engineering is launched through the canonical governed builder path; this directory no longer contains a second standalone worker.
 
-`review_packet.py --repo PATH` creates the daily Codex senior-review packet
-from bounded Git metadata, without repository contents. `cleanup_audit.py` is a
-read-only dry-run inventory. It always preserves `.codex`, `.config/gh`,
-`.ssh`, `.openhands`, Ollama storage, and the canonical workspace. Candidate
+Repository review, cleanup reasoning, and engineering inspection now belong to the canonical OpenHands engineering session. Deterministic safety and acceptance checks remain outside OpenHands. Candidate
 backups remain `REVIEW_REQUIRED`; `SAFE_TO_REMOVE` is deliberately empty and
 automatic deletion remains disabled pending separate evidence and approval.
 
