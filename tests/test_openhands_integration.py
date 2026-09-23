@@ -293,16 +293,16 @@ def test_openhands_sdk_runner_reads_events_from_conversation_state():
 
 def test_openhands_sdk_runner_requires_autonomous_repository_completion_prompt():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
-    assert "Do not stop at describing, summarising, or proposing commands." in runner
+    assert "Do not stop at describing, summarising, planning, or proposing commands." in runner
     assert "make the requested repository changes with your native tools" in runner
-    assert "run focused deterministic verification" in runner
+    assert "Before finishing, run focused deterministic verification" in runner
 
 
 def test_openhands_sdk_runner_requires_tool_grounded_repository_discovery_first():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     first_action = runner.index("Your first action must use the native terminal tool")
     no_guessing = runner.index("never guess a file or directory")
-    perform_work = runner.index("make the requested repository changes with your native tools")
+    perform_work = runner.index("execute the requested work with native tools")
     assert first_action < no_guessing < perform_work
     assert "inspect the repository's real top-level structure" in runner
     assert "re-list the relevant parent before creating a new path" in runner
