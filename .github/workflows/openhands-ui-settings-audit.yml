@@ -21,9 +21,17 @@ jobs:
           systemctl --user show lifeos-openhands-ui.service -p EnvironmentFiles -p ExecStart --no-pager
           echo CONFIG_KEYS
           sed -E 's/=.*/=<redacted>/' "$HOME/.config/lifeos/openhands-ui.env"
-          echo PROCESS_ENV_KEYS
-          pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
-          tr '\0' '\n' <"/proc/$pid/environ" | grep -E '^(LLM_BASE_URL|LLM_API_KEY|LLM_MODEL)=' | sed -E 's/=.*/=<present>/'
+          echo RUNTIME_MODE
+          execstart=$(systemctl --user show lifeos-openhands-ui.service -p ExecStart --value)
+          if grep -q 'ghcr.io/openhands/agent-canvas:1.23.0' <<<"$execstart"; then
+            docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
+            curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
+            echo OPENHANDS_AGENT_CANVAS_SETTINGS_AUDIT=PASS
+          else
+            echo PROCESS_ENV_KEYS
+            pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
+            tr '\0' '\n' <"/proc/$pid/environ" | grep -E '^(LLM_BASE_URL|LLM_API_KEY|LLM_MODEL)=' | sed -E 's/=.*/=<present>/'
+          fi
           echo STATE_FILES
           find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 2 -type f -printf '%p\n' 2>/dev/null || true
           REMOTE
