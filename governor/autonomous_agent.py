@@ -929,94 +929,94 @@ def retain_runtime_publication(job, runtime_evidence):
 
 
 def _execute_job_locked(job):
-    """Run one governed OTS engineering session, then independently accept/reject it.
-
-    OpenHands/Codex owns planning, editing, testing, diagnosis and internal iteration.
-    Governor intentionally does not implement a second coding-agent retry loop.  It
-    owns policy/routing, bounded publication/runtime, independent acceptance and the
-    durable job record.  A failed acceptance is returned as an evidence-backed
-    terminal result so a caller may deliberately submit a new job rather than
-    silently nesting another home-grown engineering loop around the OTS agent.
-    """
+    """Run bounded governed OTS sessions until independent acceptance is terminal."""
     job = load(job["id"])
     job["status"] = "RUNNING"
     job["started_at"] = now()
     job["engineering_loop"] = "ots-owned"
-    set_stage(job, "builder", "OTS agent owns plan/edit/test/debug/iteration")
+    max_iterations = int(os.environ.get("LIFEOS_ACCEPTANCE_RETRY_LIMIT", "3"))
+    verifier_feedback = None
 
-    rec = {"iteration": 1, "started_at": now(), "owner": "ots-agent"}
-    try:
-        rc, build_evidence, handoff = run_builder(job, 1, None)
-        rec["builder_rc"] = rc
-    except Exception as exc:
-        build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
-        handoff = {}
-        rec["builder_rc"] = 255
+    for iteration in range(1, max_iterations + 1):
+        set_stage(job, "builder", f"OTS agent iteration {iteration} owns plan/edit/test/debug")
+        rec = {"iteration": iteration, "started_at": now(), "owner": "ots-agent"}
+        try:
+            rc, build_evidence, handoff = run_builder(job, iteration, verifier_feedback)
+            rec["builder_rc"] = rc
+        except Exception as exc:
+            build_evidence = f"builder exception: {type(exc).__name__}: {exc}"
+            handoff = {}
+            rec["builder_rc"] = 255
 
-    set_stage(job, "publication", "Governor bounded publication gate")
-    publication = apply_and_publish_patch(job, 1, handoff)
-    set_stage(job, "runtime", "Governor bounded runtime/evidence gate")
-    runtime = retain_runtime_publication(job, run_pi5_runtime(job, handoff))
-    if "RUNTIME_ARTIFACT_PUBLISHED=FAIL" in runtime:
-        build_evidence = suppress_unpublished_runtime_instructions(build_evidence)
-    canonical_result, canonical_evidence = verify_canonical_assertions(job)
-    evidence = (
-        f"ENGINEERING_LOOP=ots-owned\nBUILD_EVIDENCE:\n{build_evidence[-12000:]}\n\n"
-        f"PUBLICATION_EVIDENCE:\n{publication[-7000:]}\n\n{runtime}\n"
-        f"INDEPENDENT_CANONICAL_EVIDENCE:\n{canonical_evidence}"
-    )
-    rec["evidence"] = evidence[-26000:]
+        set_stage(job, "publication", "Governor bounded publication gate")
+        publication = apply_and_publish_patch(job, iteration, handoff)
+        set_stage(job, "runtime", "Governor bounded runtime/evidence gate")
+        runtime = retain_runtime_publication(job, run_pi5_runtime(job, handoff))
+        if "RUNTIME_ARTIFACT_PUBLISHED=FAIL" in runtime:
+            build_evidence = suppress_unpublished_runtime_instructions(build_evidence)
+        canonical_result, canonical_evidence = verify_canonical_assertions(job)
+        evidence = (
+            f"ENGINEERING_LOOP=ots-owned\\nBUILD_EVIDENCE:\\n{build_evidence[-12000:]}\\n\\n"
+            f"PUBLICATION_EVIDENCE:\\n{publication[-7000:]}\\n\\n{runtime}\\n"
+            f"INDEPENDENT_CANONICAL_EVIDENCE:\\n{canonical_evidence}"
+        )
+        rec["evidence"] = evidence[-26000:]
 
-    set_stage(job, "verifier", "independent local acceptance gate")
-    try:
-        verdict = independent_verify(job, 1, rec["evidence"], canonical_result)
-    except Exception as exc:
-        verdict = {
-            "verdict": "RETRY",
-            "reason": f"local verifier unavailable: {type(exc).__name__}",
-            "next_instruction": "Submit a new governed job after verifier recovery.",
-        }
-    rec["verification"] = verdict
-    decision = milestone_decision(job, verdict, rec["evidence"])
-    rec["iteration_result"] = decision["iteration_result"]
-    rec["milestone_result"] = decision["milestone_result"]
-    rec["finished_at"] = now()
-    signature = failure_signature(rec["evidence"], verdict)
-    if signature:
-        rec["failure_signature"] = signature
-    job.setdefault("iterations", []).append(rec)
+        set_stage(job, "verifier", "independent local acceptance gate")
+        try:
+            verdict = independent_verify(job, iteration, rec["evidence"], canonical_result)
+        except Exception as exc:
+            verdict = {
+                "verdict": "RETRY",
+                "reason": f"local verifier unavailable: {type(exc).__name__}",
+                "next_instruction": "Retry independent verification after local verifier recovery.",
+            }
+        rec["verification"] = verdict
+        decision = milestone_decision(job, verdict, rec["evidence"])
+        rec["iteration_result"] = decision["iteration_result"]
+        rec["milestone_result"] = decision["milestone_result"]
+        rec["finished_at"] = now()
+        signature = failure_signature(rec["evidence"], verdict)
+        if signature:
+            rec["failure_signature"] = signature
+        job.setdefault("iterations", []).append(rec)
 
-    if decision["milestone_result"] == "PASS":
-        deployment_operation = handoff.get("deployment_operation")
-        if bool(job.get("deploy_engineer_runtime")):
-            deployment_operation = "deploy-engineer-runtime"
-        if deployment_operation:
-            set_stage(job, "deployment", "Governor approved bounded deployment gate")
-            if deployment_operation == "deploy-engineer-runtime":
-                job["deployment"] = request_engineer_runtime_deployment(job["id"])
-            else:
-                job["deployment"] = request_bounded_deployment(job["id"], deployment_operation)
-            if job["deployment"].get("status") != "PASS":
-                job["status"] = "BLOCKED"
-                job["blocked_reason"] = "bounded runtime deployment was not approved or failed"
-                job["completed_at"] = now()
-                return finish_job(job, "blocked", job["blocked_reason"])
-        job["status"] = "PASS"
-        job["completed_at"] = now()
-        return finish_job(job, "complete", "independent acceptance gate passed OTS result")
+        if decision["milestone_result"] == "PASS":
+            deployment_operation = handoff.get("deployment_operation")
+            if bool(job.get("deploy_engineer_runtime")):
+                deployment_operation = "deploy-engineer-runtime"
+            if deployment_operation:
+                set_stage(job, "deployment", "Governor approved bounded deployment gate")
+                if deployment_operation == "deploy-engineer-runtime":
+                    job["deployment"] = request_engineer_runtime_deployment(job["id"])
+                else:
+                    job["deployment"] = request_bounded_deployment(job["id"], deployment_operation)
+                if job["deployment"].get("status") != "PASS":
+                    job["status"] = "BLOCKED"
+                    job["blocked_reason"] = "bounded runtime deployment was not approved or failed"
+                    job["completed_at"] = now()
+                    return finish_job(job, "blocked", job["blocked_reason"])
+            job["status"] = "PASS"
+            job["completed_at"] = now()
+            return finish_job(job, "complete", "independent acceptance gate passed OTS result")
 
-    reason = str(decision.get("reason") or "").strip()
-    if decision["milestone_result"] == "BLOCKED":
-        job["status"] = "BLOCKED"
-        job["blocked_reason"] = reason or "concrete external boundary reported"
-        terminal_stage = "blocked"
-    else:
+        reason = str(decision.get("reason") or "").strip()
+        if decision["milestone_result"] == "BLOCKED":
+            job["status"] = "BLOCKED"
+            job["blocked_reason"] = reason or "concrete external boundary reported"
+            job["completed_at"] = now()
+            return finish_job(job, "blocked", job["blocked_reason"])
+
+        verifier_feedback = str(decision.get("next_instruction") or reason or "Continue toward independently verifiable acceptance.")
+        job["next_instruction"] = verifier_feedback
+        if iteration < max_iterations:
+            save(job)
+            continue
+
         job["status"] = "FAILED"
-        job["blocked_reason"] = reason or "OTS result did not satisfy independent acceptance"
-        job["next_instruction"] = str(decision.get("next_instruction") or "")
-        terminal_stage = "acceptance_failed"
-    job["completed_at"] = now()
-    return finish_job(job, terminal_stage, job["blocked_reason"])
+        job["blocked_reason"] = reason or "bounded acceptance retries exhausted"
+        job["completed_at"] = now()
+        return finish_job(job, "acceptance_failed", job["blocked_reason"])
 
 
 def continuation_allowed(job):
