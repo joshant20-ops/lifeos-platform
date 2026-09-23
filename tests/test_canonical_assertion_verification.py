@@ -90,3 +90,31 @@ def test_canonical_assertion_contract_rejects_executable_or_unbounded_input(tmp_
             assert False, assertion
         except ValueError:
             pass
+
+
+def test_tracked_path_absent_assertion_passes_only_when_path_is_missing(tmp_path):
+    module = load_agent(tmp_path)
+    repo = canonical_repo(tmp_path, "fixture\n")
+    module.PLATFORM_REPO = repo
+    missing_job = module.new_job(
+        "Verify stale trigger is absent.",
+        canonical_assertions=[{
+            "id": "stale-trigger-absent",
+            "kind": "tracked_path_absent",
+            "value": "deploy-triggers/issue-old",
+        }],
+    )
+
+    result, evidence = module.verify_canonical_assertions(missing_job)
+    assert result is True
+    assert "CANONICAL_ASSERTION_STALE_TRIGGER_ABSENT=PASS" in evidence
+
+    (repo / "deploy-triggers").mkdir()
+    (repo / "deploy-triggers" / "issue-old").write_text("trigger\n")
+    subprocess.run(["git", "-C", repo, "add", "deploy-triggers/issue-old"], check=True)
+    subprocess.run(["git", "-C", repo, "commit", "-m", "add stale trigger"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", repo, "push", "origin", "main"], check=True, capture_output=True)
+
+    result, evidence = module.verify_canonical_assertions(missing_job)
+    assert result is False
+    assert "CANONICAL_ASSERTION_STALE_TRIGGER_ABSENT=FAIL" in evidence
