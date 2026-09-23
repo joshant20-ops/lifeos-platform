@@ -2,7 +2,7 @@ name: OpenHands UI Settings Audit
 on:
   push:
     branches: [main]
-    paths: ['.github/workflows/openhands-ui-settings-audit.yml']
+    paths: ['.github/workflows/openhands-ui-settings-audit.yml', '.github/workflows/openhands-native-ui-deploy.yml']
   workflow_dispatch:
 permissions:
   contents: read
