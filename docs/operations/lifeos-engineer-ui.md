@@ -1,30 +1,23 @@
-# LifeOS Engineer UI
+# LifeOS engineering interfaces
 
-The canonical LAN-facing Engineer UI is the existing Open WebUI service on the Pi 5 control host:
+## Current state
 
-- URL: `http://192.168.0.203:8792/`
-- Container: `lifeos-engineer-ui`
-- Desired state: `ansible/desired/compose/lifeos-engineer-ui/docker-compose.yml`
-- Health: `http://192.168.0.203:8792/health`
+The service at `http://192.168.0.203:8792/` is **Open WebUI**, not OpenHands. It is the legacy LifeOS Engineer chat surface backed by `governor/engineer_backend.py` on port 8793.
 
-The Engineer VM at `192.168.0.204` is an execution host. Port 8792 is not assigned to it. Do not publish a second Engineer UI there.
+The canonical OpenHands engineering runtime executes headlessly on Engineer VM `192.168.0.204` through `governor/scripts/lifeos-openhands-sdk-runner.py`.
 
-## Ownership
+There is currently no native OpenHands web UI deployed on the LAN. Do not label Open WebUI as OpenHands and do not advertise `192.168.0.204:8792` as an OpenHands endpoint.
 
-Open WebUI is the single operator-facing LAN UI. The canonical engineering plane is OpenHands. Governor remains the policy, capability, hardware-lifecycle, publication and independent-verification boundary.
+## Migration target
 
-The UI must not become a second engineering implementation. Observability should expose OpenHands task/session state through a bounded adapter/API while execution continues through the canonical OpenHands path.
+- OpenHands remains the canonical engineering plane.
+- Governor remains the policy, privacy, hardware-lifecycle, publication and independent-verification control plane.
+- A native OpenHands UI may be exposed on the LAN only when it is connected to the canonical engineering runtime/session contract rather than creating a second independent engineering authority.
+- The legacy Open WebUI + `engineer_backend.py` pair may be retired only after its distinct operator functions have either moved to the OpenHands surface or been proven unnecessary.
 
-## Network contract
+## Existing endpoints
 
-- UI: Pi 5 `:8792`, LAN only.
-- Engineer backend compatibility API: Pi 5 `:8793`.
-- Governor/OpenHands broker: governed endpoint; credentials remain outside the browser.
-- Engineer VM: execution target, not an alternate public UI.
-- Tower Ollama: private inference backend; never exposed directly to the UI.
-
-## Operator check
-
-Open `http://192.168.0.203:8792/` from a LAN client. A refusal on `192.168.0.204:8792` is expected because that is not the UI endpoint.
-
-Future OpenHands observability work must reuse this surface rather than install another dashboard.
+- Legacy Open WebUI: `http://192.168.0.203:8792/`
+- Legacy compatibility backend: Pi 5 `:8793`
+- Engineer/OpenHands execution VM: `192.168.0.204`
+- Governor control/broker boundary: Pi 5 `:8790`
