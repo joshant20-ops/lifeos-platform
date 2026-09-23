@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-pa-mission-control.yml'
-      - 'deploy-triggers/issue-961-level3'
       - 'deploy-triggers/issue-935-level2'
   workflow_dispatch:
     inputs:
@@ -29,18 +28,14 @@ on:
         required: true
         default: 'run'
         type: choice
-        options:
-          - run
-          - resume
-          - audit
-          - status
+        options: [run, resume, audit, status]
 
 permissions:
   contents: read
 
 concurrency:
   group: lifeos-pa-mission-control
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   control:
@@ -53,134 +48,56 @@ jobs:
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
-          test -z "$(git status --porcelain --untracked-files=all)" || {
-            echo 'RESULT=BLOCKED'
-            echo 'REASON=canonical_checkout_dirty'
-            exit 20
-          }
-          current=$(git rev-parse HEAD)
-          target=$(git rev-parse origin/main)
+          test -z "$(git status --porcelain --untracked-files=all)" || { echo RESULT=BLOCKED; echo REASON=canonical_checkout_dirty; exit 20; }
+          current=$(git rev-parse HEAD); target=$(git rev-parse origin/main)
           if [[ "$current" != "$target" ]]; then
-            git merge-base --is-ancestor "$current" "$target" || {
-              echo 'RESULT=BLOCKED'
-              echo 'REASON=canonical_checkout_not_fast_forwardable'
-              exit 21
-            }
+            git merge-base --is-ancestor "$current" "$target" || { echo RESULT=BLOCKED; echo REASON=canonical_checkout_not_fast_forwardable; exit 21; }
             git merge --ff-only origin/main
           fi
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
-          echo 'CANONICAL_SYNC=PASS'
+          echo CANONICAL_SYNC=PASS
 
       - name: Ensure runner is current
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          SRC=governor/scripts/lifeos-pa-mission
-          DEST=/home/joshan/.local/bin/lifeos-pa-mission
+          SRC=governor/scripts/lifeos-pa-mission; DEST=/home/joshan/.local/bin/lifeos-pa-mission
           python3 -m py_compile "$SRC"
           install -d -m 0755 /home/joshan/.local/bin
           install -d -m 0700 /home/joshan/.local/state/lifeos-pa-autonomy
-          if [[ ! -x "$DEST" ]] || ! cmp -s "$SRC" "$DEST"; then
-            install -m 0755 "$SRC" "$DEST"
-          fi
+          if [[ ! -x "$DEST" ]] || ! cmp -s "$SRC" "$DEST"; then install -m 0755 "$SRC" "$DEST"; fi
           echo "RUNNER_SHA256=$(sha256sum "$DEST" | awk '{print $1}')"
 
       - name: Preflight mission controller
         shell: bash
         run: |
           set -Eeuo pipefail
-          set +e
-          /home/joshan/.local/bin/lifeos-pa-mission audit
-          rc=$?
-          set -e
-          echo "AUDIT_RUNNER_RC=$rc"
-          [[ "$rc" == 0 || "$rc" == 20 ]]
+          set +e; /home/joshan/.local/bin/lifeos-pa-mission audit; rc=$?; set -e
+          echo "AUDIT_RUNNER_RC=$rc"; [[ "$rc" == 0 || "$rc" == 20 ]]
 
-      # Do not pre-run the local builder or a second planning audit here.
-      # Governor owns routing/readiness and OpenHands owns planning; duplicating
-      # those checks made #759 wake/test the same path multiple times.
-
-      # Keep the governed mission as one process so it is never executed twice, but
-      # expose its internal checkpoints as separate Actions steps. The background
-      # process writes one log/state bundle; observer steps only wait/read it.
-      - name: Start governed issue mission
+      - name: Run governed issue mission
         shell: bash
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
-          # Temporary push harness for staged acceptance #935; remove after terminal evidence.
-          LIFEOS_PA_TARGET_ISSUE: '935'
-          LIFEOS_PA_TARGET_OBJECTIVE: >-
-            Diagnose and fix the tiny real hardware-inventory status-contract bug described by issue #935.
-            A deterministic failing acceptance test has been supplied by the harness. Inspect the repository and test
-            failure yourself, determine the cause, make the smallest appropriate repository change, and run focused
-            regression verification. Do not add issue-specific Governor logic.
-          LIFEOS_PA_CANONICAL_ASSERTIONS: >-
-            [{"id":"inventory-status-contract","kind":"tracked_text_contains","path":"docs/operations/available-hardware.md","value":"| laptop-board-01 | Candidate / details required |"}]
+          LIFEOS_PA_TARGET_ISSUE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_issue || '935' }}
+          LIFEOS_PA_TARGET_OBJECTIVE: ${{ github.event_name == 'workflow_dispatch' && inputs.target_objective || 'Diagnose and fix the tiny real hardware-inventory status-contract bug described by issue #935. A deterministic failing acceptance test has been supplied by the harness. Inspect the repository and test failure yourself, determine the cause, make the smallest appropriate repository change, and run focused regression verification. Do not add issue-specific Governor logic.' }}
+          LIFEOS_PA_CANONICAL_ASSERTIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.canonical_assertions || '[{"id":"inventory-status-contract","kind":"tracked_text_contains","path":"docs/operations/available-hardware.md","value":"| laptop-board-01 | Candidate / details required |"}]' }}
         run: |
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
-          mkdir -p "$STATE"
-          rm -f "$STATE/github-mission.log" "$STATE/github-mission.rc"
-          (
-            set +e
-            timeout --signal=TERM --kill-after=30s 20m /home/joshan/.local/bin/lifeos-pa-mission "$MODE" >"$STATE/github-mission.log" 2>&1
-            echo "$?" >"$STATE/github-mission.rc"
-          ) &
-          echo "$!" >"$STATE/github-mission.pid"
-          echo 'MISSION_PROCESS_STARTED=PASS'
-
-      - name: Wait for Governor submission
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
-          for _ in $(seq 1 45); do
-            grep -q '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" 2>/dev/null && break
-            [[ -f "$STATE/github-mission.rc" ]] && break
-            sleep 2
-          done
-          grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1
-          grep -q '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log"
-
-      - name: Monitor Governor and Engineer execution
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
-          last=''
-          while [[ ! -f "$STATE/github-mission.rc" ]]; do
-            current=$(grep '^GOVERNOR_JOB_STATUS=' "$STATE/github-mission.log" 2>/dev/null | tail -1 || true)
-            if [[ -n "$current" && "$current" != "$last" ]]; then
-              echo "$current"
-              last="$current"
-            fi
-            sleep 5
-          done
-          grep '^GOVERNOR_JOB_STATUS=' "$STATE/github-mission.log" 2>/dev/null | tail -10 || true
-          echo 'MISSION_PROCESS_TERMINATED=PASS'
-
-      - name: Verify Governor terminal decision
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          STATE=/home/joshan/.local/state/lifeos-pa-autonomy
-          rc=$(cat "$STATE/github-mission.rc")
+          mkdir -p "$STATE"; rm -f "$STATE/github-mission.log" "$STATE/github-mission.rc"
+          set +e
+          timeout --signal=TERM --kill-after=30s 20m /home/joshan/.local/bin/lifeos-pa-mission "$MODE" 2>&1 | tee "$STATE/github-mission.log"
+          rc=${PIPESTATUS[0]}
+          set -e
+          echo "$rc" >"$STATE/github-mission.rc"
           echo "MISSION_RUNNER_RC=$rc"
-          tail -80 "$STATE/github-mission.log"
-          if [[ "$rc" == 124 || "$rc" == 137 || "$rc" == 143 ]]; then
-            echo 'RESULT=BLOCKED'
-            echo 'REASON=governed_issue_mission_timeout'
-            exit 40
-          fi
-          case "$rc" in
-            0) echo 'GOVERNOR_TERMINAL_CONTRACT=PASS' ;;
-            20|30|40) exit "$rc" ;;
-            *) exit "$rc" ;;
-          esac
+          if [[ "$rc" == 124 || "$rc" == 137 || "$rc" == 143 ]]; then echo RESULT=BLOCKED; echo REASON=governed_issue_mission_timeout; exit 40; fi
+          case "$rc" in 0) echo GOVERNOR_TERMINAL_CONTRACT=PASS ;; 20|30|40) exit "$rc" ;; *) exit "$rc" ;; esac
 
       - name: Verify archived disposition evidence
-        if: success()
+        if: success() && (github.event_name != 'workflow_dispatch' || inputs.mode == 'run' || inputs.mode == 'resume')
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -188,38 +105,24 @@ jobs:
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
           grep -q 'RESULT=PASS' "$STATE/github-mission.log"
           grep -q 'TARGETED_ISSUE_ACCEPTANCE=PASS' "$STATE/github-mission.log"
-          target_issue=$(grep '^TARGET_ISSUE=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2)
-          test -n "$target_issue"
+          target_issue=$(grep '^TARGET_ISSUE=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2); test -n "$target_issue"
           grep -q "ISSUE_DISPOSITIONS=#$target_issue ready_for_evidence_backed_closure" "$STATE/github-mission.log"
-          job_id=$(grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2)
-          test -n "$job_id"
+          job_id=$(grep '^GOVERNOR_JOB_ID=' "$STATE/github-mission.log" | tail -1 | cut -d= -f2); test -n "$job_id"
           LIFEOS_JOB_ID_FILTER="$job_id" bash governor/scripts/export-lifeos-job-records.sh
           git -C /home/joshan/lifeos-jobs fetch origin refs/heads/main >/dev/null
           remote_main=$(git -C /home/joshan/lifeos-jobs rev-parse FETCH_HEAD)
           python3 - "$job_id" /home/joshan/lifeos-jobs "$remote_main" <<'PY'
-          import json
-          import subprocess
-          import sys
+          import json, subprocess, sys
           job_id, repo, remote_main = sys.argv[1:]
-          payload = subprocess.check_output(
-              ["git", "-C", repo, "show", f"{remote_main}:jobs/{job_id}.json"],
-              text=True,
-          )
-          record = json.loads(payload)
-          assert record["id"] == job_id
-          assert record["status"] == "PASS"
-          assert record["stage"] == "complete"
-          assert record["privacy"] == "local-only"
-          assert record["request"] == "[LOCAL-ONLY REQUEST REDACTED]"
+          record=json.loads(subprocess.check_output(["git","-C",repo,"show",f"{remote_main}:jobs/{job_id}.json"],text=True))
+          assert record["id"] == job_id and record["status"] == "PASS" and record["stage"] == "complete"
+          assert record["privacy"] == "local-only" and record["request"] == "[LOCAL-ONLY REQUEST REDACTED]"
           assert record["started_at"] and record["completed_at"]
-          iterations = record.get("iterations") or []
-          assert iterations
-          assert iterations[-1]["verdict"] == "PASS"
-          assert all(item.get("iteration") == index for index, item in enumerate(iterations, start=1))
+          iterations=record.get("iterations") or []; assert iterations and iterations[-1]["verdict"] == "PASS"
+          assert all(item.get("iteration") == index for index,item in enumerate(iterations,start=1))
           PY
           git -C /home/joshan/lifeos-jobs cat-file -e "$remote_main:jobs/$job_id.json"
-          echo "ARCHIVED_JOB_RECORD=$job_id"
-          echo 'ARCHIVED_DISPOSITION_CONTRACT=PASS'
+          echo "ARCHIVED_JOB_RECORD=$job_id"; echo ARCHIVED_DISPOSITION_CONTRACT=PASS
 
       - name: Surface consolidated bundle
         if: always()
@@ -227,11 +130,5 @@ jobs:
         run: |
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
-          if [[ -f "$STATE/WORK_BUNDLE.md" ]]; then
-            echo '--- WORK_BUNDLE.md ---'
-            cat "$STATE/WORK_BUNDLE.md"
-          fi
-          if [[ -f "$STATE/SUMMARY.md" ]]; then
-            echo '--- SUMMARY.md ---'
-            cat "$STATE/SUMMARY.md"
-          fi
+          [[ ! -f "$STATE/WORK_BUNDLE.md" ]] || { echo '--- WORK_BUNDLE.md ---'; cat "$STATE/WORK_BUNDLE.md"; }
+          [[ ! -f "$STATE/SUMMARY.md" ]] || { echo '--- SUMMARY.md ---'; cat "$STATE/SUMMARY.md"; }
