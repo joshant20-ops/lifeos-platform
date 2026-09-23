@@ -46,11 +46,7 @@ jobs:
           url=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_URL=//p' "$cfg" | tail -1)
           token=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_TOKEN=//p' "$cfg" | tail -1)
           test -n "$url" && test -n "$token"
-          cat >"$HOME/.config/lifeos/openhands-ui.env" <<EOF
-LLM_BASE_URL=$url
-LLM_API_KEY=$token
-LLM_MODEL=openai/lifeos-normal
-EOF
+          printf 'LLM_BASE_URL=%s\\nLLM_API_KEY=%s\\nLLM_MODEL=%s\\n' "$url" "$token" 'openai/lifeos-normal' >"$HOME/.config/lifeos/openhands-ui.env"
           chmod 600 "$HOME/.config/lifeos/openhands-ui.env"
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
