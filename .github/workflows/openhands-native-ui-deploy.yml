@@ -119,6 +119,7 @@ jobs:
             echo 'ERROR: workspace cookie is still Secure on LAN HTTP'
             exit 1
           fi
+          printf '%s\n' "$cookie_headers" | grep -qi '^set-cookie: oh_workspace_session_key=.*SameSite=Lax'
           echo OPENHANDS_WORKSPACE_LAN_HTTP_COOKIE=PASS
           echo OPENHANDS_AGENT_SERVER_11800=PASS
           docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
