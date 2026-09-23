@@ -71,7 +71,10 @@ jobs:
           WantedBy=default.target
           UNIT
           systemctl --user daemon-reload
-          systemctl --user enable --now lifeos-openhands-ui.service
+          # enable --now does not restart an already-active unit after its definition changes.
+          # Explicit restart is required to replace the legacy CLI process with Agent Canvas.
+          systemctl --user enable lifeos-openhands-ui.service
+          systemctl --user restart lifeos-openhands-ui.service
           ready=0
           for _ in $(seq 1 60); do
             if curl -fsS --connect-timeout 2 http://127.0.0.1:8000/canvas/ >/dev/null 2>&1; then ready=1; break; fi
