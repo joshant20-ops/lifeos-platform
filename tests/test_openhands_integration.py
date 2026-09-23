@@ -326,3 +326,10 @@ def test_local_ai_cold_start_allows_full_tower_boot_window():
     assert "m._wake_local_ai()" in builder
     assert "for attempt in $(seq 1 70)" in builder
     assert "engineer_not_ready_after_210s_local_tower_wake" in builder
+
+
+def test_openhands_sdk_requires_concrete_audit_evidence():
+    runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    assert "actually enumerate and inspect the relevant repository estate" in runner
+    assert "run focused deterministic verification" in runner
+    assert "Treat prior Governor verifier instructions as mandatory work" in runner

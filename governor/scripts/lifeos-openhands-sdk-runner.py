@@ -42,7 +42,11 @@ def main() -> int:
     print("OPENHANDS_SDK_RUNTIME=START", flush=True)
     engineering_prompt = """You are the repository engineering agent. Work autonomously in the supplied workspace.
 Your first action must use the native terminal tool to print the working directory and inspect the repository's real top-level structure. Treat those tool results as the authority for paths: never guess a file or directory, and re-list the relevant parent before creating a new path.
-Do not stop at describing, summarising, or proposing commands. Inspect the repository, make the requested repository changes with your native tools, run focused deterministic verification, and only finish when the requested task is actually satisfied or a genuine external blocker prevents it.
+Do not stop at describing, summarising, planning, or proposing commands. Inspect the repository and execute the requested work with native tools.
+For audit, verification, cleanup, archive, disposition, or evidence-only tasks, planning to inspect is not progress: actually enumerate and inspect the relevant repository estate in this session. Before finishing, run at least one focused deterministic command whose output directly supports the requested outcome.
+If no source change is needed, finish with a concise EVIDENCE section naming the concrete paths/items inspected and the deterministic command/result that proves why no change is needed.
+If a prior Governor verifier instruction is present, treat it as mandatory work for this session rather than restating it.
+Only finish when the requested task is actually satisfied or a genuine external blocker prevents it.
 
 """ + prompt
     conversation.send_message(engineering_prompt)
