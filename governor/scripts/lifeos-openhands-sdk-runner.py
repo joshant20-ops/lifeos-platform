@@ -44,10 +44,17 @@ def safe_upstream_markers(exception: Exception) -> list[str]:
     detail = " ".join(combined).lower()
     provider_statuses = re.findall(r"provider http (\d{3})", detail)
     markers.extend(f"OPENHANDS_PROVIDER_HTTP_STATUS={code}" for code in provider_statuses[:3])
+    upstream_classes = sorted(set(re.findall(r"\b([A-Z][A-Za-z]{2,63}Error)\b", " ".join(combined))))
+    markers.extend(f"OPENHANDS_UPSTREAM_CLASS={name}" for name in upstream_classes[:5])
     categories = (
         ("memory_capacity", ("system memory", "out of memory", "cuda out of memory")),
         ("context_capacity", ("context length", "context window", "too many tokens")),
         ("ollama_runner_stopped", ("runner has unexpectedly stopped", "model runner", "llama runner")),
+        ("local_ai_readiness", ("local ai did not become ready",)),
+        ("empty_model_response", ("returned empty", "no tool-aware message")),
+        ("provider_http", ("provider http",)),
+        ("provider_request", ("provider request failed",)),
+        ("provider_exhausted", ("providers exhausted",)),
         ("timeout", ("timed out", "timeout")),
         ("connection", ("connection refused", "connection reset", "network is unreachable")),
     )
