@@ -75,7 +75,8 @@ jobs:
           done
           systemctl --user --no-pager --full status lifeos-openhands-ui.service || true
           ss -ltn | grep ':3000 '
-          journalctl --user -u lifeos-openhands-ui.service -n 30 --no-pager | grep -q 'will be ignored' && { echo OPENHANDS_ENV_OVERRIDE=FAIL; exit 21; } || true
+          pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
+          tr '\\0' ' ' <"/proc/$pid/cmdline" | grep -q -- '--override-with-envs'
           echo OPENHANDS_ENV_OVERRIDE=PASS
           REMOTE
       - name: Verify UI from Pi LAN
