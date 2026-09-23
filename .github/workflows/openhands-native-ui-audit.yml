@@ -1,0 +1,55 @@
+name: OpenHands Native UI Capability Audit
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openhands-native-ui-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 12
+    steps:
+      - name: Ensure Engineer reachable
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ! ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
+            for helper in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
+              if test -x "$helper"; then "$helper"; break; fi
+            done
+            mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON || true
+            for _ in $(seq 1 90); do ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null && exit 0; sleep 5; done
+            exit 20
+          fi
+      - name: Audit installed OpenHands UI capability read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          echo "ENGINEER_HOST=$(hostname)"
+          echo "OPENHANDS_BIN=$(command -v openhands || true)"
+          openhands --version || true
+          echo 'OPENHANDS_HELP_BEGIN'
+          openhands --help 2>&1 || true
+          echo 'OPENHANDS_HELP_END'
+          echo "DOCKER=$(command -v docker || true)"
+          command -v docker >/dev/null && docker version --format '{{.Server.Version}}' 2>/dev/null || true
+          echo 'LISTENERS_BEGIN'
+          ss -ltn 2>/dev/null | grep -E ':(3000|3001|8792|8793|12000)\\b' || true
+          echo 'LISTENERS_END'
+          tool_python="$(dirname "$(readlink -f "$(command -v openhands)")")/python"
+          "$tool_python" - <<'PY'
+import importlib.metadata as m
+for n in ("openhands","openhands-sdk","openhands-ai"):
+    try: print(f"PACKAGE_{n}={m.version(n)}")
+    except m.PackageNotFoundError: pass
+PY
+          REMOTE
