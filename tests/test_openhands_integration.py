@@ -257,17 +257,11 @@ def test_openhands_sdk_requires_concrete_audit_evidence():
     assert "treat it as mandatory work for this session rather than restating it" in runner
 
 
-def test_openhands_sdk_rejects_bootstrap_only_sessions():
+
+
+def test_openhands_sdk_defers_completion_to_native_conversation():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
-    assert "objective_evidence_not_produced" in runner
-    assert "LIFEOS_OPENHANDS_MAX_TURNS" in runner
-    assert '"finishaction"' in runner
-
-
-def test_sdk_runner_reprompts_unsupported_early_completion():
-    text = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
-    assert "for turn in range(1, max_turns + 1):" in text
-    assert "Continue the SAME engineering objective." in text
-    assert "conversation.send_message(" in text
-    assert "if workspace_dirty or evidence_claim:" in text
-    assert '"finishaction"' in text
+    assert runner.count("conversation.run()") == 1
+    assert "objective_evidence_not_produced" not in runner
+    assert "Continue the SAME engineering objective." not in runner
+    assert "Governor independently verifies" in runner
