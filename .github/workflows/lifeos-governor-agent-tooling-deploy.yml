@@ -1,6 +1,6 @@
 name: LifeOS Governor Agent Tooling Deploy
 # Deploy bounded OpenHands continuation
-# Refresh progress-evidence fix for Level 2
+# Deploy OpenHands-owned engineering plane
 
 on:
   push:
