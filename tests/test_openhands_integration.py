@@ -365,6 +365,6 @@ def test_sdk_runner_reprompts_unsupported_early_completion():
     assert "for turn in range(1, max_turns + 1):" in text
     assert "Continue the SAME engineering objective." in text
     assert "conversation.send_message(" in text
-    assert "if len(current_engineering_tools) >= 3:" in text
+    assert "if workspace_dirty or evidence_claim:" in text
     assert '"finishaction"' in text
     assert "engineering_tool_events" in text
