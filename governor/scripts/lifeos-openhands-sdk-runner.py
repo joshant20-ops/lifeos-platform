@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Thin LifeOS entrypoint into the OpenHands SDK engineering runtime.
+"""Thin LifeOS entrypoint into the native OpenHands SDK engineering runtime.
 
-Governor owns policy/routing/power/publication/acceptance. OpenHands owns the
-engineering conversation, workspace tools, planning, edits, tests and repair.
-This intentionally avoids interpreting OpenHands internal actions in LifeOS.
+Governor owns policy, routing, power, publication and independent acceptance.
+OpenHands owns the engineering conversation, workspace tools, edits, tests and
+its own completion decision.  Do not recreate an agent loop in Governor.
 """
 import os
 import re
@@ -75,16 +75,7 @@ def main() -> int:
         print("OPENHANDS_SDK_ERROR=missing_governor_broker_environment", file=sys.stderr)
         return 20
 
-    llm = LLM(
-        usage_id="lifeos-engineer",
-        model=model,
-        base_url=base_url,
-        api_key=SecretStr(api_key),
-    )
-    # Use OpenHands CLI's own non-interactive agent preset. Besides native
-    # engineering tools, this supplies the OTS cli_mode completion discipline
-    # and condenser. A plain SDK Agent defaults to conversational behaviour and
-    # may legitimately finish after an inspection-only message.
+    llm = LLM(usage_id="lifeos-engineer", model=model, base_url=base_url, api_key=SecretStr(api_key))
     agent = get_default_cli_agent(llm)
     conversation = Conversation(agent=agent, workspace=os.getcwd())
     print("OPENHANDS_SDK_RUNTIME=START", flush=True)
@@ -98,46 +89,14 @@ Only finish when the requested task is actually satisfied or a genuine external 
 
 """ + prompt
     conversation.send_message(engineering_prompt)
-    # OpenHands owns the engineering plane. Drive the same persistent conversation
-    # until it produces objective completion evidence; Governor remains outside this
-    # loop and independently verifies/publishes the resulting handoff.
+
+    # Native OpenHands owns the complete engineering loop and its finish action.
+    # Governor deliberately does not inspect messages, infer progress, reprompt,
+    # count turns, or impose a second completion contract here.  Independent
+    # deterministic verification happens after the OpenHands handoff.
     try:
-        max_turns = int(os.environ.get("LIFEOS_OPENHANDS_MAX_TURNS", "8"))
-        for turn in range(1, max_turns + 1):
-            conversation.run()
-            events_now = list(conversation.state.events)
-            errors_now = [event for event in events_now if isinstance(event, AgentErrorEvent)]
-            if errors_now:
-                break
-            engineering_actions = [
-                event for event in events_now
-                if getattr(event, "action", None) is not None
-                and type(getattr(event, "action", None)).__name__.lower() != "finishaction"
-            ]
-            workspace_dirty = bool(os.popen("git status --porcelain --untracked-files=all").read().strip())
-            # A changed workspace is concrete engineering output. For legitimate
-            # no-change work, require the agent's own final evidence contract rather
-            # than an arbitrary action count.
-            messages = [
-                str(getattr(event, "message", "") or getattr(event, "content", "") or "")
-                for event in events_now
-            ]
-            evidence_claim = any("EVIDENCE" in message.upper() for message in messages[-8:])
-            if workspace_dirty or evidence_claim:
-                print(f"OPENHANDS_ENGINEERING_TURNS={turn}", flush=True)
-                break
-            if turn == max_turns:
-                print("OPENHANDS_SDK_ERROR=objective_evidence_not_produced", file=sys.stderr, flush=True)
-                return 23
-            conversation.send_message(
-                "Continue the SAME engineering objective. Do not merely report completion. "
-                "Use the repository tools to diagnose, edit and test as needed. Finish only "
-                "after the workspace contains the required change, or provide an EVIDENCE "
-                "section with concrete deterministic proof that no change is required."
-            )
+        conversation.run()
     except Exception as exc:
-        # Keep local/private prompts and exception messages out of workflow
-        # evidence while preserving categorical SDK boundaries for diagnosis.
         chain = []
         current = exc
         seen = set()
@@ -147,34 +106,21 @@ Only finish when the requested task is actually satisfied or a genuine external 
             current = current.__cause__ or current.__context__
         events = list(conversation.state.events)
         errors = [event for event in events if isinstance(event, AgentErrorEvent)]
-        tool_events = [
-            event for event in events
-            if getattr(event, "action", None) is not None
-            and type(getattr(event, "action", None)).__name__.lower().endswith("action")
-        ]
-        print(
-            "OPENHANDS_SDK_ERROR=conversation_exception_chain_" + "__".join(chain),
-            file=sys.stderr,
-            flush=True,
-        )
+        tool_events = [event for event in events if getattr(event, "action", None) is not None and type(getattr(event, "action", None)).__name__.lower().endswith("action")]
+        print("OPENHANDS_SDK_ERROR=conversation_exception_chain_" + "__".join(chain), file=sys.stderr, flush=True)
         print(f"OPENHANDS_SDK_EVENTS_ON_EXCEPTION={len(events)}", file=sys.stderr, flush=True)
         print(f"OPENHANDS_SDK_ERROR_EVENTS_ON_EXCEPTION={len(errors)}", file=sys.stderr, flush=True)
         print(f"OPENHANDS_SDK_TOOL_EVENTS_ON_EXCEPTION={len(tool_events)}", file=sys.stderr, flush=True)
         for marker in safe_upstream_markers(exc):
             print(marker, file=sys.stderr, flush=True)
         return 24
+
     events = list(conversation.state.events)
     errors = [event for event in events if isinstance(event, AgentErrorEvent)]
     if errors:
         print(f"OPENHANDS_SDK_ERROR=agent_error_event count={len(errors)}", file=sys.stderr, flush=True)
         return 21
-    # OpenHands owns engineering completion. LifeOS records native action count only
-    # as telemetry; it must never infer task progress or reject completion by count.
-    tool_events = [
-        event for event in events
-        if getattr(event, "action", None) is not None
-        and type(getattr(event, "action", None)).__name__.lower().endswith("action")
-    ]
+    tool_events = [event for event in events if getattr(event, "action", None) is not None and type(getattr(event, "action", None)).__name__.lower().endswith("action")]
     print(f"OPENHANDS_SDK_TOOL_EVENTS={len(tool_events)}", flush=True)
     print("OPENHANDS_SDK_RUNTIME=COMPLETE", flush=True)
     return 0
