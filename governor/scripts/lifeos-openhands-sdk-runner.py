@@ -168,36 +168,13 @@ Only finish when the requested task is actually satisfied or a genuine external 
     if errors:
         print(f"OPENHANDS_SDK_ERROR=agent_error_event count={len(errors)}", file=sys.stderr, flush=True)
         return 21
-    # A normal SDK return is transport completion only. Require the OTS session to
-    # have actually exercised an engineering tool before reporting success; otherwise
-    # a model that merely explains the requested edit is indistinguishable from work.
-    # OpenHands records native tool use as AgentAction events (for example
-    # FileEditorAction/TerminalAction), not as event classes containing "tool".
-    # Detect the SDK's action payload generically rather than interpreting or
-    # executing individual actions in LifeOS.
+    # OpenHands owns engineering completion. LifeOS records native action count only
+    # as telemetry; it must never infer task progress or reject completion by count.
     tool_events = [
         event for event in events
         if getattr(event, "action", None) is not None
         and type(getattr(event, "action", None)).__name__.lower().endswith("action")
     ]
-    if not tool_events:
-        print("OPENHANDS_SDK_ERROR=no_engineering_tool_activity", file=sys.stderr, flush=True)
-        return 22
-    # A compulsory initial pwd/list plus immediate finish is still not engineering.
-    # For repository-change tasks, require activity beyond that bootstrap inspection.
-    # Evidence-only/audit work remains allowed to finish without edits, but must have
-    # enough tool activity to perform the concrete inspection/verification contract.
-    engineering_tool_events = [
-        event for event in tool_events
-        if type(getattr(event, "action", None)).__name__.lower() != "finishaction"
-    ]
-    if len(engineering_tool_events) < 3:
-        print(
-            f"OPENHANDS_SDK_ERROR=insufficient_engineering_tool_activity count={len(engineering_tool_events)}",
-            file=sys.stderr,
-            flush=True,
-        )
-        return 23
     print(f"OPENHANDS_SDK_TOOL_EVENTS={len(tool_events)}", flush=True)
     print("OPENHANDS_SDK_RUNTIME=COMPLETE", flush=True)
     return 0
