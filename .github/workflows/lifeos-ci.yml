@@ -67,7 +67,6 @@ jobs:
         run: |
           python3 -m py_compile \
             engineer/provider_router.py \
-            engineer/openhands_worker.py \
             governor/ai_broker.py \
             governor/assistant_bridge.py \
             governor/autonomous_agent.py \
