@@ -98,38 +98,42 @@ Only finish when the requested task is actually satisfied or a genuine external 
 
 """ + prompt
     conversation.send_message(engineering_prompt)
-    # Conversation.run() drives one agent turn to completion. A small local model
-    # can occasionally mistake the mandatory bootstrap inspection for the whole
-    # objective and finish immediately. Keep completion discipline inside
-    # OpenHands: reject that unsupported completion and ask the same conversation
-    # to continue, preserving its tool observations and task context.
+    # OpenHands owns the engineering plane. Drive the same persistent conversation
+    # until it produces objective completion evidence; Governor remains outside this
+    # loop and independently verifies/publishes the resulting handoff.
     try:
-        for continuation in range(3):
+        max_turns = int(os.environ.get("LIFEOS_OPENHANDS_MAX_TURNS", "8"))
+        for turn in range(1, max_turns + 1):
             conversation.run()
-            current_events = list(conversation.state.events)
-            current_tools = [
-                event for event in current_events
+            events_now = list(conversation.state.events)
+            errors_now = [event for event in events_now if isinstance(event, AgentErrorEvent)]
+            if errors_now:
+                break
+            engineering_actions = [
+                event for event in events_now
                 if getattr(event, "action", None) is not None
-                and type(getattr(event, "action", None)).__name__.lower().endswith("action")
+                and type(getattr(event, "action", None)).__name__.lower() != "finishaction"
             ]
-            # Conversation history also contains completion actions. They prove the
-            # model ended a turn, not that repository engineering happened. Count
-            # only non-finish actions when deciding whether an early completion is
-            # supported; otherwise bootstrap + finish can satisfy the threshold
-            # after a continuation without any additional engineering.
-            current_engineering_tools = [
-                event for event in current_tools
-                if type(getattr(event, "action", None)).__name__.lower() != "finishaction"
+            workspace_dirty = bool(os.popen("git status --porcelain --untracked-files=all").read().strip())
+            # A changed workspace is concrete engineering output. For legitimate
+            # no-change work, require the agent's own final evidence contract rather
+            # than an arbitrary action count.
+            messages = [
+                str(getattr(event, "message", "") or getattr(event, "content", "") or "")
+                for event in events_now
             ]
-            if len(current_engineering_tools) >= 3:
+            evidence_claim = any("EVIDENCE" in message.upper() for message in messages[-8:])
+            if workspace_dirty or evidence_claim:
+                print(f"OPENHANDS_ENGINEERING_TURNS={turn}", flush=True)
                 break
-            if continuation == 2:
-                break
+            if turn == max_turns:
+                print("OPENHANDS_SDK_ERROR=objective_evidence_not_produced", file=sys.stderr, flush=True)
+                return 23
             conversation.send_message(
-                "Completion rejected: the requested repository engineering objective is not yet "
-                "supported by sufficient tool evidence. Continue the SAME objective now. Inspect "
-                "the relevant files, diagnose the actual defect, make any required repository "
-                "change yourself, and run focused deterministic verification before finishing."
+                "Continue the SAME engineering objective. Do not merely report completion. "
+                "Use the repository tools to diagnose, edit and test as needed. Finish only "
+                "after the workspace contains the required change, or provide an EVIDENCE "
+                "section with concrete deterministic proof that no change is required."
             )
     except Exception as exc:
         # Keep local/private prompts and exception messages out of workflow
