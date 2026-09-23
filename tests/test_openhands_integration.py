@@ -332,4 +332,4 @@ def test_openhands_sdk_requires_concrete_audit_evidence():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "actually enumerate and inspect the relevant repository estate" in runner
     assert "Before finishing, run at least one focused deterministic command" in runner
-    assert "Treat prior Governor verifier instructions as mandatory work" in runner
+    assert "treat it as mandatory work for this session rather than restating it" in runner
