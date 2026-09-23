@@ -71,6 +71,7 @@ fi
 
 REQUEST=${1:?request required}
 ITERATION=${2:?iteration required}
+VERIFIER_FEEDBACK=${3:-}
 PRIVACY=${LIFEOS_JOB_PRIVACY:-}
 JOB_ID=${LIFEOS_JOB_ID:-unknown}
 RUNTIME_PATH="runtime_jobs/${JOB_ID}.sh"
@@ -192,6 +193,9 @@ USER GOAL:
 $REQUEST
 
 ITERATION: $ITERATION
+
+VERIFIER FEEDBACK FROM PRIOR GOVERNOR ACCEPTANCE:
+${VERIFIER_FEEDBACK:-none}
 
 Complete the engineering work and leave the worktree in the best testable state you can.
 Governor, not the agent, makes the final acceptance decision.
