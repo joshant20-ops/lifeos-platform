@@ -299,6 +299,11 @@ def test_openhands_sdk_runner_normalizes_unhandled_conversation_failures():
     assert "OPENHANDS_SDK_EVENTS_ON_EXCEPTION=" in runner
     assert "OPENHANDS_SDK_ERROR_EVENTS_ON_EXCEPTION=" in runner
     assert "OPENHANDS_SDK_TOOL_EVENTS_ON_EXCEPTION=" in runner
+    assert "safe_upstream_markers(exc)" in runner
+    assert "OPENHANDS_UPSTREAM_HTTP_STATUS=" in runner
+    assert "OPENHANDS_UPSTREAM_ERROR_CODE=" in runner
+    assert "OPENHANDS_PROVIDER_HTTP_STATUS=" in runner
+    assert "OPENHANDS_UPSTREAM_CATEGORY=" in runner
     assert "return 24" in runner
     assert "str(exc)" not in runner
 

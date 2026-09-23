@@ -6,6 +6,7 @@ engineering conversation, workspace tools, planning, edits, tests and repair.
 This intentionally avoids interpreting OpenHands internal actions in LifeOS.
 """
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,46 @@ from pydantic import SecretStr
 from openhands.sdk import LLM, Conversation
 from openhands.sdk.event import AgentErrorEvent
 from openhands_cli.utils import get_default_cli_agent
+
+
+def safe_upstream_markers(exception: Exception) -> list[str]:
+    """Classify an OpenAI-compatible failure without exposing response content."""
+    markers = []
+    current = exception
+    seen = set()
+    combined = []
+    while current is not None and id(current) not in seen and len(seen) < 5:
+        seen.add(id(current))
+        response = getattr(current, "response", None)
+        status = getattr(response, "status_code", None)
+        if isinstance(status, int):
+            markers.append(f"OPENHANDS_UPSTREAM_HTTP_STATUS={status}")
+        if response is not None:
+            try:
+                payload = response.json()
+            except Exception:
+                payload = None
+            if isinstance(payload, dict):
+                error = payload.get("error")
+                if isinstance(error, str) and re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", error):
+                    markers.append(f"OPENHANDS_UPSTREAM_ERROR_CODE={error}")
+                combined.extend(str(payload.get(key) or "") for key in ("detail", "message"))
+                if isinstance(error, dict):
+                    combined.extend(str(error.get(key) or "") for key in ("detail", "message", "type"))
+        current = current.__cause__ or current.__context__
+    detail = " ".join(combined).lower()
+    provider_statuses = re.findall(r"provider http (\d{3})", detail)
+    markers.extend(f"OPENHANDS_PROVIDER_HTTP_STATUS={code}" for code in provider_statuses[:3])
+    categories = (
+        ("memory_capacity", ("system memory", "out of memory", "cuda out of memory")),
+        ("context_capacity", ("context length", "context window", "too many tokens")),
+        ("ollama_runner_stopped", ("runner has unexpectedly stopped", "model runner", "llama runner")),
+        ("timeout", ("timed out", "timeout")),
+        ("connection", ("connection refused", "connection reset", "network is unreachable")),
+    )
+    category = next((name for name, terms in categories if any(term in detail for term in terms)), "unclassified")
+    markers.append(f"OPENHANDS_UPSTREAM_CATEGORY={category}")
+    return list(dict.fromkeys(markers))
 
 
 def main() -> int:
@@ -80,6 +121,8 @@ Only finish when the requested task is actually satisfied or a genuine external 
         print(f"OPENHANDS_SDK_EVENTS_ON_EXCEPTION={len(events)}", file=sys.stderr, flush=True)
         print(f"OPENHANDS_SDK_ERROR_EVENTS_ON_EXCEPTION={len(errors)}", file=sys.stderr, flush=True)
         print(f"OPENHANDS_SDK_TOOL_EVENTS_ON_EXCEPTION={len(tool_events)}", file=sys.stderr, flush=True)
+        for marker in safe_upstream_markers(exc):
+            print(marker, file=sys.stderr, flush=True)
         return 24
     events = list(conversation.state.events)
     errors = [event for event in events if isinstance(event, AgentErrorEvent)]
