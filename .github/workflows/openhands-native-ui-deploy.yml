@@ -40,21 +40,30 @@ jobs:
           set -Eeuo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           mkdir -p "$HOME/.config/systemd/user"
-          cfg="$HOME/.config/lifeos/governor-broker.env"
-          test -f "$cfg" && test ! -L "$cfg"
-          test "$(stat -c '%a' "$cfg")" = 600
-          url=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_URL=//p' "$cfg" | tail -1)
-          token=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_TOKEN=//p' "$cfg" | tail -1)
-          test -n "$url" && test -n "$token"
-          printf '%s\n' "LLM_BASE_URL=$url" "LLM_API_KEY=$token" "LLM_MODEL=openai/lifeos-normal" >"$HOME/.config/lifeos/openhands-ui.env"
+          # OpenHands engineering now talks directly to Tower Ollama. The Governor
+          # broker is intentionally removed from the model path; deterministic
+          # lifecycle/privacy/publication/acceptance controls remain external.
+          ollama_url="http://192.168.0.201:11434"
+          model="ollama/qwen2.5-coder:7b-instruct"
+          echo "Checking Tower Ollama and required local model..."
+          models=$(curl -fsS --connect-timeout 5 "$ollama_url/api/tags")
+          MODELS="$models" python3 - <<'PY'
+          import json, os
+          names={m.get("name") for m in json.loads(os.environ["MODELS"]).get("models", [])}
+          required="qwen2.5-coder:7b-instruct"
+          if required not in names:
+              raise SystemExit(f"required Tower model absent: {required}; found={sorted(names)}")
+          print("OPENHANDS_DIRECT_OLLAMA_MODEL=PASS")
+          PY
+          mkdir -p "$HOME/.config/lifeos" "$HOME/.openhands"
+          printf '%s\n' "LLM_BASE_URL=$ollama_url" "LLM_API_KEY=ollama" "LLM_MODEL=$model" >"$HOME/.config/lifeos/openhands-ui.env"
           chmod 600 "$HOME/.config/lifeos/openhands-ui.env"
-          mkdir -p "$HOME/.openhands"
-          SETTINGS="$HOME/.openhands/agent_settings.json" URL="$url" TOKEN="$token" python3 - <<'PY'
+          SETTINGS="$HOME/.openhands/agent_settings.json" URL="$ollama_url" MODEL="$model" python3 - <<'PY'
           import json, os
           from pathlib import Path
           p=Path(os.environ["SETTINGS"])
-          d={"llm":{"model":"openai/lifeos-normal","base_url":os.environ["URL"],"api_key":os.environ["TOKEN"]}}
-          p.write_text(json.dumps(d, indent=2) + "\\n")
+          d={"llm":{"model":os.environ["MODEL"],"base_url":os.environ["URL"],"api_key":"ollama"}}
+          p.write_text(json.dumps(d, indent=2) + "\n")
           p.chmod(0o600)
           PY
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
@@ -87,6 +96,9 @@ jobs:
           pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
           tr '\\0' ' ' <"/proc/$pid/cmdline" | grep -q -- '--override-with-envs'
           echo OPENHANDS_ENV_OVERRIDE=PASS
+          grep -q 'ollama/qwen2.5-coder:7b-instruct' "$HOME/.openhands/agent_settings.json"
+          ! grep -q 'lifeos-normal' "$HOME/.openhands/agent_settings.json"
+          echo OPENHANDS_DIRECT_OLLAMA_CONFIG=PASS
           REMOTE
       - name: Verify UI from Pi LAN
         shell: bash
