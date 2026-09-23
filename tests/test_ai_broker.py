@@ -150,3 +150,56 @@ def test_normal_tool_chat_fails_closed_without_private_local(monkeypatch):
             tools=[{"type": "function", "function": {"name": "x", "parameters": {"type": "object"}}}],
             privacy="normal",
         )
+
+
+def test_ollama_content_tool_fallback_maps_unambiguous_command_enum_to_owner():
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "file_editor",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {"type": "string", "enum": ["view", "create", "str_replace"]},
+                        "path": {"type": "string"},
+                    },
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "terminal",
+                "parameters": {"type": "object", "properties": {"command": {"type": "string"}}},
+            },
+        },
+    ]
+    call = MODULE._ollama_tool_call_from_content(
+        '{"name":"view","arguments":{"path":"/tmp/repo"}}', tools
+    )
+    assert call is not None
+    assert call["function"]["name"] == "file_editor"
+    assert json.loads(call["function"]["arguments"]) == {
+        "command": "view",
+        "path": "/tmp/repo",
+    }
+
+
+def test_ollama_content_tool_fallback_rejects_ambiguous_command_alias():
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": owner,
+                "parameters": {
+                    "type": "object",
+                    "properties": {"command": {"type": "string", "enum": ["view"]}},
+                },
+            },
+        }
+        for owner in ("first", "second")
+    ]
+    assert MODULE._ollama_tool_call_from_content(
+        '{"name":"view","arguments":{}}', tools
+    ) is None
