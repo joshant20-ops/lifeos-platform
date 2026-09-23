@@ -1,4 +1,5 @@
 name: LifeOS Governor Broker Deploy
+# Level 2 runtime redeploy checkpoint
 
 on:
   push:
