@@ -62,7 +62,7 @@ jobs:
           import json, os
           from pathlib import Path
           p=Path(os.environ["SETTINGS"])
-          d={"llm":{"model":os.environ["MODEL"],"base_url":os.environ["URL"],"api_key":"ollama"}}
+          d={"llm":{"model":os.environ["MODEL"],"base_url":os.environ["URL"],"api_key":"ollama","reasoning_effort":None,"extra_body":{"think":False}}}
           p.write_text(json.dumps(d, indent=2) + "\n")
           p.chmod(0o600)
           PY
@@ -99,6 +99,9 @@ jobs:
           grep -q 'ollama/qwen2.5-coder:7b-instruct' "$HOME/.openhands/agent_settings.json"
           ! grep -q 'lifeos-normal' "$HOME/.openhands/agent_settings.json"
           echo OPENHANDS_DIRECT_OLLAMA_CONFIG=PASS
+          # Smoke the exact incompatibility seen in the UI: this model does not support Ollama thinking.
+          curl -fsS "$ollama_url/api/chat" -H 'Content-Type: application/json' -d '{"model":"qwen2.5-coder:7b-instruct","messages":[{"role":"user","content":"Reply OK"}],"stream":false,"think":false}' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("message",{}).get("content")'
+          echo OPENHANDS_OLLAMA_NO_THINK_SMOKE=PASS
           REMOTE
       - name: Verify UI from Pi LAN
         shell: bash
