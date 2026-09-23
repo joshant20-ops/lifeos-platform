@@ -48,6 +48,15 @@ jobs:
           test -n "$url" && test -n "$token"
           printf '%s\n' "LLM_BASE_URL=$url" "LLM_API_KEY=$token" "LLM_MODEL=openai/lifeos-normal" >"$HOME/.config/lifeos/openhands-ui.env"
           chmod 600 "$HOME/.config/lifeos/openhands-ui.env"
+          mkdir -p "$HOME/.openhands"
+          SETTINGS="$HOME/.openhands/agent_settings.json" URL="$url" TOKEN="$token" python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path(os.environ["SETTINGS"])
+          d={"llm":{"model":"openai/lifeos-normal","base_url":os.environ["URL"],"api_key":os.environ["TOKEN"]}}
+          p.write_text(json.dumps(d, indent=2) + "\\n")
+          p.chmod(0o600)
+          PY
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
           Description=LifeOS native OpenHands web UI
