@@ -14,7 +14,7 @@ jobs:
         run: |
           python3 - <<'PY'
           import json, urllib.request
-          job=json.load(urllib.request.urlopen("http://127.0.0.1:8790/jobs/41c269f6bfb3", timeout=10))
+          job=json.load(urllib.request.urlopen("http://127.0.0.1:8790/jobs/345a83e3b18a", timeout=10))
           print("JOB", job.get("id"), job.get("status"), job.get("stage"), job.get("blocked_reason"))
           for it in job.get("iterations") or []:
               print("ITERATION", it.get("iteration"), "RC", it.get("builder_rc"), "RESULT", it.get("iteration_result"))
