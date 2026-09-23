@@ -1,13 +1,6 @@
 name: LifeOS PA Mission Control
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/lifeos-pa-mission-control.yml'
-      - 'deploy-triggers/issue-706-live'
-      - 'deploy-triggers/issue-706-retry'
-      - 'deploy-triggers/issue-706-concrete-evidence'
   workflow_dispatch:
     inputs:
       target_issue:
@@ -109,16 +102,9 @@ jobs:
         shell: bash
         env:
           MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || 'run' }}
-          # Temporary live #706 run. Revert to dispatch inputs after acceptance.
-          LIFEOS_PA_TARGET_ISSUE: '706'
-          LIFEOS_PA_TARGET_OBJECTIVE: >-
-            Determine the current canonical status of issue #706: Archive obsolete one-shot engineering workflows.
-            Inspect the repository workflow estate and historical/current implementation evidence. If obsolete one-shot
-            engineering workflows remain, perform the smallest safe repository changes needed to archive/remove them
-            without damaging active workflows. If the requirement is already satisfied, prove it with current item-specific
-            deterministic evidence rather than making unnecessary changes. Preserve active governed workflows. Return
-            independently verifiable evidence sufficient for COMPLETE, OBSOLETE/SUPERSEDED, or DUPLICATE disposition.
-          LIFEOS_PA_CANONICAL_ASSERTIONS: ''
+          LIFEOS_PA_TARGET_ISSUE: ${{ inputs.target_issue || '759' }}
+          LIFEOS_PA_TARGET_OBJECTIVE: ${{ inputs.target_objective || '' }}
+          LIFEOS_PA_CANONICAL_ASSERTIONS: ${{ inputs.canonical_assertions || '' }}
         run: |
           set -Eeuo pipefail
           STATE=/home/joshan/.local/state/lifeos-pa-autonomy
