@@ -112,7 +112,16 @@ Only finish when the requested task is actually satisfied or a genuine external 
                 if getattr(event, "action", None) is not None
                 and type(getattr(event, "action", None)).__name__.lower().endswith("action")
             ]
-            if len(current_tools) >= 3:
+            # Conversation history also contains completion actions. They prove the
+            # model ended a turn, not that repository engineering happened. Count
+            # only non-finish actions when deciding whether an early completion is
+            # supported; otherwise bootstrap + finish can satisfy the threshold
+            # after a continuation without any additional engineering.
+            current_engineering_tools = [
+                event for event in current_tools
+                if type(getattr(event, "action", None)).__name__.lower() != "finishaction"
+            ]
+            if len(current_engineering_tools) >= 3:
                 break
             if continuation == 2:
                 break
@@ -174,9 +183,13 @@ Only finish when the requested task is actually satisfied or a genuine external 
     # For repository-change tasks, require activity beyond that bootstrap inspection.
     # Evidence-only/audit work remains allowed to finish without edits, but must have
     # enough tool activity to perform the concrete inspection/verification contract.
-    if len(tool_events) < 3:
+    engineering_tool_events = [
+        event for event in tool_events
+        if type(getattr(event, "action", None)).__name__.lower() != "finishaction"
+    ]
+    if len(engineering_tool_events) < 3:
         print(
-            f"OPENHANDS_SDK_ERROR=insufficient_engineering_tool_activity count={len(tool_events)}",
+            f"OPENHANDS_SDK_ERROR=insufficient_engineering_tool_activity count={len(engineering_tool_events)}",
             file=sys.stderr,
             flush=True,
         )
