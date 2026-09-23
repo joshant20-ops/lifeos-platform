@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import pathlib
 
 import pytest
@@ -175,7 +176,7 @@ def test_ollama_content_tool_fallback_maps_unambiguous_command_enum_to_owner():
             },
         },
     ]
-    call = MODULE._ollama_tool_call_from_content(
+    call = BROKER._ollama_tool_call_from_content(
         '{"name":"view","arguments":{"path":"/tmp/repo"}}', tools
     )
     assert call is not None
@@ -200,6 +201,6 @@ def test_ollama_content_tool_fallback_rejects_ambiguous_command_alias():
         }
         for owner in ("first", "second")
     ]
-    assert MODULE._ollama_tool_call_from_content(
+    assert BROKER._ollama_tool_call_from_content(
         '{"name":"view","arguments":{}}', tools
     ) is None
