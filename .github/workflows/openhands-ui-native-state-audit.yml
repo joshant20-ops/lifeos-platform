@@ -1,0 +1,49 @@
+name: OpenHands UI Native State Audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/openhands-ui-native-state-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect OpenHands native settings and web routes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          echo VERSION
+          openhands --version || true
+          echo HELP
+          openhands --help || true
+          echo WEB_HELP
+          openhands web --help || true
+          echo STATE
+          find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 3 -type f -printf '%p %m %s bytes\n' 2>/dev/null || true
+          echo SETTINGS_REDACTED
+          for f in "$HOME/.openhands"/* "$HOME/.config/openhands"/*; do
+            test -f "$f" || continue
+            case "$f" in
+              *.json|*.toml|*.yaml|*.yml)
+                echo "--- $f"
+                sed -E 's/(api[_-]?key|token|password)([" ]*[:=][" ]*)[^", ]+/\1\2<redacted>/Ig' "$f" | head -200
+                ;;
+            esac
+          done
+          echo HTTP
+          python3 - <<'PY'
+          import urllib.request
+          for p in ['/','/api/settings','/api/options','/api/config','/settings']:
+              try:
+                  r=urllib.request.urlopen('http://127.0.0.1:3000'+p, timeout=3)
+                  b=r.read(2000).decode('utf-8','replace')
+                  print(p, r.status, r.headers.get('content-type'), repr(b[:500]))
+              except Exception as e: print(p, type(e).__name__, str(e)[:200])
+          PY
+          REMOTE
