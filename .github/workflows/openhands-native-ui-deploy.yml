@@ -32,52 +32,38 @@ jobs:
         run: |
           set -Eeuo pipefail
           ssh -o BatchMode=yes Engineer 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; openhands web --help'
-      - name: Install persistent native OpenHands web UI
+      - name: Deploy current upstream Agent Canvas
         shell: bash
         run: |
           set -Eeuo pipefail
           ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
           set -Eeuo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-          mkdir -p "$HOME/.config/systemd/user"
-          # OpenHands engineering now talks directly to Tower Ollama. The Governor
-          # broker is intentionally removed from the model path; deterministic
-          # lifecycle/privacy/publication/acceptance controls remain external.
+          docker version >/dev/null
           ollama_url="http://192.168.0.201:11434"
-          model="ollama/qwen2.5-coder:7b-instruct"
-          echo "Checking Tower Ollama and required local model..."
           models=$(curl -fsS --connect-timeout 5 "$ollama_url/api/tags")
           MODELS="$models" python3 - <<'PY'
           import json, os
           names={m.get("name") for m in json.loads(os.environ["MODELS"]).get("models", [])}
-          required="qwen2.5-coder:7b-instruct"
-          if required not in names:
-              raise SystemExit(f"required Tower model absent: {required}; found={sorted(names)}")
+          assert "qwen2.5-coder:7b-instruct" in names, names
           print("OPENHANDS_DIRECT_OLLAMA_MODEL=PASS")
           PY
-          mkdir -p "$HOME/.config/lifeos" "$HOME/.openhands"
-          printf '%s\n' "LLM_BASE_URL=$ollama_url" "LLM_API_KEY=ollama" "LLM_MODEL=$model" >"$HOME/.config/lifeos/openhands-ui.env"
-          chmod 600 "$HOME/.config/lifeos/openhands-ui.env"
-          SETTINGS="$HOME/.openhands/agent_settings.json" URL="$ollama_url" MODEL="$model" python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          p=Path(os.environ["SETTINGS"])
-          d={"llm":{"model":os.environ["MODEL"],"base_url":os.environ["URL"],"api_key":"ollama","reasoning_effort":None,"extra_body":{"think":False}}}
-          p.write_text(json.dumps(d, indent=2) + "\n")
-          p.chmod(0o600)
-          PY
+          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/.config/systemd/user"
+          # Keep the canonical repository available to Agent Canvas without granting
+          # the container the whole Engineer home directory.
+          test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
+          docker pull ghcr.io/openhands/agent-canvas:1.23.0
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
-          Description=LifeOS native OpenHands web UI
-          After=network-online.target
+          Description=LifeOS OpenHands Agent Canvas 1.23.0
+          After=network-online.target docker.service
           Wants=network-online.target
 
           [Service]
           Type=simple
-          Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
-          Environment=OPENHANDS_SUPPRESS_BANNER=1
-          EnvironmentFile=%h/.config/lifeos/openhands-ui.env
-          ExecStart=%h/.local/bin/openhands --override-with-envs web --host 0.0.0.0 --port 3000
+          ExecStartPre=-/usr/bin/docker rm -f lifeos-agent-canvas
+          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-projects:/projects ghcr.io/openhands/agent-canvas:1.23.0
+          ExecStop=/usr/bin/docker stop -t 20 lifeos-agent-canvas
           Restart=on-failure
           RestartSec=5
 
@@ -85,34 +71,22 @@ jobs:
           WantedBy=default.target
           UNIT
           systemctl --user daemon-reload
-          systemctl --user restart lifeos-openhands-ui.service 2>/dev/null || true
           systemctl --user enable --now lifeos-openhands-ui.service
-          for _ in $(seq 1 30); do
-            if ss -ltn | grep -q ':3000 '; then break; fi
-            sleep 2
-          done
-          systemctl --user --no-pager --full status lifeos-openhands-ui.service || true
-          ss -ltn | grep ':3000 '
-          pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
-          tr '\\0' ' ' <"/proc/$pid/cmdline" | grep -q -- '--override-with-envs'
-          echo OPENHANDS_ENV_OVERRIDE=PASS
-          grep -q 'ollama/qwen2.5-coder:7b-instruct' "$HOME/.openhands/agent_settings.json"
-          ! grep -q 'lifeos-normal' "$HOME/.openhands/agent_settings.json"
-          echo OPENHANDS_DIRECT_OLLAMA_CONFIG=PASS
-          # Smoke the exact incompatibility seen in the UI: this model does not support Ollama thinking.
-          curl -fsS "$ollama_url/api/chat" -H 'Content-Type: application/json' -d '{"model":"qwen2.5-coder:7b-instruct","messages":[{"role":"user","content":"Reply OK"}],"stream":false,"think":false}' | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("message",{}).get("content")'
-          echo OPENHANDS_OLLAMA_NO_THINK_SMOKE=PASS
+          for _ in $(seq 1 60); do curl -fsS --connect-timeout 2 http://127.0.0.1:8000/canvas/ >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
+          docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
+          echo OPENHANDS_AGENT_CANVAS_1_23=PASS
           REMOTE
       - name: Verify UI from Pi LAN
         shell: bash
         run: |
           set -Eeuo pipefail
           for _ in $(seq 1 20); do
-            code=$(curl -sS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 http://192.168.0.204:3000/ || true)
+            code=$(curl -sS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 http://192.168.0.204:8000/canvas/ || true)
             if [[ "$code" =~ ^(200|302|307)$ ]]; then
-              echo "OPENHANDS_UI_URL=http://192.168.0.204:3000/"
+              echo "OPENHANDS_UI_URL=http://192.168.0.204:8000/canvas/"
               echo "OPENHANDS_UI_HTTP=$code"
-              echo "OPENHANDS_NATIVE_UI=PASS"
+              echo "OPENHANDS_AGENT_CANVAS_UI=PASS"
               exit 0
             fi
             sleep 2
