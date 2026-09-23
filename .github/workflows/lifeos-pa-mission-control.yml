@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/lifeos-pa-mission-control.yml'
       - 'deploy-triggers/issue-706-live'
+      - 'deploy-triggers/issue-706-retry'
   workflow_dispatch:
     inputs:
       target_issue:
