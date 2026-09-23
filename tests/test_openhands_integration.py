@@ -294,8 +294,11 @@ def test_openhands_sdk_runner_reads_events_from_conversation_state():
 def test_openhands_sdk_runner_normalizes_unhandled_conversation_failures():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "except Exception as exc:" in runner
-    assert "OPENHANDS_SDK_ERROR=conversation_exception_" in runner
-    assert "type(exc).__name__" in runner
+    assert "OPENHANDS_SDK_ERROR=conversation_exception_chain_" in runner
+    assert "current.__cause__ or current.__context__" in runner
+    assert "OPENHANDS_SDK_EVENTS_ON_EXCEPTION=" in runner
+    assert "OPENHANDS_SDK_ERROR_EVENTS_ON_EXCEPTION=" in runner
+    assert "OPENHANDS_SDK_TOOL_EVENTS_ON_EXCEPTION=" in runner
     assert "return 24" in runner
     assert "str(exc)" not in runner
 

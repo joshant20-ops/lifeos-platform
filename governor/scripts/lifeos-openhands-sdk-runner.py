@@ -57,12 +57,29 @@ Only finish when the requested task is actually satisfied or a genuine external 
         conversation.run()
     except Exception as exc:
         # Keep local/private prompts and exception messages out of workflow
-        # evidence while preserving the concrete SDK boundary for diagnosis.
+        # evidence while preserving categorical SDK boundaries for diagnosis.
+        chain = []
+        current = exc
+        seen = set()
+        while current is not None and id(current) not in seen and len(chain) < 5:
+            seen.add(id(current))
+            chain.append(type(current).__name__)
+            current = current.__cause__ or current.__context__
+        events = list(conversation.state.events)
+        errors = [event for event in events if isinstance(event, AgentErrorEvent)]
+        tool_events = [
+            event for event in events
+            if getattr(event, "action", None) is not None
+            and type(getattr(event, "action", None)).__name__.lower().endswith("action")
+        ]
         print(
-            f"OPENHANDS_SDK_ERROR=conversation_exception_{type(exc).__name__}",
+            "OPENHANDS_SDK_ERROR=conversation_exception_chain_" + "__".join(chain),
             file=sys.stderr,
             flush=True,
         )
+        print(f"OPENHANDS_SDK_EVENTS_ON_EXCEPTION={len(events)}", file=sys.stderr, flush=True)
+        print(f"OPENHANDS_SDK_ERROR_EVENTS_ON_EXCEPTION={len(errors)}", file=sys.stderr, flush=True)
+        print(f"OPENHANDS_SDK_TOOL_EVENTS_ON_EXCEPTION={len(tool_events)}", file=sys.stderr, flush=True)
         return 24
     events = list(conversation.state.events)
     errors = [event for event in events if isinstance(event, AgentErrorEvent)]
