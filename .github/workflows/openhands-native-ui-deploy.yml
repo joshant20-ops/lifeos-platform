@@ -1,0 +1,85 @@
+name: OpenHands Native UI Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openhands-native-ui-deploy.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Ensure Engineer reachable
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if ! ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
+            for helper in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
+              if test -x "$helper"; then "$helper"; break; fi
+            done
+            mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON || true
+            for _ in $(seq 1 90); do ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null && exit 0; sleep 5; done
+            exit 20
+          fi
+      - name: Inspect native web command
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes Engineer 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; openhands web --help'
+      - name: Install persistent native OpenHands web UI
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          mkdir -p "$HOME/.config/systemd/user"
+          cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
+          [Unit]
+          Description=LifeOS native OpenHands web UI
+          After=network-online.target
+          Wants=network-online.target
+
+          [Service]
+          Type=simple
+          Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+          Environment=OPENHANDS_SUPPRESS_BANNER=1
+          ExecStart=%h/.local/bin/openhands web --host 0.0.0.0 --port 3000
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=default.target
+          UNIT
+          systemctl --user daemon-reload
+          systemctl --user enable --now lifeos-openhands-ui.service
+          for _ in $(seq 1 30); do
+            if ss -ltn | grep -q ':3000 '; then break; fi
+            sleep 2
+          done
+          systemctl --user --no-pager --full status lifeos-openhands-ui.service || true
+          ss -ltn | grep ':3000 '
+          REMOTE
+      - name: Verify UI from Pi LAN
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for _ in $(seq 1 20); do
+            code=$(curl -sS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 http://192.168.0.204:3000/ || true)
+            if [[ "$code" =~ ^(200|302|307)$ ]]; then
+              echo "OPENHANDS_UI_URL=http://192.168.0.204:3000/"
+              echo "OPENHANDS_UI_HTTP=$code"
+              echo "OPENHANDS_NATIVE_UI=PASS"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo RESULT=BLOCKED
+          echo REASON=native_openhands_ui_not_reachable_from_pi
+          exit 20
