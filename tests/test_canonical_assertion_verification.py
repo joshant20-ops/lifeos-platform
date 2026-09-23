@@ -45,6 +45,7 @@ def assertion_job(module):
         canonical_assertions=[{
             "id": "acceptance-marker",
             "kind": "tracked_text_contains",
+            "path": "fixture.txt",
             "value": "GENERIC_ACCEPTANCE=PASS",
         }],
     )
@@ -83,13 +84,32 @@ def test_canonical_assertion_contract_rejects_executable_or_unbounded_input(tmp_
     module = load_agent(tmp_path)
     for assertion in (
         {"id": "bad", "kind": "shell", "value": "true"},
-        {"id": "bad", "kind": "tracked_text_contains", "value": "x\ny"},
+        {"id": "bad", "kind": "tracked_text_contains", "path": "fixture.txt", "value": "x\ny"},
+        {"id": "bad", "kind": "tracked_text_contains", "value": "marker"},
+        {"id": "bad", "kind": "tracked_text_contains", "path": "../fixture.txt", "value": "marker"},
     ):
         try:
             module.new_job("test", canonical_assertions=[assertion])
             assert False, assertion
         except ValueError:
             pass
+
+
+def test_text_assertion_cannot_pass_from_its_controller_declaration(tmp_path):
+    module = load_agent(tmp_path)
+    repo = canonical_repo(tmp_path, "GENERIC_ACCEPTANCE=PENDING\n")
+    workflow = repo / ".github" / "workflows" / "control.yml"
+    workflow.parent.mkdir(parents=True)
+    workflow.write_text("expected: GENERIC_ACCEPTANCE=PASS\n")
+    subprocess.run(["git", "-C", repo, "add", ".github/workflows/control.yml"], check=True)
+    subprocess.run(["git", "-C", repo, "commit", "-m", "declare assertion"], check=True, capture_output=True)
+    subprocess.run(["git", "-C", repo, "push", "origin", "main"], check=True, capture_output=True)
+    module.PLATFORM_REPO = repo
+
+    result, evidence = module.verify_canonical_assertions(assertion_job(module))
+
+    assert result is False
+    assert "CANONICAL_ASSERTION_ACCEPTANCE_MARKER=FAIL" in evidence
 
 
 def test_tracked_path_absent_assertion_passes_only_when_path_is_missing(tmp_path):

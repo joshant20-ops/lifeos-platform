@@ -185,6 +185,7 @@ LIFEOS_ISSUE_PICKUP_LEVEL1=PASS
 Add or use a deterministic repository test/assertion for that exact marker and run the focused test.
 Do not modify production behaviour."""
         assertions = [{"id": "level1-marker", "kind": "tracked_text_contains",
+                       "path": "docs/governor-ots-boundary.md",
                        "value": "LIFEOS_ISSUE_PICKUP_LEVEL1=PASS"}]
     else:
         if not objective:
