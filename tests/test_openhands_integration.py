@@ -291,6 +291,15 @@ def test_openhands_sdk_runner_reads_events_from_conversation_state():
     assert "events = conversation.run()" not in runner
 
 
+def test_openhands_sdk_runner_normalizes_unhandled_conversation_failures():
+    runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
+    assert "except Exception as exc:" in runner
+    assert "OPENHANDS_SDK_ERROR=conversation_exception_" in runner
+    assert "type(exc).__name__" in runner
+    assert "return 24" in runner
+    assert "str(exc)" not in runner
+
+
 def test_openhands_sdk_runner_requires_autonomous_repository_completion_prompt():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "Do not stop at describing, summarising, planning, or proposing commands." in runner
