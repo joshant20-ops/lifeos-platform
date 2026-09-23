@@ -363,7 +363,7 @@ def test_openhands_sdk_rejects_bootstrap_only_sessions():
 def test_sdk_runner_reprompts_unsupported_early_completion():
     text = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "for turn in range(1, max_turns + 1):" in text
-    assert "Completion rejected:" in text
+    assert "Continue the SAME engineering objective." in text
     assert "conversation.send_message(" in text
     assert "if len(current_engineering_tools) >= 3:" in text
     assert '"finishaction"' in text
