@@ -98,43 +98,12 @@ Only finish when the requested task is actually satisfied or a genuine external 
 
 """ + prompt
     conversation.send_message(engineering_prompt)
-    # OpenHands owns the engineering plane. Drive the same persistent conversation
-    # until it produces objective completion evidence; Governor remains outside this
-    # loop and independently verifies/publishes the resulting handoff.
+    # OpenHands owns completion semantics. Run the native conversation to its own
+    # terminal state once; LifeOS must not manufacture extra pseudo-turns or infer
+    # completion from event text/action counts. Governor independently verifies the
+    # resulting workspace and can feed acceptance feedback into a later governed run.
     try:
-        max_turns = int(os.environ.get("LIFEOS_OPENHANDS_MAX_TURNS", "8"))
-        for turn in range(1, max_turns + 1):
-            conversation.run()
-            events_now = list(conversation.state.events)
-            errors_now = [event for event in events_now if isinstance(event, AgentErrorEvent)]
-            if errors_now:
-                break
-            engineering_actions = [
-                event for event in events_now
-                if getattr(event, "action", None) is not None
-                and type(getattr(event, "action", None)).__name__.lower() != "finishaction"
-            ]
-            workspace_dirty = bool(os.popen("git status --porcelain --untracked-files=all").read().strip())
-            # A changed workspace is concrete engineering output. For legitimate
-            # no-change work, require the agent's own final evidence contract rather
-            # than an arbitrary action count.
-            messages = [
-                str(getattr(event, "message", "") or getattr(event, "content", "") or "")
-                for event in events_now
-            ]
-            evidence_claim = any("EVIDENCE" in message.upper() for message in messages[-8:])
-            if workspace_dirty or evidence_claim:
-                print(f"OPENHANDS_ENGINEERING_TURNS={turn}", flush=True)
-                break
-            if turn == max_turns:
-                print("OPENHANDS_SDK_ERROR=objective_evidence_not_produced", file=sys.stderr, flush=True)
-                return 23
-            conversation.send_message(
-                "Continue the SAME engineering objective. Do not merely report completion. "
-                "Use the repository tools to diagnose, edit and test as needed. Finish only "
-                "after the workspace contains the required change, or provide an EVIDENCE "
-                "section with concrete deterministic proof that no change is required."
-            )
+        conversation.run()
     except Exception as exc:
         # Keep local/private prompts and exception messages out of workflow
         # evidence while preserving categorical SDK boundaries for diagnosis.
