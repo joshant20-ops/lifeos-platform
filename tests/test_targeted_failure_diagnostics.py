@@ -9,6 +9,9 @@ def test_targeted_failure_diagnostic_surfaces_only_bounded_marker_allowlist():
     assert "last_iteration.get(\"evidence\")" in RUNNER
     assert "OPENHANDS_SDK_ERROR" in RUNNER
     assert "OPENHANDS_SDK_TOOL_EVENTS" in RUNNER
+    assert "OPENHANDS_SDK_EVENTS_ON_EXCEPTION" in RUNNER
+    assert "OPENHANDS_SDK_ERROR_EVENTS_ON_EXCEPTION" in RUNNER
+    assert "OPENHANDS_SDK_TOOL_EVENTS_ON_EXCEPTION" in RUNNER
     assert "OPENHANDS_WORKTREE_PATCH_BYTES" in RUNNER
     assert "LOCAL_BUILDER_ATTEMPT_RC" in RUNNER
     assert "CANONICAL_ASSERTION_" in RUNNER
