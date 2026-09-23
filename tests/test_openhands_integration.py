@@ -356,7 +356,8 @@ def test_openhands_sdk_requires_concrete_audit_evidence():
 def test_openhands_sdk_rejects_bootstrap_only_sessions():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "insufficient_engineering_tool_activity" in runner
-    assert "len(tool_events) < 3" in runner
+    assert "len(engineering_tool_events) < 3" in runner
+    assert '"finishaction"' in runner
 
 
 def test_sdk_runner_reprompts_unsupported_early_completion():
