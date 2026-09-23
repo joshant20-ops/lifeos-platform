@@ -510,19 +510,40 @@ def validate_canonical_assertions(value):
     assertions = []
     seen = set()
     for item in value:
-        if not isinstance(item, dict) or set(item) != {"id", "kind", "value"}:
+        if not isinstance(item, dict):
             raise ValueError("invalid_canonical_assertion")
         assertion_id = str(item.get("id") or "")
         kind = str(item.get("kind") or "")
         expected = item.get("value")
+        required_keys = (
+            {"id", "kind", "path", "value"}
+            if kind == "tracked_text_contains"
+            else {"id", "kind", "value"}
+        )
+        if set(item) != required_keys:
+            raise ValueError("invalid_canonical_assertion")
         if not re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", assertion_id) or assertion_id in seen:
             raise ValueError("invalid_canonical_assertion_id")
         if kind not in CANONICAL_ASSERTION_KINDS:
             raise ValueError("invalid_canonical_assertion_kind")
         if not isinstance(expected, str) or not expected or len(expected) > 512 or "\n" in expected:
             raise ValueError("invalid_canonical_assertion_value")
+        if kind == "tracked_text_contains":
+            path = item.get("path")
+            if (
+                not isinstance(path, str)
+                or not path
+                or len(path) > 256
+                or path.startswith("/")
+                or "\\" in path
+                or any(part in {"", ".", ".."} for part in path.split("/"))
+            ):
+                raise ValueError("invalid_canonical_assertion_path")
         seen.add(assertion_id)
-        assertions.append({"id": assertion_id, "kind": kind, "value": expected})
+        assertion = {"id": assertion_id, "kind": kind, "value": expected}
+        if kind == "tracked_text_contains":
+            assertion["path"] = path
+        assertions.append(assertion)
     return assertions
 
 
@@ -547,7 +568,10 @@ def verify_canonical_assertions(job):
     for assertion in assertions:
         if assertion["kind"] == "tracked_text_contains":
             result = subprocess.run(
-                ["git", "grep", "-F", "-q", "--", assertion["value"], "HEAD"],
+                [
+                    "git", "grep", "-F", "-q", "--", assertion["value"],
+                    f"HEAD:{assertion['path']}",
+                ],
                 cwd=PLATFORM_REPO,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
