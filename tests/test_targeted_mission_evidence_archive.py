@@ -168,3 +168,10 @@ def test_mission_control_accepts_generic_target_issue_inputs():
     assert "LIFEOS_PA_TARGET_OBJECTIVE:" in workflow
     assert "TARGETED_ISSUE_ACCEPTANCE=PASS" in workflow
     assert "ISSUE_DISPOSITIONS=#$target_issue ready_for_evidence_backed_closure" in workflow
+
+
+def test_archive_accepts_bounded_governor_iterations():
+    workflow = (ROOT / ".github/workflows/lifeos-pa-mission-control.yml").read_text()
+    assert 'iterations = record.get("iterations") or []' in workflow
+    assert 'assert iterations[-1]["verdict"] == "PASS"' in workflow
+    assert 'len(record["iterations"]) == 1' not in workflow
