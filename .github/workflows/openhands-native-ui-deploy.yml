@@ -53,6 +53,13 @@ jobs:
           # the container the whole Engineer home directory.
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
           docker pull ghcr.io/openhands/agent-canvas:1.23.0
+          # A prior container left the persistent bind mount unwritable by the
+          # image's non-root openhands user. Repair ownership from a short-lived
+          # root container rather than requiring host sudo.
+          docker run --rm --user root \
+            -v "$HOME/.openhands:/state" \
+            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
+            -c 'mkdir -p /state/agent-canvas/conversations /state/agent-canvas/bash_events /state/automation /state/storage /state/workspaces && chown -R openhands:openhands /state'
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
           Description=LifeOS OpenHands Agent Canvas 1.23.0
