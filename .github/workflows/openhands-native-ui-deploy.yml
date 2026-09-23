@@ -92,7 +92,13 @@ jobs:
             exit 20
           fi
           curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
-          curl -fsS --connect-timeout 3 http://127.0.0.1:11800/alive >/dev/null
+          if ! curl -fsS --connect-timeout 3 http://127.0.0.1:11800/alive >/dev/null; then
+            echo '=== AGENT SERVER DIAGNOSTICS ==='
+            docker ps -a --filter name=lifeos-agent-canvas --no-trunc || true
+            docker logs --tail 400 lifeos-agent-canvas 2>&1 || true
+            ss -lntp | grep -E ':(8000|11800|18000|18001)\\b' || true
+            exit 21
+          fi
           curl -fsS --connect-timeout 3 http://127.0.0.1:8000/alive >/dev/null
           echo OPENHANDS_AGENT_SERVER_11800=PASS
           docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
