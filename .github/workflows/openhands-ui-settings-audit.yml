@@ -1,0 +1,29 @@
+name: OpenHands UI Settings Audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/openhands-ui-settings-audit.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect effective UI configuration
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          echo SERVICE_ENV
+          systemctl --user show lifeos-openhands-ui.service -p EnvironmentFiles -p ExecStart --no-pager
+          echo CONFIG_KEYS
+          sed -E 's/=.*/=<redacted>/' "$HOME/.config/lifeos/openhands-ui.env"
+          echo PROCESS_ENV_KEYS
+          pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
+          tr '\0' '\n' <"/proc/$pid/environ" | grep -E '^(LLM_BASE_URL|LLM_API_KEY|LLM_MODEL)=' | sed -E 's/=.*/=<present>/'
+          echo STATE_FILES
+          find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 2 -type f -printf '%p\n' 2>/dev/null || true
+          REMOTE
