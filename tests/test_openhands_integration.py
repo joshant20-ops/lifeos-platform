@@ -295,7 +295,7 @@ def test_openhands_sdk_runner_requires_autonomous_repository_completion_prompt()
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "Do not stop at describing, summarising, planning, or proposing commands." in runner
     assert "execute the requested work with native tools" in runner
-    assert "Before finishing, run focused deterministic verification" in runner
+    assert "Before finishing, run at least one focused deterministic command" in runner
 
 
 def test_openhands_sdk_runner_requires_tool_grounded_repository_discovery_first():
@@ -331,5 +331,5 @@ def test_local_ai_cold_start_allows_full_tower_boot_window():
 def test_openhands_sdk_requires_concrete_audit_evidence():
     runner = (ROOT / "governor/scripts/lifeos-openhands-sdk-runner.py").read_text()
     assert "actually enumerate and inspect the relevant repository estate" in runner
-    assert "Before finishing, run focused deterministic verification" in runner
+    assert "Before finishing, run at least one focused deterministic command" in runner
     assert "Treat prior Governor verifier instructions as mandatory work" in runner
