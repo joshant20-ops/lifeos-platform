@@ -1,0 +1,24 @@
+name: LifeOS Level2 Premature Diagnostic
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-level2-premature-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    steps:
+      - name: Inspect sanitized OpenHands evidence
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,urllib.request
+          j=json.load(urllib.request.urlopen("http://127.0.0.1:8790/jobs/b034344fa152",timeout=10))
+          for it in j.get("iterations") or []:
+              print("ITER",it.get("iteration"),"RC",it.get("builder_rc"))
+              ev=str(it.get("evidence") or "")
+              for line in ev.splitlines():
+                  if line.startswith(("OPENHANDS_","Agent Action","Observation","HANDOFF_","LOCAL_BUILDER_","AGENT_RESULT")):
+                      print(line[:2000])
+          PY
