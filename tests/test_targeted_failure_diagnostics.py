@@ -15,6 +15,7 @@ def test_targeted_failure_diagnostic_surfaces_only_bounded_marker_allowlist():
     assert "OPENHANDS_UPSTREAM_HTTP_STATUS" in RUNNER
     assert "OPENHANDS_UPSTREAM_ERROR_CODE" in RUNNER
     assert "OPENHANDS_PROVIDER_HTTP_STATUS" in RUNNER
+    assert "OPENHANDS_UPSTREAM_CLASS" in RUNNER
     assert "OPENHANDS_UPSTREAM_CATEGORY" in RUNNER
     assert "OPENHANDS_WORKTREE_PATCH_BYTES" in RUNNER
     assert "LOCAL_BUILDER_ATTEMPT_RC" in RUNNER
