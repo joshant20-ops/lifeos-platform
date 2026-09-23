@@ -7,3 +7,5 @@ rerun-after-bounded-continuation
 rerun-after-progress-fix
 
 rerun-after-progress-fix
+
+rerun-after-openhands-owned-completion
