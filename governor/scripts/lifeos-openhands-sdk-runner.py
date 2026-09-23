@@ -53,7 +53,17 @@ Only finish when the requested task is actually satisfied or a genuine external 
     # Conversation.run() drives the session to completion but the installed SDK
     # returns None. Read the persisted conversation event log afterwards instead
     # of treating run()'s transport return value as an event collection.
-    conversation.run()
+    try:
+        conversation.run()
+    except Exception as exc:
+        # Keep local/private prompts and exception messages out of workflow
+        # evidence while preserving the concrete SDK boundary for diagnosis.
+        print(
+            f"OPENHANDS_SDK_ERROR=conversation_exception_{type(exc).__name__}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return 24
     events = list(conversation.state.events)
     errors = [event for event in events if isinstance(event, AgentErrorEvent)]
     if errors:
