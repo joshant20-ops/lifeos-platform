@@ -40,6 +40,18 @@ jobs:
           set -Eeuo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           mkdir -p "$HOME/.config/systemd/user"
+          cfg="$HOME/.config/lifeos/governor-broker.env"
+          test -f "$cfg" && test ! -L "$cfg"
+          test "$(stat -c '%a' "$cfg")" = 600
+          url=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_URL=//p' "$cfg" | tail -1)
+          token=$(sed -n 's/^LIFEOS_GOVERNOR_BROKER_TOKEN=//p' "$cfg" | tail -1)
+          test -n "$url" && test -n "$token"
+          cat >"$HOME/.config/lifeos/openhands-ui.env" <<EOF
+LLM_BASE_URL=$url
+LLM_API_KEY=$token
+LLM_MODEL=openai/lifeos-normal
+EOF
+          chmod 600 "$HOME/.config/lifeos/openhands-ui.env"
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
           Description=LifeOS native OpenHands web UI
@@ -50,6 +62,7 @@ jobs:
           Type=simple
           Environment=PATH=%h/.local/bin:%h/.cargo/bin:/usr/local/bin:/usr/bin:/bin
           Environment=OPENHANDS_SUPPRESS_BANNER=1
+          EnvironmentFile=%h/.config/lifeos/openhands-ui.env
           ExecStart=%h/.local/bin/openhands web --host 0.0.0.0 --port 3000
           Restart=on-failure
           RestartSec=5
@@ -58,6 +71,7 @@ jobs:
           WantedBy=default.target
           UNIT
           systemctl --user daemon-reload
+          systemctl --user restart lifeos-openhands-ui.service 2>/dev/null || true
           systemctl --user enable --now lifeos-openhands-ui.service
           for _ in $(seq 1 30); do
             if ss -ltn | grep -q ':3000 '; then break; fi
