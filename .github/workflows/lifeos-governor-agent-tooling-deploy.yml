@@ -103,11 +103,11 @@ jobs:
           # LifeOS execution machinery.
           # Install the current upstream OpenHands release directly from its official GitHub tag.
           # PyPI's 'openhands' package is a different/older CLI release line.
-          uv tool install --force 'git+https://github.com/OpenHands/OpenHands.git@1.23.0' --python 3.12
+          uv tool install --force 'git+https://github.com/OpenHands/OpenHands.git@v1.23.0' --python 3.12
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           command -v openhands
           openhands --help >/dev/null
-          echo 'OPENHANDS_UPSTREAM_TAG=1.23.0'
+          echo 'OPENHANDS_UPSTREAM_TAG=v1.23.0'
           echo 'ENGINEER_AGENT_TOOLING_DEPLOY=PASS'
           REMOTE
 
