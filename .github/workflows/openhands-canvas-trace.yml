@@ -18,9 +18,9 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
+          bash -s <<'REMOTE'
           set -Eeuo pipefail
-          cid32="9a36222cb4d34973a8f54da325026c8c"
+          cid32="edcd93c4a05d496e9ee79a367415fdd0"
           cid_uuid="${cid32:0:8}-${cid32:8:4}-${cid32:12:4}-${cid32:16:4}-${cid32:20:12}"
           echo '=== CONTAINER / IMAGE ==='
           docker inspect lifeos-agent-canvas --format 'image={{.Config.Image}} status={{.State.Status}}'
@@ -30,23 +30,23 @@ jobs:
           docker exec lifeos-agent-canvas sh -c "find /home/openhands /workspace /projects -name canvas-acceptance.txt -print 2>/dev/null || true"
           echo '=== VERIFY PRE-EXISTING ACCEPTANCE FILE ==='
           existing="$(docker exec lifeos-agent-canvas cat "/home/openhands/workspace/project/$cid32/canvas-acceptance.txt")"
-          test "$existing" = 'Agent Canvas functional acceptance PASS'
+          test "$existing" = 'Agent Canvas Pi5 functional acceptance PASS'
           echo ACCEPTANCE_FILE_PREEXISTING_EXACT=PASS
           echo '=== WORKSPACE SESSION COOKIE THROUGH HTTPS INGRESS ==='
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt 2>/dev/null || true')"
           if test -n "$api_key"; then
             curl -ksS -c /tmp/ws_cookies -D /tmp/ws_headers -o /tmp/ws_body -X POST \
-              -H 'Host: 192.168.0.204:8443' \
-              -H 'Origin: https://192.168.0.204:8443' \
+              -H 'Host: 192.168.0.203:8443' \
+              -H 'Origin: https://192.168.0.203:8443' \
               -H "X-Session-API-Key: $api_key" \
               https://127.0.0.1:8443/api/auth/workspace-session >/dev/null
             grep -i '^set-cookie:' /tmp/ws_headers | sed -E 's/(oh_workspace_session_key=)[^;]+/\\1<redacted>/I' || true
             code=$(curl -ksS -b /tmp/ws_cookies -o /tmp/ws_file -w '%{http_code}' \
-              -H 'Host: 192.168.0.204:8443' \
+              -H 'Host: 192.168.0.203:8443' \
               "https://127.0.0.1:8443/api/conversations/$cid32/workspace/canvas-acceptance.txt" || true)
             echo "HTTPS_WORKSPACE_FILE_STATUS=$code"
             test "$code" = 200
-            test "$(cat /tmp/ws_file)" = 'Agent Canvas functional acceptance PASS'
+            test "$(cat /tmp/ws_file)" = 'Agent Canvas Pi5 functional acceptance PASS'
             echo HTTPS_WORKSPACE_FILE_CONTENT=PASS
           else
             echo 'API_KEY_PATH_NOT_FOUND'
@@ -68,7 +68,7 @@ jobs:
           PY
             code=$(curl -sS -o /tmp/bash_body -w '%{http_code}' -X POST \
               -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' \
-              --data '{"command":"pwd; find . -maxdepth 2 -type f -not -path \"*/.git/*\" -print","cwd":"/home/openhands/workspace/project/9a36222cb4d34973a8f54da325026c8c","timeout":10}' \
+              --data '{"command":"pwd; find . -maxdepth 2 -type f -not -path \"*/.git/*\" -print","cwd":"/home/openhands/workspace/project/edcd93c4a05d496e9ee79a367415fdd0","timeout":10}' \
               http://127.0.0.1:18000/api/bash/execute_bash_command || true)
             echo "AUTHENTICATED_BASH_STATUS=$code"
             python3 -c 'import json; d=json.load(open("/tmp/bash_body")); print("AUTHENTICATED_BASH_STDOUT="+repr(d.get("stdout"))); print("AUTHENTICATED_BASH_STDERR="+repr(d.get("stderr"))); print("AUTHENTICATED_BASH_EXIT="+repr(d.get("exit_code")))' || head -c 500 /tmp/bash_body
