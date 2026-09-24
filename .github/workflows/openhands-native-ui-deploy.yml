@@ -78,7 +78,49 @@ jobs:
           # workspace route is UUID-typed. Canonicalise only the URL returned
           # by the bundled SDK's startWorkspaceSession so the actual Files pane
           # fetch uses the same UUID spelling proven by the browser-route gate.
-          python3 -c 'from pathlib import Path; import os; root=Path(os.path.expanduser("~/lifeos-canvas-frontend/assets")); old="return`\${this.host}/api/conversations/\${encodeURIComponent(e)}/workspace/`"; new="return`\${this.host}/api/conversations/\${encodeURIComponent(/^[0-9a-f]{32}$/i.test(e)?e.replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/,`$1-$2-$3-$4-$5`):e)}/workspace/`"; files=[p for p in root.glob("*.js") if old in p.read_text()]; assert files, "Canvas SDK workspace-session URL patch anchor not found"; [p.write_text(p.read_text().replace(old,new)) for p in files]; print("OPENHANDS_CANVAS_WORKSPACE_SESSION_URL_PATCH=PASS")'
+          python3 - <<'PY'
+from pathlib import Path
+import os
+root = Path(os.path.expanduser("~/lifeos-canvas-frontend/assets"))
+changed = 0
+for p in root.glob("*.js"):
+    s = p.read_text()
+    marker = "/api/conversations/"
+    pos = 0
+    while True:
+        i = s.find(marker, pos)
+        if i < 0:
+            break
+        lo = max(0, i - 250)
+        hi = min(len(s), i + 500)
+        frag = s[lo:hi]
+        if "/workspace/" in frag and "encodeURIComponent(" in frag:
+            start = frag.find("encodeURIComponent(")
+            arg0 = start + len("encodeURIComponent(")
+            depth = 1
+            j = arg0
+            while j < len(frag) and depth:
+                if frag[j] == "(":
+                    depth += 1
+                elif frag[j] == ")":
+                    depth -= 1
+                j += 1
+            if depth == 0:
+                arg = frag[arg0:j-1]
+                if "^[0-9a-f]{32}$" not in arg:
+                    wrapped = "/^[0-9a-f]{32}$/i.test(" + arg + ")?(" + arg + ").replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/,`$1-$2-$3-$4-$5`):(" + arg + ")"
+                    absolute_arg0 = lo + arg0
+                    absolute_end = lo + j - 1
+                    s = s[:absolute_arg0] + wrapped + s[absolute_end:]
+                    changed += 1
+                    pos = absolute_arg0 + len(wrapped)
+                    continue
+        pos = i + len(marker)
+    p.write_text(s)
+if changed < 1:
+    raise SystemExit("Canvas SDK workspace-session URL patch target not found")
+print("OPENHANDS_CANVAS_WORKSPACE_SESSION_URL_PATCH=PASS")
+PY
           # Agent Canvas 1.23.0 emits SameSite=None without Secure on LAN HTTP.
           # Prepare a browser-facing proxy override before the service starts.
           mkdir -p "$HOME/lifeos-canvas-overrides"
