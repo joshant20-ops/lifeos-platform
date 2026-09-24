@@ -74,25 +74,7 @@ jobs:
           docker create --name lifeos-canvas-extract ghcr.io/openhands/agent-canvas:1.23.0 >/dev/null
           docker cp lifeos-canvas-extract:/opt/agent-canvas/frontend/. "$HOME/lifeos-canvas-frontend/"
           docker rm lifeos-canvas-extract >/dev/null
-          python3 - "$HOME/lifeos-canvas-frontend" <<'PY'
-from pathlib import Path
-import sys
-root=Path(sys.argv[1])
-changed=0
-for p in (root/"assets").glob("*.js"):
-    s=p.read_text()
-    # In the Files/runtime bundle these are the minified local names:
-    # n = conversation id, r = conversation URL, i = session API key.
-    old="conversationUrl:r,sessionApiKey:i"
-    if old in s and "new RemoteWorkspace" in s:
-        s2=s.replace(old,"conversationUrl:r,sessionApiKey:i,conversationId:n")
-        if s2 != s:
-            p.write_text(s2)
-            changed += 1
-if changed < 1:
-    raise SystemExit("Canvas conversation-scoping patch anchor not found")
-print("OPENHANDS_CANVAS_CONVERSATION_SCOPE_PATCH=PASS")
-PY
+          python3 -c 'from pathlib import Path; import os; root=Path(os.path.expanduser("~/lifeos-canvas-frontend/assets")); old="conversationUrl:r,sessionApiKey:i"; new="conversationUrl:r,sessionApiKey:i,conversationId:n"; files=[p for p in root.glob("*.js") if old in p.read_text() and "new RemoteWorkspace" in p.read_text()]; assert files, "Canvas conversation-scoping patch anchor not found"; [p.write_text(p.read_text().replace(old,new)) for p in files]; print("OPENHANDS_CANVAS_CONVERSATION_SCOPE_PATCH=PASS")'
           # Agent Canvas 1.23.0 emits SameSite=None without Secure on LAN HTTP.
           # Prepare a browser-facing proxy override before the service starts.
           mkdir -p "$HOME/lifeos-canvas-overrides"
