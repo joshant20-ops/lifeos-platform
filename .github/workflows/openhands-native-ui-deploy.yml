@@ -60,7 +60,7 @@ jobs:
           docker create --name lifeos-canvas-extract ghcr.io/openhands/agent-canvas:1.23.0 >/dev/null
           docker cp lifeos-canvas-extract:/opt/agent-canvas/proxy-utils.mjs "$HOME/lifeos-canvas-overrides/proxy-utils.mjs"
           docker rm lifeos-canvas-extract >/dev/null
-          python3 -c 'from pathlib import Path; p=Path.home()/"lifeos-canvas-overrides/proxy-utils.mjs"; s=p.read_text(); marker="  const metrics = {"; hook="  proxy.on(\"proxyRes\", (proxyRes, req) => { if (matchesPathPrefix(req.url ?? \"/\", \"/api/auth/workspace-session\") && Array.isArray(proxyRes.headers[\"set-cookie\"])) proxyRes.headers[\"set-cookie\"] = proxyRes.headers[\"set-cookie\"].map((c) => c.toLowerCase().includes(\"samesite=none\") && !c.toLowerCase().includes(\"; secure\") ? c.replace(/SameSite=None/gi, \"SameSite=Lax\") : c); });\\n\\n"; p.write_text(s if hook in s else s.replace(marker,hook+marker,1))'
+          python3 -c 'from pathlib import Path; p=Path.home()/"lifeos-canvas-overrides/proxy-utils.mjs"; s=p.read_text(); marker="  const metrics = {"; hook="  proxy.on(\"proxyRes\", (proxyRes, req) => { if (matchesPathPrefix(req.url ?? \"/\", \"/api/auth/workspace-session\") && Array.isArray(proxyRes.headers[\"set-cookie\"])) proxyRes.headers[\"set-cookie\"] = proxyRes.headers[\"set-cookie\"].map((c) => c.toLowerCase().includes(\"samesite=none\") && !c.toLowerCase().includes(\"; secure\") ? c.replace(/SameSite=None/gi, \"SameSite=Lax\") : c); });\n\n"; p.write_text(s if hook in s else s.replace(marker,hook+marker,1))'
           # A prior container left the persistent bind mount unwritable by the
           # image's non-root openhands user. Repair ownership from a short-lived
           # root container rather than requiring host sudo.
