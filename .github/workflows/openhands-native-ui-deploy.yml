@@ -37,6 +37,12 @@ jobs:
           docker run --rm --user root \
             -v "$HOME/.openhands:/state" -v "$HOME/workspace:/workspace" -v "$HOME/lifeos-projects:/projects" \
             --entrypoint /bin/sh "$image" -c 'chown -R openhands:openhands /state /workspace /projects'
+          # The host runner must create/update the checkout, so restore the
+          # top-level projects directory to the invoking host UID/GID after the
+          # stock-container normalization. The checkout itself is normalized
+          # for Canvas again below.
+          docker run --rm --user root -v "$HOME/lifeos-projects:/projects" \
+            --entrypoint /bin/sh "$image" -c "chown $(id -u):$(id -g) /projects"
           if [[ -L "$HOME/lifeos-projects/lifeos-platform" ]]; then
             rm "$HOME/lifeos-projects/lifeos-platform"
           fi
