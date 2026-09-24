@@ -1,0 +1,100 @@
+name: LifeOS Qwen3 30B MoE Routine Acceptance
+# Routine non-thinking acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-qwen3-30b-moe-routine-acceptance.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 90
+    steps:
+      - name: Accept Qwen3 30B MoE for routine work
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          cleanup() {
+            python3 - <<'PY' >/dev/null 2>&1 || true
+          import importlib.util, pathlib
+          p=pathlib.Path("governor/ai_broker.py")
+          s=importlib.util.spec_from_file_location("moe_cleanup",p)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+          m._publish_lease("released", required=False)
+          PY
+          }
+          trap cleanup EXIT
+          python3 - <<'PY'
+          import importlib.util, pathlib
+          p=pathlib.Path("governor/ai_broker.py")
+          s=importlib.util.spec_from_file_location("moe_wake",p)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+          m._publish_lease("active"); m._wake_local_ai()
+          PY
+          for attempt in $(seq 1 60); do
+            ssh -o BatchMode=yes -o ConnectTimeout=3 TowerPC.Tailor true >/dev/null 2>&1 && break
+            sleep 3
+          done
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          MODEL="qwen3:30b-a3b"
+          ollama pull "$MODEL"
+          ollama show "$MODEL" | head -80 || true
+          python3 - <<'PY'
+          import json,time,urllib.request,subprocess,sys
+          MODEL="qwen3:30b-a3b"
+          TOOL={"type":"function","function":{"name":"create_task","description":"Create an administration task","parameters":{"type":"object","properties":{"title":{"type":"string"},"due_date":{"type":"string"},"assignee":{"type":"string"}},"required":["title","due_date","assignee"]}}}
+          CASES=[
+            ("admin_extract","chat","Read this instruction and call create_task exactly once: On 4 November, Maya told Lewis to arrange the annual boiler inspection by 12 November.",[TOOL]),
+            ("admin_conflict","generate","Summarise the actionable facts only. Do not invent a deadline: The insurer acknowledged the claim. Jamie said they might call on Friday, but no appointment has been agreed.",None),
+            ("privacy","generate","A payroll spreadsheet contains names, salaries and bank details. A cloud service is faster. State in one sentence where processing must occur and whether cloud fallback is allowed.",None),
+            ("ha_yaml","generate","Return only YAML for a Home Assistant automation triggered when sensor.garage_temperature is above 30 for 10 minutes and sends notify.mobile_app_phone the message Garage temperature high. Include mode: single.",None),
+            ("python","generate","Return only Python code. Implement parse_ports(text) which accepts comma-separated integers and inclusive ranges like '22,80,8000-8002', returns sorted unique integers, and raises ValueError for malformed input or ports outside 1..65535.",None),
+            ("bash","generate","Return only a bash script. It must use set -Eeuo pipefail, accept one required directory argument, fail if it is not a directory, and print the five largest regular files recursively as byte-count then path. Handle spaces in filenames.",None),
+          ]
+          def post(path,payload,timeout=900):
+            b=json.dumps(payload).encode(); req=urllib.request.Request("http://127.0.0.1:11434/api/"+path,data=b,headers={"Content-Type":"application/json"})
+            t=time.monotonic()
+            with urllib.request.urlopen(req,timeout=timeout) as r:d=json.load(r)
+            return d,time.monotonic()-t
+          def tool_ok(d):
+            calls=(d.get("message") or {}).get("tool_calls") or []
+            if len(calls)!=1:return False
+            fn=calls[0].get("function") or {}; a=fn.get("arguments") or {}
+            return fn.get("name")=="create_task" and a.get("assignee")=="Lewis" and a.get("due_date")=="12 November" and "boiler" in str(a.get("title","")).lower()
+          passes=0
+          for name,kind,prompt,tools in CASES:
+            payload={"model":MODEL,"stream":False,"keep_alive":"30m","think":False,"options":{"num_ctx":8192,"temperature":0}}
+            if kind=="chat": payload.update({"messages":[{"role":"user","content":prompt}],"tools":tools})
+            else: payload["prompt"]=prompt
+            try:
+              d,wall=post(kind,payload)
+              response=(d.get("message") or {}).get("content","") if kind=="chat" else d.get("response","")
+              if name=="admin_extract": ok=tool_ok(d)
+              elif name=="admin_conflict": ok=("insurer" in response.lower() and "acknowledged" in response.lower() and "no appointment" in response.lower() and not any(x in response.lower() for x in ["deadline is friday","appointment on friday","appointment is friday"]))
+              elif name=="privacy": ok=(any(x in response.lower() for x in ["local","on-prem","on premises","on-premises"]) and any(x in response.lower() for x in ["not allowed","no cloud","must not","prohibited","strictly prohibited","cloud fallback is prohibited"]))
+              elif name=="ha_yaml": ok=("sensor.garage_temperature" in response and ("00:10:00" in response or "minutes: 10" in response) and "notify.mobile_app_phone" in response and "mode: single" in response)
+              elif name=="python": ok=("def parse_ports" in response and "65535" in response and "ValueError" in response)
+              else: ok=("set -Eeuo pipefail" in response and "find" in response and "sort" in response and "head" in response)
+              passes += int(ok)
+              ec=d.get("eval_count",0); ed=d.get("eval_duration",0); tps=round(ec/(ed/1e9),2) if ed else 0
+              print("CASE",name,"PASS" if ok else "FAIL","wall_s",round(wall,2),"eval_tps",tps,flush=True)
+              print("RESPONSE",name,json.dumps(response[:1200],ensure_ascii=False),flush=True)
+              if name=="admin_extract": print("TOOL_CALLS",json.dumps((d.get("message") or {}).get("tool_calls") or [],ensure_ascii=False),flush=True)
+              print("OLLAMA_PS",subprocess.run(["ollama","ps"],capture_output=True,text=True).stdout.replace("\n"," | "),flush=True)
+              smi=subprocess.run(["nvidia-smi","--query-gpu=temperature.gpu,memory.used,utilization.gpu","--format=csv,noheader,nounits"],capture_output=True,text=True).stdout.strip()
+              print("GPU",name,smi,flush=True)
+              if smi and int(smi.split(",")[0].strip())>=90: sys.exit("THERMAL_ABORT_GPU_GE_90C")
+            except Exception as e:
+              print("CASE_ERROR",name,type(e).__name__,str(e)[:300],flush=True)
+          print("MODEL_SCORE",f"{passes}/{len(CASES)}",flush=True)
+          if passes < 5: sys.exit("MODEL_ACCEPTANCE_FAILED")
+          print("QWEN3_30B_MOE_ROUTINE_ACCEPTANCE=PASS",flush=True)
+          PY
+          REMOTE
