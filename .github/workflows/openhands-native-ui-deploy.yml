@@ -15,7 +15,7 @@ jobs:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 15
     steps:
-      - name: Fresh stock Agent Canvas on Pi5
+      - name: Preserve and verify stock Agent Canvas on Pi5
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -25,16 +25,10 @@ jobs:
           docker version >/dev/null
           docker pull "$image"
 
-          # Do not import Engineer conversation/runtime state. Remove partial Pi
-          # migration state through the stock image so container-owned files do
-          # not require host sudo.
+          # Preserve accepted Pi state on all subsequent deploys.
           systemctl --user stop lifeos-openhands-tls.service lifeos-openhands-ui.service 2>/dev/null || true
           docker rm -f lifeos-agent-canvas lifeos-agent-canvas-tls 2>/dev/null || true
           mkdir -p "$HOME/.openhands" "$HOME/workspace" "$HOME/lifeos-projects" "$HOME/lifeos-canvas-tls"
-          docker run --rm --user root \
-            -v "$HOME:/host-home" --entrypoint /bin/sh "$image" \
-            -c 'rm -rf /host-home/.openhands /host-home/workspace /host-home/lifeos-projects; mkdir -p /host-home/.openhands /host-home/workspace /host-home/lifeos-projects'
-          test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
           docker run --rm --user root \
             -v "$HOME/.openhands:/state" -v "$HOME/workspace:/workspace" -v "$HOME/lifeos-projects:/projects" \
             --entrypoint /bin/sh "$image" -c 'chown -R openhands:openhands /state /workspace /projects'
@@ -98,17 +92,20 @@ jobs:
           printf '%s\n' "$mounts" | grep -qx '/projects'
           test "$(printf '%s\n' "$mounts" | wc -l)" -eq 3
 
-          # Fresh-install persistence smoke without using an LLM.
-          docker exec -u openhands lifeos-agent-canvas sh -c 'printf "%s" "Agent Canvas Pi5 persistence PASS" > /home/openhands/workspace/pi5-persistence.txt'
+          # Verify accepted Pi state survives a full service restart; do not invoke an LLM.
+          test "$(cat "$HOME/workspace/pi5-persistence.txt")" = "Agent Canvas Pi5 persistence PASS"
+          acceptance_file="$(find "$HOME/workspace/project" -name canvas-acceptance.txt -type f -print -quit)"
+          test -n "$acceptance_file"
+          test "$(cat "$acceptance_file")" = "Agent Canvas Pi5 functional acceptance PASS"
           systemctl --user restart lifeos-openhands-ui.service
           systemctl --user restart lifeos-openhands-tls.service
           for _ in $(seq 1 60); do curl -kfsS --connect-timeout 2 https://127.0.0.1:8443/canvas/ >/dev/null 2>&1 && break; sleep 2; done
-          test "$(cat "$HOME/workspace/pi5-persistence.txt")" = "Agent Canvas Pi5 persistence PASS"
+          test "$(cat "$acceptance_file")" = "Agent Canvas Pi5 functional acceptance PASS"
 
           # Engineer remains untouched/available as the accepted reference.
           ssh Engineer 'systemctl --user start lifeos-openhands-ui.service lifeos-openhands-tls.service || true' || true
 
-          echo "OPENHANDS_PI5_FRESH_INSTALL=PASS"
+          echo "OPENHANDS_PI5_PRESERVING_DEPLOY=PASS"
           echo "OPENHANDS_STOCK_UPSTREAM_DEPLOYMENT=PASS"
           echo "OPENHANDS_PI5_PERSISTENCE=PASS"
           echo "OPENHANDS_UI_URL=https://$pi_ip:8443/canvas/"
