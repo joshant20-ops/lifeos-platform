@@ -40,7 +40,7 @@ jobs:
           docker pull "$image"
 
           # Persist Canvas state, projects, and the OpenHands workspace on the Engineer VM.
-          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/workspace" "$HOME/.config/systemd/user"
+          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/workspace" "$HOME/.config/systemd/user" "$HOME/lifeos-canvas-tls"
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
 
           # Repair legacy bind-mount ownership once; no application files are patched.
@@ -64,9 +64,40 @@ jobs:
           WantedBy=default.target
           UNIT
 
+          # Put TLS in front of stock Canvas. OpenHands only emits a browser-usable
+          # workspace cookie (SameSite=None; Secure) for HTTPS/loopback.
+          # Use an Engineer-local self-signed certificate; clients must trust it once.
+          if ! test -s "$HOME/lifeos-canvas-tls/cert.pem" || ! test -s "$HOME/lifeos-canvas-tls/key.pem"; then
+            openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+              -keyout "$HOME/lifeos-canvas-tls/key.pem" \
+              -out "$HOME/lifeos-canvas-tls/cert.pem" \
+              -subj '/CN=192.168.0.204' \
+              -addext 'subjectAltName=IP:192.168.0.204'
+            chmod 600 "$HOME/lifeos-canvas-tls/key.pem"
+          fi
+
+          cat >"$HOME/.config/systemd/user/lifeos-openhands-tls.service" <<'UNIT'
+          [Unit]
+          Description=LifeOS Agent Canvas HTTPS ingress
+          After=network-online.target docker.service lifeos-openhands-ui.service
+          Wants=network-online.target lifeos-openhands-ui.service
+
+          [Service]
+          Type=simple
+          ExecStartPre=-/usr/bin/docker rm -f lifeos-agent-canvas-tls
+          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas-tls --network host -v %h/lifeos-canvas-tls:/tls:ro nginx:1.29-alpine sh -c 'printf "server { listen 8443 ssl; ssl_certificate /tls/cert.pem; ssl_certificate_key /tls/key.pem; location / { proxy_pass http://127.0.0.1:8000; proxy_http_version 1.1; proxy_set_header Host \\$host; proxy_set_header X-Forwarded-Host \\$host; proxy_set_header X-Forwarded-Proto https; proxy_set_header X-Forwarded-For \\$proxy_add_x_forwarded_for; proxy_set_header Upgrade \\$http_upgrade; proxy_set_header Connection \"upgrade\"; } }" > /etc/nginx/conf.d/default.conf && exec nginx -g "daemon off;"'
+          ExecStop=/usr/bin/docker stop -t 20 lifeos-agent-canvas-tls
+          Restart=on-failure
+          RestartSec=5
+
+          [Install]
+          WantedBy=default.target
+          UNIT
+
           systemctl --user daemon-reload
-          systemctl --user enable lifeos-openhands-ui.service
+          systemctl --user enable lifeos-openhands-ui.service lifeos-openhands-tls.service
           systemctl --user restart lifeos-openhands-ui.service
+          systemctl --user restart lifeos-openhands-tls.service
 
           for _ in $(seq 1 60); do
             curl -fsS --connect-timeout 2 http://127.0.0.1:8000/canvas/ >/dev/null 2>&1 && break
@@ -74,6 +105,9 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
           curl -fsS http://127.0.0.1:18000/alive >/dev/null
+          for _ in $(seq 1 30); do curl -kfsS --connect-timeout 2 https://127.0.0.1:8443/canvas/ >/dev/null 2>&1 && break; sleep 1; done
+          curl -kfsS https://127.0.0.1:8443/canvas/ >/dev/null
+          echo OPENHANDS_HTTPS_INGRESS=PASS
 
           # Remove superseded runtime-patch artifacts; stock container does not mount them.
           rm -rf "$HOME/lifeos-canvas-frontend" "$HOME/lifeos-canvas-overrides"
@@ -98,7 +132,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          code=$(curl -sS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 http://192.168.0.204:8000/canvas/)
+          code=$(curl -ksS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 https://192.168.0.204:8443/canvas/)
           [[ "$code" =~ ^(200|302|307)$ ]]
-          echo "OPENHANDS_UI_URL=http://192.168.0.204:8000/canvas/"
+          echo "OPENHANDS_UI_URL=https://192.168.0.204:8443/canvas/"
           echo "OPENHANDS_UI_HTTP=$code"
