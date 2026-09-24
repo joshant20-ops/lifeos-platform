@@ -55,11 +55,10 @@ jobs:
             -v "$HOME/lifeos-canvas-workspace:/workspace" \
             --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
             -c 'mkdir -p /workspace/project && chown -R openhands:openhands /workspace'
-          printf '%s\n' 'Agent Canvas functional acceptance PASS' > "$HOME/lifeos-canvas-workspace/project/canvas-acceptance.txt"
-          docker run --rm --user root \
+          docker run --rm --user openhands \
             -v "$HOME/lifeos-canvas-workspace:/workspace" \
             --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
-            -c 'chown -R openhands:openhands /workspace'
+            -c "printf '%s\\n' 'Agent Canvas functional acceptance PASS' > /workspace/project/canvas-acceptance.txt"
           # Keep the canonical repository available to Agent Canvas without granting
           # the container the whole Engineer home directory.
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
