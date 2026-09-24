@@ -34,7 +34,7 @@ jobs:
           test "$restored" = 'Agent Canvas functional acceptance PASS'
           echo ACCEPTANCE_FILE_RESTORED=PASS
           echo '=== WORKSPACE SESSION COOKIE ==='
-          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-server/api_key 2>/dev/null || true')"
+          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt 2>/dev/null || true')"
           if test -n "$api_key"; then
             curl -sS -D /tmp/ws_headers -o /tmp/ws_body -X POST \
               -H 'Host: 192.168.0.204:8000' \
@@ -44,6 +44,28 @@ jobs:
             grep -i '^set-cookie:' /tmp/ws_headers | sed -E 's/(oh_workspace_session_key=)[^;]+/\\1<redacted>/I' || true
           else
             echo 'API_KEY_PATH_NOT_FOUND'
+          fi
+          echo '=== CONVERSATION EFFECTIVE STATE ==='
+          if test -n "$api_key"; then
+            docker exec -e CID="$cid32" -e SESSION_API_KEY="$api_key" lifeos-agent-canvas python - <<'PY'
+          import json, os, urllib.request
+          cid=os.environ["CID"]; key=os.environ["SESSION_API_KEY"]
+          req=urllib.request.Request(f"http://127.0.0.1:18000/api/conversations/{cid}",headers={"X-Session-API-Key":key})
+          with urllib.request.urlopen(req,timeout=5) as r: d=json.load(r)
+          print(json.dumps({
+            "id":d.get("id"),
+            "conversation_url":d.get("conversation_url"),
+            "workspace":d.get("workspace"),
+            "execution_status":d.get("execution_status"),
+            "runtime_info":d.get("runtime_info"),
+          },indent=2,default=str))
+          PY
+            code=$(curl -sS -o /tmp/bash_body -w '%{http_code}' -X POST \
+              -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' \
+              --data '{"command":"pwd; find . -maxdepth 2 -type f -not -path \"*/.git/*\" -print","cwd":"/home/openhands/workspace/project/9a36222cb4d34973a8f54da325026c8c","timeout":10}' \
+              http://127.0.0.1:18000/api/bash/execute_bash_command || true)
+            echo "AUTHENTICATED_BASH_STATUS=$code"
+            python3 -c 'import json; d=json.load(open("/tmp/bash_body")); print("AUTHENTICATED_BASH_STDOUT="+repr(d.get("stdout"))); print("AUTHENTICATED_BASH_STDERR="+repr(d.get("stderr"))); print("AUTHENTICATED_BASH_EXIT="+repr(d.get("exit_code")))' || head -c 500 /tmp/bash_body
           fi
           echo '=== ROUTES WITHOUT AUTH ==='
           for cid in "$cid32" "$cid_uuid"; do
