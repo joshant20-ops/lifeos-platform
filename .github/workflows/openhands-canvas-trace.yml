@@ -33,21 +33,28 @@ jobs:
           restored="$(docker exec lifeos-agent-canvas cat "/home/openhands/workspace/project/$cid32/canvas-acceptance.txt")"
           test "$restored" = 'Agent Canvas functional acceptance PASS'
           echo ACCEPTANCE_FILE_RESTORED=PASS
-          echo '=== WORKSPACE SESSION COOKIE ==='
+          echo '=== WORKSPACE SESSION COOKIE THROUGH HTTPS INGRESS ==='
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt 2>/dev/null || true')"
           if test -n "$api_key"; then
-            curl -sS -D /tmp/ws_headers -o /tmp/ws_body -X POST \
-              -H 'Host: 192.168.0.204:8000' \
-              -H 'Origin: http://192.168.0.204:8000' \
+            curl -ksS -c /tmp/ws_cookies -D /tmp/ws_headers -o /tmp/ws_body -X POST \
+              -H 'Host: 192.168.0.204:8443' \
+              -H 'Origin: https://192.168.0.204:8443' \
               -H "X-Session-API-Key: $api_key" \
-              http://127.0.0.1:8000/api/auth/workspace-session >/dev/null
+              https://127.0.0.1:8443/api/auth/workspace-session >/dev/null
             grep -i '^set-cookie:' /tmp/ws_headers | sed -E 's/(oh_workspace_session_key=)[^;]+/\\1<redacted>/I' || true
+            code=$(curl -ksS -b /tmp/ws_cookies -o /tmp/ws_file -w '%{http_code}' \
+              -H 'Host: 192.168.0.204:8443' \
+              "https://127.0.0.1:8443/api/conversations/$cid32/workspace/canvas-acceptance.txt" || true)
+            echo "HTTPS_WORKSPACE_FILE_STATUS=$code"
+            test "$code" = 200
+            test "$(cat /tmp/ws_file)" = 'Agent Canvas functional acceptance PASS'
+            echo HTTPS_WORKSPACE_FILE_CONTENT=PASS
           else
             echo 'API_KEY_PATH_NOT_FOUND'
           fi
           echo '=== CONVERSATION EFFECTIVE STATE ==='
           if test -n "$api_key"; then
-            docker exec -e CID="$cid32" -e SESSION_API_KEY="$api_key" lifeos-agent-canvas python - <<'PY'
+            docker exec -i -e CID="$cid32" -e SESSION_API_KEY="$api_key" lifeos-agent-canvas python - <<'PY'
           import json, os, urllib.request
           cid=os.environ["CID"]; key=os.environ["SESSION_API_KEY"]
           req=urllib.request.Request(f"http://127.0.0.1:18000/api/conversations/{cid}",headers={"X-Session-API-Key":key})
@@ -74,5 +81,7 @@ jobs:
             head -c 300 /tmp/body | tr '\n' ' '; echo
           done
           echo '=== RECENT ROUTE LOGS ==='
-          docker logs --since 30m lifeos-agent-canvas 2>&1 | grep -Ei 'workspace|canvas-acceptance|401|404|422|500|workspace-session' | tail -200 || true
+          docker logs --since 30m lifeos-agent-canvas 2>&1 | grep -Ei 'workspace|canvas-acceptance|execute_bash_command|401|404|422|500|workspace-session' | tail -200 || true
+          echo '=== HTTPS INGRESS REQUESTS ==='
+          docker logs --since 30m lifeos-agent-canvas-tls 2>&1 | grep -Ei 'workspace|canvas-acceptance|execute_bash_command|401|404|422|500|workspace-session' | tail -200 || true
           REMOTE
