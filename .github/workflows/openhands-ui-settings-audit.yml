@@ -38,6 +38,14 @@ jobs:
           docker exec lifeos-agent-canvas sh -c 'grep -rhoE "conversationUrl:[A-Za-z_$][A-Za-z0-9_$]*,sessionApiKey:[A-Za-z_$][A-Za-z0-9_$]*" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | sort -u | head -30; grep -rhoE "new [A-Za-z_$][A-Za-z0-9_$]*\\([^)]*conversationUrl:[^)]{0,160}" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | head -30' || true
           echo CANVAS_RECENT_LOGS
           docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
+          echo SWITCH_LLM_PERSISTED_STATE
+          docker exec lifeos-agent-canvas sh -c 'grep -R -n -i -E "switch_llm|switch llm|model.?switch|llm.?switch" /home/openhands/.openhands 2>/dev/null | head -200 || true' || true
+          echo SWITCH_LLM_CONTAINER_REGISTRATION
+          docker exec lifeos-agent-canvas sh -c 'for root in /opt/agent-canvas /app /openhands /usr/local/lib/python*/site-packages; do test -e "$root" || continue; echo "ROOT=$root"; grep -R -n -i -E "switch_llm|switch llm" "$root" 2>/dev/null | head -200 || true; done' || true
+          echo SWITCH_LLM_CONFIG_SURFACE
+          docker exec lifeos-agent-canvas sh -c 'env | sort | grep -Ei "LLM|MODEL|AGENT|TOOL" | sed -E "s/(KEY|TOKEN|SECRET|PASSWORD)=.*/\\1=<redacted>/I" || true; find /home/openhands/.openhands /opt/agent-canvas -maxdepth 4 -type f \( -name "*.json" -o -name "*.toml" -o -name "*.yaml" -o -name "*.yml" \) -print 2>/dev/null | head -200' || true
+          echo SWITCH_LLM_RECENT_CONVERSATIONS
+          docker exec lifeos-agent-canvas sh -c 'grep -R -n -i -E "switch_llm|switch llm" /home/openhands/.openhands/agent-canvas/conversations 2>/dev/null | tail -200 || true' || true
           echo STATE_FILES
           find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 3 -type f -printf '%p\n' 2>/dev/null || true
 
