@@ -171,7 +171,8 @@ jobs:
           # then fetch the exact file through the same static workspace route
           # used by the Canvas file viewer. This must pass before deployment
           # may report Canvas healthy.
-          acceptance_cid="$(printf '%s' "$acceptance_workspace_id" | sed -E 's/^(.{8})(.{4})(.{4})(.{4})(.{12})$/\\1-\\2-\\3-\\4-\\5/')"
+          # Canvas/agent-server uses the persisted 32-hex conversation id verbatim.
+          acceptance_cid="$acceptance_workspace_id"
           cookie_jar="$(mktemp)"
           trap 'rm -f "$cookie_jar"' EXIT
           curl -fsS -c "$cookie_jar" -o /dev/null -X POST \
