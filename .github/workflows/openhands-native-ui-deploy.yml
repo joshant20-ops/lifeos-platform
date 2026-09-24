@@ -160,10 +160,12 @@ jobs:
             -v "$HOME/lifeos-canvas-workspace:/workspace" \
             --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
             -c "mkdir -p '/workspace/project/$acceptance_workspace_id' && chown -R openhands:openhands '/workspace/project/$acceptance_workspace_id'"
+          # Seed only when absent. Existing content must survive the restart/redeploy;
+          # otherwise the post-start browser-route assertion below fails.
           docker run --rm --user openhands \
             -v "$HOME/lifeos-canvas-workspace:/workspace" \
             --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
-            -c "printf '%s\\n' 'Agent Canvas functional acceptance PASS' > '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'"
+            -c "test -e '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt' || printf '%s\\n' 'Agent Canvas functional acceptance PASS' > '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'"
           acceptance_body="$(docker run --rm --user openhands -v "$HOME/lifeos-canvas-workspace:/workspace" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c "cat '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'")"
           test "$acceptance_body" = 'Agent Canvas functional acceptance PASS'
           echo OPENHANDS_ACCEPTANCE_WORKSPACE_FILE=PASS
