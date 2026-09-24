@@ -102,10 +102,23 @@ jobs:
           for _ in $(seq 1 60); do curl -kfsS --connect-timeout 2 https://127.0.0.1:8443/canvas/ >/dev/null 2>&1 && break; sleep 2; done
           test "$(cat "$acceptance_file")" = "Agent Canvas Pi5 functional acceptance PASS"
 
-          # Engineer remains untouched/available as the accepted reference.
-          ssh Engineer 'systemctl --user start lifeos-openhands-ui.service lifeos-openhands-tls.service || true' || true
+          # Engineer automation DB contains zero automations/runs/drafts/webhooks/events.
+          # No user task records exist to migrate. Retire the duplicate runtime while
+          # preserving its persisted state as rollback evidence.
+          ssh -o BatchMode=yes Engineer 'bash -s' <<'ENGINEER'
+          set -Eeuo pipefail
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          systemctl --user disable --now lifeos-openhands-tls.service lifeos-openhands-ui.service 2>/dev/null || true
+          docker rm -f lifeos-agent-canvas-tls lifeos-agent-canvas 2>/dev/null || true
+          ! systemctl --user is-active --quiet lifeos-openhands-ui.service
+          ! systemctl --user is-active --quiet lifeos-openhands-tls.service
+          test -d "$HOME/.openhands"
+          echo OPENHANDS_ENGINEER_RUNTIME_RETIRED=PASS
+          ENGINEER
 
           echo "OPENHANDS_PI5_PRESERVING_DEPLOY=PASS"
+          echo "OPENHANDS_ENGINEER_RUNTIME_RETIRED=PASS"
           echo "OPENHANDS_STOCK_UPSTREAM_DEPLOYMENT=PASS"
           echo "OPENHANDS_PI5_PERSISTENCE=PASS"
           echo "OPENHANDS_UI_URL=https://$pi_ip:8443/canvas/"
