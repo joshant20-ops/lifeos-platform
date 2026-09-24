@@ -29,6 +29,20 @@ jobs:
           systemctl --user stop lifeos-openhands-tls.service lifeos-openhands-ui.service 2>/dev/null || true
           docker rm -f lifeos-agent-canvas lifeos-agent-canvas-tls 2>/dev/null || true
           mkdir -p "$HOME/.openhands" "$HOME/workspace" "$HOME/lifeos-projects" "$HOME/lifeos-canvas-tls"
+
+          # Keep a real persistent LifeOS checkout inside /projects. Do not use the
+          # historical host symlink: its target is not valid inside Agent Canvas.
+          if [[ -L "$HOME/lifeos-projects/lifeos-platform" ]]; then
+            rm "$HOME/lifeos-projects/lifeos-platform"
+          fi
+          if [[ ! -d "$HOME/lifeos-projects/lifeos-platform/.git" ]]; then
+            rm -rf "$HOME/lifeos-projects/lifeos-platform"
+            git clone --no-local "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform"
+          fi
+          git -C "$HOME/lifeos-projects/lifeos-platform" remote set-url origin https://github.com/joshant20-ops/lifeos-platform.git
+          git -C "$HOME/lifeos-projects/lifeos-platform" fetch origin main
+          git -C "$HOME/lifeos-projects/lifeos-platform" checkout main
+          git -C "$HOME/lifeos-projects/lifeos-platform" reset --hard origin/main
           docker run --rm --user root \
             -v "$HOME/.openhands:/state" -v "$HOME/workspace:/workspace" -v "$HOME/lifeos-projects:/projects" \
             --entrypoint /bin/sh "$image" -c 'chown -R openhands:openhands /state /workspace /projects'
@@ -91,6 +105,10 @@ jobs:
           printf '%s\n' "$mounts" | grep -qx '/home/openhands/workspace'
           printf '%s\n' "$mounts" | grep -qx '/projects'
           test "$(printf '%s\n' "$mounts" | wc -l)" -eq 3
+          docker exec lifeos-agent-canvas test -d /projects/lifeos-platform/.git
+          docker exec lifeos-agent-canvas git -C /projects/lifeos-platform rev-parse --is-inside-work-tree | grep -qx true
+          docker exec lifeos-agent-canvas git -C /projects/lifeos-platform remote get-url origin | grep -qx 'https://github.com/joshant20-ops/lifeos-platform.git'
+          echo "OPENHANDS_LIFEOS_PERSISTENT_REPO=PASS"
 
           # Verify accepted Pi state survives a full service restart; do not invoke an LLM.
           test "$(cat "$HOME/workspace/pi5-persistence.txt")" = "Agent Canvas Pi5 persistence PASS"
