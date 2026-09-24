@@ -41,6 +41,21 @@ jobs:
           echo STATE_FILES
           find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 3 -type f -printf '%p\n' 2>/dev/null || true
 
+          echo ENGINEER_AUTOMATION_SCHEMA
+          ssh -o BatchMode=yes Engineer 'bash -s' <<'ENGINEER'
+          set -Eeuo pipefail
+          docker run --rm --user root -v "$HOME/.openhands:/src:ro" --entrypoint python ghcr.io/openhands/agent-canvas:1.23.0 -c '
+import sqlite3
+p="/src/automation/automations.db"
+db=sqlite3.connect("file:"+p+"?mode=ro",uri=True)
+for name,sql in db.execute("select name,sql from sqlite_master where type in (\"table\",\"index\") order by type,name"):
+ print(name, sql)
+for (name,) in db.execute("select name from sqlite_master where type=\"table\" and name not like \"sqlite_%\""):
+ try: print("COUNT",name,db.execute("select count(*) from \""+name+"\"").fetchone()[0])
+ except Exception as e: print("COUNT_ERROR",name,type(e).__name__)
+'
+          ENGINEER
+
           echo ENGINEER_MIGRATABLE_STATE_INVENTORY
           ssh -o BatchMode=yes Engineer 'bash -s' <<'ENGINEER'
           set -Eeuo pipefail
