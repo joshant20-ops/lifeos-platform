@@ -28,11 +28,10 @@ jobs:
           docker exec lifeos-agent-canvas sh -c "for p in /home/openhands/workspace/project/$cid32 /home/openhands/workspace/project/$cid_uuid /workspace/project/$cid32 /workspace/project/$cid_uuid; do echo PATH=\$p; if test -e \"\$p\"; then ls -la \"\$p\"; else echo MISSING; fi; done"
           echo '=== FIND FILE ==='
           docker exec lifeos-agent-canvas sh -c "find /home/openhands /workspace /projects -name canvas-acceptance.txt -print 2>/dev/null || true"
-          echo '=== RESTORE ACCEPTANCE FILE ==='
-          docker exec lifeos-agent-canvas sh -c "printf '%s\\n' 'Agent Canvas functional acceptance PASS' > '/home/openhands/workspace/project/$cid32/canvas-acceptance.txt'"
-          restored="$(docker exec lifeos-agent-canvas cat "/home/openhands/workspace/project/$cid32/canvas-acceptance.txt")"
-          test "$restored" = 'Agent Canvas functional acceptance PASS'
-          echo ACCEPTANCE_FILE_RESTORED=PASS
+          echo '=== VERIFY PRE-EXISTING ACCEPTANCE FILE ==='
+          existing="$(docker exec lifeos-agent-canvas cat "/home/openhands/workspace/project/$cid32/canvas-acceptance.txt")"
+          test "$existing" = 'Agent Canvas functional acceptance PASS'
+          echo ACCEPTANCE_FILE_PREEXISTING_EXACT=PASS
           echo '=== WORKSPACE SESSION COOKIE THROUGH HTTPS INGRESS ==='
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt 2>/dev/null || true')"
           if test -n "$api_key"; then
