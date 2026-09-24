@@ -39,12 +39,12 @@ jobs:
           docker version >/dev/null
           docker pull "$image"
 
-          # Upstream Docker contract: persist only Canvas state and projects.
-          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/.config/systemd/user"
+          # Persist Canvas state, projects, and the OpenHands workspace on the Engineer VM.
+          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/workspace" "$HOME/.config/systemd/user"
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
 
           # Repair legacy bind-mount ownership once; no application files are patched.
-          docker run --rm --user root             -v "$HOME/.openhands:/state"             -v "$HOME/lifeos-projects:/projects"             --entrypoint /bin/sh "$image"             -c 'chown -R openhands:openhands /state /projects'
+          docker run --rm --user root             -v "$HOME/.openhands:/state"             -v "$HOME/lifeos-projects:/projects"             -v "$HOME/workspace:/workspace"             --entrypoint /bin/sh "$image"             -c 'chown -R openhands:openhands /state /projects /workspace'
 
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
@@ -55,7 +55,7 @@ jobs:
           [Service]
           Type=simple
           ExecStartPre=-/usr/bin/docker rm -f lifeos-agent-canvas
-          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-projects:/projects ghcr.io/openhands/agent-canvas:1.23.0
+          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -v %h/.openhands:/home/openhands/.openhands -v %h/workspace:/home/openhands/workspace -v %h/lifeos-projects:/projects ghcr.io/openhands/agent-canvas:1.23.0
           ExecStop=/usr/bin/docker stop -t 20 lifeos-agent-canvas
           Restart=on-failure
           RestartSec=5
@@ -85,8 +85,9 @@ jobs:
           # Prove there are no LifeOS runtime overlays left.
           mounts="$(docker inspect lifeos-agent-canvas --format '{{range .Mounts}}{{println .Destination}}{{end}}')"
           printf '%s\n' "$mounts" | grep -qx '/home/openhands/.openhands'
+          printf '%s\n' "$mounts" | grep -qx '/home/openhands/workspace'
           printf '%s\n' "$mounts" | grep -qx '/projects'
-          test "$(printf '%s\n' "$mounts" | wc -l)" -eq 2
+          test "$(printf '%s\n' "$mounts" | wc -l)" -eq 3
           test ! -e "$HOME/lifeos-canvas-frontend"
           test ! -e "$HOME/lifeos-canvas-overrides"
           echo OPENHANDS_STOCK_UPSTREAM_DEPLOYMENT=PASS
