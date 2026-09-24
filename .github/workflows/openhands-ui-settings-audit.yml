@@ -34,6 +34,8 @@ jobs:
           fi
           echo CANVAS_WORKSPACE_DIAGNOSTICS
           docker exec lifeos-agent-canvas sh -c 'echo "PWD=$(pwd)"; echo "WORKSPACE_TREE"; find /home/openhands/workspace -maxdepth 4 -printf "%y %p\n" 2>/dev/null | head -200; echo "CONVERSATION_METADATA"; grep -R -n -E "9a36222cb4d34973a8f54da325026c8c|canvas-acceptance|workspace" /home/openhands/.openhands/agent-canvas/conversations 2>/dev/null | head -120 || true' || true
+          echo CANVAS_RUNTIME_BUNDLE_ANCHORS
+          docker exec lifeos-agent-canvas sh -c 'grep -rhoE "conversationUrl:[A-Za-z_$][A-Za-z0-9_$]*,sessionApiKey:[A-Za-z_$][A-Za-z0-9_$]*" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | sort -u | head -30; grep -rhoE "new [A-Za-z_$][A-Za-z0-9_$]*\\([^)]*conversationUrl:[^)]{0,160}" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | head -30' || true
           echo CANVAS_RECENT_LOGS
           docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
           echo STATE_FILES
