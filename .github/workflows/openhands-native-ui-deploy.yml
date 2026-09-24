@@ -63,18 +63,17 @@ jobs:
           # the container the whole Engineer home directory.
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
           docker pull ghcr.io/openhands/agent-canvas:1.23.0
-          # Agent Canvas 1.23.0 constructs local runtime clients without a
-          # conversationId. The SDK therefore uses host-level /api/bash routes,
-          # so the Files tab runs "find ." in the server cwd instead of the
-          # active conversation workspace. Patch the shipped frontend bundle
-          # to pass the active conversation id until upstream carries the fix.
+          # Agent Canvas 1.23.0 lists local files through an unscoped
+          # RemoteWorkspace. Patch the bundled SDK executeCommand path so a
+          # conversation workspace cwd is routed through the conversation
+          # runtime endpoint. This keeps the fix generic for every conversation.
           rm -rf "$HOME/lifeos-canvas-frontend"
           mkdir -p "$HOME/lifeos-canvas-frontend"
           docker rm -f lifeos-canvas-extract >/dev/null 2>&1 || true
           docker create --name lifeos-canvas-extract ghcr.io/openhands/agent-canvas:1.23.0 >/dev/null
           docker cp lifeos-canvas-extract:/opt/agent-canvas/frontend/. "$HOME/lifeos-canvas-frontend/"
           docker rm lifeos-canvas-extract >/dev/null
-          python3 -c 'from pathlib import Path; import os; root=Path(os.path.expanduser("~/lifeos-canvas-frontend/assets")); old="conversationUrl:r,sessionApiKey:i"; new="conversationUrl:r,sessionApiKey:i,conversationId:n"; files=[p for p in root.glob("*.js") if old in p.read_text() and "new RemoteWorkspace" in p.read_text()]; assert files, "Canvas conversation-scoping patch anchor not found"; [p.write_text(p.read_text().replace(old,new)) for p in files]; print("OPENHANDS_CANVAS_CONVERSATION_SCOPE_PATCH=PASS")'
+          python3 -c 'from pathlib import Path; import os; root=Path(os.path.expanduser("~/lifeos-canvas-frontend/assets")); old="this.client.post(\`/api/bash/execute_bash_command\`,r,{timeout:(n+10)*1e3})"; new="this.serverClient.post(t&&/\\/workspace\\/project\\/[0-9a-f]{32}$/.test(t)?\`/api/conversations/\${t.split(\`/\`).pop().replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/,\`$1-$2-$3-$4-$5\`)}/bash/execute_bash_command\`:\`/api/bash/execute_bash_command\`,r,{timeout:(n+10)*1e3})"; files=[p for p in root.glob("*.js") if old in p.read_text()]; assert files, "Canvas SDK executeCommand patch anchor not found"; [p.write_text(p.read_text().replace(old,new)) for p in files]; print("OPENHANDS_CANVAS_CONVERSATION_SCOPE_PATCH=PASS")'
           # Agent Canvas 1.23.0 emits SameSite=None without Secure on LAN HTTP.
           # Prepare a browser-facing proxy override before the service starts.
           mkdir -p "$HOME/lifeos-canvas-overrides"
