@@ -46,6 +46,19 @@ jobs:
           docker exec lifeos-agent-canvas sh -c 'env | sort | grep -Ei "LLM|MODEL|AGENT|TOOL" | sed -E "s/(KEY|TOKEN|SECRET|PASSWORD)=.*/\\1=<redacted>/I" || true; find /home/openhands/.openhands /opt/agent-canvas -maxdepth 4 -type f \( -name "*.json" -o -name "*.toml" -o -name "*.yaml" -o -name "*.yml" \) -print 2>/dev/null | head -200' || true
           echo SWITCH_LLM_RECENT_CONVERSATIONS
           docker exec lifeos-agent-canvas sh -c 'grep -R -n -i -E "switch_llm|switch llm" /home/openhands/.openhands/agent-canvas/conversations 2>/dev/null | tail -200 || true' || true
+          echo SWITCH_LLM_SUPPORTED_FIX
+          docker exec lifeos-agent-canvas python - <<'PY'
+import json
+from pathlib import Path
+import importlib.metadata as md
+print("agent_server_version=" + md.version("openhands-agent-server"))
+settings = json.loads(Path("/home/openhands/.openhands/settings.json").read_text())
+agent = settings.get("agent_settings") or settings.get("agent") or {}
+print("settings_enable_switch_llm_tool=" + repr(agent.get("enable_switch_llm_tool", "<absent>")))
+for p in sorted(Path("/home/openhands/.openhands/agent-profiles").glob("*.json")):
+    obj=json.loads(p.read_text())
+    print(f"profile={p.name} enable_switch_llm_tool={obj.get('enable_switch_llm_tool','<absent>')!r}")
+PY
           echo STATE_FILES
           find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 3 -type f -printf '%p\n' 2>/dev/null || true
 
