@@ -1,0 +1,45 @@
+name: Deploy OpenHands Local AI Gateway
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'governor/openhands_local_ai_gateway.py'
+      - '.github/workflows/openhands-local-ai-gateway-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Deploy gateway on Pi5
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+          mkdir -p "$HOME/.config/systemd/user"
+          cat >"$HOME/.config/systemd/user/lifeos-openhands-local-ai.service" <<'UNIT'
+          [Unit]
+          Description=LifeOS OpenHands local AI lifecycle gateway
+          After=network-online.target
+          Wants=network-online.target
+          [Service]
+          Type=simple
+          WorkingDirectory=/home/joshan/lifeos-platform
+          ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/governor/openhands_local_ai_gateway.py
+          Restart=on-failure
+          RestartSec=3
+          [Install]
+          WantedBy=default.target
+          UNIT
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          systemctl --user daemon-reload
+          systemctl --user enable --now lifeos-openhands-local-ai.service
+          for _ in $(seq 1 20); do curl -fsS http://127.0.0.1:18114/health && break; sleep 1; done
+          curl -fsS http://127.0.0.1:18114/v1/models | grep -q 'qwen2.5-coder:7b-instruct'
+          echo OPENHANDS_LOCAL_AI_GATEWAY_DEPLOY=PASS
