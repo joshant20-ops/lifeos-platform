@@ -39,5 +39,25 @@ jobs:
           echo CANVAS_RECENT_LOGS
           docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
           echo STATE_FILES
-          find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 2 -type f -printf '%p\n' 2>/dev/null || true
+          find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 3 -type f -printf '%p\n' 2>/dev/null || true
+
+          echo ENGINEER_PROFILE_SHAPE_REDACTED
+          ssh -o BatchMode=yes Engineer 'python3 - <<'"'"'PY'"'"'
+import json
+from pathlib import Path
+root=Path.home()/".openhands"
+sensitive=("key","token","secret","password","credential","auth")
+def clean(x):
+    if isinstance(x,dict):
+        return {k:("<redacted>" if any(s in k.lower() for s in sensitive) else clean(v)) for k,v in x.items()}
+    if isinstance(x,list): return [clean(v) for v in x]
+    return x
+for p in sorted(root.rglob("*.json")):
+    if not any(part in {"llm-profiles","agent-profiles"} or "profile" in part for part in p.parts):
+        continue
+    try: d=json.loads(p.read_text())
+    except Exception: continue
+    print("---",p.relative_to(Path.home()))
+    print(json.dumps(clean(d),sort_keys=True,indent=2)[:12000])
+PY'
           REMOTE
