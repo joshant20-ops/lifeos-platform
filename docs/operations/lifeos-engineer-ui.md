@@ -2,28 +2,21 @@
 
 ## Canonical state
 
-OpenHands is the engineering plane. Governor is the thin control plane for policy, privacy, hardware lifecycle, bounded publication and independent deterministic verification. LifeOS must not duplicate OpenHands planning, tool loops or completion semantics.
+OpenHands Agent Canvas now runs on the always-on Pi 5 control host (`Docker`, `192.168.0.203`). The accepted operator surface is `https://192.168.0.203:8443/canvas/`, using stock `ghcr.io/openhands/agent-canvas:1.23.0` with persistent state.
 
-The native OpenHands UI is exposed on the Engineer VM at `http://192.168.0.204:3000/`. It is the operator surface for OpenHands itself; it must use the same governed model boundary as headless engineering rather than direct browser credentials or a second model authority.
-
-Headless governed jobs execute on Engineer VM `192.168.0.204` through `governor/scripts/lifeos-openhands-sdk-runner.py`, using OpenHands' native CLI agent preset and native conversation completion.
-
-## Legacy retirement boundary
-
-The service at `http://192.168.0.203:8792/` is Open WebUI, not OpenHands. Its `governor/engineer_backend.py` compatibility API on Pi 5 `:8793` is legacy and must not be treated as an engineering implementation or canonical UI. Retire that pair once its remaining operator-only status/history functions are either available through the native OpenHands/Governor surfaces or proven unnecessary. Do not route new engineering work through it.
+Engineer VM `192.168.0.204` is no longer an OpenHands host. Its OpenHands services and runtime containers were retired after the Pi 5 functional and persistence acceptance passed.
 
 ## Endpoints
 
-- Native OpenHands UI: `http://192.168.0.204:3000/`
-- Engineer/OpenHands execution VM: `192.168.0.204`
-- Governor control/broker boundary: Pi 5 `:8790`
-- Legacy Open WebUI: `http://192.168.0.203:8792/`
-- Legacy compatibility backend: Pi 5 `:8793`
+- OpenHands Agent Canvas: `https://192.168.0.203:8443/canvas/`
+- OpenHands execution/control host: Pi 5 `192.168.0.203`
+- Tower local-AI host: `192.168.0.201`
+- Engineer VM: `192.168.0.204` (retained for other engineering workloads; not OpenHands)
 
 ## Invariants
 
-- Private/local-only engineering remains on Tower Ollama through the Governor broker; no cloud fallback.
-- OpenHands owns engineering planning, repository inspection, edits, tests, repair and completion.
-- Governor never manufactures pseudo-turns or interprets OpenHands internal action counts as completion.
-- Governor independently verifies the resulting canonical state before PASS/publication.
-- The browser UI must not require users to paste model credentials that bypass Governor.
+- Pi 5 hosts the OpenHands control plane but does not run private/local LLM inference.
+- Private/local-only AI runs on Tower and must not silently fall back to cloud.
+- OpenHands owns agent execution/planning/tool loops.
+- Model routing and Tower lifecycle are separate deterministic controls and must remain enforceable during Governor retirement.
+- OpenHands persisted state must survive service/container restart and deployment.
