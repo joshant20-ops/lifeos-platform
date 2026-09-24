@@ -76,7 +76,12 @@ jobs:
           curl -fsS http://127.0.0.1:18000/alive >/dev/null
 
           # Remove superseded runtime-patch artifacts; stock container does not mount them.
-          rm -rf "$HOME/lifeos-canvas-frontend" "$HOME/lifeos-canvas-overrides" "$HOME/lifeos-canvas-workspace"
+          rm -rf "$HOME/lifeos-canvas-frontend" "$HOME/lifeos-canvas-overrides"
+          # The retired workspace was owned by the container UID. Remove it via
+          # a one-shot root container (scripts-only policy; no host sudo).
+          if test -d "$HOME/lifeos-canvas-workspace"; then
+            docker run --rm --user root -v "$HOME:/host-home" --entrypoint /bin/sh "$image" -c 'rm -rf /host-home/lifeos-canvas-workspace'
+          fi
           # Prove there are no LifeOS runtime overlays left.
           mounts="$(docker inspect lifeos-agent-canvas --format '{{range .Mounts}}{{println .Destination}}{{end}}')"
           printf '%s\n' "$mounts" | grep -qx '/home/openhands/.openhands'
