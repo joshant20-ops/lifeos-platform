@@ -41,6 +41,17 @@ jobs:
           echo STATE_FILES
           find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 3 -type f -printf '%p\n' 2>/dev/null || true
 
+          echo ENGINEER_MIGRATABLE_STATE_INVENTORY
+          ssh -o BatchMode=yes Engineer 'bash -s' <<'ENGINEER'
+          set -Eeuo pipefail
+          docker run --rm --user root -v "$HOME/.openhands:/src:ro" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c '
+            find /src -maxdepth 5 -type f -printf "%P|%s bytes\n" 2>/dev/null |
+            grep -Ei "(automat|task|skill|setting|profile|preference|personal|prompt|instruction|mcp|integration)" |
+            grep -Evi "(conversation|workspace|session|token|secret|credential|api.?key|auth)" |
+            sort | head -400
+          '
+          ENGINEER
+
           echo ENGINEER_PROFILE_SHAPE_REDACTED
           ssh -o BatchMode=yes Engineer 'find "$HOME/.openhands" -type f \( -path "*/llm-profiles/*.json" -o -path "*/agent-profiles/*.json" \) -maxdepth 5 -print -exec sed -E "s/(api[_-]?key|token|secret|password|credential|auth)([\\" ]*[:=][\\" ]*)[^,\\\" ]+/\\1\\2<redacted>/Ig" {} \; 2>/dev/null || true'
           REMOTE
