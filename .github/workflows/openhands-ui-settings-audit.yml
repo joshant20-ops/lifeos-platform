@@ -32,6 +32,10 @@ jobs:
             pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
             tr '\0' '\n' <"/proc/$pid/environ" | grep -E '^(LLM_BASE_URL|LLM_API_KEY|LLM_MODEL)=' | sed -E 's/=.*/=<present>/'
           fi
+          echo CANVAS_WORKSPACE_DIAGNOSTICS
+          docker exec lifeos-agent-canvas sh -c 'echo "PWD=$(pwd)"; echo "WORKSPACE_TREE"; find /home/openhands/workspace -maxdepth 4 -printf "%y %p\n" 2>/dev/null | head -200; echo "CONVERSATION_METADATA"; grep -R -n -E "9a36222cb4d34973a8f54da325026c8c|canvas-acceptance|workspace" /home/openhands/.openhands/agent-canvas/conversations 2>/dev/null | head -120 || true' || true
+          echo CANVAS_RECENT_LOGS
+          docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
           echo STATE_FILES
           find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 2 -type f -printf '%p\n' 2>/dev/null || true
           REMOTE
