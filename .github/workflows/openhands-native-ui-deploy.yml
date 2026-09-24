@@ -32,6 +32,11 @@ jobs:
 
           # Keep a real persistent LifeOS checkout inside /projects. Do not use the
           # historical host symlink: its target is not valid inside Agent Canvas.
+          # The stock-image ownership normalization below runs first because an
+          # earlier Canvas chown may leave this host directory owned by its UID.
+          docker run --rm --user root \
+            -v "$HOME/.openhands:/state" -v "$HOME/workspace:/workspace" -v "$HOME/lifeos-projects:/projects" \
+            --entrypoint /bin/sh "$image" -c 'chown -R openhands:openhands /state /workspace /projects'
           if [[ -L "$HOME/lifeos-projects/lifeos-platform" ]]; then
             rm "$HOME/lifeos-projects/lifeos-platform"
           fi
