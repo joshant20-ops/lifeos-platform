@@ -31,6 +31,7 @@ redirect until they are migrated.
 | ID | Old location | Canonical location | Redirect | Consumers remaining | Moved | Last verified | State | Retirement evidence |
 |---|---|---|---|---|---|---|---|---|
 | MIG-001 | Engineer VM OpenHands / Agent Canvas runtime | Pi5 OpenHands / Agent Canvas at 192.168.0.203:8443 | Documentation pointer; do not recreate the retired Engineer runtime | Legacy Governor/Engineer references still being audited | 2026-09-24 | 2026-09-24 | active | Pending Governor-to-OpenHands consumer migration |
+| MIG-002 | Governor continuation job fields (`continuation_enabled`, `continuation_depth`, `continuation_reason`, `continuation_request`) and automatic child-job strategy loop | OpenHands engineering session | Governor `/jobs` returns `410 governor_continuation_retired` with `canonical_owner=openhands` when a legacy field is submitted | No repository producer found; live callers still require deployment-time audit | 2026-09-24 | 2026-09-24 | active | Repository-wide consumer search found only retired implementation and tests; retire rejection after live request audit confirms no external caller |
 
 ## Redirect requirements
 
