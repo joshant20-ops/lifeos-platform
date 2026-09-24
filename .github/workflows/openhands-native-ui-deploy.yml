@@ -176,7 +176,7 @@ jobs:
           # The browser static workspace route is FastAPI UUID-typed, so its
           # conversation segment must use canonical UUID spelling even though
           # the persisted workspace directory is the same ID without hyphens.
-          acceptance_cid="$(printf '%s' "$acceptance_workspace_id" | sed -E 's/^(.{8})(.{4})(.{4})(.{4})(.{12})$/\\1-\\2-\\3-\\4-\\5/')"
+          acceptance_cid="${acceptance_workspace_id:0:8}-${acceptance_workspace_id:8:4}-${acceptance_workspace_id:12:4}-${acceptance_workspace_id:16:4}-${acceptance_workspace_id:20:12}"
           cookie_jar="$(mktemp)"
           trap 'rm -f "$cookie_jar"' EXIT
           curl -fsS -c "$cookie_jar" -o /dev/null -X POST \
