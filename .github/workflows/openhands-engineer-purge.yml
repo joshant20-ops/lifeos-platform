@@ -2,6 +2,9 @@ name: Purge Retired Engineer OpenHands State
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/openhands-engineer-purge.yml']
 
 permissions:
   contents: read
