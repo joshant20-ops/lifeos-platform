@@ -15,7 +15,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
+          bash -s <<'REMOTE'
           set -Eeuo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
           echo VERSION
