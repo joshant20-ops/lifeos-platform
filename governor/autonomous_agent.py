@@ -68,11 +68,13 @@ MAX_RUNTIME_BYTES = 65536
 REPEATED_FAILURE_LIMIT = int(os.environ.get("LIFEOS_REPEATED_FAILURE_LIMIT", "3"))
 STUCK_JOB_MULTIPLIER = float(os.environ.get("LIFEOS_STUCK_JOB_MULTIPLIER", "3.0"))
 STUCK_JOB_MIN_SECONDS = int(os.environ.get("LIFEOS_STUCK_JOB_MIN_SECONDS", "300"))
-CONTINUATION_MAX_DEPTH = int(os.environ.get("LIFEOS_CONTINUATION_MAX_DEPTH", "4"))
 EXECUTION_LOCK = threading.Lock()
 ACTIVE_JOB_LOCK = threading.Lock()
 ACTIVE_JOB_ID = None
 DISPATCH_BUILDER_CLASSES = frozenset({"normal", "local"})
+RETIRED_CONTINUATION_FIELDS = frozenset({
+    "continuation_enabled", "continuation_depth", "continuation_reason", "continuation_request",
+})
 CANONICAL_ASSERTION_KINDS = frozenset({"tracked_text_contains", "tracked_path_absent"})
 DEPLOYMENT_OPERATIONS = frozenset({
     "deploy-engineer-runtime", "deploy-autonomous-agent",
@@ -154,12 +156,6 @@ PRIVATE_PATTERNS = (
     r"\bpersonal (?:invoice|invoices|email|emails|mailbox|inbox)\b",
     r"\b(?:email|emails|mailbox|inbox)\b.{0,40}\b(?:private|personal|messages?|content)\b",
 )
-
-PROTECTED_CONTINUATION_TERMS = (
-    "root broker", "allow-list", "allowlist", "job publisher", "job runner",
-    "checksum enforcement", "secret boundary", "protected deployment authority",
-)
-
 
 def now():
     return time.strftime("%Y-%m-%dT%H:%M:%S%z")
@@ -1053,56 +1049,20 @@ def _execute_job_locked(job):
         return finish_job(job, "acceptance_failed", job["blocked_reason"])
 
 
-def continuation_allowed(job):
-    if not bool(job.get("continuation_enabled")):
-        return False
-    if str(job.get("status") or "").upper() != "PASS":
-        return False
-    if int(job.get("continuation_depth") or 0) >= CONTINUATION_MAX_DEPTH:
-        return False
-    request = str(job.get("continuation_request") or "").strip()
-    if not request:
-        return False
-    if any(term in request.lower() for term in PROTECTED_CONTINUATION_TERMS):
-        return False
-    return True
-
-
-def spawn_continuation(job):
-    if not continuation_allowed(job):
-        return None
-    child = new_job(
-        str(job["continuation_request"]),
-        continuation_enabled=True,
-        continuation_parent=job["id"],
-        continuation_depth=int(job.get("continuation_depth") or 0) + 1,
-        continuation_reason=str(job.get("continuation_reason") or "explicit bounded continuation"),
-        privacy_domain=job.get("privacy_domain"),
-    )
-    parent = load(job["id"])
-    parent["continuation_child"] = child["id"]
-    save(parent)
-    threading.Thread(target=execute_job, args=(child,), daemon=True, name=f"job-{child['id']}").start()
-    return child
-
-
 def execute_job(job):
     global ACTIVE_JOB_ID
     with EXECUTION_LOCK:
         with ACTIVE_JOB_LOCK:
             ACTIVE_JOB_ID = job["id"]
         try:
-            final = _execute_job_locked(job)
+            _execute_job_locked(job)
         finally:
             with ACTIVE_JOB_LOCK:
                 ACTIVE_JOB_ID = None
-    spawn_continuation(final)
 
 
-def new_job(request, retry_of=None, continuation_enabled=False, continuation_parent=None,
-            continuation_depth=0, continuation_reason=None, continuation_request=None,
-            deploy_engineer_runtime=False, dispatch_builder=None, privacy_domain=None,
-            canonical_assertions=None):
+def new_job(request, retry_of=None, deploy_engineer_runtime=False, dispatch_builder=None,
+            privacy_domain=None, canonical_assertions=None):
     normalized_domain = None
     if privacy_domain:
         normalized_domain = re.sub(r"[\s_]+", "-", str(privacy_domain).strip().lower())
@@ -1122,8 +1082,6 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
         "stage_changed_at": now(),
         "iterations": [],
         "repeated_failure_count": 0,
-        "continuation_enabled": bool(continuation_enabled),
-        "continuation_depth": int(continuation_depth or 0),
         "deploy_engineer_runtime": bool(deploy_engineer_runtime),
         "mandatory_final_fields": extract_mandatory_final_fields(request),
         "canonical_assertions": validate_canonical_assertions(canonical_assertions),
@@ -1134,17 +1092,11 @@ def new_job(request, retry_of=None, continuation_enabled=False, continuation_par
         job["retry_of"] = retry_of
     if dispatch_builder in DISPATCH_BUILDER_CLASSES:
         job["dispatch_builder"] = dispatch_builder
-    if continuation_parent:
-        job["continuation_parent"] = continuation_parent
-    if continuation_reason:
-        job["continuation_reason"] = str(continuation_reason)[:1000]
-    if continuation_request:
-        job["continuation_request"] = str(continuation_request).strip()
     save(job)
     return job
 
 
-def create_job(request, async_mode=False, retry_of=None, **continuation):
+def create_job(request, async_mode=False, retry_of=None, **job_options):
     # Do not create an unbounded in-memory thread queue behind the single
     # execution lock.  A caller can retry once the active governed job ends.
     if async_mode:
@@ -1152,7 +1104,7 @@ def create_job(request, async_mode=False, retry_of=None, **continuation):
             active = ACTIVE_JOB_ID
         if active:
             return {"status": "BUSY", "active_job_id": active}
-    job = new_job(request, retry_of=retry_of, **continuation)
+    job = new_job(request, retry_of=retry_of, **job_options)
     if async_mode:
         threading.Thread(target=execute_job, args=(job,), daemon=True, name=f"job-{job['id']}").start()
         return job
@@ -1188,8 +1140,8 @@ class Handler(BaseHTTPRequestHandler):
                 "max_iterations": MAX_ITERATIONS,
                 "repeated_failure_limit": REPEATED_FAILURE_LIMIT,
                 "stuck_job_multiplier": STUCK_JOB_MULTIPLIER,
-                "max_continuation_depth": CONTINUATION_MAX_DEPTH,
-                "continuation_max_depth": CONTINUATION_MAX_DEPTH,
+                "engineering_session_owner": "openhands",
+                "governor_continuation": "retired",
                 "runtime_controller": "pi5",
                 "git_controller": "pi5",
                 "privacy_domain_policy": str(PRIVACY_DOMAIN_POLICY_PATH),
@@ -1204,8 +1156,6 @@ class Handler(BaseHTTPRequestHandler):
             keys = (
                 "id", "created_at", "started_at", "completed_at", "request", "privacy", "privacy_domain", "status",
                 "stage", "stage_changed_at", "stage_detail", "retry_of", "repeated_failure_count",
-                "continuation_enabled", "continuation_parent", "continuation_child",
-                "continuation_depth", "continuation_reason",
                 "dispatch_builder",
             )
             self.send_json(200, {"jobs": [{k: j.get(k) for k in keys if k in j} for j in jobs]})
@@ -1305,18 +1255,22 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(code, {"error": dispatch_error})
             return
         async_mode = urllib.parse.parse_qs(parsed.query).get("async", ["0"])[0].lower() in ("1", "true", "yes")
-        continuation = {
-            "continuation_enabled": bool(body.get("continuation_enabled", False)),
-            "continuation_depth": int(body.get("continuation_depth", 0) or 0),
-            "continuation_reason": body.get("continuation_reason"),
-            "continuation_request": body.get("continuation_request"),
+        retired_fields = sorted(RETIRED_CONTINUATION_FIELDS.intersection(body))
+        if retired_fields:
+            self.send_json(410, {
+                "error": "governor_continuation_retired",
+                "canonical_owner": "openhands",
+                "fields": retired_fields,
+            })
+            return
+        job_options = {
             "deploy_engineer_runtime": bool(body.get("deploy_engineer_runtime", False)),
             "dispatch_builder": dispatch_builder,
             "privacy_domain": body.get("privacy_domain"),
             "canonical_assertions": body.get("canonical_assertions"),
         }
         try:
-            job = create_job(request, async_mode=async_mode, **continuation)
+            job = create_job(request, async_mode=async_mode, **job_options)
         except ValueError as exc:
             self.send_json(400, {"error": str(exc)})
             return

@@ -3,43 +3,38 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 AGENT = (ROOT / "governor" / "autonomous_agent.py").read_text()
 POLICY = (ROOT / "docs" / "architecture" / "engineer-self-improvement.md").read_text().lower()
+REGISTRY = (ROOT / "docs" / "operations" / "migration-redirect-registry.md").read_text()
 
 
-def test_agent_has_bounded_immediate_continuation_support():
+def test_governor_continuation_strategy_loop_is_retired():
     for token in (
+        "def continuation_allowed(",
+        "def spawn_continuation(",
         "CONTINUATION_MAX_DEPTH",
-        "continuation_parent",
-        "continuation_depth",
-        "spawn_continuation",
-        "continuation_allowed",
+        "spawn_continuation(final)",
     ):
-        assert token in AGENT
+        assert token not in AGENT
 
 
-def test_continuation_is_event_driven_not_hourly_polling():
-    assert "threading.Thread" in AGENT
-    assert "spawn_continuation" in AGENT
-    assert "hourly" not in AGENT.lower()
-
-
-def test_continuation_stops_on_terminal_or_safety_conditions():
+def test_legacy_continuation_input_fails_closed_with_openhands_redirect():
     for token in (
-        "PASS",
-        "BLOCKED",
-        "repeated deterministic failure",
-        "CONTINUATION_MAX_DEPTH",
+        "RETIRED_CONTINUATION_FIELDS",
+        '"error": "governor_continuation_retired"',
+        '"canonical_owner": "openhands"',
+        "self.send_json(410",
     ):
         assert token in AGENT
 
 
-def test_continuation_is_explicitly_opt_in_and_auditable():
-    for token in (
-        "continuation_enabled",
-        "continuation_reason",
-        "continuation_parent",
-        "continuation_depth",
-    ):
-        assert token in AGENT
+def test_health_reports_canonical_engineering_owner():
+    assert '"engineering_session_owner": "openhands"' in AGENT
+    assert '"governor_continuation": "retired"' in AGENT
+
+
+def test_retired_interface_is_registered_for_consumer_migration():
+    assert "MIG-002" in REGISTRY
+    assert "Governor continuation job fields" in REGISTRY
+    assert "OpenHands engineering session" in REGISTRY
 
 
 def test_protected_boundary_remains_external():
