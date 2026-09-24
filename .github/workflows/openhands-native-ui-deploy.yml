@@ -167,6 +167,23 @@ jobs:
           acceptance_body="$(docker run --rm --user openhands -v "$HOME/lifeos-canvas-workspace:/workspace" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c "cat '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'")"
           test "$acceptance_body" = 'Agent Canvas functional acceptance PASS'
           echo OPENHANDS_ACCEPTANCE_WORKSPACE_FILE=PASS
+          # End-to-end acceptance: mint the same browser workspace cookie,
+          # then fetch the exact file through the same static workspace route
+          # used by the Canvas file viewer. This must pass before deployment
+          # may report Canvas healthy.
+          acceptance_cid="$(printf '%s' "$acceptance_workspace_id" | sed -E 's/^(.{8})(.{4})(.{4})(.{4})(.{12})$/\\1-\\2-\\3-\\4-\\5/')"
+          cookie_jar="$(mktemp)"
+          trap 'rm -f "$cookie_jar"' EXIT
+          curl -fsS -c "$cookie_jar" -o /dev/null -X POST \
+            -H "Host: 192.168.0.204:8000" \
+            -H "Origin: http://192.168.0.204:8000" \
+            -H "X-Session-API-Key: $api_key" \
+            http://127.0.0.1:8000/api/auth/workspace-session
+          browser_body="$(curl -fsS -b "$cookie_jar" \
+            -H "Host: 192.168.0.204:8000" \
+            "http://127.0.0.1:8000/api/conversations/$acceptance_cid/workspace/canvas-acceptance.txt")"
+          test "$browser_body" = 'Agent Canvas functional acceptance PASS'
+          echo OPENHANDS_CANVAS_BROWSER_FILE_ROUTE=PASS
           echo OPENHANDS_AGENT_CANVAS_1_23=PASS
           REMOTE
       - name: Verify UI from Pi LAN
