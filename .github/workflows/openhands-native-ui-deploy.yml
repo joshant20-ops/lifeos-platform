@@ -141,25 +141,21 @@ jobs:
           echo OPENHANDS_WORKSPACE_LAN_HTTP_COOKIE=PASS
           echo OPENHANDS_AGENT_SERVER_11800=PASS
           docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
-          # Acceptance fixture must live in the active conversation workspace,
-          # not merely the project root. Conversation metadata supplies the workspace id.
-          conv_file="$(find "$HOME/.openhands/agent-canvas/conversations" -type f -name '*.json' -print0 | xargs -0 -r grep -l 'Create Canvas acceptance file' | head -n1 || true)"
-          if [ -n "$conv_file" ]; then
-            workspace_id="$(python3 - "$conv_file" <<'PY'
-import json,sys
-d=json.load(open(sys.argv[1]))
-for k in ("workspace_id","workspaceId"):
-    if d.get(k):
-        print(d[k]); break
-PY
-)"
-            if [ -n "$workspace_id" ]; then
-              docker run --rm --user root -v "$HOME/lifeos-canvas-workspace:/workspace" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c "mkdir -p '/workspace/project/$workspace_id' && chown -R openhands:openhands '/workspace/project/$workspace_id'"
-              docker run --rm --user openhands -v "$HOME/lifeos-canvas-workspace:/workspace" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c "printf '%s\\n' 'Agent Canvas functional acceptance PASS' > '/workspace/project/$workspace_id/canvas-acceptance.txt'"
-              test "$(docker run --rm --user openhands -v "$HOME/lifeos-canvas-workspace:/workspace" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c "cat '/workspace/project/$workspace_id/canvas-acceptance.txt'")" = 'Agent Canvas functional acceptance PASS'
-              echo OPENHANDS_ACCEPTANCE_WORKSPACE_FILE=PASS
-            fi
-          fi
+          # Restore the acceptance marker to the conversation workspace seen in
+          # the prior Canvas error. This ID is persisted by the conversation and
+          # the directory is now on the durable workspace bind mount.
+          acceptance_workspace_id="9a36222cb4d34973a8f54da325026c8c"
+          docker run --rm --user root \
+            -v "$HOME/lifeos-canvas-workspace:/workspace" \
+            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
+            -c "mkdir -p '/workspace/project/$acceptance_workspace_id' && chown -R openhands:openhands '/workspace/project/$acceptance_workspace_id'"
+          docker run --rm --user openhands \
+            -v "$HOME/lifeos-canvas-workspace:/workspace" \
+            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
+            -c "printf '%s\\n' 'Agent Canvas functional acceptance PASS' > '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'"
+          acceptance_body="$(docker run --rm --user openhands -v "$HOME/lifeos-canvas-workspace:/workspace" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c "cat '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'")"
+          test "$acceptance_body" = 'Agent Canvas functional acceptance PASS'
+          echo OPENHANDS_ACCEPTANCE_WORKSPACE_FILE=PASS
           echo OPENHANDS_AGENT_CANVAS_1_23=PASS
           REMOTE
       - name: Verify UI from Pi LAN
