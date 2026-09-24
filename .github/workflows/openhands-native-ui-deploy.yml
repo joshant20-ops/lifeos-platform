@@ -54,38 +54,13 @@ jobs:
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
           docker pull ghcr.io/openhands/agent-canvas:1.23.0
           # Agent Canvas 1.23.0 emits SameSite=None without Secure on LAN HTTP.
-          # Chromium rejects that cookie, so the Files pane subsequently gets 401.
-          # Build a tiny derived image so the browser-facing proxy rewrites only that
-          # invalid workspace-session cookie to SameSite=Lax before Canvas starts.
-          cat > /tmp/lifeos-agent-canvas.Dockerfile <<'DOCKERFILE'
-          FROM ghcr.io/openhands/agent-canvas:1.23.0
-          USER root
-          RUN python - <<'PY'
-          from pathlib import Path
-          p=Path("/opt/agent-canvas/proxy-utils.mjs")
-          s=p.read_text()
-          anchor='  const proxy = createProxyServer({'
-          hook='''  proxy.on("proxyRes", (proxyRes, req) => {
-            if (!matchesPathPrefix(req.url ?? "/", "/api/auth/workspace-session")) return;
-            const cookies = proxyRes.headers["set-cookie"];
-            if (!Array.isArray(cookies)) return;
-            proxyRes.headers["set-cookie"] = cookies.map((cookie) => {
-              const lower = cookie.toLowerCase();
-              if (!lower.includes("samesite=none") || lower.includes("; secure")) return cookie;
-              return cookie.replace(/SameSite=None/gi, "SameSite=Lax");
-            });
-          });
-
-'''
-          marker='  const metrics = {'
-          if hook not in s:
-              if marker not in s: raise SystemExit("proxy hook anchor missing")
-              s=s.replace(marker, hook+marker, 1)
-              p.write_text(s)
-          PY
-          USER openhands
-          DOCKERFILE
-          docker build -t lifeos-agent-canvas:1.23.0-lan-cookie -f /tmp/lifeos-agent-canvas.Dockerfile /tmp
+          # Prepare a browser-facing proxy override before the service starts.
+          mkdir -p "$HOME/lifeos-canvas-overrides"
+          docker rm -f lifeos-canvas-extract >/dev/null 2>&1 || true
+          docker create --name lifeos-canvas-extract ghcr.io/openhands/agent-canvas:1.23.0 >/dev/null
+          docker cp lifeos-canvas-extract:/opt/agent-canvas/proxy-utils.mjs "$HOME/lifeos-canvas-overrides/proxy-utils.mjs"
+          docker rm lifeos-canvas-extract >/dev/null
+          python3 -c 'from pathlib import Path; p=Path.home()/"lifeos-canvas-overrides/proxy-utils.mjs"; s=p.read_text(); marker="  const metrics = {"; hook="  proxy.on(\"proxyRes\", (proxyRes, req) => { if (matchesPathPrefix(req.url ?? \"/\", \"/api/auth/workspace-session\") && Array.isArray(proxyRes.headers[\"set-cookie\"])) proxyRes.headers[\"set-cookie\"] = proxyRes.headers[\"set-cookie\"].map((c) => c.toLowerCase().includes(\"samesite=none\") && !c.toLowerCase().includes(\"; secure\") ? c.replace(/SameSite=None/gi, \"SameSite=Lax\") : c); });\\n\\n"; p.write_text(s if hook in s else s.replace(marker,hook+marker,1))'
           # A prior container left the persistent bind mount unwritable by the
           # image's non-root openhands user. Repair ownership from a short-lived
           # root container rather than requiring host sudo.
@@ -102,7 +77,7 @@ jobs:
           [Service]
           Type=simple
           ExecStartPre=-/usr/bin/docker rm -f lifeos-agent-canvas
-          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -e AGENT_SERVER_PORT=11800 -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-projects:/projects ghcr.io/openhands/agent-canvas:1.23.0
+          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -e AGENT_SERVER_PORT=11800 -v %h/lifeos-canvas-overrides/proxy-utils.mjs:/opt/agent-canvas/proxy-utils.mjs:ro -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-projects:/projects ghcr.io/openhands/agent-canvas:1.23.0
           ExecStop=/usr/bin/docker stop -t 20 lifeos-agent-canvas
           Restart=on-failure
           RestartSec=5
@@ -155,7 +130,7 @@ jobs:
           printf '%s\n' "$cookie_headers" | grep -qi '^set-cookie: oh_workspace_session_key=.*SameSite=Lax'
           echo OPENHANDS_WORKSPACE_LAN_HTTP_COOKIE=PASS
           echo OPENHANDS_AGENT_SERVER_11800=PASS
-          docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'lifeos-agent-canvas:1.23.0-lan-cookie'
+          docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
           echo OPENHANDS_AGENT_CANVAS_1_23=PASS
           REMOTE
       - name: Verify UI from Pi LAN
