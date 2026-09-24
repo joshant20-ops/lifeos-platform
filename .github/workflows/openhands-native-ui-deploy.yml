@@ -75,6 +75,8 @@ jobs:
           curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
           curl -fsS http://127.0.0.1:18000/alive >/dev/null
 
+          # Remove superseded runtime-patch artifacts; stock container does not mount them.
+          rm -rf "$HOME/lifeos-canvas-frontend" "$HOME/lifeos-canvas-overrides" "$HOME/lifeos-canvas-workspace"
           # Prove there are no LifeOS runtime overlays left.
           mounts="$(docker inspect lifeos-agent-canvas --format '{{range .Mounts}}{{println .Destination}}{{end}}')"
           printf '%s\n' "$mounts" | grep -qx '/home/openhands/.openhands'
