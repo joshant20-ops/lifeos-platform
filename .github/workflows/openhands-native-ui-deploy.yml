@@ -52,7 +52,8 @@ jobs:
           for d in .openhands workspace lifeos-projects; do
             rm -rf "$HOME/$d"
             mkdir -p "$HOME/$d"
-            ssh Engineer "tar -C \$HOME/$d -cf - ." | tar -C "$HOME/$d" -xf -
+            # Mounts are container-owned; read through a one-shot stock container.
+            ssh Engineer "docker run --rm --user root -v \$HOME/$d:/source:ro --entrypoint /bin/tar $image -C /source -cf - ." | tar -C "$HOME/$d" -xf -
           done
 
           test -f "$HOME/workspace/project/$cid32/canvas-acceptance.txt"
