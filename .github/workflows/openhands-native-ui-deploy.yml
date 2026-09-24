@@ -13,42 +13,63 @@ permissions:
 jobs:
   deploy:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - name: Ensure Engineer reachable
+      - name: Migrate accepted Canvas state from Engineer to Pi5
         shell: bash
         run: |
           set -Eeuo pipefail
-          if ! ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then
-            for helper in /usr/local/sbin/lifeos-engineer-wake /usr/local/sbin/lifeos-tower-wake /usr/local/bin/lifeos-engineer-wake; do
-              if test -x "$helper"; then "$helper"; break; fi
-            done
-            mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m ON || true
-            for _ in $(seq 1 90); do ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null && exit 0; sleep 5; done
-            exit 20
-          fi
-
-      - name: Deploy stock Agent Canvas
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
-          set -Eeuo pipefail
-          export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          [[ "$(hostname)" == "Docker" ]]
           image="ghcr.io/openhands/agent-canvas:1.23.0"
+          cid32="9a36222cb4d34973a8f54da325026c8c"
+          expected="Agent Canvas functional acceptance PASS"
+
           docker version >/dev/null
           docker pull "$image"
 
-          # Persist Canvas state, projects, and the OpenHands workspace on the Engineer VM.
-          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/workspace" "$HOME/.config/systemd/user" "$HOME/lifeos-canvas-tls"
-          test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
+          # Engineer remains the rollback source. Quiesce it before taking the
+          # final state copy so conversation metadata and workspace are coherent.
+          ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true
+          ssh Engineer 'systemctl --user stop lifeos-openhands-tls.service lifeos-openhands-ui.service || true'
 
-          # Repair legacy bind-mount ownership once; no application files are patched.
-          docker run --rm --user root             -v "$HOME/.openhands:/state"             -v "$HOME/lifeos-projects:/projects"             -v "$HOME/workspace:/workspace"             --entrypoint /bin/sh "$image"             -c 'chown -R openhands:openhands /state /projects /workspace'
+          rollback_source() {
+            ssh Engineer 'systemctl --user start lifeos-openhands-ui.service lifeos-openhands-tls.service || true' || true
+          }
+          trap 'rc=$?; if [ "$rc" -ne 0 ]; then rollback_source; fi; exit "$rc"' EXIT
+
+          # Keep any pre-existing Pi state as a timestamped rollback snapshot.
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          backup="$HOME/openhands-pre-migration-$stamp"
+          mkdir -p "$backup"
+          for d in .openhands workspace lifeos-projects lifeos-canvas-tls; do
+            if test -e "$HOME/$d"; then cp -a "$HOME/$d" "$backup/$d"; fi
+          done
+
+          mkdir -p "$HOME/.openhands" "$HOME/workspace" "$HOME/lifeos-projects" "$HOME/.config/systemd/user" "$HOME/lifeos-canvas-tls"
+
+          # Copy the accepted persistent state without sudo and without modifying
+          # the Engineer source. TLS is regenerated for the Pi identity below.
+          for d in .openhands workspace lifeos-projects; do
+            rm -rf "$HOME/$d"
+            mkdir -p "$HOME/$d"
+            ssh Engineer "tar -C \$HOME/$d -cf - ." | tar -C "$HOME/$d" -xf -
+          done
+
+          test -f "$HOME/workspace/project/$cid32/canvas-acceptance.txt"
+          test "$(cat "$HOME/workspace/project/$cid32/canvas-acceptance.txt")" = "$expected"
+
+          # Repair bind ownership using the stock image; no host sudo and no
+          # OpenHands application patching.
+          docker run --rm --user root \
+            -v "$HOME/.openhands:/state" \
+            -v "$HOME/lifeos-projects:/projects" \
+            -v "$HOME/workspace:/workspace" \
+            --entrypoint /bin/sh "$image" \
+            -c 'chown -R openhands:openhands /state /projects /workspace'
 
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
-          Description=LifeOS OpenHands Agent Canvas (stock upstream)
+          Description=LifeOS OpenHands Agent Canvas (stock upstream, Pi5)
           After=network-online.target docker.service
           Wants=network-online.target
 
@@ -64,21 +85,19 @@ jobs:
           WantedBy=default.target
           UNIT
 
-          # Put TLS in front of stock Canvas. OpenHands only emits a browser-usable
-          # workspace cookie (SameSite=None; Secure) for HTTPS/loopback.
-          # Use an Engineer-local self-signed certificate; clients must trust it once.
-          if ! test -s "$HOME/lifeos-canvas-tls/cert.pem" || ! test -s "$HOME/lifeos-canvas-tls/key.pem"; then
-            openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
-              -keyout "$HOME/lifeos-canvas-tls/key.pem" \
-              -out "$HOME/lifeos-canvas-tls/cert.pem" \
-              -subj '/CN=192.168.0.204' \
-              -addext 'subjectAltName=IP:192.168.0.204'
-            chmod 600 "$HOME/lifeos-canvas-tls/key.pem"
-          fi
+          pi_ip="$(hostname -I | tr ' ' '\n' | grep -E '^192\.168\.' | head -1)"
+          test -n "$pi_ip"
+          rm -f "$HOME/lifeos-canvas-tls/cert.pem" "$HOME/lifeos-canvas-tls/key.pem"
+          openssl req -x509 -newkey rsa:2048 -sha256 -nodes -days 825 \
+            -keyout "$HOME/lifeos-canvas-tls/key.pem" \
+            -out "$HOME/lifeos-canvas-tls/cert.pem" \
+            -subj "/CN=$pi_ip" \
+            -addext "subjectAltName=IP:$pi_ip"
+          chmod 600 "$HOME/lifeos-canvas-tls/key.pem"
 
           cat >"$HOME/.config/systemd/user/lifeos-openhands-tls.service" <<'UNIT'
           [Unit]
-          Description=LifeOS Agent Canvas HTTPS ingress
+          Description=LifeOS Agent Canvas HTTPS ingress (Pi5)
           After=network-online.target docker.service lifeos-openhands-ui.service
           Wants=network-online.target lifeos-openhands-ui.service
 
@@ -105,34 +124,37 @@ jobs:
           done
           curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
           curl -fsS http://127.0.0.1:18000/alive >/dev/null
-          for _ in $(seq 1 30); do curl -kfsS --connect-timeout 2 https://127.0.0.1:8443/canvas/ >/dev/null 2>&1 && break; sleep 1; done
           curl -kfsS https://127.0.0.1:8443/canvas/ >/dev/null
-          echo OPENHANDS_HTTPS_INGRESS=PASS
 
-          # Remove superseded runtime-patch artifacts; stock container does not mount them.
-          rm -rf "$HOME/lifeos-canvas-frontend" "$HOME/lifeos-canvas-overrides"
-          # The retired workspace was owned by the container UID. Remove it via
-          # a one-shot root container (scripts-only policy; no host sudo).
-          if test -d "$HOME/lifeos-canvas-workspace"; then
-            docker run --rm --user root -v "$HOME:/host-home" --entrypoint /bin/sh "$image" -c 'rm -rf /host-home/lifeos-canvas-workspace'
-          fi
-          # Prove there are no LifeOS runtime overlays left.
+          # Acceptance before restart.
+          test "$(cat "$HOME/workspace/project/$cid32/canvas-acceptance.txt")" = "$expected"
+          grep -R -q '"'"'"execution_status"'"'"'.*'"'"'"finished"'"'"' "$HOME/.openhands/agent-canvas/conversations" || {
+            echo "accepted conversation metadata no longer contains execution_status=finished"
+            exit 31
+          }
+
           mounts="$(docker inspect lifeos-agent-canvas --format '{{range .Mounts}}{{println .Destination}}{{end}}')"
           printf '%s\n' "$mounts" | grep -qx '/home/openhands/.openhands'
           printf '%s\n' "$mounts" | grep -qx '/home/openhands/workspace'
           printf '%s\n' "$mounts" | grep -qx '/projects'
           test "$(printf '%s\n' "$mounts" | wc -l)" -eq 3
-          test ! -e "$HOME/lifeos-canvas-frontend"
-          test ! -e "$HOME/lifeos-canvas-overrides"
-          echo OPENHANDS_STOCK_UPSTREAM_DEPLOYMENT=PASS
-          echo OPENHANDS_AGENT_CANVAS_UI=PASS
-          REMOTE
 
-      - name: Verify UI from Pi LAN
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          code=$(curl -ksS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 https://192.168.0.204:8443/canvas/)
-          [[ "$code" =~ ^(200|302|307)$ ]]
-          echo "OPENHANDS_UI_URL=https://192.168.0.204:8443/canvas/"
-          echo "OPENHANDS_UI_HTTP=$code"
+          # Required persistence proof: restart/redeploy once and re-check the
+          # accepted conversation's exact workspace content.
+          systemctl --user restart lifeos-openhands-ui.service
+          systemctl --user restart lifeos-openhands-tls.service
+          for _ in $(seq 1 60); do
+            curl -kfsS --connect-timeout 2 https://127.0.0.1:8443/canvas/ >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -kfsS https://127.0.0.1:8443/canvas/ >/dev/null
+          test "$(cat "$HOME/workspace/project/$cid32/canvas-acceptance.txt")" = "$expected"
+
+          echo "OPENHANDS_PI5_MIGRATION=PASS"
+          echo "OPENHANDS_STOCK_UPSTREAM_DEPLOYMENT=PASS"
+          echo "OPENHANDS_ACCEPTANCE_PERSISTENCE=PASS"
+          echo "OPENHANDS_UI_URL=https://$pi_ip:8443/canvas/"
+          echo "ENGINEER_OPENHANDS=DISABLED_ROLLBACK_RETAINED"
+
+          # Success: leave Engineer Canvas stopped but intact for rollback.
+          trap - EXIT
