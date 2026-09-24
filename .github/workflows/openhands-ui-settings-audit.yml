@@ -15,12 +15,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
+          bash -s <<'REMOTE'
           set -Eeuo pipefail
-          echo SERVICE_ENV
-          systemctl --user show lifeos-openhands-ui.service -p EnvironmentFiles -p ExecStart --no-pager
-          echo CONFIG_KEYS
-          sed -E 's/=.*/=<redacted>/' "$HOME/.config/lifeos/openhands-ui.env"
+          echo SERVICE
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          systemctl --user show lifeos-openhands-ui.service -p ExecStart --no-pager
           echo RUNTIME_MODE
           execstart=$(systemctl --user show lifeos-openhands-ui.service -p ExecStart --value)
           if grep -q 'ghcr.io/openhands/agent-canvas:1.23.0' <<<"$execstart"; then
