@@ -1,0 +1,109 @@
+name: LifeOS Local Model Benchmark
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-local-model-benchmark.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 90
+    steps:
+      - name: Wake Tower and benchmark candidate local models
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+
+          # Reuse the existing deterministic local-AI lease/WoL path. No cloud model is invoked.
+          python3 - <<'PY'
+          import importlib.util, pathlib
+          p=pathlib.Path("governor/ai_broker.py")
+          s=importlib.util.spec_from_file_location("bench_broker",p)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+          m._publish_lease("active")
+          m._wake_local_ai()
+          PY
+          trap 'python3 - <<'"'"'PY'"'"' >/dev/null 2>&1 || true
+          import importlib.util, pathlib
+          p=pathlib.Path("governor/ai_broker.py")
+          s=importlib.util.spec_from_file_location("bench_broker_cleanup",p)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+          m._publish_lease("released", required=False)
+          PY' EXIT
+
+          for attempt in $(seq 1 60); do
+            ssh -o BatchMode=yes -o ConnectTimeout=3 TowerPC.Tailor true >/dev/null 2>&1 && break
+            sleep 3
+          done
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          export PATH="$HOME/.local/bin:$PATH"
+          echo "=== PREFLIGHT ==="
+          hostname
+          ollama --version
+          nvidia-smi --query-gpu=name,memory.total,temperature.gpu --format=csv,noheader
+          free -h
+          df -h /
+          avail_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+          (( avail_kb >= 35*1024*1024 )) || { echo "BENCHMARK_BLOCKED=insufficient_root_disk"; exit 42; }
+
+          models=(
+            "qwen2.5-coder:7b-instruct"
+            "qwen3:8b"
+            "qwen3:14b"
+            "qwen3-coder:30b"
+          )
+          for model in "${models[@]:1}"; do
+            echo "=== PULL $model ==="
+            ollama pull "$model"
+          done
+
+          python3 - <<'PY'
+          import json, subprocess, time, urllib.request
+
+          models=["qwen2.5-coder:7b-instruct","qwen3:8b","qwen3:14b","qwen3-coder:30b"]
+          cases=[
+            ("admin_extract", "Return JSON only with keys person, task, deadline. Text: Priya asked Sam to renew the boiler service contract by 17 October."),
+            ("admin_summary", "Summarise this in no more than two sentences and preserve the action: The electricity supplier moved the maintenance window from Tuesday to Thursday. Alex must tell the household and update the calendar before Wednesday evening."),
+            ("reasoning", "A private document must remain local. A cloud model is faster. State the correct routing decision and the reason in one sentence."),
+            ("coding", "Return only a Python function named dedupe that preserves order while removing duplicate strings from a list."),
+          ]
+          def call(model,prompt):
+            body=json.dumps({"model":model,"prompt":prompt,"stream":False,"keep_alive":"0","options":{"num_ctx":8192,"temperature":0}}).encode()
+            req=urllib.request.Request("http://127.0.0.1:11434/api/generate",data=body,headers={"Content-Type":"application/json"})
+            t=time.monotonic()
+            with urllib.request.urlopen(req,timeout=600) as r: d=json.load(r)
+            wall=time.monotonic()-t
+            return {
+              "wall_s":round(wall,2),
+              "load_s":round(d.get("load_duration",0)/1e9,2),
+              "prompt_tps":round(d.get("prompt_eval_count",0)/(d.get("prompt_eval_duration",1)/1e9),2),
+              "eval_tps":round(d.get("eval_count",0)/(d.get("eval_duration",1)/1e9),2),
+              "response":str(d.get("response","")).strip()[:1200],
+            }
+          for model in models:
+            print("MODEL_BEGIN",model,flush=True)
+            for name,prompt in cases:
+              try:
+                r=call(model,prompt)
+                print("CASE",model,name,json.dumps(r,ensure_ascii=False),flush=True)
+                smi=subprocess.run(["nvidia-smi","--query-gpu=temperature.gpu,memory.used,utilization.gpu","--format=csv,noheader,nounits"],capture_output=True,text=True).stdout.strip()
+                print("GPU_AFTER",model,name,smi,flush=True)
+                if smi:
+                  temp=int(smi.split(",")[0].strip())
+                  if temp>=90: raise SystemExit("THERMAL_ABORT_GPU_GE_90C")
+              except Exception as e:
+                print("CASE_ERROR",model,name,type(e).__name__,str(e)[:300],flush=True)
+            print("MODEL_END",model,flush=True)
+          PY
+
+          echo "=== INSTALLED ==="
+          ollama list
+          echo "LOCAL_MODEL_BENCHMARK=PASS"
+          REMOTE
