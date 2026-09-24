@@ -49,7 +49,17 @@ jobs:
           print("OPENHANDS_DIRECT_OLLAMA_MODEL=PASS")
           PY
           mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/lifeos-canvas-workspace/project" "$HOME/.config/systemd/user"
+          # Canvas creates per-conversation workspaces beneath project/. The bind
+          # mount must remain writable by the container's openhands user.
+          docker run --rm --user root \
+            -v "$HOME/lifeos-canvas-workspace:/workspace" \
+            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
+            -c 'mkdir -p /workspace/project && chown -R openhands:openhands /workspace'
           printf '%s\n' 'Agent Canvas functional acceptance PASS' > "$HOME/lifeos-canvas-workspace/project/canvas-acceptance.txt"
+          docker run --rm --user root \
+            -v "$HOME/lifeos-canvas-workspace:/workspace" \
+            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
+            -c 'chown -R openhands:openhands /workspace'
           # Keep the canonical repository available to Agent Canvas without granting
           # the container the whole Engineer home directory.
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
