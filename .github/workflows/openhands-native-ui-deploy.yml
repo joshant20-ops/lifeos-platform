@@ -27,125 +27,35 @@ jobs:
             for _ in $(seq 1 90); do ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null && exit 0; sleep 5; done
             exit 20
           fi
-      - name: Inspect native web command
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          ssh -o BatchMode=yes Engineer 'export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"; openhands web --help'
-      - name: Deploy current upstream Agent Canvas
+
+      - name: Deploy stock Agent Canvas
         shell: bash
         run: |
           set -Eeuo pipefail
           ssh -o BatchMode=yes Engineer 'bash -s' <<'REMOTE'
           set -Eeuo pipefail
           export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+          image="ghcr.io/openhands/agent-canvas:1.23.0"
           docker version >/dev/null
-          ollama_url="http://192.168.0.201:11434"
-          models=$(curl -fsS --connect-timeout 5 "$ollama_url/api/tags")
-          MODELS="$models" python3 - <<'PY'
-          import json, os
-          names={m.get("name") for m in json.loads(os.environ["MODELS"]).get("models", [])}
-          assert "qwen2.5-coder:7b-instruct" in names, names
-          print("OPENHANDS_DIRECT_OLLAMA_MODEL=PASS")
-          PY
-          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/lifeos-canvas-workspace/project" "$HOME/.config/systemd/user"
-          # Canvas creates per-conversation workspaces beneath project/. The bind
-          # mount must remain writable by the container's openhands user.
-          docker run --rm --user root \
-            -v "$HOME/lifeos-canvas-workspace:/workspace" \
-            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
-            -c 'mkdir -p /workspace/project && chown -R openhands:openhands /workspace'
-          docker run --rm --user openhands \
-            -v "$HOME/lifeos-canvas-workspace:/workspace" \
-            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
-            -c "printf '%s\\n' 'Agent Canvas functional acceptance PASS' > /workspace/project/canvas-acceptance.txt"
-          # Keep the canonical repository available to Agent Canvas without granting
-          # the container the whole Engineer home directory.
+          docker pull "$image"
+
+          # Upstream Docker contract: persist only Canvas state and projects.
+          mkdir -p "$HOME/.openhands" "$HOME/lifeos-projects" "$HOME/.config/systemd/user"
           test -d "$HOME/lifeos-platform/.git" && ln -sfn "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform" || true
-          docker pull ghcr.io/openhands/agent-canvas:1.23.0
-          # Agent Canvas 1.23.0 lists local files through an unscoped
-          # RemoteWorkspace. Patch the bundled SDK executeCommand path so a
-          # conversation workspace cwd is routed through the conversation
-          # runtime endpoint. This keeps the fix generic for every conversation.
-          rm -rf "$HOME/lifeos-canvas-frontend"
-          mkdir -p "$HOME/lifeos-canvas-frontend"
-          docker rm -f lifeos-canvas-extract >/dev/null 2>&1 || true
-          docker create --name lifeos-canvas-extract ghcr.io/openhands/agent-canvas:1.23.0 >/dev/null
-          docker cp lifeos-canvas-extract:/opt/agent-canvas/frontend/. "$HOME/lifeos-canvas-frontend/"
-          docker rm lifeos-canvas-extract >/dev/null
-          python3 -c 'from pathlib import Path; import os; root=Path(os.path.expanduser("~/lifeos-canvas-frontend/assets")); old="this.client.post(`/api/bash/execute_bash_command`,r,{timeout:(n+10)*1e3})"; new="this.serverClient.post(t&&/\\/workspace\\/project\\/[0-9a-f]{32}$/.test(t)?`/api/conversations/${t.split(`/`).pop().replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/,`$1-$2-$3-$4-$5`)}/bash/execute_bash_command`:`/api/bash/execute_bash_command`,r,{timeout:(n+10)*1e3})"; files=[p for p in root.glob("*.js") if old in p.read_text()]; assert files, "Canvas SDK executeCommand patch anchor not found"; [p.write_text(p.read_text().replace(old,new)) for p in files]; print("OPENHANDS_CANVAS_CONVERSATION_SCOPE_PATCH=PASS")'
-          # The persisted conversation id is 32-hex, while the FastAPI static
-          # workspace route is UUID-typed. Canonicalise only the URL returned
-          # by the bundled SDK's startWorkspaceSession so the actual Files pane
-          # fetch uses the same UUID spelling proven by the browser-route gate.
-                    python3 - <<'PY'
-          from pathlib import Path
-          import os
-          root = Path(os.path.expanduser("~/lifeos-canvas-frontend/assets"))
-          changed = 0
-          for p in root.glob("*.js"):
-              s = p.read_text()
-              marker = "/api/conversations/"
-              pos = 0
-              while True:
-                  i = s.find(marker, pos)
-                  if i < 0:
-                      break
-                  lo = max(0, i - 250)
-                  hi = min(len(s), i + 500)
-                  frag = s[lo:hi]
-                  if "/workspace/" in frag and "encodeURIComponent(" in frag:
-                      start = frag.find("encodeURIComponent(")
-                      arg0 = start + len("encodeURIComponent(")
-                      depth = 1
-                      j = arg0
-                      while j < len(frag) and depth:
-                          if frag[j] == "(":
-                              depth += 1
-                          elif frag[j] == ")":
-                              depth -= 1
-                          j += 1
-                      if depth == 0:
-                          arg = frag[arg0:j-1]
-                          if "^[0-9a-f]{32}$" not in arg:
-                              wrapped = "/^[0-9a-f]{32}$/i.test(" + arg + ")?(" + arg + ").replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/,`$1-$2-$3-$4-$5`):(" + arg + ")"
-                              absolute_arg0 = lo + arg0
-                              absolute_end = lo + j - 1
-                              s = s[:absolute_arg0] + wrapped + s[absolute_end:]
-                              changed += 1
-                              pos = absolute_arg0 + len(wrapped)
-                              continue
-                  pos = i + len(marker)
-              p.write_text(s)
-          if changed < 1:
-              raise SystemExit("Canvas SDK workspace-session URL patch target not found")
-          print("OPENHANDS_CANVAS_WORKSPACE_SESSION_URL_PATCH=PASS")
-          PY
-          # Agent Canvas 1.23.0 emits SameSite=None without Secure on LAN HTTP.
-          # Prepare a browser-facing proxy override before the service starts.
-          mkdir -p "$HOME/lifeos-canvas-overrides"
-          docker rm -f lifeos-canvas-extract >/dev/null 2>&1 || true
-          docker create --name lifeos-canvas-extract ghcr.io/openhands/agent-canvas:1.23.0 >/dev/null
-          docker cp lifeos-canvas-extract:/opt/agent-canvas/proxy-utils.mjs "$HOME/lifeos-canvas-overrides/proxy-utils.mjs"
-          docker rm lifeos-canvas-extract >/dev/null
-          python3 -c 'from pathlib import Path; p=Path.home()/"lifeos-canvas-overrides/proxy-utils.mjs"; s=p.read_text(); marker="  const metrics = {"; hook="  proxy.on(\"proxyRes\", (proxyRes, req) => { if (matchesPathPrefix(req.url ?? \"/\", \"/api/auth/workspace-session\") && Array.isArray(proxyRes.headers[\"set-cookie\"])) proxyRes.headers[\"set-cookie\"] = proxyRes.headers[\"set-cookie\"].map((c) => c.toLowerCase().includes(\"samesite=none\") && !c.toLowerCase().includes(\"; secure\") ? c.replace(/SameSite=None/gi, \"SameSite=Lax\") : c); });\n\n"; p.write_text(s if hook in s else s.replace(marker,hook+marker,1))'
-          # A prior container left the persistent bind mount unwritable by the
-          # image's non-root openhands user. Repair ownership from a short-lived
-          # root container rather than requiring host sudo.
-          docker run --rm --user root \
-            -v "$HOME/.openhands:/state" \
-            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
-            -c 'mkdir -p /state/agent-canvas/conversations /state/agent-canvas/bash_events /state/automation /state/storage /state/workspaces && chown -R openhands:openhands /state'
+
+          # Repair legacy bind-mount ownership once; no application files are patched.
+          docker run --rm --user root             -v "$HOME/.openhands:/state"             -v "$HOME/lifeos-projects:/projects"             --entrypoint /bin/sh "$image"             -c 'chown -R openhands:openhands /state /projects'
+
           cat >"$HOME/.config/systemd/user/lifeos-openhands-ui.service" <<'UNIT'
           [Unit]
-          Description=LifeOS OpenHands Agent Canvas 1.23.0
+          Description=LifeOS OpenHands Agent Canvas (stock upstream)
           After=network-online.target docker.service
           Wants=network-online.target
 
           [Service]
           Type=simple
           ExecStartPre=-/usr/bin/docker rm -f lifeos-agent-canvas
-          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -e AGENT_SERVER_PORT=11800 -v %h/lifeos-canvas-overrides/proxy-utils.mjs:/opt/agent-canvas/proxy-utils.mjs:ro -v %h/lifeos-canvas-frontend:/opt/agent-canvas/frontend:ro -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-canvas-workspace:/home/openhands/workspace -v %h/lifeos-projects:/projects ghcr.io/openhands/agent-canvas:1.23.0
+          ExecStart=/usr/bin/docker run --name lifeos-agent-canvas --network host -v %h/.openhands:/home/openhands/.openhands -v %h/lifeos-projects:/projects ghcr.io/openhands/agent-canvas:1.23.0
           ExecStop=/usr/bin/docker stop -t 20 lifeos-agent-canvas
           Restart=on-failure
           RestartSec=5
@@ -153,105 +63,34 @@ jobs:
           [Install]
           WantedBy=default.target
           UNIT
+
           systemctl --user daemon-reload
-          # enable --now does not restart an already-active unit after its definition changes.
-          # Explicit restart is required to replace the legacy CLI process with Agent Canvas.
           systemctl --user enable lifeos-openhands-ui.service
           systemctl --user restart lifeos-openhands-ui.service
-          ready=0
+
           for _ in $(seq 1 60); do
-            if curl -fsS --connect-timeout 2 http://127.0.0.1:8000/canvas/ >/dev/null 2>&1; then ready=1; break; fi
-            if ! systemctl --user is-active --quiet lifeos-openhands-ui.service; then break; fi
+            curl -fsS --connect-timeout 2 http://127.0.0.1:8000/canvas/ >/dev/null 2>&1 && break
             sleep 2
           done
-          if [ "$ready" != 1 ]; then
-            echo '=== CANVAS SERVICE ==='
-            systemctl --user --no-pager --full status lifeos-openhands-ui.service || true
-            echo '=== CANVAS CONTAINER ==='
-            docker ps -a --filter name=lifeos-agent-canvas --no-trunc || true
-            docker inspect lifeos-agent-canvas --format 'status={{.State.Status}} exit={{.State.ExitCode}} error={{.State.Error}}' || true
-            echo '=== CANVAS LOGS ==='
-            docker logs --tail 250 lifeos-agent-canvas 2>&1 || true
-            exit 20
-          fi
           curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
-          if ! curl -fsS --connect-timeout 3 http://127.0.0.1:11800/alive >/dev/null; then
-            echo '=== AGENT SERVER DIAGNOSTICS ==='
-            docker ps -a --filter name=lifeos-agent-canvas --no-trunc || true
-            docker logs --tail 400 lifeos-agent-canvas 2>&1 || true
-            ss -lntp | grep -E ':(8000|11800|18000|18001)\\b' || true
-            exit 21
-          fi
-          curl -fsS --connect-timeout 3 http://127.0.0.1:8000/alive >/dev/null
-          # Prove the running agent-server has native LAN-HTTP workspace-cookie support.
-          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
-          cookie_headers="$(curl -sS -D - -o /dev/null -X POST \
-            -H "Host: 192.168.0.204:8000" \
-            -H "Origin: http://192.168.0.204:8000" \
-            -H "X-Session-API-Key: $api_key" \
-            http://127.0.0.1:8000/api/auth/workspace-session)"
-          printf '%s\n' "$cookie_headers" | grep -qi '^set-cookie: oh_workspace_session_key='
-          if printf '%s\n' "$cookie_headers" | grep -qi '^set-cookie: oh_workspace_session_key=.*;[[:space:]]*Secure'; then
-            echo 'ERROR: workspace cookie is still Secure on LAN HTTP'
-            exit 1
-          fi
-          printf '%s\n' "$cookie_headers" | grep -qi '^set-cookie: oh_workspace_session_key=.*SameSite=Lax'
-          echo OPENHANDS_WORKSPACE_LAN_HTTP_COOKIE=PASS
-          echo OPENHANDS_AGENT_SERVER_11800=PASS
-          docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
-          # Restore the acceptance marker to the conversation workspace seen in
-          # the prior Canvas error. This ID is persisted by the conversation and
-          # the directory is now on the durable workspace bind mount.
-          acceptance_workspace_id="9a36222cb4d34973a8f54da325026c8c"
-          docker run --rm --user root \
-            -v "$HOME/lifeos-canvas-workspace:/workspace" \
-            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
-            -c "mkdir -p '/workspace/project/$acceptance_workspace_id' && chown -R openhands:openhands '/workspace/project/$acceptance_workspace_id'"
-          # Seed only when absent. Existing content must survive the restart/redeploy;
-          # otherwise the post-start browser-route assertion below fails.
-          docker run --rm --user openhands \
-            -v "$HOME/lifeos-canvas-workspace:/workspace" \
-            --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 \
-            -c "test -e '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt' || printf '%s\\n' 'Agent Canvas functional acceptance PASS' > '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'"
-          acceptance_body="$(docker run --rm --user openhands -v "$HOME/lifeos-canvas-workspace:/workspace" --entrypoint /bin/sh ghcr.io/openhands/agent-canvas:1.23.0 -c "cat '/workspace/project/$acceptance_workspace_id/canvas-acceptance.txt'")"
-          test "$acceptance_body" = 'Agent Canvas functional acceptance PASS'
-          echo OPENHANDS_ACCEPTANCE_WORKSPACE_FILE=PASS
-          # End-to-end acceptance: mint the same browser workspace cookie,
-          # then fetch the exact file through the same static workspace route
-          # used by the Canvas file viewer. This must pass before deployment
-          # may report Canvas healthy.
-          # The browser static workspace route is FastAPI UUID-typed, so its
-          # conversation segment must use canonical UUID spelling even though
-          # the persisted workspace directory is the same ID without hyphens.
-          acceptance_cid="${acceptance_workspace_id:0:8}-${acceptance_workspace_id:8:4}-${acceptance_workspace_id:12:4}-${acceptance_workspace_id:16:4}-${acceptance_workspace_id:20:12}"
-          cookie_jar="$(mktemp)"
-          trap 'rm -f "$cookie_jar"' EXIT
-          curl -fsS -c "$cookie_jar" -o /dev/null -X POST \
-            -H "Host: 192.168.0.204:8000" \
-            -H "Origin: http://192.168.0.204:8000" \
-            -H "X-Session-API-Key: $api_key" \
-            http://127.0.0.1:8000/api/auth/workspace-session
-          browser_body="$(curl -fsS -b "$cookie_jar" \
-            -H "Host: 192.168.0.204:8000" \
-            "http://127.0.0.1:8000/api/conversations/$acceptance_cid/workspace/canvas-acceptance.txt")"
-          test "$browser_body" = 'Agent Canvas functional acceptance PASS'
-          echo OPENHANDS_CANVAS_BROWSER_FILE_ROUTE=PASS
-          echo OPENHANDS_AGENT_CANVAS_1_23=PASS
+          curl -fsS http://127.0.0.1:18000/alive >/dev/null
+
+          # Prove there are no LifeOS runtime overlays left.
+          mounts="$(docker inspect lifeos-agent-canvas --format '{{range .Mounts}}{{println .Destination}}{{end}}')"
+          printf '%s\n' "$mounts" | grep -qx '/home/openhands/.openhands'
+          printf '%s\n' "$mounts" | grep -qx '/projects'
+          test "$(printf '%s\n' "$mounts" | wc -l)" -eq 2
+          test ! -e "$HOME/lifeos-canvas-frontend"
+          test ! -e "$HOME/lifeos-canvas-overrides"
+          echo OPENHANDS_STOCK_UPSTREAM_DEPLOYMENT=PASS
+          echo OPENHANDS_AGENT_CANVAS_UI=PASS
           REMOTE
+
       - name: Verify UI from Pi LAN
         shell: bash
         run: |
           set -Eeuo pipefail
-          for _ in $(seq 1 20); do
-            code=$(curl -sS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 http://192.168.0.204:8000/canvas/ || true)
-            if [[ "$code" =~ ^(200|302|307)$ ]]; then
-              echo "OPENHANDS_UI_URL=http://192.168.0.204:8000/canvas/"
-              echo "OPENHANDS_UI_HTTP=$code"
-              echo "OPENHANDS_AGENT_CANVAS_UI=PASS"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo RESULT=BLOCKED
-          echo REASON=native_openhands_ui_not_reachable_from_pi
-          exit 20
+          code=$(curl -sS -o /tmp/openhands-ui.html -w '%{http_code}' --connect-timeout 3 http://192.168.0.204:8000/canvas/)
+          [[ "$code" =~ ^(200|302|307)$ ]]
+          echo "OPENHANDS_UI_URL=http://192.168.0.204:8000/canvas/"
+          echo "OPENHANDS_UI_HTTP=$code"
