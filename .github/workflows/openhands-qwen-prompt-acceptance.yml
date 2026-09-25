@@ -1,0 +1,64 @@
+name: OpenHands Qwen Prompt Tool Acceptance
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/openhands-qwen-prompt-acceptance.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Run stock Canvas Qwen acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          api_key="$(docker exec lifeos-agent-canvas cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
+          test -n "$api_key"
+          python3 - "$api_key" <<'PY'
+          import json,sys,time,uuid,urllib.request,urllib.error
+          key=sys.argv[1]; base="http://127.0.0.1:18000"
+          def req(path,method="GET",data=None,extra=None):
+              h={"X-Session-API-Key":key}
+              if extra: h.update(extra)
+              body=None if data is None else json.dumps(data).encode()
+              if body is not None: h["Content-Type"]="application/json"
+              q=urllib.request.Request(base+path,data=body,headers=h,method=method)
+              with urllib.request.urlopen(q,timeout=30) as r: return json.load(r) if r.length != 0 else None
+          settings=req("/api/settings",extra={"X-Expose-Secrets":"encrypted"})
+          agent=settings["agent_settings"]
+          assert agent["llm"]["native_tool_calling"] is False
+          assert agent["enable_switch_llm_tool"] is False
+          cid=uuid.uuid4().hex
+          wd=f"/home/openhands/workspace/project/{cid}"
+          prompt="Create a file named qwen-acceptance.txt in the current workspace containing exactly: Qwen2.5-Coder 7B functional acceptance PASS Then read the file back, verify its contents exactly match, and report completion. Do not change the configured model."
+          payload={"conversation_id":cid,"agent_settings":agent,"secrets_encrypted":True,"workspace":{"working_dir":wd},"initial_message":{"role":"user","content":[{"type":"text","text":prompt}],"run":True},"max_iterations":12,"stuck_detection":True}
+          out=req("/api/conversations","POST",payload)
+          actual=str(out["id"]).replace("-","")
+          print("ACCEPTANCE_CONVERSATION_ID="+actual)
+          deadline=time.time()+360
+          while time.time()<deadline:
+              d=req("/api/conversations/"+actual)
+              st=str(d.get("execution_status","")).lower()
+              if st in {"finished","stopped","paused","error","idle"}:
+                  break
+              time.sleep(3)
+          else: raise SystemExit("acceptance conversation timeout")
+          print("EXECUTION_STATUS="+st)
+          p=f"/home/openhands/workspace/project/{actual}/qwen-acceptance.txt"
+          import subprocess
+          got=subprocess.check_output(["docker","exec","lifeos-agent-canvas","cat",p],text=True).rstrip("\n")
+          assert got=="Qwen2.5-Coder 7B functional acceptance PASS",repr(got)
+          print("QWEN_ACCEPTANCE_FILE_EXACT=PASS")
+          state=json.loads(subprocess.check_output(["docker","exec","lifeos-agent-canvas","cat",f"/home/openhands/.openhands/agent-canvas/conversations/{actual}/base_state.json"],text=True))
+          llm=(state.get("agent") or {}).get("llm") or state.get("llm") or {}
+          assert llm.get("model")=="openai/qwen2.5-coder:7b-instruct",llm.get("model")
+          assert llm.get("native_tool_calling") is False
+          defaults=(state.get("agent") or {}).get("include_default_tools",state.get("include_default_tools",[]))
+          assert "SwitchLLMTool" not in defaults
+          print("QWEN_MODEL_STABLE=PASS")
+          print("QWEN_PROMPT_TOOL_CALLING_EFFECTIVE=PASS")
+          print("SWITCH_LLM_ABSENT=PASS")
+          PY
