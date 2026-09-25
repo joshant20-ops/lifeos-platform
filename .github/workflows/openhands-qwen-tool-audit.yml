@@ -15,8 +15,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          root="$HOME/.openhands/agent-canvas/conversations"
-          cid="$(find "$root" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %f\n' | sort -nr | head -1 | awk '{print $2}')"
+          cid="$(docker exec lifeos-agent-canvas python -c 'import pathlib; r=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations"); ds=[p for p in r.iterdir() if p.is_dir()]; print(max(ds,key=lambda p:p.stat().st_mtime).name)')"
           test -n "$cid"
           echo "CONVERSATION_ID=$cid"
           docker exec -e CID="$cid" lifeos-agent-canvas python -c 'import json,os,pathlib; p=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]/"base_state.json"; d=json.loads(p.read_text()); print("MODEL="+str(d.get("agent",{}).get("llm",{}).get("model",d.get("llm",{}).get("model","<unknown>")))); print("DEFAULT_TOOLS="+repr(d.get("agent",{}).get("include_default_tools",d.get("include_default_tools","<unknown>")))); print("WORKING_DIR="+str((d.get("workspace") or {}).get("working_dir","<unknown>")))'
