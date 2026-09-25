@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace.dashboard_house_status",
+  "data": {
+    "config": {
+      "title": "House Status",
+      "views": [
+        {
+          "title": "Domestic Energy Consumption",
+          "path": "domestic-energy-consumption",
+          "icon": "mdi:home-lightning-bolt",
+          "cards": [
+            {
+              "type": "markdown",
+              "content": "# Domestic Energy Consumption\nHouse running cost excluding home-battery and EV charging. Tariff/cost series are activated only after live entity discovery proves the required interval data."
+            },
+            {
+              "type": "custom:apexcharts-card",
+              "header": {
+                "show": true,
+                "title": "Domestic energy cost & tariff",
+                "show_states": true
+              },
+              "graph_span": "48h",
+              "span": {
+                "start": "day"
+              },
+              "now": {
+                "show": true,
+                "label": "Now"
+              },
+              "series": [
+                {
+                  "entity": "sensor.lifeos_energy_import_tariff",
+                  "name": "Electricity price",
+                  "type": "line",
+                  "unit": "p/kWh",
+                  "stroke_width": 2
+                }
+              ]
+            },
+            {
+              "type": "entities",
+              "title": "Live energy provenance",
+              "show_header_toggle": false,
+              "entities": [
+                "sensor.lifeos_energy_house_load",
+                "sensor.lifeos_grid_import_power",
+                "sensor.lifeos_grid_export_power",
+                "sensor.lifeos_battery_charge_power",
+                "sensor.lifeos_battery_discharge_power",
+                "sensor.lifeos_energy_import_tariff",
+                "sensor.lifeos_energy_export_tariff"
+              ]
+            },
+            {
+              "type": "markdown",
+              "content": "**Cost summaries pending live discovery.** They will only be enabled when half-hour energy/tariff entities are proven, so this dashboard never fabricates £ totals."
+            }
+          ]
+        },
+        {
+          "title": "Full Energy Flow",
+          "path": "full-energy-flow",
+          "icon": "mdi:transmission-tower",
+          "cards": [
+            {
+              "type": "markdown",
+              "content": "# Full Energy Flow\nGrid flow with house, battery and EV attribution. Tesla is charge-only; no V2G/V2H series."
+            },
+            {
+              "type": "custom:apexcharts-card",
+              "header": {
+                "show": true,
+                "title": "Energy flow & tariff",
+                "show_states": true
+              },
+              "graph_span": "48h",
+              "span": {
+                "start": "day"
+              },
+              "now": {
+                "show": true,
+                "label": "Now"
+              },
+              "series": [
+                {
+                  "entity": "sensor.lifeos_grid_import_power",
+                  "name": "Grid import",
+                  "type": "column",
+                  "group_by": {
+                    "func": "avg",
+                    "duration": "30min"
+                  }
+                },
+                {
+                  "entity": "sensor.lifeos_grid_export_power",
+                  "name": "Grid export",
+                  "type": "column",
+                  "transform": "return -Math.abs(x);",
+                  "group_by": {
+                    "func": "avg",
+                    "duration": "30min"
+                  }
+                },
+                {
+                  "entity": "sensor.lifeos_energy_import_tariff",
+                  "name": "Electricity price",
+                  "type": "line",
+                  "unit": "p/kWh",
+                  "stroke_width": 2
+                },
+                {
+                  "entity": "sensor.lifeos_energy_battery_soc",
+                  "name": "Battery SOC",
+                  "type": "line",
+                  "unit": "%",
+                  "stroke_width": 2
+                }
+              ]
+            },
+            {
+              "type": "entities",
+              "title": "Battery flow",
+              "show_header_toggle": false,
+              "entities": [
+                "sensor.lifeos_battery_charge_power",
+                "sensor.lifeos_battery_discharge_power",
+                "sensor.lifeos_energy_battery_soc"
+              ]
+            },
+            {
+              "type": "markdown",
+              "content": "**EV charging:** awaiting a proven live HA vehicle/charger energy entity. The dashboard will not invent one."
+            }
+          ]
+        },
+        {
+          "title": "Home Status",
+          "path": "home-status",
+          "icon": "mdi:home-eye",
+          "cards": [
+            {
+              "type": "markdown",
+              "content": "# Home Status\nRead-only whole-house state. Real upstairs/downstairs drawings will replace the simulated floorplan without changing state logic."
+            },
+            {
+              "type": "markdown",
+              "title": "House state",
+              "content": "🟢 **Floorplan framework ready**\n\nWindow/external-door overlays, TV states and room-centre light dots are intentionally withheld until their live HA entities are mapped. Unavailable devices will render neutral grey, never as a false red/green state."
+            },
+            {
+              "type": "picture-elements",
+              "image": "/local/house-status/placeholder-floorplan.svg",
+              "elements": [
+                {
+                  "type": "state-label",
+                  "entity": "sensor.lifeos_system_health",
+                  "style": {
+                    "left": "50%",
+                    "top": "8%",
+                    "font-size": "14px",
+                    "background": "rgba(0,0,0,.65)",
+                    "padding": "6px 10px",
+                    "border-radius": "8px"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "markdown",
+              "content": "## Leave House\nThe final button will turn off only explicitly mapped lights and TVs and will require confirmation. It is not enabled until those entities are proven, preventing accidental broad service calls."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
