@@ -113,7 +113,9 @@ jobs:
           PY
           REMOTE
 
-          ssh -o BatchMode=yes -o ConnectTimeout=8 Engineer 'bash -s' <<'REMOTE'
+          # Agent Canvas is intentionally hosted on the Pi control plane; only
+          # inference runs on Tower. Exercise the accepted stock container in
+          # the runner's local Docker context.
           set -Eeuo pipefail
           container=lifeos-agent-canvas
           api_key="$(docker exec "$container" cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
@@ -169,4 +171,3 @@ jobs:
           assert status=='finished',status
           print('GPT_OSS_20B_STOCK_OPENHANDS_ACCEPTANCE=PASS')
           PY
-          REMOTE
