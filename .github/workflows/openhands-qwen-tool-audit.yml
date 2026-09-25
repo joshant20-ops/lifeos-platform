@@ -19,6 +19,18 @@ jobs:
           test -n "$cid"
           echo "CONVERSATION_ID=$cid"
           docker exec -e CID="$cid" lifeos-agent-canvas python -c 'import json,os,pathlib; p=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]/"base_state.json"; d=json.loads(p.read_text()); print("MODEL="+str(d.get("agent",{}).get("llm",{}).get("model",d.get("llm",{}).get("model","<unknown>")))); print("DEFAULT_TOOLS="+repr(d.get("agent",{}).get("include_default_tools",d.get("include_default_tools","<unknown>")))); print("CONFIGURED_TOOLS="+repr(d.get("agent",{}).get("tools",d.get("tools","<unknown>")))); print("NATIVE_TOOL_CALLING="+repr((d.get("agent",{}).get("llm",{}) or d.get("llm",{})).get("native_tool_calling","<unknown>"))); print("WORKING_DIR="+str((d.get("workspace") or {}).get("working_dir","<unknown>")))'
+          echo VALIDATION_DIAGNOSTIC
+          docker exec -e CID="$cid" lifeos-agent-canvas python -c 'import json,os,pathlib; r=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]/"events"; vals=[]
+for p in sorted(r.glob("*.json")):
+ d=json.loads(p.read_text())
+ def walk(x):
+  if isinstance(x,dict):
+   for v in x.values(): walk(v)
+  elif isinstance(x,list):
+   for v in x: walk(v)
+  elif isinstance(x,str) and ("validat" in x.lower() or "security_risk" in x.lower()): vals.append(x[:500].replace("\\n"," "))
+ walk(d)
+print("\\n".join(dict.fromkeys(vals)))'
           echo ACCEPTANCE_FILE
           docker exec -e CID="$cid" lifeos-agent-canvas sh -c 'f="/home/openhands/workspace/project/$CID/qwen-acceptance.txt"; if test -f "$f"; then printf "exists=true bytes="; wc -c <"$f"; printf "content="; cat "$f"; echo; else echo "exists=false"; fi'
           echo SAFE_EVENT_SUMMARY
