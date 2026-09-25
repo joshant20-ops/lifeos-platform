@@ -46,6 +46,15 @@ jobs:
           docker exec lifeos-agent-canvas sh -c 'env | sort | grep -Ei "LLM|MODEL|AGENT|TOOL" | sed -E "s/(KEY|TOKEN|SECRET|PASSWORD)=.*/\\1=<redacted>/I" || true; find /home/openhands/.openhands /opt/agent-canvas -maxdepth 4 -type f \( -name "*.json" -o -name "*.toml" -o -name "*.yaml" -o -name "*.yml" \) -print 2>/dev/null | head -200' || true
           echo SWITCH_LLM_RECENT_CONVERSATIONS
           docker exec lifeos-agent-canvas sh -c 'grep -R -n -i -E "switch_llm|switch llm" /home/openhands/.openhands/agent-canvas/conversations 2>/dev/null | tail -200 || true' || true
+          echo DISABLE_SWITCH_LLM_TOOL
+          curl -fsS -X PATCH -H 'Content-Type: application/json' --data '{"agent_settings_diff":{"enable_switch_llm_tool":false}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-patch.json
+          python -c 'import json; o=json.load(open("/tmp/openhands-settings-patch.json")); assert o["agent_settings"]["enable_switch_llm_tool"] is False'
+          docker exec lifeos-agent-canvas python -c 'import json,pathlib; o=json.loads(pathlib.Path("/home/openhands/.openhands/settings.json").read_text()); a=o.get("agent_settings") or {}; assert a.get("enable_switch_llm_tool") is False; print("OPENHANDS_SWITCH_LLM_DISABLED=PASS")'
+          systemctl --user restart lifeos-openhands-ui.service
+          for _ in $(seq 1 60); do curl -fsS --connect-timeout 2 http://127.0.0.1:18000/alive >/dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:18000/alive >/dev/null
+          curl -fsS http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-after-restart.json
+          python -c 'import json; o=json.load(open("/tmp/openhands-settings-after-restart.json")); assert o["agent_settings"]["enable_switch_llm_tool"] is False; print("OPENHANDS_SWITCH_LLM_PERSISTENCE=PASS")'
           echo SWITCH_LLM_SUPPORTED_FIX
           docker exec lifeos-agent-canvas python -c 'import importlib.metadata as md; print("agent_server_version=" + md.version("openhands-agent-server"))'
           docker exec lifeos-agent-canvas python -c 'import json,pathlib; p=pathlib.Path("/home/openhands/.openhands/settings.json"); o=json.loads(p.read_text()); a=o.get("agent_settings") or o.get("agent") or {}; print("settings_enable_switch_llm_tool=" + repr(a.get("enable_switch_llm_tool","<absent>")))'
