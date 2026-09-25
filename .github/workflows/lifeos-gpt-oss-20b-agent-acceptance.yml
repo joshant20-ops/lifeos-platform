@@ -1,0 +1,84 @@
+name: LifeOS GPT-OSS 20B Agent Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-gpt-oss-20b-agent-acceptance.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 120
+    steps:
+      - name: Benchmark GPT-OSS 20B on Tower
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          cleanup() {
+            python3 - <<'PY' >/dev/null 2>&1 || true
+          import importlib.util,pathlib
+          p=pathlib.Path("governor/ai_broker.py"); s=importlib.util.spec_from_file_location("cleanup",p)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m._publish_lease("released",required=False)
+          PY
+          }
+          trap cleanup EXIT
+          python3 - <<'PY'
+          import importlib.util,pathlib
+          p=pathlib.Path("governor/ai_broker.py"); s=importlib.util.spec_from_file_location("wake",p)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m); m._publish_lease("active"); m._wake_local_ai()
+          PY
+          for attempt in $(seq 1 60); do ssh -o BatchMode=yes -o ConnectTimeout=3 TowerPC.Tailor true >/dev/null 2>&1 && break; sleep 3; done
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          MODEL="gpt-oss:20b"
+          echo "=== PREFLIGHT ==="
+          ollama --version
+          free -h
+          df -h /
+          nvidia-smi --query-gpu=name,memory.total,temperature.gpu --format=csv,noheader
+          avail_kb=$(df -Pk / | awk 'NR==2 {print $4}')
+          (( avail_kb >= 18*1024*1024 )) || { echo "BENCHMARK_BLOCKED=insufficient_root_disk"; exit 42; }
+          ollama pull "$MODEL"
+          python3 - <<'PY'
+          import json,time,urllib.request,subprocess,sys
+          MODEL="gpt-oss:20b"
+          TOOL={"type":"function","function":{"name":"create_task","description":"Create an administration task","parameters":{"type":"object","properties":{"title":{"type":"string"},"due_date":{"type":"string"},"assignee":{"type":"string"}},"required":["title","due_date","assignee"]}}}
+          cases=[
+            ("tool","Read this instruction and call create_task exactly once: Maya told Lewis to arrange the annual boiler inspection by 12 November."),
+            ("coding","Return only Python code implementing parse_ports(text) for comma-separated ports and inclusive ranges, sorted unique, rejecting malformed/out-of-range values with ValueError."),
+            ("privacy","A payroll spreadsheet contains names, salaries and bank details. A cloud model is faster. In one sentence state where a local-only LifeOS job must run and whether cloud fallback is allowed.")
+          ]
+          def chat(prompt,tools=None):
+            p={"model":MODEL,"messages":[{"role":"user","content":prompt}],"stream":False,"keep_alive":"30m","options":{"num_ctx":8192,"temperature":0}}
+            if tools:p["tools"]=tools
+            req=urllib.request.Request("http://127.0.0.1:11434/api/chat",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"})
+            t=time.monotonic()
+            with urllib.request.urlopen(req,timeout=1200) as r:d=json.load(r)
+            return d,time.monotonic()-t
+          passed=0
+          for name,prompt in cases:
+            try:
+              d,wall=chat(prompt,[TOOL] if name=="tool" else None); msg=d.get("message") or {}; out=msg.get("content",""); calls=msg.get("tool_calls") or []
+              if name=="tool":
+                ok=len(calls)==1 and (calls[0].get("function") or {}).get("name")=="create_task"
+              elif name=="coding": ok="def parse_ports" in out and "ValueError" in out
+              else: ok="local" in out.lower() and any(x in out.lower() for x in ["no cloud","not allowed","must not","prohibited"])
+              passed+=int(ok)
+              ed=d.get("eval_duration",0); ec=d.get("eval_count",0); tps=round(ec/(ed/1e9),2) if ed else 0
+              print("CASE",name,"PASS" if ok else "FAIL","wall_s",round(wall,2),"eval_tps",tps)
+              if name=="tool": print("TOOL_CALL_COUNT",len(calls),"TOOL_NAME",(calls[0].get("function") or {}).get("name") if calls else "NONE")
+              print("OLLAMA_PS",subprocess.run(["ollama","ps"],capture_output=True,text=True).stdout.replace("\n"," | "))
+              smi=subprocess.run(["nvidia-smi","--query-gpu=temperature.gpu,memory.used,utilization.gpu","--format=csv,noheader,nounits"],capture_output=True,text=True).stdout.strip()
+              print("GPU",smi)
+              if smi and int(smi.split(",")[0].strip())>=90: sys.exit("THERMAL_ABORT_GPU_GE_90C")
+            except Exception as e: print("CASE_ERROR",name,type(e).__name__,str(e)[:300])
+          print("MODEL_SCORE",f"{passed}/{len(cases)}")
+          if passed<3: sys.exit("GPT_OSS_20B_ACCEPTANCE_FAILED")
+          print("GPT_OSS_20B_DIRECT_ACCEPTANCE=PASS")
+          PY
+          REMOTE
