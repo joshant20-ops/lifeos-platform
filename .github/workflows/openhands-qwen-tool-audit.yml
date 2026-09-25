@@ -21,7 +21,6 @@ jobs:
           echo "CONVERSATION_ID=$cid"
           docker exec -e CID="$cid" lifeos-agent-canvas python -c 'import json,os,pathlib; p=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]/"base_state.json"; d=json.loads(p.read_text()); print("MODEL="+str(d.get("agent",{}).get("llm",{}).get("model",d.get("llm",{}).get("model","<unknown>")))); print("DEFAULT_TOOLS="+repr(d.get("agent",{}).get("include_default_tools",d.get("include_default_tools","<unknown>")))); print("WORKING_DIR="+str((d.get("workspace") or {}).get("working_dir","<unknown>")))'
           echo ACCEPTANCE_FILE
-          f="$HOME/workspace/project/$cid/qwen-acceptance.txt"
-          if test -f "$f"; then printf 'exists=true bytes='; wc -c <"$f"; printf 'content='; cat "$f"; echo; else echo 'exists=false'; fi
+          docker exec -e CID="$cid" lifeos-agent-canvas sh -c 'f="/home/openhands/workspace/project/$CID/qwen-acceptance.txt"; if test -f "$f"; then printf "exists=true bytes="; wc -c <"$f"; printf "content="; cat "$f"; echo; else echo "exists=false"; fi'
           echo SAFE_EVENT_SUMMARY
           docker exec -e CID="$cid" lifeos-agent-canvas python -c 'import json,os,pathlib; r=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]/"events"; ev=[json.loads(p.read_text()) for p in sorted(r.glob("*.json"))]; print("event_count="+str(len(ev))); print("switch_llm_count="+str(sum(int("switchllmtool" in json.dumps(d).lower() or "\"switch_llm\"" in json.dumps(d).lower()) for d in ev))); print("execute_command_count="+str(sum(int("execute_command" in json.dumps(d).lower()) for d in ev)))'
