@@ -121,7 +121,7 @@ jobs:
           api_key="$(docker exec "$container" cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
           python3 - "$api_key" <<'PY'
           import copy,json,subprocess,sys,time,urllib.request,uuid
-          key=sys.argv[1]; base='http://127.0.0.1:18000'; model='openai/gpt-oss:20b'
+          key=sys.argv[1]; base='http://127.0.0.1:18000'; model='openai/gpt-oss:20b'; container='lifeos-agent-canvas'
           def req(path,method='GET',data=None,timeout=60,extra=None):
             headers={'X-Session-API-Key':key}
             if extra: headers.update(extra)
