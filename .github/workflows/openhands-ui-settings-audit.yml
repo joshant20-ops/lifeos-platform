@@ -38,22 +38,17 @@ jobs:
           docker exec lifeos-agent-canvas sh -c 'grep -rhoE "conversationUrl:[A-Za-z_$][A-Za-z0-9_$]*,sessionApiKey:[A-Za-z_$][A-Za-z0-9_$]*" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | sort -u | head -30; grep -rhoE "new [A-Za-z_$][A-Za-z0-9_$]*\\([^)]*conversationUrl:[^)]{0,160}" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | head -30' || true
           echo CANVAS_RECENT_LOGS
           docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
-          echo SWITCH_LLM_PERSISTED_STATE
-          docker exec lifeos-agent-canvas sh -c 'grep -R -n -i -E "switch_llm|switch llm|model.?switch|llm.?switch" /home/openhands/.openhands 2>/dev/null | head -200 || true' || true
-          echo SWITCH_LLM_CONTAINER_REGISTRATION
-          docker exec lifeos-agent-canvas sh -c 'for root in /opt/agent-canvas /app /openhands /usr/local/lib/python*/site-packages; do test -e "$root" || continue; echo "ROOT=$root"; grep -R -n -i -E "switch_llm|switch llm" "$root" 2>/dev/null | head -200 || true; done' || true
-          echo SWITCH_LLM_CONFIG_SURFACE
-          docker exec lifeos-agent-canvas sh -c 'env | sort | grep -Ei "LLM|MODEL|AGENT|TOOL" | sed -E "s/(KEY|TOKEN|SECRET|PASSWORD)=.*/\\1=<redacted>/I" || true; find /home/openhands/.openhands /opt/agent-canvas -maxdepth 4 -type f \( -name "*.json" -o -name "*.toml" -o -name "*.yaml" -o -name "*.yml" \) -print 2>/dev/null | head -200' || true
-          echo SWITCH_LLM_RECENT_CONVERSATIONS
-          docker exec lifeos-agent-canvas sh -c 'grep -R -n -i -E "switch_llm|switch llm" /home/openhands/.openhands/agent-canvas/conversations 2>/dev/null | tail -200 || true' || true
           echo DISABLE_SWITCH_LLM_TOOL
-          curl -fsS -X PATCH -H 'Content-Type: application/json' --data '{"agent_settings_diff":{"enable_switch_llm_tool":false}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-patch.json
+          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
+          test -n "$api_key"
+          curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' --data '{"agent_settings_diff":{"enable_switch_llm_tool":false}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-patch.json
           python -c 'import json; o=json.load(open("/tmp/openhands-settings-patch.json")); assert o["agent_settings"]["enable_switch_llm_tool"] is False'
           docker exec lifeos-agent-canvas python -c 'import json,pathlib; o=json.loads(pathlib.Path("/home/openhands/.openhands/settings.json").read_text()); a=o.get("agent_settings") or {}; assert a.get("enable_switch_llm_tool") is False; print("OPENHANDS_SWITCH_LLM_DISABLED=PASS")'
           systemctl --user restart lifeos-openhands-ui.service
           for _ in $(seq 1 60); do curl -fsS --connect-timeout 2 http://127.0.0.1:18000/alive >/dev/null 2>&1 && break; sleep 2; done
           curl -fsS http://127.0.0.1:18000/alive >/dev/null
-          curl -fsS http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-after-restart.json
+          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
+          curl -fsS -H "X-Session-API-Key: $api_key" http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-after-restart.json
           python -c 'import json; o=json.load(open("/tmp/openhands-settings-after-restart.json")); assert o["agent_settings"]["enable_switch_llm_tool"] is False; print("OPENHANDS_SWITCH_LLM_PERSISTENCE=PASS")'
           echo SWITCH_LLM_SUPPORTED_FIX
           docker exec lifeos-agent-canvas python -c 'import importlib.metadata as md; print("agent_server_version=" + md.version("openhands-agent-server"))'
