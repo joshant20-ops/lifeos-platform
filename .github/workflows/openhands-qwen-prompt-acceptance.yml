@@ -34,7 +34,7 @@ jobs:
           cid=uuid.uuid4().hex
           wd=f"/home/openhands/workspace/project/{cid}"
           prompt="Create a file named qwen-acceptance.txt in the current workspace containing exactly: Qwen2.5-Coder 7B functional acceptance PASS Then read the file back, verify its contents exactly match, and report completion. Do not change the configured model."
-          payload={"conversation_id":cid,"agent_settings":agent,"secrets_encrypted":True,"workspace":{"working_dir":wd},"initial_message":{"role":"user","content":[{"type":"text","text":prompt}],"run":True},"max_iterations":12,"stuck_detection":True}
+          payload={"conversation_id":cid,"agent_settings":agent,"secrets_encrypted":True,"workspace":{"working_dir":wd},"security_analyzer":None,"initial_message":{"role":"user","content":[{"type":"text","text":prompt}],"run":True},"max_iterations":12,"stuck_detection":True}
           out=req("/api/conversations","POST",payload)
           actual=str(out["id"]).replace("-","")
           print("ACCEPTANCE_CONVERSATION_ID="+actual)
