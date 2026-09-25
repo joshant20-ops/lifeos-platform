@@ -44,6 +44,9 @@ jobs:
           curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' --data '{"agent_settings_diff":{"llm":{"native_tool_calling":false}}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-qwen-tool-patch.json
           python -c 'import json; o=json.load(open("/tmp/openhands-qwen-tool-patch.json")); assert o["agent_settings"]["llm"]["native_tool_calling"] is False; print("OPENHANDS_QWEN_PROMPT_TOOL_CALLING=PASS")'
           docker exec lifeos-agent-canvas python -c 'import json,pathlib; o=json.loads(pathlib.Path("/home/openhands/.openhands/settings.json").read_text()); assert o["agent_settings"]["llm"]["native_tool_calling"] is False'
+          echo CONFIGURE_QWEN_PROMPT_TOOL_SECURITY
+          curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' --data '{"conversation_settings_diff":{"confirmation_mode":false,"security_analyzer":null}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-qwen-security-patch.json
+          python -c 'import json; o=json.load(open("/tmp/openhands-qwen-security-patch.json")); c=o["conversation_settings"]; assert c["confirmation_mode"] is False; assert c["security_analyzer"] is None; print("OPENHANDS_QWEN_SECURITY_ANALYZER_DISABLED=PASS")'
           echo DISABLE_SWITCH_LLM_TOOL
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
           test -n "$api_key"
@@ -55,7 +58,7 @@ jobs:
           curl -fsS http://127.0.0.1:18000/alive >/dev/null
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
           curl -fsS -H "X-Session-API-Key: $api_key" http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-after-restart.json
-          python -c 'import json; o=json.load(open("/tmp/openhands-settings-after-restart.json")); assert o["agent_settings"]["enable_switch_llm_tool"] is False; assert o["agent_settings"]["llm"]["native_tool_calling"] is False; print("OPENHANDS_SWITCH_LLM_PERSISTENCE=PASS"); print("OPENHANDS_QWEN_PROMPT_TOOL_CALLING_PERSISTENCE=PASS")'
+          python -c 'import json; o=json.load(open("/tmp/openhands-settings-after-restart.json")); assert o["agent_settings"]["enable_switch_llm_tool"] is False; assert o["agent_settings"]["llm"]["native_tool_calling"] is False; assert o["conversation_settings"]["security_analyzer"] is None; print("OPENHANDS_SWITCH_LLM_PERSISTENCE=PASS"); print("OPENHANDS_QWEN_PROMPT_TOOL_CALLING_PERSISTENCE=PASS"); print("OPENHANDS_QWEN_SECURITY_ANALYZER_PERSISTENCE=PASS")'
           echo SWITCH_LLM_SUPPORTED_FIX
           docker exec lifeos-agent-canvas python -c 'import importlib.metadata as md; print("agent_server_version=" + md.version("openhands-agent-server"))'
           docker exec lifeos-agent-canvas python -c 'import json,pathlib; p=pathlib.Path("/home/openhands/.openhands/settings.json"); o=json.loads(p.read_text()); a=o.get("agent_settings") or o.get("agent") or {}; print("settings_enable_switch_llm_tool=" + repr(a.get("enable_switch_llm_tool","<absent>")))'
