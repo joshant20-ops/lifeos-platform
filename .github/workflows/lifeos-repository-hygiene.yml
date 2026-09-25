@@ -1,0 +1,181 @@
+name: LifeOS Repository Hygiene
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "15 4 * * 0"
+
+permissions:
+  actions: read
+  contents: read
+  issues: read
+  pull-requests: read
+
+concurrency:
+  group: lifeos-repository-hygiene
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build bounded hygiene report
+        id: report
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const now = Date.now();
+            const cutoffMs = 14 * 24 * 60 * 60 * 1000;
+
+            const repository = await github.rest.repos.get({ owner, repo });
+            const branches = await github.paginate(
+              github.rest.repos.listBranches,
+              { owner, repo, per_page: 100 }
+            );
+            const openPulls = await github.paginate(
+              github.rest.pulls.list,
+              { owner, repo, state: "open", per_page: 100 }
+            );
+            const closedPulls = await github.paginate(
+              github.rest.pulls.list,
+              {
+                owner,
+                repo,
+                state: "closed",
+                sort: "updated",
+                direction: "desc",
+                per_page: 100
+              }
+            );
+            const issuesAndPulls = await github.paginate(
+              github.rest.issues.listForRepo,
+              { owner, repo, state: "open", per_page: 100 }
+            );
+            const workflows = await github.paginate(
+              github.rest.actions.listRepoWorkflows,
+              { owner, repo, per_page: 100 }
+            );
+            const recentRuns = await github.rest.actions.listWorkflowRunsForRepo({
+              owner,
+              repo,
+              per_page: 100
+            });
+            const releases = await github.rest.repos.listReleases({
+              owner,
+              repo,
+              per_page: 20
+            });
+
+            const openHeads = new Set(openPulls.map((pr) => pr.head.ref));
+            const mergedByHead = new Map();
+            for (const pr of closedPulls) {
+              if (!pr.merged_at) continue;
+              const previous = mergedByHead.get(pr.head.ref);
+              if (!previous || Date.parse(pr.merged_at) > Date.parse(previous.merged_at)) {
+                mergedByHead.set(pr.head.ref, {
+                  number: pr.number,
+                  merged_at: pr.merged_at
+                });
+              }
+            }
+
+            const cleanupCandidates = branches
+              .filter((branch) => branch.name !== repository.data.default_branch)
+              .filter((branch) => !branch.protected)
+              .filter((branch) => !openHeads.has(branch.name))
+              .map((branch) => ({
+                name: branch.name,
+                merged_pull_request: mergedByHead.get(branch.name) || null
+              }))
+              .filter((branch) => branch.merged_pull_request)
+              .filter(
+                (branch) =>
+                  now - Date.parse(branch.merged_pull_request.merged_at) >= cutoffMs
+              )
+              .sort((a, b) => a.name.localeCompare(b.name));
+
+            const failedRuns = recentRuns.data.workflow_runs
+              .filter((run) => run.conclusion === "failure")
+              .map((run) => ({
+                id: run.id,
+                name: run.name,
+                branch: run.head_branch,
+                event: run.event,
+                created_at: run.created_at,
+                html_url: run.html_url
+              }));
+
+            const report = {
+              generated_at: new Date(now).toISOString(),
+              mode: "REPORT_ONLY",
+              repository: repository.data.full_name,
+              default_branch: repository.data.default_branch,
+              branch_count: branches.length,
+              cleanup_candidate_count: cleanupCandidates.length,
+              cleanup_candidates: cleanupCandidates,
+              open_pull_request_count: openPulls.length,
+              open_issue_count: issuesAndPulls.filter((item) => !item.pull_request).length,
+              workflow_count: workflows.length,
+              active_workflow_count: workflows.filter(
+                (workflow) => workflow.state === "active"
+              ).length,
+              recent_failed_run_count: failedRuns.length,
+              recent_failed_runs: failedRuns,
+              latest_release: releases.data[0]
+                ? {
+                    tag_name: releases.data[0].tag_name,
+                    published_at: releases.data[0].published_at,
+                    html_url: releases.data[0].html_url
+                  }
+                : null
+            };
+
+            fs.writeFileSync(
+              "lifeos-repository-hygiene.json",
+              JSON.stringify(report, null, 2) + "\n"
+            );
+
+            core.summary
+              .addHeading("LifeOS repository hygiene")
+              .addRaw("Mode: **REPORT_ONLY**\n\n")
+              .addTable([
+                [{ data: "Measure", header: true }, { data: "Value", header: true }],
+                ["Branches", String(report.branch_count)],
+                ["Cleanup candidates", String(report.cleanup_candidate_count)],
+                ["Open pull requests", String(report.open_pull_request_count)],
+                ["Open issues", String(report.open_issue_count)],
+                ["Active workflows", String(report.active_workflow_count)],
+                ["Failures in newest 100 runs", String(report.recent_failed_run_count)],
+                ["Latest release", report.latest_release?.tag_name || "none"]
+              ]);
+
+            if (cleanupCandidates.length) {
+              core.summary.addHeading("Review-only branch candidates", 2);
+              core.summary.addList(
+                cleanupCandidates
+                  .slice(0, 100)
+                  .map(
+                    (item) =>
+                      `${item.name} — merged by #${item.merged_pull_request.number} on ${item.merged_pull_request.merged_at}`
+                  )
+              );
+            }
+
+            await core.summary.write();
+            core.info(`HYGIENE_MODE=${report.mode}`);
+            core.info(`BRANCH_COUNT=${report.branch_count}`);
+            core.info(`CLEANUP_CANDIDATE_COUNT=${report.cleanup_candidate_count}`);
+            core.info(`OPEN_PR_COUNT=${report.open_pull_request_count}`);
+            core.info(`OPEN_ISSUE_COUNT=${report.open_issue_count}`);
+            core.info(`RECENT_FAILED_RUN_COUNT=${report.recent_failed_run_count}`);
+
+      - name: Upload sanitised report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifeos-repository-hygiene
+          path: lifeos-repository-hygiene.json
+          retention-days: 30
+          if-no-files-found: error
