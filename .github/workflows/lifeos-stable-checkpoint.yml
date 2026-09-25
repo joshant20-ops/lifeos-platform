@@ -1,0 +1,54 @@
+name: LifeOS Stable Checkpoint
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Stable tag, for example lifeos-2026.09.25-local-ai
+        required: true
+        type: string
+      notes:
+        description: Known-good outcome, evidence and known limitations
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-stable-checkpoint
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    uses: ./.github/workflows/lifeos-ci.yml
+
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Require main and validate tag
+        env:
+          CHECKPOINT_TAG: ${{ inputs.tag }}
+        run: |
+          set -Eeuo pipefail
+          test "${GITHUB_REF}" = "refs/heads/main"
+          [[ "${CHECKPOINT_TAG}" =~ ^lifeos-[0-9]{4}\.[0-9]{2}\.[0-9]{2}(-[a-z0-9][a-z0-9-]*)?$ ]]
+          echo "CHECKPOINT_REF=main"
+          echo "CHECKPOINT_TAG=${CHECKPOINT_TAG}"
+
+      - name: Create immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKPOINT_TAG: ${{ inputs.tag }}
+          CHECKPOINT_NOTES: ${{ inputs.notes }}
+        run: |
+          set -Eeuo pipefail
+          if gh release view "${CHECKPOINT_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "CHECKPOINT_CREATE=REFUSED_TAG_EXISTS"
+            exit 1
+          fi
+          gh release create "${CHECKPOINT_TAG}"             --repo "${GITHUB_REPOSITORY}"             --target "${GITHUB_SHA}"             --title "${CHECKPOINT_TAG}"             --notes "${CHECKPOINT_NOTES}"
+          echo "CHECKPOINT_CREATE=PASS"
