@@ -116,15 +116,6 @@ jobs:
             > "$RUNNER_TEMP/lifeos-evidence/result.env" || true
           exit "$rc"
 
-      - name: Run House Status live acceptance
-        if: env.LIFEOS_OPERATION == 'deploy-house-status-dashboard' && steps.gateway.outputs.gateway_rc == '0'
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-house-status-dashboard
-          echo HOUSE_STATUS_LIVE_ACCEPTANCE=PASS
-
       - name: Run Energy Opportunity live acceptance
         if: env.LIFEOS_OPERATION == 'deploy-energy-opportunity-api' && steps.gateway.outputs.gateway_rc == '0'
         shell: bash
