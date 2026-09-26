@@ -16,7 +16,7 @@ from app.services.history import history_summary
 from app.services.interval_ledger import interval_report
 from app.services.forecast_history import forecast_error_report
 from app.services.planner import generate_plan, read_latest_plan
-from app.services.octopus import account_tariffs
+from app.services.octopus import account_tariffs, tariff_prices
 from app.services.solar_forecast import weather_adjusted_solar
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -72,6 +72,46 @@ async def energy_history(
         history_summary,
         hours,
     )
+
+
+@router.get("/api/energy/tariffs")
+async def energy_tariffs() -> dict:
+    config = load_config()
+    timezone_name = str(config["site"]["timezone"])
+    tz = ZoneInfo(timezone_name)
+    today = datetime.now(tz).date()
+    tariffs = await asyncio.to_thread(account_tariffs)
+    rows = []
+    for target in (today, today + timedelta(days=1)):
+        imp = await asyncio.to_thread(
+            tariff_prices,
+            tariffs["import"]["tariff_code"], target, timezone_name,
+        )
+        exp = None
+        if tariffs["export"]:
+            exp = await asyncio.to_thread(
+                __import__("app.services.octopus", fromlist=["tariff_prices"]).tariff_prices,
+                tariffs["export"]["tariff_code"], target, timezone_name,
+            )
+        exp_by_from = {s["valid_from"]: s for s in exp["slots"]} if exp else {}
+        for slot in imp["slots"]:
+            ex = exp_by_from.get(slot["valid_from"])
+            rows.append({
+                "valid_from": slot["valid_from"],
+                "valid_to": slot["valid_to"],
+                "local_from": slot["local_from"],
+                "local_to": slot["local_to"],
+                "import_p_per_kwh": slot["rate_p_per_kwh"],
+                "export_p_per_kwh": ex["rate_p_per_kwh"] if ex else (0.0 if not tariffs["export"] else None),
+                "import_price_available": slot["price_available"],
+                "export_price_available": bool(ex and ex["price_available"]) if tariffs["export"] else True,
+            })
+    return {
+        "timezone": timezone_name,
+        "import_tariff": tariffs["import"]["tariff_code"],
+        "export_tariff": tariffs["export"]["tariff_code"] if tariffs["export"] else None,
+        "slots": rows,
+    }
 
 
 @router.get("/api/energy/report")
