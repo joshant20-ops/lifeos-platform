@@ -36,7 +36,8 @@ if 'sensor.lifeos_energy_import_tariff\"' in blob: fail('string tariff entity us
 if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding')
 if 'Battery charging excluded' not in blob: fail('domestic battery exclusion not surfaced')
 if "| round(2)" not in blob: fail('currency/energy precision formatting missing')
-if 'columns\": 4' in json.dumps(views[0]): fail('mobile-hostile four-column domestic layout')
+domestic=json.dumps(views[0])
+if '\"type\": \"sections\"' not in domestic or '\"column_span\": 4' not in domestic: fail('domestic responsive full-width sections missing')
 if 'no V2G/V2H' not in blob: fail('EV charge-only contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
  if entity not in blob: fail('current Ring doorbell mapping missing',entity)
