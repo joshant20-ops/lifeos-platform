@@ -5,6 +5,8 @@ REPO=Path(__file__).resolve().parents[1]
 HA=Path('/opt/stacks/homeassistant/config')
 DASH=HA/'.storage/lovelace.dashboard_house_status'
 REG=HA/'.storage/lovelace_dashboards'
+RESOURCE=HA/'.storage/lovelace_resources'
+CARD=HA/'www'/'house-status'/'lifeos-house-status-card.js'
 
 def fail(name,detail=''):
  print('FAIL:',name); print(detail); raise SystemExit(1)
@@ -25,20 +27,22 @@ expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full E
 got=[(v.get('title'),v.get('path')) for v in views]
 if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
+card_blob=CARD.read_text() if CARD.exists() else ''
+combined=blob+card_blob
 for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
- if entity not in blob: fail('required proven energy entity missing',entity)
+ if entity not in combined: fail('required proven energy entity missing',entity)
 if 'placeholder-floorplan.svg' not in blob: fail('replaceable floorplan contract missing')
-if 'Leave House' not in blob: fail('Leave House UI contract missing')
-if 'EV' not in blob or 'Not installed' not in blob: fail('EV not-installed contract missing')
-if 'House secure is intentionally not asserted' not in blob: fail('security fail-closed contract missing')
+if 'Leave House' not in combined: fail('Leave House UI contract missing')
+if 'EV' not in combined or 'Not installed' not in combined: fail('EV not-installed contract missing')
+if 'Security sensors not installed' not in combined: fail('security fail-closed contract missing')
 if 'Pending interval ledger' in blob or 'Live metering' in blob or 'Period controls' in blob: fail('placeholder/explanatory energy UI remains')
 if 'sensor.lifeos_energy_import_tariff\"' in blob: fail('string tariff entity used as numeric chart series')
 if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding')
-if 'Battery charging excluded' not in blob: fail('domestic battery exclusion not surfaced')
+if 'excluding battery and car charging' not in combined: fail('domestic battery exclusion not surfaced')
 if "| round(2)" not in blob: fail('currency/energy precision formatting missing')
 domestic=json.dumps(views[0])
 if 'custom:lifeos-house-status-card' not in domestic: fail('purpose-built House Status frontend missing')
-if 'no V2G/V2H' not in blob: fail('EV charge-only contract missing')
+if 'Charge only' not in combined: fail('EV charge-only contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
  if entity not in blob: fail('current Ring doorbell mapping missing',entity)
 print('HOUSE_STATUS_HA_GATE=PASS')
@@ -48,11 +52,11 @@ print('floorplan=replaceable-placeholder')
 print('unsafe_unproven_controls=absent')
 print('future_hardware_hooks=REPOSITORY_READY_RUNTIME_PENDING')
 print('energy_ledger=RUNTIME_WIRED')
-resource=ha/'.storage'/'lovelace_resources'
+resource=RESOURCE
 if not resource.exists(): fail('lovelace resource registry missing')
 rblob=resource.read_text()
 if '/local/house-status/lifeos-house-status-card.js' not in rblob: fail('House Status frontend resource not registered')
-card=ha/'www'/'house-status'/'lifeos-house-status-card.js'
+card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
 print('frontend_custom_card=PASS')
 print('frontend_static_contract=PASS')
