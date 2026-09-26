@@ -424,12 +424,41 @@
           "icon": "mdi:doorbell-video",
           "cards": [
             {
-              "type": "markdown",
-              "content": "## Doorbell\n### Not installed\n\nThe final camera position and automation contract are ready. When the intended doorbell is installed and mapped:\n\n- Motion → present this view for **30 seconds** on enrolled shared displays.\n- Repeated motion → extend the active window.\n- Bell press → present this view for **90 seconds**.\n- Camera unavailable → show **CAMERA UNAVAILABLE**, never stale imagery as live.\n\nAn existing Ring `Front Door` registry entry was discovered but is **not activated here** because it has not been confirmed as the intended installed doorbell."
+              "type": "picture-entity",
+              "entity": "camera.front_door_live_view",
+              "name": "Front Door",
+              "camera_view": "live",
+              "show_name": true,
+              "show_state": true,
+              "tap_action": {
+                "action": "none"
+              },
+              "hold_action": {
+                "action": "none"
+              }
+            },
+            {
+              "type": "grid",
+              "columns": 2,
+              "square": false,
+              "cards": [
+                {
+                  "type": "tile",
+                  "entity": "event.front_door_motion",
+                  "name": "Last motion",
+                  "icon": "mdi:motion-sensor"
+                },
+                {
+                  "type": "tile",
+                  "entity": "event.front_door_ding",
+                  "name": "Last doorbell press",
+                  "icon": "mdi:doorbell"
+                }
+              ]
             },
             {
               "type": "markdown",
-              "content": "### Display automation\n**Dormant until a supported display-control mechanism is proven.** Bedroom/private displays will not be enrolled by default."
+              "content": "### Current doorbell · Ring Front Door\nMotion and bell events are enrolled now. **Motion = 30 seconds** and **bell press = 90 seconds** for the presentation window. Repeated motion extends the active window.\n\nAutomatic navigation remains dormant until a supported shared-display control mechanism is proven; bedroom/private displays are not enrolled by default. The entity mapping is isolated so a future replacement doorbell can be swapped without redesigning this view."
             }
           ]
         }
