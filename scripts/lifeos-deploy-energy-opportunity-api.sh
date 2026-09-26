@@ -28,7 +28,7 @@ live_main_sha=$(sha "$TARGET/app/main.py")
 [[ "$live_main_sha" == "$OLD_MAIN_SHA" || "$live_main_sha" == "$new_main_sha" ]] || \
   fail live_energy_main_has_unreviewed_drift
 
-runuser -u joshan -- /usr/bin/python3 tests/test_energy_opportunity_service.py
+runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py"\nrunuser -u joshan -- /usr/bin/python3 tests/test_energy_opportunity_service.py
 echo ENERGY_OPPORTUNITY_API_TESTS=PASS
 
 mkdir -p "$BACKUP/energy/app/services" "$BACKUP/energy/app/routers" \
@@ -36,7 +36,10 @@ mkdir -p "$BACKUP/energy/app/services" "$BACKUP/energy/app/routers" \
 for pair in \
   "$TARGET/app/main.py:energy/app/main.py" \
   "$TARGET/app/services/opportunities.py:energy/app/services/opportunities.py" \
+  "$TARGET/app/services/interval_ledger.py:energy/app/services/interval_ledger.py" \
   "$TARGET/app/routers/opportunities.py:energy/app/routers/opportunities.py" \
+  "$TARGET/app/routers/energy.py:energy/app/routers/energy.py" \
+  "$HA_TARGET/packages/lifeos_energy.yaml:ha/packages/lifeos_energy.yaml" \
   "$HA_TARGET/packages/lifeos_energy_attention.yaml:ha/packages/lifeos_energy_attention.yaml" \
   "$HA_TARGET/scripts/lifeos_energy_attention_sensor.py:ha/scripts/lifeos_energy_attention_sensor.py" \
   "/etc/systemd/system/lifeos-energy-opportunity-attention.service:systemd/lifeos-energy-opportunity-attention.service" \
@@ -54,7 +57,10 @@ rollback() {
   for pair in \
     "energy/app/main.py:$TARGET/app/main.py" \
     "energy/app/services/opportunities.py:$TARGET/app/services/opportunities.py" \
+    "energy/app/services/interval_ledger.py:$TARGET/app/services/interval_ledger.py" \
     "energy/app/routers/opportunities.py:$TARGET/app/routers/opportunities.py" \
+    "energy/app/routers/energy.py:$TARGET/app/routers/energy.py" \
+    "ha/packages/lifeos_energy.yaml:$HA_TARGET/packages/lifeos_energy.yaml" \
     "ha/packages/lifeos_energy_attention.yaml:$HA_TARGET/packages/lifeos_energy_attention.yaml" \
     "ha/scripts/lifeos_energy_attention_sensor.py:$HA_TARGET/scripts/lifeos_energy_attention_sensor.py"; do
     src=${pair%%:*}; dst=${pair#*:}
@@ -81,6 +87,10 @@ install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/services/opportunities.py" "$TARGET/app/services/opportunities.py"
 install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/routers/opportunities.py" "$TARGET/app/routers/opportunities.py"
+install -o joshan -g joshan -m 0644 \
+  "$SOURCE/app/services/interval_ledger.py" "$TARGET/app/services/interval_ledger.py"
+install -o joshan -g joshan -m 0644 \
+  "$SOURCE/app/routers/energy.py" "$TARGET/app/routers/energy.py"
 
 docker compose -f "$TARGET/docker-compose.yml" up -d --build lifeos-energy
 for _ in $(seq 1 90); do
@@ -92,7 +102,7 @@ done
 
 python3 - <<'PY'
 import json, urllib.request
-for path in ('/health','/api/status','/api/energy/opportunities/current'):
+for path in ('/health','/api/status','/api/energy/opportunities/current','/api/energy/report?hours=24'):
     with urllib.request.urlopen('http://127.0.0.1:8110'+path,timeout=10) as response:
         assert response.status == 200
         payload=json.load(response)
@@ -102,9 +112,17 @@ assert status['modules']['energy_opportunities']=='ready'
 opps=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/energy/opportunities/current',timeout=10))
 assert opps['state'] in {'clear','attention','unavailable'}
 assert isinstance(opps['opportunity_ids'],list)
+report=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/energy/report?hours=24',timeout=30))
+assert report['interval_minutes']==30
+assert isinstance(report['intervals'],list)
+assert {'import_kwh','domestic_import_kwh','battery_charge_import_kwh','export_kwh','import_cost_gbp','domestic_import_cost_gbp','battery_charge_import_cost_gbp','export_earnings_gbp','net_domestic_electricity_cost_gbp'} <= set(report['totals'])
+print('ENERGY_INTERVAL_LEDGER_LIVE=PASS')
 print('ENERGY_OPPORTUNITY_API_LIVE=PASS')
 PY
 
+install -o joshan -g joshan -m 0644 \
+  "$HA_SOURCE/packages/lifeos_energy.yaml" \
+  "$HA_TARGET/packages/lifeos_energy.yaml"
 install -o joshan -g joshan -m 0644 \
   "$HA_SOURCE/packages/lifeos_energy_attention.yaml" \
   "$HA_TARGET/packages/lifeos_energy_attention.yaml"

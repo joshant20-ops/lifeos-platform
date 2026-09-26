@@ -140,3 +140,69 @@ rest:
         value_template: >
           {{ value_json.ending_soc_percent | float(0) }}
         unit_of_measurement: "%"
+
+
+  - resource: http://127.0.0.1:8110/api/energy/report?hours=24
+    scan_interval: 300
+    timeout: 30
+
+    sensor:
+
+      - name: LifeOS Energy Report
+        unique_id: lifeos_energy_report
+        value_template: >
+          {{ value_json.hours }}
+        json_attributes:
+          - totals
+          - intervals
+
+      - name: LifeOS Domestic Import Energy
+        unique_id: lifeos_domestic_import_energy
+        value_template: >
+          {{ value_json.totals.domestic_import_kwh | float(0) }}
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+
+      - name: LifeOS Domestic Import Cost
+        unique_id: lifeos_domestic_import_cost
+        value_template: >
+          {{ value_json.totals.domestic_import_cost_gbp | float(0) }}
+        unit_of_measurement: GBP
+        state_class: measurement
+
+      - name: LifeOS Export Energy
+        unique_id: lifeos_export_energy
+        value_template: >
+          {{ value_json.totals.export_kwh | float(0) }}
+        unit_of_measurement: kWh
+        device_class: energy
+        state_class: measurement
+
+      - name: LifeOS Export Earnings
+        unique_id: lifeos_export_earnings
+        value_template: >
+          {{ value_json.totals.export_earnings_gbp | float(0) }}
+        unit_of_measurement: GBP
+        state_class: measurement
+
+      - name: LifeOS Net Electricity Cost
+        unique_id: lifeos_net_electricity_cost
+        value_template: >
+          {{ value_json.totals.net_domestic_electricity_cost_gbp | float(0) }}
+        unit_of_measurement: GBP
+        state_class: measurement
+
+      - name: LifeOS Average Import Price
+        unique_id: lifeos_average_import_price
+        value_template: >
+          {{ value_json.totals.average_import_p_per_kwh | float(0) }}
+        unit_of_measurement: p/kWh
+        state_class: measurement
+
+      - name: LifeOS Average Export Price
+        unique_id: lifeos_average_export_price
+        value_template: >
+          {{ value_json.totals.average_export_p_per_kwh | float(0) }}
+        unit_of_measurement: p/kWh
+        state_class: measurement
