@@ -9,13 +9,21 @@ from app.services.octopus import account_tariffs, tariff_prices
 
 
 def _integrate(points: list[dict[str, Any]], start: float, end: float, key: str) -> float:
-    relevant=[p for p in points if start <= float(p["reading_time"]) < end]
+    relevant=[p for p in points if start <= float(p["reading_time"]) <= end]
+    if not relevant:
+        return 0.0
+    before=[p for p in points if float(p["reading_time"]) < start]
+    after=[p for p in points if float(p["reading_time"]) > end]
+    if before: relevant.insert(0,before[-1])
+    if after: relevant.append(after[0])
     if len(relevant) < 2:
         return 0.0
     wh=0.0
     for a,b in zip(relevant,relevant[1:]):
-        dt=max(0.0,min(float(b["reading_time"]),end)-max(float(a["reading_time"]),start))
-        wh += max(0.0,float(a.get(key) or 0.0))*dt/3600.0
+        left=max(float(a["reading_time"]),start); right=min(float(b["reading_time"]),end)
+        dt=max(0.0,right-left)
+        av=(max(0.0,float(a.get(key) or 0.0))+max(0.0,float(b.get(key) or 0.0)))/2.0
+        wh += av*dt/3600.0
     return wh/1000.0
 
 
