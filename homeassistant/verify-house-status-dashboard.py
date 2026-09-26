@@ -37,7 +37,7 @@ if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding
 if 'Battery charging excluded' not in blob: fail('domestic battery exclusion not surfaced')
 if "| round(2)" not in blob: fail('currency/energy precision formatting missing')
 domestic=json.dumps(views[0])
-if '\"type\": \"sections\"' not in domestic or '\"column_span\": 4' not in domestic: fail('domestic responsive full-width sections missing')
+if 'custom:lifeos-house-status-card' not in domestic: fail('purpose-built House Status frontend missing')
 if 'no V2G/V2H' not in blob: fail('EV charge-only contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
  if entity not in blob: fail('current Ring doorbell mapping missing',entity)
@@ -48,5 +48,12 @@ print('floorplan=replaceable-placeholder')
 print('unsafe_unproven_controls=absent')
 print('future_hardware_hooks=REPOSITORY_READY_RUNTIME_PENDING')
 print('energy_ledger=RUNTIME_WIRED')
+resource=ha/'.storage'/'lovelace_resources'
+if not resource.exists(): fail('lovelace resource registry missing')
+rblob=resource.read_text()
+if '/local/house-status/lifeos-house-status-card.js' not in rblob: fail('House Status frontend resource not registered')
+card=ha/'www'/'house-status'/'lifeos-house-status-card.js'
+if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
+print('frontend_custom_card=PASS')
 print('frontend_static_contract=PASS')
 print('leave_house=RUNTIME_AUTOMATION_PENDING_SUPPORTED_HA_CONFIG_PATH')
