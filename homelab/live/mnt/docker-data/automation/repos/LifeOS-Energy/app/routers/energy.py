@@ -16,7 +16,7 @@ from app.services.history import history_summary
 from app.services.interval_ledger import interval_report
 from app.services.forecast_history import forecast_error_report
 from app.services.planner import generate_plan, read_latest_plan
-from app.services.octopus import account_tariffs
+from app.services.octopus import account_tariffs, tariff_prices
 from app.services.solar_forecast import weather_adjusted_solar
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -84,7 +84,7 @@ async def energy_tariffs() -> dict:
     rows = []
     for target in (today, today + timedelta(days=1)):
         imp = await asyncio.to_thread(
-            __import__("app.services.octopus", fromlist=["tariff_prices"]).tariff_prices,
+            tariff_prices,
             tariffs["import"]["tariff_code"], target, timezone_name,
         )
         exp = None
