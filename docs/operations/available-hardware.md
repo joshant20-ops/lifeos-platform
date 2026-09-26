@@ -36,9 +36,10 @@ Measured over SSH on 2026-09-22:
 - Storage: CT240 SATA solid-state disk, 223.6 GiB usable; WDC SATA rotational disk, 931.5 GiB; optical SATA device.
 - Network: Realtek RTL8111/8168/8411 PCIe Gigabit Ethernet; **1000 Mb/s, full duplex** measured on `enp3s0`.
 - Host OS: Debian GNU/Linux 12 (bookworm), Proxmox kernel 6.8.12-23-pve.
-- Ollama: **0.33.2** on Tower host. Installed models: `qwen2.5-coder:7b-instruct` (4.7 GB) and `qwen2.5-coder:1.5b` (986 MB).
+- Ollama: **0.33.2** on Tower host. Established models include `qwen2.5-coder:7b-instruct` (4.7 GB), `qwen2.5-coder:1.5b` (986 MB), accepted OpenHands default `gpt-oss:20b` (14 GB MXFP4), and accepted-but-non-default `devstral-small-2:24b` (16 GB Q4_K_M).
 - Effective Ollama service configuration: `CUDA_VISIBLE_DEVICES=0`, `OLLAMA_VULKAN=0`, `OLLAMA_HOST=0.0.0.0:11434`, `OLLAMA_KEEP_ALIVE=30m`, `OLLAMA_CONTEXT_LENGTH=8192`.
 - Runtime verification: `qwen2.5-coder:7b-instruct` loads at approximately **5.0 GB, 100% GPU, context 8192** according to `ollama ps`.
+- Agent-model verification: `gpt-oss:20b` loads at **35% GPU / 65% CPU**, approximately **5011 MiB VRAM**, context 8192. `devstral-small-2:24b` loads at **26% GPU / 74% CPU**, approximately **5029 MiB VRAM**, context 8192. Full acceptance evidence and the routing decision are in `docs/operations/local-agent-model-candidates.md`.
 - GPU allocation principle: the P106 is deliberately **not PCIe-passed through to Engineer**. Tower-host Ollama is the primary GPU inference service, preserving host-level control for future shared GPU workloads such as Immich.
 
 ## Engineer VM measured details
