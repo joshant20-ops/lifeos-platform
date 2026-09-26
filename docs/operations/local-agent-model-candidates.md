@@ -36,7 +36,7 @@ RAM figures are `free -h` host snapshots and therefore do not equal model alloca
 - GPT-OSS workflow creation: PR #1134. Its initial merged run did appear; the final corrected acceptance is run `36155086170`, job `108137543231`, after PRs #1135, #1138 and #1139.
 - Devstral workflow: PR #1140. Run `36253552944`, job `108435966530`, produced exact artifacts and real actions but returned OpenHands `error` after 826.45 seconds. The redacted diagnostic in PR #1235 showed no shim or fake action; corrected run `36255151834`, job `108440412206`, finished successfully with the measurements above.
 - GPT-OSS gateway cutover: PR #1236. Initial deploy run `36256245663` found that `systemctl enable --now` did not reload an existing process. PR #1237 changed deployment to an explicit restart; subsequent deployment is the authoritative gateway proof.
-- Persisted production settings and fresh gateway-backed OpenHands proof are performed by `.github/workflows/openhands-ui-settings-audit.yml`; its final successful run is the cutover/persistence authority.
+- Persisted production settings and fresh gateway-backed OpenHands proof: run `36256533790`, job `108444257428`. Settings survived a full Canvas service restart; the fresh conversation finished in 290.69 seconds with exact artifacts, 36 persisted events, 15 file-editor actions, 1 terminal action, 2 finish actions and 0 JSON-only records. This is the cutover/persistence authority.
 
 ## Production route and rollback
 
