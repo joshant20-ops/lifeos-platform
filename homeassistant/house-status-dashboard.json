@@ -18,21 +18,21 @@
               "cards": [
                 {
                   "type": "tile",
-                  "entity": "sensor.lifeos_energy_house_load",
-                  "name": "House demand",
-                  "icon": "mdi:home-lightning-bolt"
-                },
-                {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_energy_import_tariff",
-                  "name": "Import price",
+                  "entity": "sensor.lifeos_domestic_import_cost",
+                  "name": "Domestic electricity cost",
                   "icon": "mdi:currency-gbp"
                 },
                 {
                   "type": "tile",
-                  "entity": "sensor.lifeos_energy_export_tariff",
-                  "name": "Export price",
-                  "icon": "mdi:transmission-tower-export"
+                  "entity": "sensor.lifeos_export_earnings",
+                  "name": "Export earnings",
+                  "icon": "mdi:cash-plus"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_net_electricity_cost",
+                  "name": "Net electricity cost",
+                  "icon": "mdi:scale-balance"
                 },
                 {
                   "type": "tile",
@@ -46,9 +46,8 @@
               "type": "custom:apexcharts-card",
               "header": {
                 "show": true,
-                "title": "Today + tomorrow",
-                "show_states": true,
-                "colorize_states": true
+                "title": "Domestic energy cost & tariff",
+                "show_states": false
               },
               "graph_span": "48h",
               "span": {
@@ -80,46 +79,46 @@
                   }
                 },
                 {
-                  "id": "power",
+                  "id": "cost",
                   "opposite": true,
-                  "decimals": 2,
+                  "decimals": 3,
                   "apex_config": {
                     "title": {
-                      "text": "kW"
+                      "text": "£ / 30 min"
                     }
                   }
                 }
               ],
               "series": [
                 {
-                  "entity": "sensor.lifeos_energy_import_tariff",
+                  "entity": "sensor.lifeos_energy_tariff_horizon",
                   "name": "Electricity price",
                   "type": "line",
                   "unit": "p/kWh",
                   "yaxis_id": "price",
                   "stroke_width": 3,
-                  "extend_to": false
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), x.import_p_per_kwh]);"
                 },
                 {
-                  "entity": "sensor.lifeos_energy_export_tariff",
-                  "name": "Export price",
+                  "entity": "sensor.lifeos_energy_report",
+                  "name": "Electricity used",
                   "type": "line",
-                  "unit": "p/kWh",
-                  "yaxis_id": "price",
+                  "unit": "£",
+                  "yaxis_id": "cost",
                   "stroke_width": 2,
-                  "extend_to": false
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.domestic_import_cost_gbp !== null).map(x => [new Date(x.valid_from).getTime(), x.domestic_import_cost_gbp]);"
                 },
                 {
-                  "entity": "sensor.lifeos_energy_house_load",
-                  "name": "House demand",
-                  "type": "area",
-                  "unit": "kW",
-                  "yaxis_id": "power",
-                  "opacity": 0.2,
-                  "group_by": {
-                    "func": "avg",
-                    "duration": "30min"
-                  }
+                  "entity": "sensor.lifeos_energy_report",
+                  "name": "Export earnings",
+                  "type": "line",
+                  "unit": "£",
+                  "yaxis_id": "cost",
+                  "stroke_width": 2,
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -x.export_earnings_gbp]);"
                 }
               ]
             },
@@ -130,19 +129,19 @@
               "cards": [
                 {
                   "type": "markdown",
-                  "content": "### Electricity used\n**Live metering**\n\nDomestic load excludes battery charging. Interval £ totals will activate when tariff-history data is exposed to HA."
+                  "content": "### Electricity used\n**£{{ states('sensor.lifeos_domestic_import_cost') }}**\n\n{{ states('sensor.lifeos_domestic_import_energy') }} kWh · {{ states('sensor.lifeos_average_import_price') }} p/kWh weighted average\n\n*Excludes grid energy used to charge the home battery.*"
                 },
                 {
                   "type": "markdown",
-                  "content": "### Energy exported\n**Live metering**\n\nExport flow and tariff are connected; interval earnings remain fail-closed until historical tariff intervals are available."
+                  "content": "### Energy exported\n**£{{ states('sensor.lifeos_export_earnings') }} earned**\n\n{{ states('sensor.lifeos_export_energy') }} kWh · {{ states('sensor.lifeos_average_export_price') }} p/kWh weighted average"
                 },
                 {
                   "type": "markdown",
-                  "content": "### Gas used\n**Octopus connected**\n\nCurrent tariff and previous consumption/cost are available from the gas meter."
+                  "content": "### Gas used\n**Octopus connected**\n\nCurrent rate: {{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_current_rate') }}\n\nHistorical gas interval ledger is the remaining prerequisite for period-correct gas £ totals."
                 },
                 {
                   "type": "markdown",
-                  "content": "### Total energy cost\n**Pending interval ledger**\n\nNo fabricated daily cost × average-price calculation."
+                  "content": "### Net electricity cost\n**£{{ states('sensor.lifeos_net_electricity_cost') }}**\n\nDomestic grid cost − export earnings. Gas is deliberately not added until its matching-period ledger is available."
                 }
               ]
             },
