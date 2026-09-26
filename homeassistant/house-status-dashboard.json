@@ -391,16 +391,12 @@
             },
             {
               "type": "button",
-              "name": "Leave House",
+              "name": "Leave House · automation pending",
               "icon": "mdi:exit-run",
               "entity": "script.house_status_leave_house",
               "show_state": false,
               "tap_action": {
-                "action": "call-service",
-                "service": "script.house_status_leave_house",
-                "confirmation": {
-                  "text": "Turn off the configured TVs and future enrolled lights?"
-                }
+                "action": "none"
               }
             },
             {
