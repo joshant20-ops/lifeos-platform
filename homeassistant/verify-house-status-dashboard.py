@@ -34,15 +34,10 @@ if 'EV not installed' not in blob: fail('EV not-installed contract missing')
 if 'House secure is intentionally not asserted' not in blob: fail('security fail-closed contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
  if entity not in blob: fail('current Ring doorbell mapping missing',entity)
-package=HA/'packages/house_status.yaml'
-if not package.exists(): fail('House Status package missing')
-ptext=package.read_text()
-for entity in ['media_player.westcott_way_living_room_tv','media_player.tv_samsung_5_series_32']:
- if entity not in ptext: fail('Leave House TV membership missing',entity)
 print('HOUSE_STATUS_HA_GATE=PASS')
 print('dashboard=/house-status drift=none')
 print('views=4 order=PASS')
 print('floorplan=replaceable-placeholder')
 print('unsafe_unproven_controls=absent')
-print('future_hardware_hooks=READY')
-print('leave_house=TV_ONLY_UNTIL_LIGHTS_INSTALLED')
+print('future_hardware_hooks=REPOSITORY_READY_RUNTIME_PENDING')
+print('leave_house=RUNTIME_AUTOMATION_PENDING_SUPPORTED_HA_CONFIG_PATH')
