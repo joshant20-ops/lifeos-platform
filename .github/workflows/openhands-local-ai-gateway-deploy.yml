@@ -39,7 +39,8 @@ jobs:
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           systemctl --user daemon-reload
-          systemctl --user enable --now lifeos-openhands-local-ai.service
+          systemctl --user enable lifeos-openhands-local-ai.service
+          systemctl --user restart lifeos-openhands-local-ai.service
           for _ in $(seq 1 20); do curl -fsS http://127.0.0.1:18114/health && break; sleep 1; done
           curl -fsS http://127.0.0.1:18114/health | grep -q 'gpt-oss:20b'
           curl -fsS http://127.0.0.1:18114/v1/models | grep -q 'gpt-oss:20b'
