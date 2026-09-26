@@ -22,7 +22,8 @@ def validate(src):
     got=[(v.get('title'),v.get('path')) for v in views]
     if got!=expected: raise ValueError(f'House Status views invalid: {got!r}')
     blob=canonical(cfg)
-    if 'V2G' not in blob or 'charge-only' not in blob: raise ValueError('EV charge-only invariant missing')
+    if 'EV' not in blob or 'Not installed' not in blob: raise ValueError('EV not-installed invariant missing')
+    if any(term in blob.lower() for term in ('ev discharge','v2g power','v2h power')): raise ValueError('unsupported EV discharge series present')
     if 'Leave House' not in blob: raise ValueError('Home Status leave-house contract missing')
 
 def main():
