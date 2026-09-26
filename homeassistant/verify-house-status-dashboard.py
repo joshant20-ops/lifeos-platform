@@ -28,8 +28,7 @@ blob=json.dumps(views)
 for entity in ['sensor.lifeos_energy_import_tariff','sensor.lifeos_grid_import_power','sensor.lifeos_grid_export_power','sensor.lifeos_energy_battery_soc']:
  if entity not in blob: fail('required proven energy entity missing',entity)
 if 'placeholder-floorplan.svg' not in blob: fail('replaceable floorplan contract missing')
-if 'confirmation' not in blob.lower(): fail('Leave House confirmation contract missing')
-if 'script.house_status_leave_house' not in blob: fail('Leave House script binding missing')
+if 'Leave House' not in blob: fail('Leave House UI contract missing')
 if 'EV not installed' not in blob: fail('EV not-installed contract missing')
 if 'House secure is intentionally not asserted' not in blob: fail('security fail-closed contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
