@@ -59,6 +59,38 @@ These instructions apply throughout this repository.
 - Do not mark runtime-changing work complete until the required Pi verification
   has returned terminal evidence.
 
+## Autonomous completion invariant
+
+- An accepted task remains `IN_PROGRESS` until it reaches one of exactly two
+  terminal states:
+  - `VERIFIED_COMPLETE`: the requested outcome has objective acceptance
+    evidence and, for runtime-changing work, proof from the real target runtime.
+  - `BLOCKED_USER_ACTION_REQUIRED`: further progress requires a specific
+    credential/authorization, physical action, inaccessible external system, or
+    genuinely ambiguous user decision that cannot safely be inferred.
+- The following are explicitly non-terminal states and are never, by themselves,
+  reasons to return control to the user: `PR_CREATED`, `PR_MERGED`,
+  `DISPATCHED`, `PENDING`, `RUNNING`, `WAITING_EXTERNAL`,
+  `DEPLOYMENT_FAILED`, `FIX_COMMITTED`, `DEPLOYED_UNVERIFIED`.
+- After dispatching asynchronous work, continue using available bounded polling
+  and evidence collection during the active execution window. A pending job is
+  a waiting state, not completion.
+- A failed deployment automatically enters diagnosis/remediation: collect
+  evidence, identify the scoped cause, fix through the reviewed repository
+  path, redeploy, and verify. Do not require a fresh user `go` for routine
+  remediation that remains within the accepted task.
+- `MERGED` does not imply deployed; `DEPLOYED` does not imply verified.
+  Runtime-changing work may be reported complete only after runtime acceptance
+  evidence proves the intended state and required regression checks pass.
+- Before ending an autonomous task turn, explicitly evaluate the terminal state.
+  If neither terminal state is true, continue with the next available action.
+  If execution cannot remain active long enough for an external dependency,
+  preserve the task as unfinished and state the exact external wait; never
+  describe it as done.
+- User involvement is an exception, not a routine synchronization mechanism.
+  Do not ask for confirmation, manual commands, status checks, screenshots, or
+  permission when the reviewed control plane can safely perform the next step.
+
 ## Automated execution requirements
 
 - `.github/workflows/lifeos-pi-auto-smoke.yml` is the recurring Pi automation
