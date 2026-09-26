@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import argparse, json, pathlib, shutil, sys, time
+import argparse, hashlib, json, pathlib, shutil, sys, time
 
 HA=pathlib.Path('/opt/stacks/homeassistant/config')
 STORAGE=HA/'.storage'
@@ -49,8 +49,10 @@ def main():
     items.append({'id':'dashboard_house_status','show_in_sidebar':True,'icon':'mdi:home-heart','title':'House Status','require_admin':False,'mode':'storage','url_path':'house-status'})
     REGISTRY.write_text(json.dumps(reg,indent=2)+'\n')
     resources=load(RESOURCES); ritems=resources.setdefault('data',{}).setdefault('items',[])
-    ritems[:]=[x for x in ritems if x.get('url')!='/local/house-status/lifeos-house-status-card.js']
-    ritems.append({'id':'lifeos_house_status_card','url':'/local/house-status/lifeos-house-status-card.js','type':'module'})
+    ritems[:]=[x for x in ritems if not str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-card.js')]
+    card_src=pathlib.Path(__file__).with_name('www')/'house-status'/'lifeos-house-status-card.js'
+    card_rev=hashlib.sha256(card_src.read_bytes()).hexdigest()[:12]
+    ritems.append({'id':'lifeos_house_status_card','url':f'/local/house-status/lifeos-house-status-card.js?v={card_rev}','type':'module'})
     RESOURCES.write_text(json.dumps(resources,indent=2)+'\n')
     print('DEPLOY: PASS')
     print('dashboard=/house-status')
