@@ -13,7 +13,7 @@
           "cards": [
             {
               "type": "grid",
-              "columns": 4,
+              "columns": 2,
               "square": false,
               "cards": [
                 {
@@ -98,7 +98,7 @@
                   "unit": "p/kWh",
                   "yaxis_id": "price",
                   "stroke_width": 3,
-                  "extend_to": "false"
+                  "extend_to": false
                 },
                 {
                   "entity": "sensor.lifeos_energy_export_tariff",
@@ -107,7 +107,7 @@
                   "unit": "p/kWh",
                   "yaxis_id": "price",
                   "stroke_width": 2,
-                  "extend_to": "false"
+                  "extend_to": false
                 },
                 {
                   "entity": "sensor.lifeos_energy_house_load",
@@ -125,7 +125,7 @@
             },
             {
               "type": "grid",
-              "columns": 4,
+              "columns": 2,
               "square": false,
               "cards": [
                 {
@@ -288,7 +288,7 @@
                   "unit": "p/kWh",
                   "yaxis_id": "price",
                   "stroke_width": 3,
-                  "extend_to": "false"
+                  "extend_to": false
                 },
                 {
                   "entity": "sensor.lifeos_energy_battery_soc",
