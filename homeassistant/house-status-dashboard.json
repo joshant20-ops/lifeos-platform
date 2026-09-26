@@ -13,7 +13,7 @@
           "type": "masonry",
           "cards": [
             {
-              "type": "custom:lifeos-house-status-card",
+              "type": "custom:lifeos-house-status",
               "mode": "domestic"
             },
             {
@@ -85,7 +85,7 @@
           "type": "masonry",
           "cards": [
             {
-              "type": "custom:lifeos-house-status-card",
+              "type": "custom:lifeos-house-status",
               "mode": "flow"
             },
             {
@@ -186,7 +186,7 @@
           "type": "masonry",
           "cards": [
             {
-              "type": "custom:lifeos-house-status-card",
+              "type": "custom:lifeos-house-status",
               "mode": "home"
             }
           ]
