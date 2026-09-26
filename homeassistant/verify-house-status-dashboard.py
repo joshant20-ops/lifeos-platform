@@ -57,8 +57,9 @@ print('future_hardware_hooks=REPOSITORY_READY_RUNTIME_PENDING')
 print('energy_ledger=RUNTIME_WIRED')
 resource=RESOURCE
 if not resource.exists(): fail('lovelace resource registry missing')
-rblob=resource.read_text()
-if '/local/house-status/lifeos-house-status-card.js' not in rblob: fail('House Status frontend resource not registered')
+rdata=json.loads(resource.read_text()).get('data',{}).get('items',[])
+registered=[x for x in rdata if str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-card.js?v=') and x.get('res_type')=='module']
+if len(registered)!=1: fail('House Status frontend resource not registered with HA storage schema',repr(registered))
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
 print('frontend_custom_card=PASS')
