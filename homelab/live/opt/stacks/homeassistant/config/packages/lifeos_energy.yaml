@@ -206,3 +206,19 @@ rest:
           {{ value_json.totals.average_export_p_per_kwh | float(0) }}
         unit_of_measurement: p/kWh
         state_class: measurement
+
+
+  - resource: http://127.0.0.1:8110/api/energy/tariffs
+    scan_interval: 900
+    timeout: 30
+
+    sensor:
+
+      - name: LifeOS Energy Tariff Horizon
+        unique_id: lifeos_energy_tariff_horizon
+        value_template: >
+          {{ value_json.slots | selectattr('import_price_available') | list | count }}
+        json_attributes:
+          - import_tariff
+          - export_tariff
+          - slots
