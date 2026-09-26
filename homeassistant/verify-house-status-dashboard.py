@@ -32,7 +32,8 @@ if 'confirmation' not in blob.lower(): fail('Leave House confirmation contract m
 if 'script.house_status_leave_house' not in blob: fail('Leave House script binding missing')
 if 'EV not installed' not in blob: fail('EV not-installed contract missing')
 if 'House secure is intentionally not asserted' not in blob: fail('security fail-closed contract missing')
-if 'Doorbell' not in blob or 'Not installed' not in blob: fail('doorbell planned-state contract missing')
+for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
+ if entity not in blob: fail('current Ring doorbell mapping missing',entity)
 package=HA/'packages/house_status.yaml'
 if not package.exists(): fail('House Status package missing')
 ptext=package.read_text()
