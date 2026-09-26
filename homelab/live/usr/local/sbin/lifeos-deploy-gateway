@@ -15,6 +15,10 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
+    'deploy-house-status-dashboard': {
+        'script': 'scripts/lifeos-deploy-house-status-dashboard.sh',
+        'privileged': True,
+    },
     'deploy-ha-control-bridge': {
         'script': 'scripts/lifeos-deploy-ha-control-bridge.sh',
         'privileged': True,
@@ -123,7 +127,7 @@ def main():
     script = REPO / str(spec['script'])
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
-    print('LIFEOS_DEPLOY_GATEWAY_VERSION=7')
+    print('LIFEOS_DEPLOY_GATEWAY_VERSION=8')
     print(f'GATEWAY_OPERATION={operation}')
     print(f'GATEWAY_PLATFORM_HEAD={head}')
     if spec['privileged']:

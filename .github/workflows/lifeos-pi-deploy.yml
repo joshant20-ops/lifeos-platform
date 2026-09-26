@@ -8,6 +8,7 @@ on:
         required: true
         type: choice
         options:
+          - deploy-house-status-dashboard
           - deploy-ha-control-bridge
           - deploy-tower-metrics
           - deploy-snapshot-exporter
@@ -25,6 +26,7 @@ on:
       - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py'
       - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
       - 'tests/test_energy_opportunity_service.py'
+      - 'deploy-triggers/house-status-dashboard'
       - 'deploy-triggers/ha-control-bridge'
       - 'deploy-triggers/tower-metrics'
       - 'governor/systemd/lifeos-snapshots-export.service'
@@ -51,6 +53,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
       (github.event_name == 'issues' && (
+        github.event.issue.title == 'LifeOS Deploy: deploy-house-status-dashboard' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-ha-control-bridge' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-snapshot-exporter' ||
@@ -67,7 +70,8 @@ jobs:
       # any job can be created.
       LIFEOS_OPERATION: >-
         ${{ github.event_name == 'push' && (github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'governor/privacy-domain-policy.json') && 'deploy-governor-managed-engineer' || github.event.head_commit.added && contains(github.event.head_commit.added, 'governor/privacy-domain-policy.json') && 'deploy-governor-managed-engineer' || 'deploy-energy-opportunity-api') || github.event_name == 'issues' &&
-        (github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' && 'capability-stage3-systemd-cleanup' ||
+        (github.event.issue.title == 'LifeOS Deploy: deploy-house-status-dashboard' && 'deploy-house-status-dashboard' ||
+        github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' && 'capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-tower-metrics' && 'deploy-tower-metrics' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-snapshot-exporter' && 'deploy-snapshot-exporter' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-governor-managed-engineer' && 'deploy-governor-managed-engineer' ||
