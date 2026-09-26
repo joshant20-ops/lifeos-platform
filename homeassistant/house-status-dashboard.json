@@ -173,6 +173,27 @@
               "content": "## Leave House\nThe final button will turn off only explicitly mapped lights and TVs and will require confirmation. It is not enabled until those entities are proven, preventing accidental broad service calls."
             }
           ]
+        },
+        {
+          "title": "Doorbell",
+          "path": "doorbell",
+          "icon": "mdi:doorbell-video",
+          "cards": [
+            {
+              "type": "markdown",
+              "content": "# Doorbell\nLive doorbell view. Camera and trigger entities are bound only after read-only live discovery; no entity IDs are guessed."
+            },
+            {
+              "type": "markdown",
+              "title": "Camera discovery pending",
+              "content": "The doorbell camera feed will occupy this page once the exact HA camera entity is proven. If the camera becomes unavailable, the page must show a clear neutral **CAMERA UNAVAILABLE** state rather than stale imagery."
+            },
+            {
+              "type": "markdown",
+              "title": "Automatic activation",
+              "content": "**Motion:** show Doorbell for 30 seconds; further motion extends the window.\\n\\n**Bell press:** show Doorbell for 90 seconds.\\n\\nActivation is display-local only: it must not unlock/open anything or expose unrelated camera controls. Automatic navigation is enabled only for explicitly enrolled shared HA displays after a supported display-control integration is proven."
+            }
+          ]
         }
       ]
     }
