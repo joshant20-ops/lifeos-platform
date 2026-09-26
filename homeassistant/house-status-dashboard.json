@@ -30,7 +30,7 @@
               "type": "custom:apexcharts-card",
               "header": {
                 "show": true,
-                "title": "Today",
+                "title": "Today · half-hour energy cost",
                 "show_states": false
               },
               "graph_span": "24h",
@@ -43,14 +43,13 @@
               },
               "apex_config": {
                 "chart": {
-                  "height": 300,
+                  "height": 380,
                   "toolbar": {
                     "show": false
                   }
                 },
                 "legend": {
-                  "show": true,
-                  "position": "bottom"
+                  "show": false
                 },
                 "stroke": {
                   "curve": "straight"
@@ -115,6 +114,128 @@
               "type": "grid",
               "columns": 2,
               "square": false,
+              "cards": [
+                {
+                  "type": "markdown",
+                  "content": "### Net electricity\n# £{{ states('sensor.lifeos_net_electricity_cost') | float(0) | round(2) }}\nBattery charging excluded"
+                },
+                {
+                  "type": "markdown",
+                  "content": "### Gas\n# £{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') | float(0) | round(2) }}\n{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh') | float(0) | round(2) }} kWh · latest meter period"
+                }
+              ]
+            }
+          ],
+          "type": "sections",
+          "max_columns": 4,
+          "sections": [
+            {
+              "type": "grid",
+              "column_span": 4,
+              "cards": [
+                {
+                  "type": "markdown",
+                  "content": "### Electricity used\n# £{{ states('sensor.lifeos_domestic_import_cost') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_domestic_import_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_import_price') | float(0) | round(1) }} p/kWh"
+                },
+                {
+                  "type": "markdown",
+                  "content": "### Export earned\n# £{{ states('sensor.lifeos_export_earnings') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_export_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_export_price') | float(0) | round(1) }} p/kWh"
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "column_span": 4,
+              "cards": [
+                {
+                  "type": "custom:apexcharts-card",
+                  "header": {
+                    "show": true,
+                    "title": "Today · half-hour energy cost",
+                    "show_states": false
+                  },
+                  "graph_span": "24h",
+                  "span": {
+                    "start": "day"
+                  },
+                  "now": {
+                    "show": true,
+                    "label": "Now"
+                  },
+                  "apex_config": {
+                    "chart": {
+                      "height": 380,
+                      "toolbar": {
+                        "show": false
+                      }
+                    },
+                    "legend": {
+                      "show": false
+                    },
+                    "stroke": {
+                      "curve": "straight"
+                    },
+                    "dataLabels": {
+                      "enabled": false
+                    }
+                  },
+                  "yaxis": [
+                    {
+                      "id": "price",
+                      "decimals": 0,
+                      "apex_config": {
+                        "title": {
+                          "text": "p/kWh"
+                        }
+                      }
+                    },
+                    {
+                      "id": "cost",
+                      "opposite": true,
+                      "decimals": 2,
+                      "apex_config": {
+                        "title": {
+                          "text": "£ / 30 min"
+                        }
+                      }
+                    }
+                  ],
+                  "series": [
+                    {
+                      "entity": "sensor.lifeos_energy_tariff_horizon",
+                      "name": "Price",
+                      "type": "line",
+                      "unit": "p/kWh",
+                      "yaxis_id": "price",
+                      "stroke_width": 2,
+                      "extend_to": false,
+                      "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null && new Date(x.local_from).toDateString() === new Date().toDateString()).map(x => [new Date(x.local_from).getTime(), Number(x.import_p_per_kwh)]);"
+                    },
+                    {
+                      "entity": "sensor.lifeos_energy_report",
+                      "name": "Used",
+                      "type": "column",
+                      "unit": "£",
+                      "yaxis_id": "cost",
+                      "extend_to": false,
+                      "data_generator": "return (entity.attributes.intervals || []).filter(x => x.domestic_import_cost_gbp !== null).map(x => [new Date(x.valid_from).getTime(), Number(x.domestic_import_cost_gbp.toFixed(4))]);"
+                    },
+                    {
+                      "entity": "sensor.lifeos_energy_report",
+                      "name": "Export",
+                      "type": "column",
+                      "unit": "£",
+                      "yaxis_id": "cost",
+                      "extend_to": false,
+                      "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -Number(x.export_earnings_gbp.toFixed(4))]);"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "column_span": 4,
               "cards": [
                 {
                   "type": "markdown",
