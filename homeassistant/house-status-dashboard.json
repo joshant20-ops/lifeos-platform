@@ -13,32 +13,32 @@
           "cards": [
             {
               "type": "grid",
-              "columns": 2,
+              "columns": 4,
               "square": false,
               "cards": [
                 {
                   "type": "tile",
                   "entity": "sensor.lifeos_domestic_import_cost",
-                  "name": "Domestic electricity cost",
-                  "icon": "mdi:currency-gbp"
+                  "name": "Electricity used",
+                  "icon": "mdi:home-lightning-bolt"
                 },
                 {
                   "type": "tile",
                   "entity": "sensor.lifeos_export_earnings",
-                  "name": "Export earnings",
-                  "icon": "mdi:cash-plus"
+                  "name": "Export earned",
+                  "icon": "mdi:transmission-tower-export"
                 },
                 {
                   "type": "tile",
                   "entity": "sensor.lifeos_net_electricity_cost",
-                  "name": "Net electricity cost",
-                  "icon": "mdi:scale-balance"
+                  "name": "Net electricity",
+                  "icon": "mdi:currency-gbp"
                 },
                 {
                   "type": "tile",
-                  "entity": "sensor.octopus_energy_gas_e6e16309692443_2200667301_current_rate",
-                  "name": "Gas price",
-                  "icon": "mdi:fire"
+                  "entity": "sensor.lifeos_average_import_price",
+                  "name": "Average price paid",
+                  "icon": "mdi:cash-clock"
                 }
               ]
             },
@@ -46,7 +46,7 @@
               "type": "custom:apexcharts-card",
               "header": {
                 "show": true,
-                "title": "Domestic energy cost & tariff",
+                "title": "Today · electricity price, domestic cost & export",
                 "show_states": false
               },
               "graph_span": "48h",
@@ -129,31 +129,25 @@
               "cards": [
                 {
                   "type": "markdown",
-                  "content": "### Electricity used\n**£{{ states('sensor.lifeos_domestic_import_cost') }}**\n\n{{ states('sensor.lifeos_domestic_import_energy') }} kWh · {{ states('sensor.lifeos_average_import_price') }} p/kWh weighted average\n\n*Excludes grid energy used to charge the home battery.*"
+                  "content": "### Electricity used\n# £{{ states('sensor.lifeos_domestic_import_cost') }}\n**{{ states('sensor.lifeos_domestic_import_energy') }} kWh** · {{ states('sensor.lifeos_average_import_price') }} p/kWh weighted average\n\nHome-battery grid charging excluded."
                 },
                 {
                   "type": "markdown",
-                  "content": "### Energy exported\n**£{{ states('sensor.lifeos_export_earnings') }} earned**\n\n{{ states('sensor.lifeos_export_energy') }} kWh · {{ states('sensor.lifeos_average_export_price') }} p/kWh weighted average"
+                  "content": "### Energy exported\n# £{{ states('sensor.lifeos_export_earnings') }} earned\n**{{ states('sensor.lifeos_export_energy') }} kWh** · {{ states('sensor.lifeos_average_export_price') }} p/kWh weighted average"
                 },
                 {
                   "type": "markdown",
-                  "content": "### Gas used\n**Octopus connected**\n\nCurrent rate: {{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_current_rate') }}\n\nHistorical gas interval ledger is the remaining prerequisite for period-correct gas £ totals."
+                  "content": "### Gas used\n# {{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') }}\n{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh') }} kWh · latest completed Octopus meter period\n\nGas is shown separately until a matching half-hour gas ledger is available."
                 },
                 {
                   "type": "markdown",
-                  "content": "### Net electricity cost\n**£{{ states('sensor.lifeos_net_electricity_cost') }}**\n\nDomestic grid cost − export earnings. Gas is deliberately not added until its matching-period ledger is available."
+                  "content": "### Net electricity cost\n# £{{ states('sensor.lifeos_net_electricity_cost') }}\nDomestic electricity − export earnings\n\nGas is not falsely mixed into a different reporting period."
                 }
               ]
             },
             {
-              "type": "entities",
-              "title": "Gas meter",
-              "show_header_toggle": false,
-              "entities": [
-                "sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh",
-                "sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost",
-                "sensor.octopus_energy_gas_e6e16309692443_2200667301_current_standing_charge"
-              ]
+              "type": "markdown",
+              "content": "**Period controls** · Today is live and interval-correct. Day / Month / Year / custom date range require retained interval history beyond the current 24-hour report; unavailable ranges are not fabricated."
             }
           ]
         },
@@ -281,13 +275,14 @@
                   }
                 },
                 {
-                  "entity": "sensor.lifeos_energy_import_tariff",
+                  "entity": "sensor.lifeos_energy_tariff_horizon",
                   "name": "Electricity price",
                   "type": "line",
                   "unit": "p/kWh",
                   "yaxis_id": "price",
                   "stroke_width": 3,
-                  "extend_to": false
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), x.import_p_per_kwh]);"
                 },
                 {
                   "entity": "sensor.lifeos_energy_battery_soc",
@@ -301,28 +296,24 @@
             },
             {
               "type": "grid",
-              "columns": 4,
+              "columns": 2,
               "square": false,
               "cards": [
                 {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_grid_import_power",
-                  "name": "Grid import"
+                  "type": "markdown",
+                  "content": "### House usage\n**£{{ states('sensor.lifeos_domestic_import_cost') }}** · {{ states('sensor.lifeos_domestic_import_energy') }} kWh\n\nGrid-fed home-battery charging excluded."
                 },
                 {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_grid_export_power",
-                  "name": "Grid export"
+                  "type": "markdown",
+                  "content": "### Battery\nSOC **{{ states('sensor.lifeos_energy_battery_soc') }}%**\n\nCharge/discharge live power shown in chart; cost attribution remains measured-only."
                 },
                 {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_battery_charge_power",
-                  "name": "Battery charge"
+                  "type": "markdown",
+                  "content": "### EV / car charging\n**Not installed**\n\n£0 · 0 kWh. Charge-only slot; no V2G/V2H."
                 },
                 {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_battery_discharge_power",
-                  "name": "Battery discharge"
+                  "type": "markdown",
+                  "content": "### Export earnings\n**£{{ states('sensor.lifeos_export_earnings') }}** · {{ states('sensor.lifeos_export_energy') }} kWh"
                 }
               ]
             }
