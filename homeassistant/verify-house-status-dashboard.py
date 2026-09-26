@@ -41,7 +41,7 @@ if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding
 if 'excluding battery and car charging' not in combined: fail('domestic battery exclusion not surfaced')
 if "| round(2)" not in combined and '.toFixed(2)' not in combined: fail('currency/energy precision formatting missing')
 domestic=json.dumps(views[0])
-if 'custom:lifeos-house-status-card' not in domestic: fail('purpose-built House Status frontend missing')
+if 'custom:lifeos-house-status' not in domestic: fail('purpose-built House Status frontend missing')
 if 'Charge only' not in combined: fail('EV charge-only contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
  if entity not in blob: fail('current Ring doorbell mapping missing',entity)
