@@ -28,7 +28,8 @@ live_main_sha=$(sha "$TARGET/app/main.py")
 [[ "$live_main_sha" == "$OLD_MAIN_SHA" || "$live_main_sha" == "$new_main_sha" ]] || \
   fail live_energy_main_has_unreviewed_drift
 
-runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py"\nrunuser -u joshan -- /usr/bin/python3 tests/test_energy_opportunity_service.py
+runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py"
+runuser -u joshan -- /usr/bin/python3 tests/test_energy_opportunity_service.py
 echo ENERGY_OPPORTUNITY_API_TESTS=PASS
 
 mkdir -p "$BACKUP/energy/app/services" "$BACKUP/energy/app/routers" \
