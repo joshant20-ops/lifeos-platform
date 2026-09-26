@@ -13,32 +13,16 @@
           "cards": [
             {
               "type": "grid",
-              "columns": 4,
+              "columns": 2,
               "square": false,
               "cards": [
                 {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_domestic_import_cost",
-                  "name": "Electricity used",
-                  "icon": "mdi:home-lightning-bolt"
+                  "type": "markdown",
+                  "content": "### Electricity used\n# £{{ states('sensor.lifeos_domestic_import_cost') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_domestic_import_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_import_price') | float(0) | round(1) }} p/kWh"
                 },
                 {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_export_earnings",
-                  "name": "Export earned",
-                  "icon": "mdi:transmission-tower-export"
-                },
-                {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_net_electricity_cost",
-                  "name": "Net electricity",
-                  "icon": "mdi:currency-gbp"
-                },
-                {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_average_import_price",
-                  "name": "Average price paid",
-                  "icon": "mdi:cash-clock"
+                  "type": "markdown",
+                  "content": "### Export earned\n# £{{ states('sensor.lifeos_export_earnings') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_export_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_export_price') | float(0) | round(1) }} p/kWh"
                 }
               ]
             },
@@ -46,10 +30,10 @@
               "type": "custom:apexcharts-card",
               "header": {
                 "show": true,
-                "title": "Today · electricity price, domestic cost & export",
+                "title": "Today",
                 "show_states": false
               },
-              "graph_span": "48h",
+              "graph_span": "24h",
               "span": {
                 "start": "day"
               },
@@ -59,19 +43,26 @@
               },
               "apex_config": {
                 "chart": {
-                  "height": 360
+                  "height": 300,
+                  "toolbar": {
+                    "show": false
+                  }
                 },
                 "legend": {
-                  "show": true
+                  "show": true,
+                  "position": "bottom"
                 },
                 "stroke": {
-                  "curve": "smooth"
+                  "curve": "straight"
+                },
+                "dataLabels": {
+                  "enabled": false
                 }
               },
               "yaxis": [
                 {
                   "id": "price",
-                  "decimals": 2,
+                  "decimals": 0,
                   "apex_config": {
                     "title": {
                       "text": "p/kWh"
@@ -81,7 +72,7 @@
                 {
                   "id": "cost",
                   "opposite": true,
-                  "decimals": 3,
+                  "decimals": 2,
                   "apex_config": {
                     "title": {
                       "text": "£ / 30 min"
@@ -92,33 +83,31 @@
               "series": [
                 {
                   "entity": "sensor.lifeos_energy_tariff_horizon",
-                  "name": "Electricity price",
+                  "name": "Price",
                   "type": "line",
                   "unit": "p/kWh",
                   "yaxis_id": "price",
-                  "stroke_width": 3,
+                  "stroke_width": 2,
                   "extend_to": false,
-                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), x.import_p_per_kwh]);"
+                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null && new Date(x.local_from).toDateString() === new Date().toDateString()).map(x => [new Date(x.local_from).getTime(), Number(x.import_p_per_kwh)]);"
                 },
                 {
                   "entity": "sensor.lifeos_energy_report",
-                  "name": "Electricity used",
-                  "type": "line",
+                  "name": "Used",
+                  "type": "column",
                   "unit": "£",
                   "yaxis_id": "cost",
-                  "stroke_width": 2,
                   "extend_to": false,
-                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.domestic_import_cost_gbp !== null).map(x => [new Date(x.valid_from).getTime(), x.domestic_import_cost_gbp]);"
+                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.domestic_import_cost_gbp !== null).map(x => [new Date(x.valid_from).getTime(), Number(x.domestic_import_cost_gbp.toFixed(4))]);"
                 },
                 {
                   "entity": "sensor.lifeos_energy_report",
-                  "name": "Export earnings",
-                  "type": "line",
+                  "name": "Export",
+                  "type": "column",
                   "unit": "£",
                   "yaxis_id": "cost",
-                  "stroke_width": 2,
                   "extend_to": false,
-                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -x.export_earnings_gbp]);"
+                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -Number(x.export_earnings_gbp.toFixed(4))]);"
                 }
               ]
             },
@@ -129,25 +118,13 @@
               "cards": [
                 {
                   "type": "markdown",
-                  "content": "### Electricity used\n# £{{ states('sensor.lifeos_domestic_import_cost') }}\n**{{ states('sensor.lifeos_domestic_import_energy') }} kWh** · {{ states('sensor.lifeos_average_import_price') }} p/kWh weighted average\n\nHome-battery grid charging excluded."
+                  "content": "### Net electricity\n# £{{ states('sensor.lifeos_net_electricity_cost') | float(0) | round(2) }}\nBattery charging excluded"
                 },
                 {
                   "type": "markdown",
-                  "content": "### Energy exported\n# £{{ states('sensor.lifeos_export_earnings') }} earned\n**{{ states('sensor.lifeos_export_energy') }} kWh** · {{ states('sensor.lifeos_average_export_price') }} p/kWh weighted average"
-                },
-                {
-                  "type": "markdown",
-                  "content": "### Gas used\n# {{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') }}\n{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh') }} kWh · latest completed Octopus meter period\n\nGas is shown separately until a matching half-hour gas ledger is available."
-                },
-                {
-                  "type": "markdown",
-                  "content": "### Net electricity cost\n# £{{ states('sensor.lifeos_net_electricity_cost') }}\nDomestic electricity − export earnings\n\nGas is not falsely mixed into a different reporting period."
+                  "content": "### Gas\n# £{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') | float(0) | round(2) }}\n{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh') | float(0) | round(2) }} kWh · latest meter period"
                 }
               ]
-            },
-            {
-              "type": "markdown",
-              "content": "**Period controls** · Today is live and interval-correct. Day / Month / Year / custom date range require retained interval history beyond the current 24-hour report; unavailable ranges are not fabricated."
             }
           ]
         },
