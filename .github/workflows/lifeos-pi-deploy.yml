@@ -188,11 +188,17 @@ jobs:
             const gatewayOk = '${{ steps.gateway.outputs.gateway_rc }}' === '0';
             const jobOk = '${{ job.status }}' === 'success';
             const ok = gatewayOk && jobOk;
+            const fs = require('fs');
+            let evidence = '';
+            if (process.env.LIFEOS_OPERATION === 'discover-house-status') {
+              const p = process.env.RUNNER_TEMP + '/lifeos-evidence/gateway.log';
+              if (fs.existsSync(p)) evidence = fs.readFileSync(p, 'utf8').slice(0, 60000);
+            }
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: `LifeOS automatic deployment ${ok ? 'PASS' : 'FAIL'}\n\nOperation: \`${process.env.LIFEOS_OPERATION}\`\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+              body: `LifeOS automatic deployment ${ok ? 'PASS' : 'FAIL'}\n\nOperation: \`${process.env.LIFEOS_OPERATION}\`\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}${evidence ? `\n\n<details><summary>Discovery evidence</summary>\n\n\`\`\`text\n${evidence}\n\`\`\`\n</details>` : ''}`
             });
             if (ok) {
               await github.rest.issues.update({
