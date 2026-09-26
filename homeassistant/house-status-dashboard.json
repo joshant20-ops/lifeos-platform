@@ -28,20 +28,6 @@
               "column_span": 4,
               "cards": [
                 {
-                  "type": "markdown",
-                  "content": "### Electricity used\n# £{{ states('sensor.lifeos_domestic_import_cost') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_domestic_import_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_import_price') | float(0) | round(1) }} p/kWh"
-                },
-                {
-                  "type": "markdown",
-                  "content": "### Export earned\n# £{{ states('sensor.lifeos_export_earnings') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_export_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_export_price') | float(0) | round(1) }} p/kWh"
-                }
-              ]
-            },
-            {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
                   "type": "custom:apexcharts-card",
                   "header": {
                     "show": true,
@@ -124,6 +110,20 @@
                       "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -Number(x.export_earnings_gbp.toFixed(4))]);"
                     }
                   ]
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "column_span": 4,
+              "cards": [
+                {
+                  "type": "markdown",
+                  "content": "### Electricity used\n# £{{ states('sensor.lifeos_domestic_import_cost') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_domestic_import_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_import_price') | float(0) | round(1) }} p/kWh"
+                },
+                {
+                  "type": "markdown",
+                  "content": "### Export earned\n# £{{ states('sensor.lifeos_export_earnings') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_export_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_export_price') | float(0) | round(1) }} p/kWh"
                 }
               ]
             },
