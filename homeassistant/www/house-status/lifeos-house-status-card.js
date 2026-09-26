@@ -22,10 +22,11 @@ class LifeOSHouseStatusCard extends HTMLElement {
       <div class="top"><div class="tabs"><div class="tab ${mode==='domestic'?'active':''}">Domestic Energy Consumption</div><div class="tab ${mode==='flow'?'active':''}">Full Energy Flow</div><div class="tab ${mode==='home'?'active':''}">Home Status</div></div>${mode!=='home'?'<div class="period"><div class="p active">Today</div><div class="p">Day</div><div class="p">Month</div><div class="p">Year</div><div class="p">Date range</div></div>':''}</div>`;
     const report=this._hass.states['sensor.lifeos_energy_report']?.attributes?.intervals||[];
     const tariff=this._hass.states['sensor.lifeos_energy_tariff_horizon']?.attributes?.slots||[];
+    const octopusTariff=this._hass.states['sensor.lifeos_energy_tariff_horizon'];
     const svgChart=(flow=false)=>{
       const W=1000,H=350,pad=45, iw=W-pad*2, ih=H-pad*2;
       const pts=(arr,key,scale=1)=>arr.map((x,i)=>{const v=Number(x[key]);if(!Number.isFinite(v))return null;const xx=pad+(i/Math.max(1,arr.length-1))*iw;return [xx,v*scale]}).filter(Boolean);
-      const price=pts(tariff.filter(x=>x.import_p_per_kwh!==null),'import_p_per_kwh');
+      const price=pts(tariff.filter(x=>x.import_price_available===true && x.import_p_per_kwh!==null),'import_p_per_kwh');
       const cost=pts(report,'domestic_import_cost_gbp',1), exp=pts(report,'export_earnings_gbp',1);
       const all=[...cost,...exp].map(x=>x[1]); let lo=Math.min(0,...all),hi=Math.max(.01,...all); const y=v=>pad+ih-(v-lo)/(hi-lo||1)*ih; const pvals=price.map(x=>x[1]); const plo=Math.min(0,...pvals),phi=Math.max(1,...pvals); const py=v=>pad+ih-(v-plo)/(phi-plo||1)*ih;
       const path=(a,fy=y)=>a.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+fy(p[1]).toFixed(1)).join(' ');
@@ -38,9 +39,9 @@ class LifeOSHouseStatusCard extends HTMLElement {
     let body='';
     if(mode==='domestic'){
       const used=this.val('sensor.lifeos_domestic_import_energy'), exp=this.val('sensor.lifeos_export_energy');
-      body=`<div class="panel"><div class="heading">Domestic energy consumption</div><div class="sub">Electricity used (excluding battery and car charging), export and gas. Costs shown in £.</div><div class="chartslot">${svgChart(false)}</div></div>
+      body=`<div class="panel"><div class="heading">Domestic energy consumption</div><div class="sub">Octopus tariff: ${octopusTariff?.attributes?.import_tariff||'unavailable'} · published half-hourly prices only</div><div class="chartslot">${svgChart(false)}</div></div>
       <div class="cards"><div class="metric"><b>⌂ Electricity used</b><div class="big">${this.money('sensor.lifeos_domestic_import_cost')}</div><div class="small">${used.toFixed(2)} kWh<br>${this.val('sensor.lifeos_average_import_price').toFixed(1)} p/kWh avg</div></div>
-      <div class="metric"><b>↑ Export earnings</b><div class="big">-${this.money('sensor.lifeos_export_earnings')}</div><div class="small">${exp.toFixed(2)} kWh<br>${this.val('sensor.lifeos_average_export_price').toFixed(1)} p/kWh avg</div></div>
+      <div class="metric"><b>↑ Export earnings</b><div class="big">${this.money('sensor.lifeos_export_earnings')}</div><div class="small">${exp.toFixed(2)} kWh<br>${this.val('sensor.lifeos_average_export_price').toFixed(1)} p/kWh avg</div></div>
       <div class="metric"><b>♨ Gas used</b><div class="big">${this.money('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost')}</div><div class="small">${this.val('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh').toFixed(2)} kWh</div></div>
       <div class="metric"><b>▤ Total energy cost</b><div class="big">£${(this.val('sensor.lifeos_domestic_import_cost')+this.val('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost')-this.val('sensor.lifeos_export_earnings')).toFixed(2)}</div><div class="small">Electricity + gas − export</div></div></div>`;
     } else if(mode==='flow'){
