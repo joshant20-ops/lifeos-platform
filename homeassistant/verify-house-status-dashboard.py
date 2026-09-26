@@ -58,7 +58,7 @@ print('energy_ledger=RUNTIME_WIRED')
 resource=RESOURCE
 if not resource.exists(): fail('lovelace resource registry missing')
 rdata=json.loads(resource.read_text()).get('data',{}).get('items',[])
-registered=[x for x in rdata if str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-card.js?v=') and x.get('res_type')=='module']
+registered=[x for x in rdata if str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-card.js?v=') and x.get('type')=='module']
 if len(registered)!=1: fail('House Status frontend resource not registered with HA storage schema',repr(registered))
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
