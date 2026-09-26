@@ -10,134 +10,69 @@
           "title": "Domestic Energy Consumption",
           "path": "domestic-energy-consumption",
           "icon": "mdi:home-lightning-bolt",
-          "type": "sections",
-          "max_columns": 4,
-          "sections": [
+          "type": "masonry",
+          "cards": [
             {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "markdown",
-                  "content": "## Domestic energy consumption\nElectricity used *(excluding battery and car charging)*, export and gas. Costs shown in £."
-                }
-              ]
+              "type": "custom:lifeos-house-status-card",
+              "mode": "domestic"
             },
             {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "custom:apexcharts-card",
-                  "header": {
-                    "show": true,
-                    "title": "Today · half-hour energy cost",
-                    "show_states": false
-                  },
-                  "graph_span": "24h",
-                  "span": {
-                    "start": "day"
-                  },
-                  "now": {
-                    "show": true,
-                    "label": "Now"
-                  },
-                  "apex_config": {
-                    "chart": {
-                      "height": 380,
-                      "toolbar": {
-                        "show": false
-                      }
-                    },
-                    "legend": {
-                      "show": false
-                    },
-                    "stroke": {
-                      "curve": "straight"
-                    },
-                    "dataLabels": {
-                      "enabled": false
-                    }
-                  },
-                  "yaxis": [
-                    {
-                      "id": "price",
-                      "decimals": 0,
-                      "apex_config": {
-                        "title": {
-                          "text": "p/kWh"
-                        }
-                      }
-                    },
-                    {
-                      "id": "cost",
-                      "opposite": true,
-                      "decimals": 2,
-                      "apex_config": {
-                        "title": {
-                          "text": "£ / 30 min"
-                        }
-                      }
-                    }
-                  ],
-                  "series": [
-                    {
-                      "entity": "sensor.lifeos_energy_tariff_horizon",
-                      "name": "Price",
-                      "type": "line",
-                      "unit": "p/kWh",
-                      "yaxis_id": "price",
-                      "stroke_width": 2,
-                      "extend_to": false,
-                      "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null && new Date(x.local_from).toDateString() === new Date().toDateString()).map(x => [new Date(x.local_from).getTime(), Number(x.import_p_per_kwh)]);"
-                    },
-                    {
-                      "entity": "sensor.lifeos_energy_report",
-                      "name": "Used",
-                      "type": "column",
-                      "unit": "£",
-                      "yaxis_id": "cost",
-                      "extend_to": false,
-                      "data_generator": "return (entity.attributes.intervals || []).filter(x => x.domestic_import_cost_gbp !== null).map(x => [new Date(x.valid_from).getTime(), Number(x.domestic_import_cost_gbp.toFixed(4))]);"
-                    },
-                    {
-                      "entity": "sensor.lifeos_energy_report",
-                      "name": "Export",
-                      "type": "column",
-                      "unit": "£",
-                      "yaxis_id": "cost",
-                      "extend_to": false,
-                      "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -Number(x.export_earnings_gbp.toFixed(4))]);"
-                    }
-                  ]
+              "type": "custom:apexcharts-card",
+              "header": {
+                "show": false
+              },
+              "graph_span": "48h",
+              "span": {
+                "start": "day"
+              },
+              "apex_config": {
+                "chart": {
+                  "height": 360
+                },
+                "legend": {
+                  "show": true,
+                  "position": "bottom"
                 }
-              ]
-            },
-            {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
+              },
+              "yaxis": [
                 {
-                  "type": "markdown",
-                  "content": "### Electricity used\n# £{{ states('sensor.lifeos_domestic_import_cost') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_domestic_import_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_import_price') | float(0) | round(1) }} p/kWh"
+                  "id": "price",
+                  "decimals": 0
                 },
                 {
-                  "type": "markdown",
-                  "content": "### Export earned\n# £{{ states('sensor.lifeos_export_earnings') | float(0) | round(2) }}\n**{{ states('sensor.lifeos_export_energy') | float(0) | round(2) }} kWh** · {{ states('sensor.lifeos_average_export_price') | float(0) | round(1) }} p/kWh"
+                  "id": "cost",
+                  "opposite": true,
+                  "decimals": 2
                 }
-              ]
-            },
-            {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
+              ],
+              "series": [
                 {
-                  "type": "markdown",
-                  "content": "### Net electricity\n# £{{ states('sensor.lifeos_net_electricity_cost') | float(0) | round(2) }}\nBattery charging excluded"
+                  "entity": "sensor.lifeos_energy_tariff_horizon",
+                  "name": "Electricity price",
+                  "type": "line",
+                  "unit": "p/kWh",
+                  "yaxis_id": "price",
+                  "stroke_width": 2,
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), Number(x.import_p_per_kwh)]);"
                 },
                 {
-                  "type": "markdown",
-                  "content": "### Gas\n# £{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') | float(0) | round(2) }}\n{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh') | float(0) | round(2) }} kWh · latest meter period"
+                  "entity": "sensor.lifeos_energy_report",
+                  "name": "Electricity used cost",
+                  "type": "line",
+                  "unit": "£",
+                  "yaxis_id": "cost",
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.domestic_import_cost_gbp !== null).map(x => [new Date(x.valid_from).getTime(), Number(x.domestic_import_cost_gbp)]);"
+                },
+                {
+                  "entity": "sensor.lifeos_energy_report",
+                  "name": "Export earnings",
+                  "type": "line",
+                  "unit": "£",
+                  "yaxis_id": "cost",
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -Number(x.export_earnings_gbp)]);"
                 }
               ]
             }
@@ -147,164 +82,98 @@
           "title": "Full Energy Flow",
           "path": "full-energy-flow",
           "icon": "mdi:transmission-tower",
-          "type": "sections",
-          "max_columns": 4,
-          "sections": [
+          "type": "masonry",
+          "cards": [
             {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "markdown",
-                  "content": "## Full energy flow\nGrid import and export split by source. House usage, battery charging/discharging and car charging. Costs shown in £."
-                }
-              ]
+              "type": "custom:lifeos-house-status-card",
+              "mode": "flow"
             },
             {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "custom:apexcharts-card",
-                  "header": {
-                    "show": true,
-                    "title": "Full energy flow",
-                    "show_states": false
-                  },
-                  "graph_span": "24h",
-                  "span": {
-                    "start": "day"
-                  },
-                  "now": {
-                    "show": true,
-                    "label": "Now"
-                  },
-                  "apex_config": {
-                    "chart": {
-                      "height": 390,
-                      "toolbar": {
-                        "show": false
-                      }
-                    },
-                    "plotOptions": {
-                      "bar": {
-                        "columnWidth": "85%"
-                      }
-                    },
-                    "legend": {
-                      "show": true,
-                      "position": "bottom"
-                    }
-                  },
-                  "yaxis": [
-                    {
-                      "id": "power",
-                      "decimals": 2,
-                      "apex_config": {
-                        "title": {
-                          "text": "kW"
-                        }
-                      }
-                    },
-                    {
-                      "id": "price",
-                      "opposite": true,
-                      "decimals": 2,
-                      "apex_config": {
-                        "title": {
-                          "text": "p/kWh"
-                        }
-                      }
-                    },
-                    {
-                      "id": "soc",
-                      "opposite": true,
-                      "min": 0,
-                      "max": 100,
-                      "show": false
-                    }
-                  ],
-                  "series": [
-                    {
-                      "entity": "sensor.lifeos_house_demand_power",
-                      "name": "House usage",
-                      "type": "column",
-                      "yaxis_id": "power",
-                      "group_by": {
-                        "func": "avg",
-                        "duration": "30min"
-                      }
-                    },
-                    {
-                      "entity": "sensor.lifeos_battery_charge_power",
-                      "name": "Battery charging",
-                      "type": "column",
-                      "yaxis_id": "power",
-                      "group_by": {
-                        "func": "avg",
-                        "duration": "30min"
-                      }
-                    },
-                    {
-                      "entity": "sensor.lifeos_grid_export_power",
-                      "name": "Grid export",
-                      "type": "column",
-                      "yaxis_id": "power",
-                      "transform": "return -Math.abs(x);",
-                      "group_by": {
-                        "func": "avg",
-                        "duration": "30min"
-                      }
-                    },
-                    {
-                      "entity": "sensor.lifeos_energy_tariff_horizon",
-                      "name": "Electricity price",
-                      "type": "line",
-                      "unit": "p/kWh",
-                      "yaxis_id": "price",
-                      "stroke_width": 3,
-                      "extend_to": false,
-                      "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), x.import_p_per_kwh]);"
-                    },
-                    {
-                      "entity": "sensor.lifeos_energy_battery_soc",
-                      "name": "Battery SOC",
-                      "type": "line",
-                      "unit": "%",
-                      "yaxis_id": "soc",
-                      "stroke_width": 2
-                    }
-                  ]
+              "type": "custom:apexcharts-card",
+              "header": {
+                "show": false
+              },
+              "graph_span": "24h",
+              "span": {
+                "start": "day"
+              },
+              "apex_config": {
+                "chart": {
+                  "height": 360,
+                  "stacked": true
+                },
+                "legend": {
+                  "show": true,
+                  "position": "bottom"
                 }
-              ]
-            },
-            {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
+              },
+              "yaxis": [
                 {
-                  "type": "markdown",
-                  "content": "### House usage\n**£{{ states('sensor.lifeos_domestic_import_cost') }}** · {{ states('sensor.lifeos_domestic_import_energy') }} kWh\n\nGrid-fed home-battery charging excluded."
+                  "id": "power",
+                  "decimals": 2
                 },
                 {
-                  "type": "markdown",
-                  "content": "### Battery\nSOC **{{ states('sensor.lifeos_energy_battery_soc') }}%**\n\nCharge/discharge live power shown in chart; cost attribution remains measured-only."
+                  "id": "price",
+                  "opposite": true,
+                  "decimals": 1
                 },
                 {
-                  "type": "markdown",
-                  "content": "### EV / car charging\n**Not installed**\n\n£0 · 0 kWh. Charge-only slot; no V2G/V2H."
+                  "id": "soc",
+                  "opposite": true,
+                  "min": 0,
+                  "max": 100,
+                  "show": false
+                }
+              ],
+              "series": [
+                {
+                  "entity": "sensor.lifeos_house_demand_power",
+                  "name": "House usage",
+                  "type": "column",
+                  "yaxis_id": "power",
+                  "group_by": {
+                    "func": "avg",
+                    "duration": "30min"
+                  }
                 },
                 {
-                  "type": "markdown",
-                  "content": "### Export earnings\n**£{{ states('sensor.lifeos_export_earnings') }}** · {{ states('sensor.lifeos_export_energy') }} kWh"
+                  "entity": "sensor.lifeos_battery_charge_power",
+                  "name": "Battery charging",
+                  "type": "column",
+                  "yaxis_id": "power",
+                  "group_by": {
+                    "func": "avg",
+                    "duration": "30min"
+                  }
                 },
                 {
-                  "type": "markdown",
-                  "content": "### Gas used\n**£{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') | float(0) | round(2) }}**\n{{ states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh') | float(0) | round(2) }} kWh"
+                  "entity": "sensor.lifeos_grid_export_power",
+                  "name": "Grid export",
+                  "type": "column",
+                  "yaxis_id": "power",
+                  "transform": "return -Math.abs(x);",
+                  "group_by": {
+                    "func": "avg",
+                    "duration": "30min"
+                  }
                 },
                 {
-                  "type": "markdown",
-                  "content": "### Total energy cost\n# £{{ ((states('sensor.lifeos_domestic_import_cost') | float(0)) + (states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') | float(0)) - (states('sensor.lifeos_export_earnings') | float(0))) | round(2) }}\nElectricity + gas − export"
+                  "entity": "sensor.lifeos_energy_tariff_horizon",
+                  "name": "Electricity price",
+                  "type": "line",
+                  "unit": "p/kWh",
+                  "yaxis_id": "price",
+                  "stroke_width": 2,
+                  "extend_to": false,
+                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), Number(x.import_p_per_kwh)]);"
+                },
+                {
+                  "entity": "sensor.lifeos_energy_battery_soc",
+                  "name": "Battery SOC",
+                  "type": "line",
+                  "unit": "%",
+                  "yaxis_id": "soc",
+                  "stroke_width": 2
                 }
               ]
             }
@@ -314,111 +183,11 @@
           "title": "Home Status",
           "path": "home-status",
           "icon": "mdi:home-eye",
-          "type": "sections",
-          "max_columns": 4,
-          "sections": [
+          "type": "masonry",
+          "cards": [
             {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "grid",
-                  "columns": 2,
-                  "square": false,
-                  "cards": [
-                    {
-                      "type": "markdown",
-                      "content": "## ⚪ Security sensors not installed\nHouse secure is intentionally not asserted until all monitored external apertures are installed and healthy."
-                    },
-                    {
-                      "type": "button",
-                      "name": "Leave House · automation pending",
-                      "icon": "mdi:home-export-outline",
-                      "show_state": false,
-                      "tap_action": {
-                        "action": "none"
-                      },
-                      "hold_action": {
-                        "action": "none"
-                      }
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "picture-elements",
-                  "image": "/local/house-status/placeholder-floorplan.svg",
-                  "elements": [
-                    {
-                      "type": "state-icon",
-                      "entity": "media_player.westcott_way_living_room_tv",
-                      "title": "Living room TV",
-                      "tap_action": {
-                        "action": "none"
-                      },
-                      "hold_action": {
-                        "action": "none"
-                      },
-                      "double_tap_action": {
-                        "action": "none"
-                      },
-                      "style": {
-                        "left": "31%",
-                        "top": "70%"
-                      }
-                    },
-                    {
-                      "type": "state-label",
-                      "entity": "media_player.westcott_way_living_room_tv",
-                      "prefix": "Living TV: ",
-                      "tap_action": {
-                        "action": "none"
-                      },
-                      "style": {
-                        "left": "31%",
-                        "top": "78%",
-                        "font-size": "13px",
-                        "background": "rgba(0,0,0,.70)",
-                        "padding": "5px 8px",
-                        "border-radius": "8px"
-                      }
-                    }
-                  ],
-                  "title": "Ground Floor"
-                }
-              ]
-            },
-            {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "button",
-                  "name": "Leave House · automation pending",
-                  "icon": "mdi:exit-run",
-                  "entity": "script.house_status_leave_house",
-                  "show_state": false,
-                  "tap_action": {
-                    "action": "none"
-                  },
-                  "title": "First Floor"
-                }
-              ]
-            },
-            {
-              "type": "grid",
-              "column_span": 4,
-              "cards": [
-                {
-                  "type": "markdown",
-                  "content": "🟩 Window open　🟥 Window closed　🟩 External door open　🟥 External door closed　🟢 Light off　🔴 Light on　🟩 TV on　🟥 TV off　⚪ ! Device unavailable\n\nPlanned window/door/light overlays remain dormant until sensors are installed. Floorplan assets remain replaceable without changing entity mapping."
-                }
-              ]
+              "type": "custom:lifeos-house-status-card",
+              "mode": "home"
             }
           ]
         },
