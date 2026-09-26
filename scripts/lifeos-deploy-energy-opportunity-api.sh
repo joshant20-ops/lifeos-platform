@@ -102,7 +102,7 @@ done
 
 python3 - <<'PY'
 import json, urllib.request
-for path in ('/health','/api/status','/api/energy/opportunities/current','/api/energy/report?hours=24'):
+for path in ('/health','/api/status','/api/energy/opportunities/current','/api/energy/report?hours=24','/api/energy/tariffs'):
     with urllib.request.urlopen('http://127.0.0.1:8110'+path,timeout=10) as response:
         assert response.status == 200
         payload=json.load(response)
@@ -116,6 +116,10 @@ report=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/energy/report
 assert report['interval_minutes']==30
 assert isinstance(report['intervals'],list)
 assert {'import_kwh','domestic_import_kwh','battery_charge_import_kwh','export_kwh','import_cost_gbp','domestic_import_cost_gbp','battery_charge_import_cost_gbp','export_earnings_gbp','net_domestic_electricity_cost_gbp'} <= set(report['totals'])
+tariffs=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/energy/tariffs',timeout=30))
+assert isinstance(tariffs['slots'],list) and len(tariffs['slots']) >= 48
+assert all('import_p_per_kwh' in s for s in tariffs['slots'])
+print('ENERGY_TARIFF_HORIZON_LIVE=PASS')
 print('ENERGY_INTERVAL_LEDGER_LIVE=PASS')
 print('ENERGY_OPPORTUNITY_API_LIVE=PASS')
 PY
