@@ -13,6 +13,7 @@ from app.services.enphase import (
     EnphaseUnavailableError,
 )
 from app.services.history import history_summary
+from app.services.interval_ledger import interval_report
 from app.services.forecast_history import forecast_error_report
 from app.services.planner import generate_plan, read_latest_plan
 from app.services.octopus import account_tariffs
@@ -71,6 +72,18 @@ async def energy_history(
         history_summary,
         hours,
     )
+
+
+@router.get("/api/energy/report")
+async def energy_report(
+    hours: int = Query(default=24, ge=1, le=840),
+) -> dict:
+    config = load_config()
+    timezone_name = str(config["site"]["timezone"])
+    try:
+        return await asyncio.to_thread(interval_report, hours, timezone_name)
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
 
 
 @router.get("/api/plan/latest")
