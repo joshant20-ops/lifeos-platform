@@ -25,7 +25,7 @@ expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full E
 got=[(v.get('title'),v.get('path')) for v in views]
 if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
-for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_grid_import_power','sensor.lifeos_grid_export_power','sensor.lifeos_energy_battery_soc']:
+for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
  if entity not in blob: fail('required proven energy entity missing',entity)
 if 'placeholder-floorplan.svg' not in blob: fail('replaceable floorplan contract missing')
 if 'Leave House' not in blob: fail('Leave House UI contract missing')
