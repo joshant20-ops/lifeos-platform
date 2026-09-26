@@ -16,7 +16,7 @@ from app.services.history import history_summary
 from app.services.interval_ledger import interval_report
 from app.services.forecast_history import forecast_error_report
 from app.services.planner import generate_plan, read_latest_plan
-from app.services.octopus import account_tariffs, tariff_prices
+from app.services.octopus import OctopusError, account_tariffs, tariff_prices
 from app.services.solar_forecast import weather_adjusted_solar
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -82,19 +82,56 @@ async def energy_tariffs() -> dict:
     today = datetime.now(tz).date()
     tariffs = await asyncio.to_thread(account_tariffs)
     rows = []
+
+    def blank_slots(target):
+        local_start = datetime.combine(target, datetime.min.time(), tzinfo=tz)
+        local_end = local_start + timedelta(days=1)
+        cursor = local_start
+        slots = []
+        while cursor < local_end:
+            nxt = cursor + timedelta(minutes=30)
+            slots.append({
+                "valid_from": cursor.astimezone(ZoneInfo("UTC")).isoformat(),
+                "valid_to": nxt.astimezone(ZoneInfo("UTC")).isoformat(),
+                "local_from": cursor.isoformat(),
+                "local_to": nxt.isoformat(),
+                "rate_p_per_kwh": None,
+                "price_available": False,
+            })
+            cursor = nxt
+        return slots
+
     for target in (today, today + timedelta(days=1)):
-        imp = await asyncio.to_thread(
-            tariff_prices,
-            tariffs["import"]["tariff_code"], target, timezone_name,
-        )
-        exp = None
-        if tariffs["export"]:
-            exp = await asyncio.to_thread(
-                __import__("app.services.octopus", fromlist=["tariff_prices"]).tariff_prices,
-                tariffs["export"]["tariff_code"], target, timezone_name,
+        try:
+            imp_result = await asyncio.to_thread(
+                tariff_prices,
+                tariffs["import"]["tariff_code"],
+                target,
+                timezone_name,
             )
-        exp_by_from = {s["valid_from"]: s for s in exp["slots"]} if exp else {}
-        for slot in imp["slots"]:
+            import_slots = imp_result["slots"]
+        except OctopusError:
+            if target == today:
+                raise
+            import_slots = blank_slots(target)
+
+        export_slots = []
+        if tariffs["export"]:
+            try:
+                exp_result = await asyncio.to_thread(
+                    tariff_prices,
+                    tariffs["export"]["tariff_code"],
+                    target,
+                    timezone_name,
+                )
+                export_slots = exp_result["slots"]
+            except OctopusError:
+                if target == today:
+                    raise
+                export_slots = blank_slots(target)
+
+        exp_by_from = {s["valid_from"]: s for s in export_slots}
+        for slot in import_slots:
             ex = exp_by_from.get(slot["valid_from"])
             rows.append({
                 "valid_from": slot["valid_from"],
@@ -102,14 +139,24 @@ async def energy_tariffs() -> dict:
                 "local_from": slot["local_from"],
                 "local_to": slot["local_to"],
                 "import_p_per_kwh": slot["rate_p_per_kwh"],
-                "export_p_per_kwh": ex["rate_p_per_kwh"] if ex else (0.0 if not tariffs["export"] else None),
+                "export_p_per_kwh": (
+                    ex["rate_p_per_kwh"]
+                    if ex else (0.0 if not tariffs["export"] else None)
+                ),
                 "import_price_available": slot["price_available"],
-                "export_price_available": bool(ex and ex["price_available"]) if tariffs["export"] else True,
+                "export_price_available": (
+                    bool(ex and ex["price_available"])
+                    if tariffs["export"] else True
+                ),
             })
+
     return {
         "timezone": timezone_name,
         "import_tariff": tariffs["import"]["tariff_code"],
-        "export_tariff": tariffs["export"]["tariff_code"] if tariffs["export"] else None,
+        "export_tariff": (
+            tariffs["export"]["tariff_code"]
+            if tariffs["export"] else None
+        ),
         "slots": rows,
     }
 
