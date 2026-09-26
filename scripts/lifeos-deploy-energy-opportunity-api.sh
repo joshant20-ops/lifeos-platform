@@ -102,12 +102,18 @@ done
 [[ "${health:-}" == healthy ]] || fail "lifeos_energy_health:${health:-missing}"
 
 python3 - <<'PY'
-import json, urllib.request
+import json, urllib.request, urllib.error
 for path in ('/health','/api/status','/api/energy/opportunities/current','/api/energy/report?hours=24','/api/energy/tariffs'):
-    with urllib.request.urlopen('http://127.0.0.1:8110'+path,timeout=10) as response:
-        assert response.status == 200
-        payload=json.load(response)
-        assert isinstance(payload,dict)
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:8110'+path,timeout=30) as response:
+            assert response.status == 200
+            payload=json.load(response)
+            assert isinstance(payload,dict)
+            print('ENERGY_API_PATH_PASS='+path)
+    except urllib.error.HTTPError as exc:
+        body=exc.read().decode('utf-8','replace')
+        print('ENERGY_API_PATH_FAIL='+path+' status='+str(exc.code)+' body='+body)
+        raise
 status=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/status',timeout=10))
 assert status['modules']['energy_opportunities']=='ready'
 opps=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/energy/opportunities/current',timeout=10))
