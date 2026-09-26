@@ -1,0 +1,21 @@
+# House Status integration hooks.
+# Hardware that is not installed stays absent from membership rather than being
+# represented as unavailable/broken entities.
+script:
+  house_status_leave_house:
+    alias: House Status - Leave House
+    description: Turn off only explicitly enrolled entertainment/lights. Future lights are added here after live discovery.
+    mode: single
+    sequence:
+      - action: media_player.turn_off
+        continue_on_error: true
+        target:
+          entity_id:
+            - media_player.westcott_way_living_room_tv
+            - media_player.tv_samsung_5_series_32
+
+# Planned hardware contracts (intentionally dormant):
+# - EV: charge-only. Add charger energy/power entities when installed; never V2G/V2H.
+# - Lights: add explicit entity IDs to Leave House only after each circuit is proven.
+# - Windows/external doors: use only confirmed exterior aperture sensors for House secure.
+# - Doorbell: motion=30s, ding=90s; repeated motion extends; shared displays only.

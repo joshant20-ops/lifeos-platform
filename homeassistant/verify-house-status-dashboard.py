@@ -21,7 +21,7 @@ try:
 except Exception as e: fail('dashboard storage',repr(e))
 items=[x for x in reg if x.get('url_path')=='house-status']
 if len(items)!=1 or items[0].get('title')!='House Status': fail('dashboard registration',repr(items))
-expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full Energy Flow','full-energy-flow'),('Home Status','home-status')]
+expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full Energy Flow','full-energy-flow'),('Home Status','home-status'),('Doorbell','doorbell')]
 got=[(v.get('title'),v.get('path')) for v in views]
 if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
@@ -29,8 +29,19 @@ for entity in ['sensor.lifeos_energy_import_tariff','sensor.lifeos_grid_import_p
  if entity not in blob: fail('required proven energy entity missing',entity)
 if 'placeholder-floorplan.svg' not in blob: fail('replaceable floorplan contract missing')
 if 'confirmation' not in blob.lower(): fail('Leave House confirmation contract missing')
+if 'script.house_status_leave_house' not in blob: fail('Leave House script binding missing')
+if 'EV not installed' not in blob: fail('EV not-installed contract missing')
+if 'House secure is intentionally not asserted' not in blob: fail('security fail-closed contract missing')
+if 'Doorbell' not in blob or 'Not installed' not in blob: fail('doorbell planned-state contract missing')
+package=HA/'packages/house_status.yaml'
+if not package.exists(): fail('House Status package missing')
+ptext=package.read_text()
+for entity in ['media_player.westcott_way_living_room_tv','media_player.tv_samsung_5_series_32']:
+ if entity not in ptext: fail('Leave House TV membership missing',entity)
 print('HOUSE_STATUS_HA_GATE=PASS')
 print('dashboard=/house-status drift=none')
-print('views=3 order=PASS')
+print('views=4 order=PASS')
 print('floorplan=replaceable-placeholder')
 print('unsafe_unproven_controls=absent')
+print('future_hardware_hooks=READY')
+print('leave_house=TV_ONLY_UNTIL_LIGHTS_INSTALLED')
