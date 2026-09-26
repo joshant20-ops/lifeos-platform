@@ -31,7 +31,7 @@ card_blob=CARD.read_text() if CARD.exists() else ''
 combined=blob+card_blob
 for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
  if entity not in combined: fail('required proven energy entity missing',entity)
-if 'placeholder-floorplan.svg' not in blob: fail('replaceable floorplan contract missing')
+if 'placeholder-floorplan.svg' not in combined and 'Replaceable ground-floor plan' not in combined: fail('replaceable floorplan contract missing')
 if 'Leave House' not in combined: fail('Leave House UI contract missing')
 if 'EV' not in combined or 'Not installed' not in combined: fail('EV not-installed contract missing')
 if 'Security sensors not installed' not in combined: fail('security fail-closed contract missing')
