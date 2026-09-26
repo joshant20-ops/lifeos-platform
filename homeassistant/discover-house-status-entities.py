@@ -75,6 +75,23 @@ try:
 except Exception as exc:
     frontend['probe_error']=repr(exc)
 print(json.dumps({'house_status_candidates':picked,'current_states':states,'frontend':frontend},indent=2,sort_keys=True,default=str))
+# Frontend resource diagnostics (read-only).
+frontend={}
+base=Path('/opt/stacks/homeassistant/config')
+rp=base/'.storage/lovelace_resources'
+cp=base/'www/house-status/lifeos-house-status-card.js'
+try:
+    frontend['resources']=json.loads(rp.read_text()).get('data',{}).get('items',[]) if rp.exists() else []
+    frontend['card_exists']=cp.exists()
+    frontend['card_defines_element']=("customElements.define('lifeos-house-status'" in cp.read_text()) if cp.exists() else False
+    probe=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123/local/house-status/lifeos-house-status-card.js'],text=True,capture_output=True,timeout=10)
+    frontend['served_rc']=probe.returncode
+    frontend['served_bytes']=len(probe.stdout)
+    frontend['served_defines_element']="customElements.define('lifeos-house-status'" in probe.stdout
+    frontend['served_error']=probe.stderr[-500:]
+except Exception as exc:
+    frontend['error']=repr(exc)
+print(json.dumps({'frontend_resource_diagnostics':frontend},indent=2,sort_keys=True))
 print(f'HOUSE_STATUS_CANDIDATE_COUNT={len(picked)}')
 print(f'HOUSE_STATUS_STATE_COUNT={len([k for k in states if not k.startswith("_")])}')
 print('RESULT=PASS')
