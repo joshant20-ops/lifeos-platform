@@ -17,7 +17,8 @@ def validate(src):
     expected=[
       ('Domestic Energy Consumption','domestic-energy-consumption'),
       ('Full Energy Flow','full-energy-flow'),
-      ('Home Status','home-status')]
+      ('Home Status','home-status'),
+      ('Doorbell','doorbell')]
     got=[(v.get('title'),v.get('path')) for v in views]
     if got!=expected: raise ValueError(f'House Status views invalid: {got!r}')
     blob=canonical(cfg)
@@ -43,7 +44,7 @@ def main():
     REGISTRY.write_text(json.dumps(reg,indent=2)+'\n')
     print('DEPLOY: PASS')
     print('dashboard=/house-status')
-    print('views=domestic-energy-consumption,full-energy-flow,home-status')
+    print('views=domestic-energy-consumption,full-energy-flow,home-status,doorbell')
     return 0
 
 if __name__=='__main__': sys.exit(main())
