@@ -27,6 +27,9 @@ expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full E
 got=[(v.get('title'),v.get('path')) for v in views]
 if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
+for v in views[:3]:
+ if v.get('type')!='panel' or len(v.get('cards',[]))!=1 or v['cards'][0].get('type')!='custom:lifeos-house-status': fail('first three views must be single custom frontend panels',repr(v))
+if 'custom:apexcharts-card' in json.dumps(views[:3]): fail('legacy Lovelace chart composition remains')
 card_blob=CARD.read_text() if CARD.exists() else ''
 combined=blob+card_blob
 for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
