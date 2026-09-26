@@ -6,6 +6,7 @@ STORAGE=HA/'.storage'
 SOURCE=pathlib.Path(__file__).with_name('house-status-dashboard.json')
 TARGET=STORAGE/'lovelace.dashboard_house_status'
 REGISTRY=STORAGE/'lovelace_dashboards'
+RESOURCES=STORAGE/'lovelace_resources'
 
 def load(p): return json.loads(p.read_text())
 def canonical(x): return json.dumps(x,sort_keys=True,separators=(',',':'))
@@ -35,14 +36,19 @@ def main():
         print('DRIFT: none' if same else 'DRIFT: House Status dashboard differs from repository')
         return 0 if same else 2
     if not REGISTRY.exists(): raise SystemExit('HA dashboard registry missing')
+    if not RESOURCES.exists(): raise SystemExit('HA Lovelace resource registry missing')
     stamp=time.strftime('%Y%m%dT%H%M%SZ',time.gmtime())
-    for p in (TARGET,REGISTRY):
+    for p in (TARGET,REGISTRY,RESOURCES):
         if p.exists(): shutil.copy2(p,p.with_name(p.name+'.pre-repo-deploy.'+stamp+'.bak'))
     TARGET.write_text(json.dumps(src,indent=2)+'\n')
     reg=load(REGISTRY); items=reg.setdefault('data',{}).setdefault('items',[])
     items[:]=[x for x in items if x.get('url_path')!='house-status' and x.get('id')!='dashboard_house_status']
     items.append({'id':'dashboard_house_status','show_in_sidebar':True,'icon':'mdi:home-heart','title':'House Status','require_admin':False,'mode':'storage','url_path':'house-status'})
     REGISTRY.write_text(json.dumps(reg,indent=2)+'\n')
+    resources=load(RESOURCES); ritems=resources.setdefault('data',{}).setdefault('items',[])
+    ritems[:]=[x for x in ritems if x.get('url')!='/local/house-status/lifeos-house-status-card.js']
+    ritems.append({'id':'lifeos_house_status_card','url':'/local/house-status/lifeos-house-status-card.js','type':'module'})
+    RESOURCES.write_text(json.dumps(resources,indent=2)+'\n')
     print('DEPLOY: PASS')
     print('dashboard=/house-status')
     print('views=domestic-energy-consumption,full-energy-flow,home-status,doorbell')
