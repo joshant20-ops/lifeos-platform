@@ -18,4 +18,9 @@ script:
 # - EV: charge-only. Add charger energy/power entities when installed; never V2G/V2H.
 # - Lights: add explicit entity IDs to Leave House only after each circuit is proven.
 # - Windows/external doors: use only confirmed exterior aperture sensors for House secure.
-# - Doorbell: motion=30s, ding=90s; repeated motion extends; shared displays only.
+# Current doorbell mapping (replace these three entities when hardware changes):
+# camera.front_door_live_view
+# event.front_door_motion
+# event.front_door_ding
+# Presentation contract: motion=30s, ding=90s, repeated motion extends; shared displays only.
+# Automatic display navigation remains dormant until a supported display-control integration is proven.
