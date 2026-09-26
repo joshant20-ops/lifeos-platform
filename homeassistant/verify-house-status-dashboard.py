@@ -21,7 +21,8 @@ try:
 except Exception as e: fail('dashboard storage',repr(e))
 items=[x for x in reg if x.get('url_path')=='house-status']
 if len(items)!=1 or items[0].get('title')!='House Status': fail('dashboard registration',repr(items))
-expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full Energy Flow','full-energy-flow'),('Home Status','home-status')]
+expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full Energy Flow','full-energy-flow'),('Home Status','home-status'),
+      ('Doorbell','doorbell')]
 got=[(v.get('title'),v.get('path')) for v in views]
 if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
@@ -29,8 +30,10 @@ for entity in ['sensor.lifeos_energy_import_tariff','sensor.lifeos_grid_import_p
  if entity not in blob: fail('required proven energy entity missing',entity)
 if 'placeholder-floorplan.svg' not in blob: fail('replaceable floorplan contract missing')
 if 'confirmation' not in blob.lower(): fail('Leave House confirmation contract missing')
+if 'Motion:' not in blob or 'Bell press:' not in blob: fail('Doorbell trigger contract missing')
+if 'CAMERA UNAVAILABLE' not in blob: fail('Doorbell unavailable-state contract missing')
 print('HOUSE_STATUS_HA_GATE=PASS')
 print('dashboard=/house-status drift=none')
-print('views=3 order=PASS')
+print('views=4 order=PASS')
 print('floorplan=replaceable-placeholder')
 print('unsafe_unproven_controls=absent')
