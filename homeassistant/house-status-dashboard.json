@@ -12,15 +12,43 @@
           "icon": "mdi:home-lightning-bolt",
           "cards": [
             {
-              "type": "markdown",
-              "content": "# Domestic Energy Consumption\nHouse running cost excluding home-battery and EV charging. Tariff/cost series are activated only after live entity discovery proves the required interval data."
+              "type": "grid",
+              "columns": 4,
+              "square": false,
+              "cards": [
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_energy_house_load",
+                  "name": "House demand",
+                  "icon": "mdi:home-lightning-bolt"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_energy_import_tariff",
+                  "name": "Import price",
+                  "icon": "mdi:currency-gbp"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_energy_export_tariff",
+                  "name": "Export price",
+                  "icon": "mdi:transmission-tower-export"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.octopus_energy_gas_e6e16309692443_2200667301_current_rate",
+                  "name": "Gas price",
+                  "icon": "mdi:fire"
+                }
+              ]
             },
             {
               "type": "custom:apexcharts-card",
               "header": {
                 "show": true,
-                "title": "Domestic energy cost & tariff",
-                "show_states": true
+                "title": "Today + tomorrow",
+                "show_states": true,
+                "colorize_states": true
               },
               "graph_span": "48h",
               "span": {
@@ -30,33 +58,103 @@
                 "show": true,
                 "label": "Now"
               },
+              "apex_config": {
+                "chart": {
+                  "height": 360
+                },
+                "legend": {
+                  "show": true
+                },
+                "stroke": {
+                  "curve": "smooth"
+                }
+              },
+              "yaxis": [
+                {
+                  "id": "price",
+                  "decimals": 2,
+                  "apex_config": {
+                    "title": {
+                      "text": "p/kWh"
+                    }
+                  }
+                },
+                {
+                  "id": "power",
+                  "opposite": true,
+                  "decimals": 2,
+                  "apex_config": {
+                    "title": {
+                      "text": "kW"
+                    }
+                  }
+                }
+              ],
               "series": [
                 {
                   "entity": "sensor.lifeos_energy_import_tariff",
                   "name": "Electricity price",
                   "type": "line",
                   "unit": "p/kWh",
-                  "stroke_width": 2
+                  "yaxis_id": "price",
+                  "stroke_width": 3,
+                  "extend_to": "false"
+                },
+                {
+                  "entity": "sensor.lifeos_energy_export_tariff",
+                  "name": "Export price",
+                  "type": "line",
+                  "unit": "p/kWh",
+                  "yaxis_id": "price",
+                  "stroke_width": 2,
+                  "extend_to": "false"
+                },
+                {
+                  "entity": "sensor.lifeos_energy_house_load",
+                  "name": "House demand",
+                  "type": "area",
+                  "unit": "kW",
+                  "yaxis_id": "power",
+                  "opacity": 0.2,
+                  "group_by": {
+                    "func": "avg",
+                    "duration": "30min"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "columns": 4,
+              "square": false,
+              "cards": [
+                {
+                  "type": "markdown",
+                  "content": "### Electricity used\n**Live metering**\n\nDomestic load excludes battery charging. Interval £ totals will activate when tariff-history data is exposed to HA."
+                },
+                {
+                  "type": "markdown",
+                  "content": "### Energy exported\n**Live metering**\n\nExport flow and tariff are connected; interval earnings remain fail-closed until historical tariff intervals are available."
+                },
+                {
+                  "type": "markdown",
+                  "content": "### Gas used\n**Octopus connected**\n\nCurrent tariff and previous consumption/cost are available from the gas meter."
+                },
+                {
+                  "type": "markdown",
+                  "content": "### Total energy cost\n**Pending interval ledger**\n\nNo fabricated daily cost × average-price calculation."
                 }
               ]
             },
             {
               "type": "entities",
-              "title": "Live energy provenance",
+              "title": "Gas meter",
               "show_header_toggle": false,
               "entities": [
-                "sensor.lifeos_energy_house_load",
-                "sensor.lifeos_grid_import_power",
-                "sensor.lifeos_grid_export_power",
-                "sensor.lifeos_battery_charge_power",
-                "sensor.lifeos_battery_discharge_power",
-                "sensor.lifeos_energy_import_tariff",
-                "sensor.lifeos_energy_export_tariff"
+                "sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh",
+                "sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost",
+                "sensor.octopus_energy_gas_e6e16309692443_2200667301_current_standing_charge"
               ]
-            },
-            {
-              "type": "markdown",
-              "content": "**Cost summaries pending live discovery.** They will only be enabled when half-hour energy/tariff entities are proven, so this dashboard never fabricates £ totals."
             }
           ]
         },
@@ -66,8 +164,33 @@
           "icon": "mdi:transmission-tower",
           "cards": [
             {
-              "type": "markdown",
-              "content": "# Full Energy Flow\nGrid flow with house, battery and EV attribution. Tesla is charge-only; no V2G/V2H series."
+              "type": "grid",
+              "columns": 4,
+              "square": false,
+              "cards": [
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_solar_generation_power",
+                  "name": "Solar",
+                  "icon": "mdi:solar-power"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_house_demand_power",
+                  "name": "House",
+                  "icon": "mdi:home-lightning-bolt"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_energy_battery_soc",
+                  "name": "Battery",
+                  "icon": "mdi:battery"
+                },
+                {
+                  "type": "markdown",
+                  "content": "### EV\n**Not installed**\n\nCharge-only integration slot ready."
+                }
+              ]
             },
             {
               "type": "custom:apexcharts-card",
@@ -76,7 +199,7 @@
                 "title": "Energy flow & tariff",
                 "show_states": true
               },
-              "graph_span": "48h",
+              "graph_span": "24h",
               "span": {
                 "start": "day"
               },
@@ -84,11 +207,64 @@
                 "show": true,
                 "label": "Now"
               },
+              "apex_config": {
+                "chart": {
+                  "height": 390,
+                  "stacked": true
+                },
+                "plotOptions": {
+                  "bar": {
+                    "columnWidth": "85%"
+                  }
+                },
+                "legend": {
+                  "show": true
+                }
+              },
+              "yaxis": [
+                {
+                  "id": "power",
+                  "decimals": 2,
+                  "apex_config": {
+                    "title": {
+                      "text": "kW"
+                    }
+                  }
+                },
+                {
+                  "id": "price",
+                  "opposite": true,
+                  "decimals": 2,
+                  "apex_config": {
+                    "title": {
+                      "text": "p/kWh"
+                    }
+                  }
+                },
+                {
+                  "id": "soc",
+                  "opposite": true,
+                  "min": 0,
+                  "max": 100,
+                  "show": false
+                }
+              ],
               "series": [
                 {
-                  "entity": "sensor.lifeos_grid_import_power",
-                  "name": "Grid import",
+                  "entity": "sensor.lifeos_house_demand_power",
+                  "name": "House usage",
                   "type": "column",
+                  "yaxis_id": "power",
+                  "group_by": {
+                    "func": "avg",
+                    "duration": "30min"
+                  }
+                },
+                {
+                  "entity": "sensor.lifeos_battery_charge_power",
+                  "name": "Battery charging",
+                  "type": "column",
+                  "yaxis_id": "power",
                   "group_by": {
                     "func": "avg",
                     "duration": "30min"
@@ -98,6 +274,7 @@
                   "entity": "sensor.lifeos_grid_export_power",
                   "name": "Grid export",
                   "type": "column",
+                  "yaxis_id": "power",
                   "transform": "return -Math.abs(x);",
                   "group_by": {
                     "func": "avg",
@@ -109,30 +286,46 @@
                   "name": "Electricity price",
                   "type": "line",
                   "unit": "p/kWh",
-                  "stroke_width": 2
+                  "yaxis_id": "price",
+                  "stroke_width": 3,
+                  "extend_to": "false"
                 },
                 {
                   "entity": "sensor.lifeos_energy_battery_soc",
                   "name": "Battery SOC",
                   "type": "line",
                   "unit": "%",
+                  "yaxis_id": "soc",
                   "stroke_width": 2
                 }
               ]
             },
             {
-              "type": "entities",
-              "title": "Battery flow",
-              "show_header_toggle": false,
-              "entities": [
-                "sensor.lifeos_battery_charge_power",
-                "sensor.lifeos_battery_discharge_power",
-                "sensor.lifeos_energy_battery_soc"
+              "type": "grid",
+              "columns": 4,
+              "square": false,
+              "cards": [
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_grid_import_power",
+                  "name": "Grid import"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_grid_export_power",
+                  "name": "Grid export"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_battery_charge_power",
+                  "name": "Battery charge"
+                },
+                {
+                  "type": "tile",
+                  "entity": "sensor.lifeos_battery_discharge_power",
+                  "name": "Battery discharge"
+                }
               ]
-            },
-            {
-              "type": "markdown",
-              "content": "**EV charging:** awaiting a proven live HA vehicle/charger energy entity. The dashboard will not invent one."
             }
           ]
         },
@@ -142,35 +335,101 @@
           "icon": "mdi:home-eye",
           "cards": [
             {
-              "type": "markdown",
-              "content": "# Home Status\nRead-only whole-house state. Real upstairs/downstairs drawings will replace the simulated floorplan without changing state logic."
-            },
-            {
-              "type": "markdown",
-              "title": "House state",
-              "content": "🟢 **Floorplan framework ready**\n\nWindow/external-door overlays, TV states and room-centre light dots are intentionally withheld until their live HA entities are mapped. Unavailable devices will render neutral grey, never as a false red/green state."
+              "type": "grid",
+              "columns": 2,
+              "square": false,
+              "cards": [
+                {
+                  "type": "markdown",
+                  "content": "## Security sensors\n**Not installed**\n\nWindow and external-door overlay positions are reserved. **House secure is intentionally not asserted** until the sensors exist."
+                },
+                {
+                  "type": "markdown",
+                  "content": "## Smart lights\n**Planned rollout**\n\nRoom-centre status dots and Leave House membership are ready to be populated as lights are installed."
+                }
+              ]
             },
             {
               "type": "picture-elements",
               "image": "/local/house-status/placeholder-floorplan.svg",
               "elements": [
                 {
-                  "type": "state-label",
-                  "entity": "sensor.lifeos_system_health",
+                  "type": "state-icon",
+                  "entity": "media_player.westcott_way_living_room_tv",
+                  "title": "Living room TV",
+                  "tap_action": {
+                    "action": "none"
+                  },
+                  "hold_action": {
+                    "action": "none"
+                  },
+                  "double_tap_action": {
+                    "action": "none"
+                  },
                   "style": {
-                    "left": "50%",
-                    "top": "8%",
-                    "font-size": "14px",
-                    "background": "rgba(0,0,0,.65)",
-                    "padding": "6px 10px",
+                    "left": "31%",
+                    "top": "70%"
+                  }
+                },
+                {
+                  "type": "state-label",
+                  "entity": "media_player.westcott_way_living_room_tv",
+                  "prefix": "Living TV: ",
+                  "tap_action": {
+                    "action": "none"
+                  },
+                  "style": {
+                    "left": "31%",
+                    "top": "78%",
+                    "font-size": "13px",
+                    "background": "rgba(0,0,0,.70)",
+                    "padding": "5px 8px",
                     "border-radius": "8px"
                   }
                 }
               ]
             },
             {
+              "type": "button",
+              "name": "Leave House",
+              "icon": "mdi:exit-run",
+              "entity": "script.house_status_leave_house",
+              "show_state": false,
+              "tap_action": {
+                "action": "call-service",
+                "service": "script.house_status_leave_house",
+                "confirmation": {
+                  "text": "Turn off the configured TVs and future enrolled lights?"
+                }
+              }
+            },
+            {
+              "type": "entities",
+              "title": "TV status",
+              "show_header_toggle": false,
+              "entities": [
+                "media_player.westcott_way_living_room_tv",
+                "media_player.tv_samsung_5_series_32"
+              ]
+            },
+            {
               "type": "markdown",
-              "content": "## Leave House\nThe final button will turn off only explicitly mapped lights and TVs and will require confirmation. It is not enabled until those entities are proven, preventing accidental broad service calls."
+              "content": "**Legend** · Windows/doors: 🟢 open · 🔴 closed · Lights: 🔴 on · 🟢 off · TVs: 🟢 on · 🔴 off · ⚪ unavailable\n\nFuture devices remain **Not installed**, not faulted."
+            }
+          ]
+        },
+        {
+          "title": "Doorbell",
+          "path": "doorbell",
+          "icon": "mdi:doorbell-video",
+          "cards": [
+            {
+              "type": "markdown",
+              "content": "## Doorbell\n### Not installed\n\nThe final camera position and automation contract are ready. When the intended doorbell is installed and mapped:\n\n- Motion → present this view for **30 seconds** on enrolled shared displays.\n- Repeated motion → extend the active window.\n- Bell press → present this view for **90 seconds**.\n- Camera unavailable → show **CAMERA UNAVAILABLE**, never stale imagery as live.\n\nAn existing Ring `Front Door` registry entry was discovered but is **not activated here** because it has not been confirmed as the intended installed doorbell."
+            },
+            {
+              "type": "markdown",
+              "content": "### Display automation\n**Dormant until a supported display-control mechanism is proven.** Bedroom/private displays will not be enrolled by default."
             }
           ]
         }
