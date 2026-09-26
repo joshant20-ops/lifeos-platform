@@ -164,6 +164,11 @@ jobs:
             'import json,os,pathlib,collections; r=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]/"events"; ev=[json.loads(p.read_text()) for p in sorted(r.glob("*.json"))]; flat=[json.dumps(x).lower() for x in ev]; print(json.dumps({"events":len(ev),"file_editor_actions":sum("fileeditoraction" in x or "file_editor" in x for x in flat),"terminal_actions":sum("execute_command" in x or "terminaltool" in x or "bashaction" in x for x in flat),"finish_actions":sum("finishaction" in x or "finish_tool" in x for x in flat),"assistant_json_only":sum("\\\"name\\\":\\\"write_file\\\"" in x and "action" not in x for x in flat)}))'],text=True)
           counts=json.loads(summary)
           print('OPENHANDS_EVENT_SUMMARY='+json.dumps(counts,sort_keys=True))
+          diagnostic=subprocess.check_output(['docker','exec','-e','CID='+actual,container,'python','-c',
+            'import json,os,pathlib; r=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"] / "events"; out=[]; '\
+            'files=sorted(r.glob("*.json")); '\
+            '[(lambda e,p: out.append({"seq":p.stem,"top_keys":sorted(e)[:20],"source":str(e.get("source",""))[:40],"kind":str(e.get("kind",e.get("type","")))[:80],"action_kind":str((e.get("action") or {}).get("kind",(e.get("action") or {}).get("type","")))[:80] if isinstance(e.get("action"),dict) else type(e.get("action")).__name__,"observation_kind":str((e.get("observation") or {}).get("kind",(e.get("observation") or {}).get("type","")))[:80] if isinstance(e.get("observation"),dict) else type(e.get("observation")).__name__,"has_error_marker":"error" in json.dumps(e).lower(),"has_finish_marker":"finish" in json.dumps(e).lower()}))(json.loads(p.read_text()),p) for p in files[-15:]]; print(json.dumps(out,sort_keys=True))'],text=True)
+          print('OPENHANDS_REDACTED_EVENT_TAIL='+diagnostic.strip())
           assert counts['file_editor_actions']>=1,counts
           assert counts['terminal_actions']>=1,counts
           assert counts['finish_actions']>=1,counts
