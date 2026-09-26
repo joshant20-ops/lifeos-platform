@@ -79,6 +79,10 @@ jobs:
             echo "cid=$cid status=$code bytes=$(wc -c </tmp/body)"
             head -c 300 /tmp/body | tr '\n' ' '; echo
           done
+          echo '=== CONVERSATION RUNTIME TRACE ==='
+          docker logs --since 30m lifeos-agent-canvas 2>&1 | grep -E '9a36222c|execute_bash_command|workspace|working_dir' | tail -300 || true
+          echo '=== PERSISTED STATE LOCATIONS ==='
+          docker exec lifeos-agent-canvas sh -c "find /home/openhands/.openhands -maxdepth 5 -type f -print 2>/dev/null | sort | head -300"
           echo '=== RECENT ROUTE LOGS ==='
           docker logs --since 30m lifeos-agent-canvas 2>&1 | grep -Ei 'workspace|canvas-acceptance|execute_bash_command|401|404|422|500|workspace-session' | tail -200 || true
           echo '=== HTTPS INGRESS REQUESTS ==='
