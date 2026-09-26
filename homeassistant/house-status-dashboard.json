@@ -10,71 +10,11 @@
           "title": "Domestic Energy Consumption",
           "path": "domestic-energy-consumption",
           "icon": "mdi:home-lightning-bolt",
-          "type": "masonry",
+          "type": "panel",
           "cards": [
             {
               "type": "custom:lifeos-house-status",
               "mode": "domestic"
-            },
-            {
-              "type": "custom:apexcharts-card",
-              "header": {
-                "show": false
-              },
-              "graph_span": "48h",
-              "span": {
-                "start": "day"
-              },
-              "apex_config": {
-                "chart": {
-                  "height": 360
-                },
-                "legend": {
-                  "show": true,
-                  "position": "bottom"
-                }
-              },
-              "yaxis": [
-                {
-                  "id": "price",
-                  "decimals": 0
-                },
-                {
-                  "id": "cost",
-                  "opposite": true,
-                  "decimals": 2
-                }
-              ],
-              "series": [
-                {
-                  "entity": "sensor.lifeos_energy_tariff_horizon",
-                  "name": "Electricity price",
-                  "type": "line",
-                  "unit": "p/kWh",
-                  "yaxis_id": "price",
-                  "stroke_width": 2,
-                  "extend_to": false,
-                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), Number(x.import_p_per_kwh)]);"
-                },
-                {
-                  "entity": "sensor.lifeos_energy_report",
-                  "name": "Electricity used cost",
-                  "type": "line",
-                  "unit": "£",
-                  "yaxis_id": "cost",
-                  "extend_to": false,
-                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.domestic_import_cost_gbp !== null).map(x => [new Date(x.valid_from).getTime(), Number(x.domestic_import_cost_gbp)]);"
-                },
-                {
-                  "entity": "sensor.lifeos_energy_report",
-                  "name": "Export earnings",
-                  "type": "line",
-                  "unit": "£",
-                  "yaxis_id": "cost",
-                  "extend_to": false,
-                  "data_generator": "return (entity.attributes.intervals || []).filter(x => x.export_earnings_gbp !== null).map(x => [new Date(x.valid_from).getTime(), -Number(x.export_earnings_gbp)]);"
-                }
-              ]
             }
           ]
         },
@@ -82,100 +22,11 @@
           "title": "Full Energy Flow",
           "path": "full-energy-flow",
           "icon": "mdi:transmission-tower",
-          "type": "masonry",
+          "type": "panel",
           "cards": [
             {
               "type": "custom:lifeos-house-status",
               "mode": "flow"
-            },
-            {
-              "type": "custom:apexcharts-card",
-              "header": {
-                "show": false
-              },
-              "graph_span": "24h",
-              "span": {
-                "start": "day"
-              },
-              "apex_config": {
-                "chart": {
-                  "height": 360,
-                  "stacked": true
-                },
-                "legend": {
-                  "show": true,
-                  "position": "bottom"
-                }
-              },
-              "yaxis": [
-                {
-                  "id": "power",
-                  "decimals": 2
-                },
-                {
-                  "id": "price",
-                  "opposite": true,
-                  "decimals": 1
-                },
-                {
-                  "id": "soc",
-                  "opposite": true,
-                  "min": 0,
-                  "max": 100,
-                  "show": false
-                }
-              ],
-              "series": [
-                {
-                  "entity": "sensor.lifeos_house_demand_power",
-                  "name": "House usage",
-                  "type": "column",
-                  "yaxis_id": "power",
-                  "group_by": {
-                    "func": "avg",
-                    "duration": "30min"
-                  }
-                },
-                {
-                  "entity": "sensor.lifeos_battery_charge_power",
-                  "name": "Battery charging",
-                  "type": "column",
-                  "yaxis_id": "power",
-                  "group_by": {
-                    "func": "avg",
-                    "duration": "30min"
-                  }
-                },
-                {
-                  "entity": "sensor.lifeos_grid_export_power",
-                  "name": "Grid export",
-                  "type": "column",
-                  "yaxis_id": "power",
-                  "transform": "return -Math.abs(x);",
-                  "group_by": {
-                    "func": "avg",
-                    "duration": "30min"
-                  }
-                },
-                {
-                  "entity": "sensor.lifeos_energy_tariff_horizon",
-                  "name": "Electricity price",
-                  "type": "line",
-                  "unit": "p/kWh",
-                  "yaxis_id": "price",
-                  "stroke_width": 2,
-                  "extend_to": false,
-                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), Number(x.import_p_per_kwh)]);"
-                },
-                {
-                  "entity": "sensor.lifeos_energy_battery_soc",
-                  "name": "Battery SOC",
-                  "type": "line",
-                  "unit": "%",
-                  "yaxis_id": "soc",
-                  "stroke_width": 2
-                }
-              ]
             }
           ]
         },
@@ -183,7 +34,7 @@
           "title": "Home Status",
           "path": "home-status",
           "icon": "mdi:home-eye",
-          "type": "masonry",
+          "type": "panel",
           "cards": [
             {
               "type": "custom:lifeos-house-status",
