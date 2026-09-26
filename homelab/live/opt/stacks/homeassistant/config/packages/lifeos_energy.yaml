@@ -159,7 +159,7 @@ rest:
       - name: LifeOS Domestic Import Energy
         unique_id: lifeos_domestic_import_energy
         value_template: >
-          {{ value_json.totals.import_kwh | float(0) }}
+          {{ value_json.totals.domestic_import_kwh | float(0) }}
         unit_of_measurement: kWh
         device_class: energy
         state_class: measurement
@@ -167,7 +167,7 @@ rest:
       - name: LifeOS Domestic Import Cost
         unique_id: lifeos_domestic_import_cost
         value_template: >
-          {{ value_json.totals.import_cost_gbp | float(0) }}
+          {{ value_json.totals.domestic_import_cost_gbp | float(0) }}
         unit_of_measurement: GBP
         state_class: measurement
 
@@ -189,7 +189,7 @@ rest:
       - name: LifeOS Net Electricity Cost
         unique_id: lifeos_net_electricity_cost
         value_template: >
-          {{ value_json.totals.net_electricity_cost_gbp | float(0) }}
+          {{ value_json.totals.net_domestic_electricity_cost_gbp | float(0) }}
         unit_of_measurement: GBP
         state_class: measurement
 
