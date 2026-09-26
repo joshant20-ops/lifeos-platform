@@ -13,6 +13,9 @@ if DEV.exists():
 
 def kind(e):
     eid=e.get('entity_id',''); dc=(e.get('original_device_class') or '').lower(); name=' '.join(str(e.get(k) or '') for k in ('name','original_name')).lower()
+    if eid.startswith('camera.') and any(x in (eid+' '+name) for x in ('doorbell','front door','front_door','bell')): return 'doorbell_camera'
+    if eid.startswith('binary_sensor.') and any(x in (eid+' '+name) for x in ('doorbell','front door','front_door','bell')) and any(x in (eid+' '+name+' '+dc) for x in ('motion','occupancy')): return 'doorbell_motion'
+    if any(eid.startswith(x) for x in ('event.','binary_sensor.','sensor.')) and any(x in (eid+' '+name) for x in ('doorbell','front door','front_door','bell')) and any(x in (eid+' '+name) for x in ('press','ding','button','visitor')): return 'doorbell_press'
     if eid.startswith('media_player.') and ('tv' in name or dc=='tv'): return 'tv'
     if eid.startswith('light.'): return 'light'
     if eid.startswith('binary_sensor.') and dc in {'window','door','opening'}: return 'aperture'
