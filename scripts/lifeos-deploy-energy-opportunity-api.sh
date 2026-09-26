@@ -28,7 +28,7 @@ live_main_sha=$(sha "$TARGET/app/main.py")
 [[ "$live_main_sha" == "$OLD_MAIN_SHA" || "$live_main_sha" == "$new_main_sha" ]] || \
   fail live_energy_main_has_unreviewed_drift
 
-runuser -u joshan -- /usr/bin/python3 tests/test_energy_opportunity_service.py
+runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py"\nrunuser -u joshan -- /usr/bin/python3 tests/test_energy_opportunity_service.py
 echo ENERGY_OPPORTUNITY_API_TESTS=PASS
 
 mkdir -p "$BACKUP/energy/app/services" "$BACKUP/energy/app/routers" \
@@ -115,7 +115,7 @@ assert isinstance(opps['opportunity_ids'],list)
 report=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/energy/report?hours=24',timeout=30))
 assert report['interval_minutes']==30
 assert isinstance(report['intervals'],list)
-assert {'import_kwh','export_kwh','import_cost_gbp','export_earnings_gbp','net_electricity_cost_gbp'} <= set(report['totals'])
+assert {'import_kwh','domestic_import_kwh','battery_charge_import_kwh','export_kwh','import_cost_gbp','domestic_import_cost_gbp','battery_charge_import_cost_gbp','export_earnings_gbp','net_domestic_electricity_cost_gbp'} <= set(report['totals'])
 print('ENERGY_INTERVAL_LEDGER_LIVE=PASS')
 print('ENERGY_OPPORTUNITY_API_LIVE=PASS')
 PY
