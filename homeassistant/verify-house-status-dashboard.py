@@ -25,12 +25,17 @@ expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full E
 got=[(v.get('title'),v.get('path')) for v in views]
 if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
-for entity in ['sensor.lifeos_energy_import_tariff','sensor.lifeos_grid_import_power','sensor.lifeos_grid_export_power','sensor.lifeos_energy_battery_soc']:
+for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_grid_import_power','sensor.lifeos_grid_export_power','sensor.lifeos_energy_battery_soc']:
  if entity not in blob: fail('required proven energy entity missing',entity)
 if 'placeholder-floorplan.svg' not in blob: fail('replaceable floorplan contract missing')
 if 'Leave House' not in blob: fail('Leave House UI contract missing')
 if 'EV' not in blob or 'Not installed' not in blob: fail('EV not-installed contract missing')
 if 'House secure is intentionally not asserted' not in blob: fail('security fail-closed contract missing')
+if 'Pending interval ledger' in blob or 'Live metering' in blob: fail('placeholder energy copy remains')
+if 'sensor.lifeos_energy_import_tariff\"' in blob: fail('string tariff entity used as numeric chart series')
+if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding')
+if 'Home-battery grid charging excluded' not in blob: fail('domestic battery exclusion not surfaced')
+if 'no V2G/V2H' not in blob: fail('EV charge-only contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
  if entity not in blob: fail('current Ring doorbell mapping missing',entity)
 print('HOUSE_STATUS_HA_GATE=PASS')
@@ -39,4 +44,6 @@ print('views=4 order=PASS')
 print('floorplan=replaceable-placeholder')
 print('unsafe_unproven_controls=absent')
 print('future_hardware_hooks=REPOSITORY_READY_RUNTIME_PENDING')
+print('energy_ledger=RUNTIME_WIRED')
+print('frontend_static_contract=PASS')
 print('leave_house=RUNTIME_AUTOMATION_PENDING_SUPPORTED_HA_CONFIG_PATH')
