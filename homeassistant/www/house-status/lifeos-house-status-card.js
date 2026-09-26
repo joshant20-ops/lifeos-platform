@@ -1,4 +1,6 @@
 class LifeOSHouseStatusCard extends HTMLElement {
+  static getStubConfig(){ return {mode:'domestic'}; }
+  static getConfigElement(){ return document.createElement('lifeos-house-status-editor'); }
   setConfig(config){ this.config=config||{}; this.render(); }
   set hass(hass){ this._hass=hass; this.render(); }
   getCardSize(){ return 10; }
@@ -50,5 +52,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
     this.innerHTML=css+`<div class="app">${nav}${body}</div>`;
   }
 }
-customElements.define('lifeos-house-status',LifeOSHouseStatusCard);
+if(!customElements.get('lifeos-house-status')) customElements.define('lifeos-house-status',LifeOSHouseStatusCard);
 window.customCards=window.customCards||[];window.customCards.push({type:'lifeos-house-status',name:'LifeOS House Status',description:'Reference-locked House Status UI'});
+
+class LifeOSHouseStatusEditor extends HTMLElement { setConfig(config){this.config=config;} set hass(hass){this._hass=hass;} }
+if(!customElements.get('lifeos-house-status-editor')) customElements.define('lifeos-house-status-editor',LifeOSHouseStatusEditor);
