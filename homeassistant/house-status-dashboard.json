@@ -253,149 +253,165 @@
           "title": "Full Energy Flow",
           "path": "full-energy-flow",
           "icon": "mdi:transmission-tower",
-          "cards": [
+          "type": "sections",
+          "max_columns": 4,
+          "sections": [
             {
               "type": "grid",
-              "columns": 4,
-              "square": false,
+              "column_span": 4,
               "cards": [
                 {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_solar_generation_power",
-                  "name": "Solar",
-                  "icon": "mdi:solar-power"
-                },
-                {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_house_demand_power",
-                  "name": "House",
-                  "icon": "mdi:home-lightning-bolt"
-                },
-                {
-                  "type": "tile",
-                  "entity": "sensor.lifeos_energy_battery_soc",
-                  "name": "Battery",
-                  "icon": "mdi:battery"
-                },
-                {
-                  "type": "markdown",
-                  "content": "### EV\n**Not installed**\n\nCharge-only integration slot ready."
-                }
-              ]
-            },
-            {
-              "type": "custom:apexcharts-card",
-              "header": {
-                "show": true,
-                "title": "Energy flow & tariff",
-                "show_states": true
-              },
-              "graph_span": "24h",
-              "span": {
-                "start": "day"
-              },
-              "now": {
-                "show": true,
-                "label": "Now"
-              },
-              "apex_config": {
-                "chart": {
-                  "height": 390,
-                  "stacked": true
-                },
-                "plotOptions": {
-                  "bar": {
-                    "columnWidth": "85%"
-                  }
-                },
-                "legend": {
-                  "show": true
-                }
-              },
-              "yaxis": [
-                {
-                  "id": "power",
-                  "decimals": 2,
-                  "apex_config": {
-                    "title": {
-                      "text": "kW"
+                  "type": "grid",
+                  "columns": 4,
+                  "square": false,
+                  "cards": [
+                    {
+                      "type": "tile",
+                      "entity": "sensor.lifeos_solar_generation_power",
+                      "name": "Solar",
+                      "icon": "mdi:solar-power"
+                    },
+                    {
+                      "type": "tile",
+                      "entity": "sensor.lifeos_house_demand_power",
+                      "name": "House",
+                      "icon": "mdi:home-lightning-bolt"
+                    },
+                    {
+                      "type": "tile",
+                      "entity": "sensor.lifeos_energy_battery_soc",
+                      "name": "Battery",
+                      "icon": "mdi:battery"
+                    },
+                    {
+                      "type": "markdown",
+                      "content": "### EV\n**Not installed**\n\nCharge-only integration slot ready."
                     }
-                  }
-                },
-                {
-                  "id": "price",
-                  "opposite": true,
-                  "decimals": 2,
-                  "apex_config": {
-                    "title": {
-                      "text": "p/kWh"
-                    }
-                  }
-                },
-                {
-                  "id": "soc",
-                  "opposite": true,
-                  "min": 0,
-                  "max": 100,
-                  "show": false
-                }
-              ],
-              "series": [
-                {
-                  "entity": "sensor.lifeos_house_demand_power",
-                  "name": "House usage",
-                  "type": "column",
-                  "yaxis_id": "power",
-                  "group_by": {
-                    "func": "avg",
-                    "duration": "30min"
-                  }
-                },
-                {
-                  "entity": "sensor.lifeos_battery_charge_power",
-                  "name": "Battery charging",
-                  "type": "column",
-                  "yaxis_id": "power",
-                  "group_by": {
-                    "func": "avg",
-                    "duration": "30min"
-                  }
-                },
-                {
-                  "entity": "sensor.lifeos_grid_export_power",
-                  "name": "Grid export",
-                  "type": "column",
-                  "yaxis_id": "power",
-                  "transform": "return -Math.abs(x);",
-                  "group_by": {
-                    "func": "avg",
-                    "duration": "30min"
-                  }
-                },
-                {
-                  "entity": "sensor.lifeos_energy_tariff_horizon",
-                  "name": "Electricity price",
-                  "type": "line",
-                  "unit": "p/kWh",
-                  "yaxis_id": "price",
-                  "stroke_width": 3,
-                  "extend_to": false,
-                  "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), x.import_p_per_kwh]);"
-                },
-                {
-                  "entity": "sensor.lifeos_energy_battery_soc",
-                  "name": "Battery SOC",
-                  "type": "line",
-                  "unit": "%",
-                  "yaxis_id": "soc",
-                  "stroke_width": 2
+                  ]
                 }
               ]
             },
             {
               "type": "grid",
-              "columns": 2,
-              "square": false,
+              "column_span": 4,
+              "cards": [
+                {
+                  "type": "custom:apexcharts-card",
+                  "header": {
+                    "show": true,
+                    "title": "Full energy flow",
+                    "show_states": false
+                  },
+                  "graph_span": "24h",
+                  "span": {
+                    "start": "day"
+                  },
+                  "now": {
+                    "show": true,
+                    "label": "Now"
+                  },
+                  "apex_config": {
+                    "chart": {
+                      "height": 390,
+                      "toolbar": {
+                        "show": false
+                      }
+                    },
+                    "plotOptions": {
+                      "bar": {
+                        "columnWidth": "85%"
+                      }
+                    },
+                    "legend": {
+                      "show": true,
+                      "position": "bottom"
+                    }
+                  },
+                  "yaxis": [
+                    {
+                      "id": "power",
+                      "decimals": 2,
+                      "apex_config": {
+                        "title": {
+                          "text": "kW"
+                        }
+                      }
+                    },
+                    {
+                      "id": "price",
+                      "opposite": true,
+                      "decimals": 2,
+                      "apex_config": {
+                        "title": {
+                          "text": "p/kWh"
+                        }
+                      }
+                    },
+                    {
+                      "id": "soc",
+                      "opposite": true,
+                      "min": 0,
+                      "max": 100,
+                      "show": false
+                    }
+                  ],
+                  "series": [
+                    {
+                      "entity": "sensor.lifeos_house_demand_power",
+                      "name": "House usage",
+                      "type": "column",
+                      "yaxis_id": "power",
+                      "group_by": {
+                        "func": "avg",
+                        "duration": "30min"
+                      }
+                    },
+                    {
+                      "entity": "sensor.lifeos_battery_charge_power",
+                      "name": "Battery charging",
+                      "type": "column",
+                      "yaxis_id": "power",
+                      "group_by": {
+                        "func": "avg",
+                        "duration": "30min"
+                      }
+                    },
+                    {
+                      "entity": "sensor.lifeos_grid_export_power",
+                      "name": "Grid export",
+                      "type": "column",
+                      "yaxis_id": "power",
+                      "transform": "return -Math.abs(x);",
+                      "group_by": {
+                        "func": "avg",
+                        "duration": "30min"
+                      }
+                    },
+                    {
+                      "entity": "sensor.lifeos_energy_tariff_horizon",
+                      "name": "Electricity price",
+                      "type": "line",
+                      "unit": "p/kWh",
+                      "yaxis_id": "price",
+                      "stroke_width": 3,
+                      "extend_to": false,
+                      "data_generator": "return (entity.attributes.slots || []).filter(x => x.import_p_per_kwh !== null).map(x => [new Date(x.local_from).getTime(), x.import_p_per_kwh]);"
+                    },
+                    {
+                      "entity": "sensor.lifeos_energy_battery_soc",
+                      "name": "Battery SOC",
+                      "type": "line",
+                      "unit": "%",
+                      "yaxis_id": "soc",
+                      "stroke_width": 2
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "grid",
+              "column_span": 4,
               "cards": [
                 {
                   "type": "markdown",
@@ -412,6 +428,10 @@
                 {
                   "type": "markdown",
                   "content": "### Export earnings\n**£{{ states('sensor.lifeos_export_earnings') }}** · {{ states('sensor.lifeos_export_energy') }} kWh"
+                },
+                {
+                  "type": "markdown",
+                  "content": "### Total energy cost\n# £{{ ((states('sensor.lifeos_domestic_import_cost') | float(0)) + (states('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost') | float(0)) - (states('sensor.lifeos_export_earnings') | float(0))) | round(2) }}\nElectricity + gas − export"
                 }
               ]
             }
@@ -421,84 +441,116 @@
           "title": "Home Status",
           "path": "home-status",
           "icon": "mdi:home-eye",
-          "cards": [
+          "type": "sections",
+          "max_columns": 4,
+          "sections": [
             {
               "type": "grid",
-              "columns": 2,
-              "square": false,
+              "column_span": 4,
               "cards": [
                 {
-                  "type": "markdown",
-                  "content": "## Security sensors\n**Not installed**\n\nWindow and external-door overlay positions are reserved. **House secure is intentionally not asserted** until the sensors exist."
-                },
-                {
-                  "type": "markdown",
-                  "content": "## Smart lights\n**Planned rollout**\n\nRoom-centre status dots and Leave House membership are ready to be populated as lights are installed."
+                  "type": "grid",
+                  "columns": 2,
+                  "square": false,
+                  "cards": [
+                    {
+                      "type": "markdown",
+                      "content": "## ⚪ Security sensors not installed\nHouse secure is intentionally not asserted until all monitored external apertures are installed and healthy."
+                    },
+                    {
+                      "type": "button",
+                      "name": "Leave House · automation pending",
+                      "icon": "mdi:home-export-outline",
+                      "show_state": false,
+                      "tap_action": {
+                        "action": "none"
+                      },
+                      "hold_action": {
+                        "action": "none"
+                      }
+                    }
+                  ]
                 }
               ]
             },
             {
-              "type": "picture-elements",
-              "image": "/local/house-status/placeholder-floorplan.svg",
-              "elements": [
+              "type": "grid",
+              "column_span": 4,
+              "cards": [
                 {
-                  "type": "state-icon",
-                  "entity": "media_player.westcott_way_living_room_tv",
-                  "title": "Living room TV",
-                  "tap_action": {
-                    "action": "none"
-                  },
-                  "hold_action": {
-                    "action": "none"
-                  },
-                  "double_tap_action": {
-                    "action": "none"
-                  },
-                  "style": {
-                    "left": "31%",
-                    "top": "70%"
-                  }
-                },
-                {
-                  "type": "state-label",
-                  "entity": "media_player.westcott_way_living_room_tv",
-                  "prefix": "Living TV: ",
-                  "tap_action": {
-                    "action": "none"
-                  },
-                  "style": {
-                    "left": "31%",
-                    "top": "78%",
-                    "font-size": "13px",
-                    "background": "rgba(0,0,0,.70)",
-                    "padding": "5px 8px",
-                    "border-radius": "8px"
-                  }
+                  "type": "picture-elements",
+                  "image": "/local/house-status/placeholder-floorplan.svg",
+                  "elements": [
+                    {
+                      "type": "state-icon",
+                      "entity": "media_player.westcott_way_living_room_tv",
+                      "title": "Living room TV",
+                      "tap_action": {
+                        "action": "none"
+                      },
+                      "hold_action": {
+                        "action": "none"
+                      },
+                      "double_tap_action": {
+                        "action": "none"
+                      },
+                      "style": {
+                        "left": "31%",
+                        "top": "70%"
+                      }
+                    },
+                    {
+                      "type": "state-label",
+                      "entity": "media_player.westcott_way_living_room_tv",
+                      "prefix": "Living TV: ",
+                      "tap_action": {
+                        "action": "none"
+                      },
+                      "style": {
+                        "left": "31%",
+                        "top": "78%",
+                        "font-size": "13px",
+                        "background": "rgba(0,0,0,.70)",
+                        "padding": "5px 8px",
+                        "border-radius": "8px"
+                      }
+                    }
+                  ],
+                  "title": "Ground Floor"
                 }
               ]
             },
             {
-              "type": "button",
-              "name": "Leave House · automation pending",
-              "icon": "mdi:exit-run",
-              "entity": "script.house_status_leave_house",
-              "show_state": false,
-              "tap_action": {
-                "action": "none"
-              }
-            },
-            {
-              "type": "entities",
-              "title": "TV status",
-              "show_header_toggle": false,
-              "entities": [
-                "media_player.westcott_way_living_room_tv",
-                "media_player.tv_samsung_5_series_32"
+              "type": "grid",
+              "column_span": 4,
+              "cards": [
+                {
+                  "type": "button",
+                  "name": "Leave House · automation pending",
+                  "icon": "mdi:exit-run",
+                  "entity": "script.house_status_leave_house",
+                  "show_state": false,
+                  "tap_action": {
+                    "action": "none"
+                  },
+                  "title": "First Floor"
+                }
               ]
             },
             {
-              "type": "markdown",
-              "content": "**Legend** · Windows/doors: 🟢 open · 🔴 closed · Lights: 🔴 on · 🟢 off · TVs: 🟢 on · 🔴 off · ⚪ unavailable\n\nFuture devices remain **Not installed**, not faulted."
+              "type": "grid",
+              "column_span": 4,
+              "cards": [
+                {
+                  "type": "entities",
+                  "title": "TV status",
+                  "show_header_toggle": false,
+                  "entities": [
+                    "media_player.westcott_way_living_room_tv",
+                    "media_player.tv_samsung_5_series_32"
+                  ]
+                }
+              ]
             }
           ]
         },
