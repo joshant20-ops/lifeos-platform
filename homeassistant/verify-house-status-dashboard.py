@@ -39,7 +39,7 @@ if 'Pending interval ledger' in blob or 'Live metering' in blob or 'Period contr
 if 'sensor.lifeos_energy_import_tariff\"' in blob: fail('string tariff entity used as numeric chart series')
 if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding')
 if 'excluding battery and car charging' not in combined: fail('domestic battery exclusion not surfaced')
-if "| round(2)" not in blob: fail('currency/energy precision formatting missing')
+if "| round(2)" not in combined and '.toFixed(2)' not in combined: fail('currency/energy precision formatting missing')
 domestic=json.dumps(views[0])
 if 'custom:lifeos-house-status-card' not in domestic: fail('purpose-built House Status frontend missing')
 if 'Charge only' not in combined: fail('EV charge-only contract missing')
