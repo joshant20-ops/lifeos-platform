@@ -52,7 +52,7 @@ def main():
     ritems[:]=[x for x in ritems if not str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-card.js')]
     card_src=pathlib.Path(__file__).with_name('www')/'house-status'/'lifeos-house-status-card.js'
     card_rev=hashlib.sha256(card_src.read_bytes()).hexdigest()[:12]
-    ritems.append({'id':'lifeos_house_status_card','url':f'/local/house-status/lifeos-house-status-card.js?v={card_rev}','type':'module'})
+    ritems.append({'id':'lifeos_house_status_card','url':f'/local/house-status/lifeos-house-status-card.js?v={card_rev}','res_type':'module'})
     RESOURCES.write_text(json.dumps(resources,indent=2)+'\n')
     print('DEPLOY: PASS')
     print('dashboard=/house-status')
