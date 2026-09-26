@@ -23,9 +23,12 @@ def validate(src):
     got=[(v.get('title'),v.get('path')) for v in views]
     if got!=expected: raise ValueError(f'House Status views invalid: {got!r}')
     blob=canonical(cfg)
-    if 'EV' not in blob or 'Not installed' not in blob: raise ValueError('EV not-installed invariant missing')
-    if any(term in blob.lower() for term in ('ev discharge','v2g power','v2h power')): raise ValueError('unsupported EV discharge series present')
-    if 'Leave House' not in blob: raise ValueError('Home Status leave-house contract missing')
+    card=pathlib.Path(__file__).with_name('www')/'house-status'/'lifeos-house-status-card.js'
+    card_blob=card.read_text() if card.exists() else ''
+    combined=blob+card_blob
+    if 'EV' not in combined or 'Not installed' not in combined: raise ValueError('EV not-installed invariant missing')
+    if any(term in combined.lower() for term in ('ev discharge','v2g power','v2h power')): raise ValueError('unsupported EV discharge series present')
+    if 'Leave House' not in combined: raise ValueError('Home Status leave-house contract missing')
 
 def main():
     ap=argparse.ArgumentParser(); ap.add_argument('--check',action='store_true'); args=ap.parse_args()
