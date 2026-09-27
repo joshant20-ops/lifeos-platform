@@ -22,8 +22,9 @@ trap rollback EXIT
 [[ -f "$DEPLOYER" && -f "$VERIFIER" && -f "$SOURCE_ASSET" && -f "$CARD_SOURCE" ]] || fail "repository_sources_missing"
 [[ -d "$HA/.storage" && -f "$REGISTRY" && -f "$RESOURCES" ]] || fail "ha_storage_missing"
 python3 -m py_compile "$DEPLOYER" "$VERIFIER"
-command -v node >/dev/null || fail "node_missing_for_frontend_syntax_gate"
-node --check "$CARD_SOURCE" || fail "house_status_frontend_js_syntax_invalid"
+NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/externals -maxdepth 3 -type f -name node -perm -111 2>/dev/null | head -n1)
+[[ -n "$NODE_BIN" ]] || fail "node_missing_for_frontend_syntax_gate"
+"$NODE_BIN" --check "$CARD_SOURCE" || fail "house_status_frontend_js_syntax_invalid"
 python3 -m json.tool "$PLATFORM/homeassistant/house-status-dashboard.json" >/dev/null
 mkdir -p "$BACKUP_DIR" "$ASSET_DIR"; cp -a "$REGISTRY" "$BACKUP_DIR/registry"; cp -a "$RESOURCES" "$BACKUP_DIR/resources"
 if [[ -f "$DASH_TARGET" ]]; then HAD_DASH=1; cp -a "$DASH_TARGET" "$BACKUP_DIR/dashboard"; fi
