@@ -23,13 +23,11 @@ try:
  d=json.loads(DASH.read_text()); views=d['data']['config']['views']
 except Exception as e: fail('dashboard storage',repr(e))
 items=[x for x in reg if x.get('url_path')=='house-status']
-if len(items)!=1 or items[0].get('title')!='House Status': fail('dashboard registration',repr(items))
+if items: fail('legacy Lovelace House Status registration remains',repr(items))
 expected=[('Domestic Energy Consumption','domestic-energy-consumption'),('Full Energy Flow','full-energy-flow'),('Home Status','home-status'),('Doorbell','doorbell')]
 got=[(v.get('title'),v.get('path')) for v in views]
 if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
-for v in views[:3]:
- if v.get('type')!='panel' or len(v.get('cards',[]))!=1 or v['cards'][0].get('type')!='custom:lifeos-house-status': fail('first three views must be single custom frontend panels',repr(v))
 if 'custom:apexcharts-card' in json.dumps(views[:3]): fail('legacy Lovelace chart composition remains')
 card_blob=CARD.read_text() if CARD.exists() else ''
 combined=blob+card_blob
@@ -45,8 +43,7 @@ if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding
 if 'sensor.lifeos_domestic_import_cost' not in combined or 'sensor.lifeos_domestic_import_energy' not in combined: fail('domestic battery-excluded ledger not wired')
 if 'import_price_available===true' not in combined or 'import_p_per_kwh' not in combined: fail('published Octopus interval pricing contract missing')
 if "| round(2)" not in combined and '.toFixed(2)' not in combined: fail('currency/energy precision formatting missing')
-domestic=json.dumps(views[0])
-if 'custom:lifeos-house-status' not in domestic: fail('purpose-built House Status frontend missing')
+if "customElements.define('lifeos-house-status'" not in card_blob: fail('purpose-built House Status frontend missing')
 if 'Charge only' not in combined: fail('EV charge-only contract missing')
 for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
  if entity not in blob: fail('current Ring doorbell mapping missing',entity)
@@ -60,11 +57,12 @@ print('energy_ledger=RUNTIME_WIRED')
 resource=RESOURCE
 if not resource.exists(): fail('lovelace resource registry missing')
 rdata=json.loads(resource.read_text()).get('data',{}).get('items',[])
-registered=[x for x in rdata if str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-v3.js?v=') and x.get('type')=='module']
-if len(registered)!=1: fail('House Status frontend resource not registered with HA storage schema',repr(registered))
+registered=[x for x in rdata if 'lifeos-house-status' in str(x.get('url',''))]
+if registered: fail('legacy House Status Lovelace resource remains',repr(registered))
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
-if '/local/house-status/lifeos-house-status-v3.js' not in CONFIG.read_text(): fail('House Status frontend extra_module_url missing')
-print('frontend_custom_card=PASS')
+cfg=CONFIG.read_text()
+if 'panel_custom:' not in cfg or 'name: lifeos-house-status' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v3.js' not in cfg: fail('native House Status panel_custom registration missing')
+print('frontend_native_panel=PASS')
 print('frontend_static_contract=PASS')
 print('leave_house=RUNTIME_AUTOMATION_PENDING_SUPPORTED_HA_CONFIG_PATH')
