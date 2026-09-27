@@ -53,8 +53,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
     this.innerHTML=css+`<div class="app">${nav}${body}</div>`;
   }
 }
-if(!customElements.get('lifeos-house-status')) customElements.define('lifeos-house-status',LifeOSHouseStatusCard);
-window.customCards=window.customCards||[];window.customCards.push({type:'lifeos-house-status',name:'LifeOS House Status',description:'Reference-locked House Status UI'});
+if(!customElements.get('lifeos-house-status-v5')) customElements.define('lifeos-house-status-v5',LifeOSHouseStatusCard);
+window.customCards=window.customCards||[];window.customCards.push({type:'lifeos-house-status-v5',name:'LifeOS House Status',description:'Reference-locked House Status UI'});
 
 class LifeOSHouseStatusEditor extends HTMLElement { setConfig(config){this.config=config;} set hass(hass){this._hass=hass;} }
 if(!customElements.get('lifeos-house-status-editor')) customElements.define('lifeos-house-status-editor',LifeOSHouseStatusEditor);
