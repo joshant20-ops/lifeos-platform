@@ -6,7 +6,7 @@ DASH_TARGET="$HA/.storage/lovelace.dashboard_house_status"
 REGISTRY="$HA/.storage/lovelace_dashboards"
 ASSET_DIR="$HA/www/house-status"
 ASSET_TARGET="$ASSET_DIR/placeholder-floorplan.svg"
-CARD_TARGET="$ASSET_DIR/lifeos-house-status-v3.js"
+CARD_TARGET="$ASSET_DIR/lifeos-house-status-v4.js"
 CARD_SOURCE="$PLATFORM/homeassistant/www/house-status/lifeos-house-status-card.js"
 RESOURCES="$HA/.storage/lovelace_resources"
 CONFIG="$HA/configuration.yaml"
@@ -47,7 +47,7 @@ panel="""panel_custom:
     sidebar_title: House Status
     sidebar_icon: mdi:home-heart
     url_path: house-status
-    module_url: /local/house-status/lifeos-house-status-v3.js
+    module_url: /local/house-status/lifeos-house-status-v4.js
     require_admin: false
     config:
       mode: domestic
