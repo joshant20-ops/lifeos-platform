@@ -9,6 +9,7 @@ ASSET_TARGET="$ASSET_DIR/placeholder-floorplan.svg"
 CARD_TARGET="$ASSET_DIR/lifeos-house-status-v3.js"
 CARD_SOURCE="$PLATFORM/homeassistant/www/house-status/lifeos-house-status-card.js"
 RESOURCES="$HA/.storage/lovelace_resources"
+CONFIG="$HA/configuration.yaml"
 HA_CONFIG="$HA/configuration.yaml"
 MODULE_INSTALLER="$PLATFORM/homeassistant/ensure-house-status-extra-module.py"
 SOURCE_ASSET="$PLATFORM/homeassistant/www/house-status/placeholder-floorplan.svg"
@@ -18,7 +19,7 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP_DIR="$HA/.storage/house-status-deploy-$STAMP"
 HAD_DASH=0; HAD_ASSET=0; HAD_CARD=0; MUTATED=0
 fail(){ echo "HOUSE_STATUS_DEPLOY=FAIL"; echo "ERROR=$*"; exit 1; }
-rollback(){ rc=$?; if [[ "$MUTATED" -eq 1 && "$rc" -ne 0 ]]; then echo "HOUSE_STATUS_ROLLBACK=START"; if [[ "$HAD_DASH" -eq 1 ]]; then cp -a "$BACKUP_DIR/dashboard" "$DASH_TARGET"; else rm -f "$DASH_TARGET"; fi; cp -a "$BACKUP_DIR/registry" "$REGISTRY"; cp -a "$BACKUP_DIR/resources" "$RESOURCES"; cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"; if [[ "$HAD_ASSET" -eq 1 ]]; then cp -a "$BACKUP_DIR/asset" "$ASSET_TARGET"; else rm -f "$ASSET_TARGET"; fi; if [[ "$HAD_CARD" -eq 1 ]]; then cp -a "$BACKUP_DIR/card" "$CARD_TARGET"; else rm -f "$CARD_TARGET"; fi; docker restart homeassistant >/dev/null || true; echo "HOUSE_STATUS_ROLLBACK=COMPLETE"; fi; exit "$rc"; }
+rollback(){ rc=$?; if [[ "$MUTATED" -eq 1 && "$rc" -ne 0 ]]; then echo "HOUSE_STATUS_ROLLBACK=START"; if [[ "$HAD_DASH" -eq 1 ]]; then cp -a "$BACKUP_DIR/dashboard" "$DASH_TARGET"; else rm -f "$DASH_TARGET"; fi; cp -a "$BACKUP_DIR/registry" "$REGISTRY"; cp -a "$BACKUP_DIR/resources" "$RESOURCES"; cp -a "$BACKUP_DIR/configuration.yaml" "$CONFIG"; cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"; if [[ "$HAD_ASSET" -eq 1 ]]; then cp -a "$BACKUP_DIR/asset" "$ASSET_TARGET"; else rm -f "$ASSET_TARGET"; fi; if [[ "$HAD_CARD" -eq 1 ]]; then cp -a "$BACKUP_DIR/card" "$CARD_TARGET"; else rm -f "$CARD_TARGET"; fi; docker restart homeassistant >/dev/null || true; echo "HOUSE_STATUS_ROLLBACK=COMPLETE"; fi; exit "$rc"; }
 trap rollback EXIT
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "must_run_as_root"
 [[ -f "$DEPLOYER" && -f "$VERIFIER" && -f "$SOURCE_ASSET" && -f "$CARD_SOURCE" && -f "$MODULE_INSTALLER" ]] || fail "repository_sources_missing"
@@ -28,12 +29,27 @@ NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/extern
 [[ -n "$NODE_BIN" ]] || fail "node_missing_for_frontend_syntax_gate"
 "$NODE_BIN" --check "$CARD_SOURCE" || fail "house_status_frontend_js_syntax_invalid"
 python3 -m json.tool "$PLATFORM/homeassistant/house-status-dashboard.json" >/dev/null
-mkdir -p "$BACKUP_DIR" "$ASSET_DIR"; cp -a "$REGISTRY" "$BACKUP_DIR/registry"; cp -a "$RESOURCES" "$BACKUP_DIR/resources"; cp -a "$HA_CONFIG" "$BACKUP_DIR/configuration.yaml"
+mkdir -p "$BACKUP_DIR" "$ASSET_DIR"; cp -a "$REGISTRY" "$BACKUP_DIR/registry"; cp -a "$RESOURCES" "$BACKUP_DIR/resources"; cp -a "$CONFIG" "$BACKUP_DIR/configuration.yaml"; cp -a "$HA_CONFIG" "$BACKUP_DIR/configuration.yaml"
 if [[ -f "$DASH_TARGET" ]]; then HAD_DASH=1; cp -a "$DASH_TARGET" "$BACKUP_DIR/dashboard"; fi
 if [[ -f "$ASSET_TARGET" ]]; then HAD_ASSET=1; cp -a "$ASSET_TARGET" "$BACKUP_DIR/asset"; fi
 if [[ -f "$CARD_TARGET" ]]; then HAD_CARD=1; cp -a "$CARD_TARGET" "$BACKUP_DIR/card"; fi
 install -o root -g root -m 0644 "$SOURCE_ASSET" "$ASSET_TARGET"
 install -o root -g root -m 0644 "$CARD_SOURCE" "$CARD_TARGET"; MUTATED=1
+python3 - "$CONFIG" <<'PY'
+from pathlib import Path
+import sys
+p=Path(sys.argv[1]); s=p.read_text()
+url='    - /local/house-status/lifeos-house-status-v3.js'
+if url not in s:
+    if 'frontend:\n' not in s:
+        raise SystemExit('frontend section missing')
+    if '  extra_module_url:\n' in s:
+        s=s.replace('  extra_module_url:\n','  extra_module_url:\n'+url+'\n',1)
+    else:
+        s=s.replace('frontend:\n','frontend:\n  extra_module_url:\n'+url+'\n',1)
+    p.write_text(s)
+PY
+docker exec homeassistant python -m homeassistant --script check_config -c /config >/dev/null
 python3 "$MODULE_INSTALLER" "$HA_CONFIG"
 python3 "$DEPLOYER"
 docker restart homeassistant >/dev/null
