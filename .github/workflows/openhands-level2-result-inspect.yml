@@ -26,6 +26,7 @@ jobs:
           import json
           import os
           import pathlib
+          import re
 
           root = pathlib.Path(
               "/home/openhands/.openhands/agent-canvas/conversations"
@@ -47,6 +48,15 @@ jobs:
               for item in message.get("content") or []:
                   if isinstance(item, dict) and item.get("type") == "text":
                       text += str(item.get("text") or "")
+              observation = event.get("observation")
+              def safe_detail(value):
+                  raw = json.dumps(value, sort_keys=True, default=str)
+                  raw = re.sub(
+                      r'(?i)(token|secret|password|authorization)([" ]*[:=][" ]*)[^", }]+',
+                      r'\\1\\2<redacted>',
+                      raw,
+                  )
+                  return raw[:1200]
               rows.append({
                   "seq": index,
                   "source": source,
@@ -54,6 +64,10 @@ jobs:
                   "action_kind": (
                       str(action.get("kind") or action.get("type") or "")
                       if isinstance(action, dict) else ""
+                  ),
+                  "action_detail": safe_detail(action) if action else "",
+                  "observation_detail": (
+                      safe_detail(observation) if observation else ""
                   ),
                   "text_prefix": text[:240],
               })
