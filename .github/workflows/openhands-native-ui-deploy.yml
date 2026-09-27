@@ -121,6 +121,46 @@ jobs:
           docker exec lifeos-agent-canvas git -C /projects/lifeos-platform remote get-url origin | grep -qx 'https://github.com/joshant20-ops/lifeos-platform.git'
           echo "OPENHANDS_LIFEOS_PERSISTENT_REPO=PASS"
 
+          # Enforce the accepted GPT-OSS profile on every Canvas deployment.  The
+          # persisted profile is the source used by the UI selector, so a stale
+          # Qwen profile must not survive a redeploy.
+          docker exec -i lifeos-agent-canvas python - <<'PY'
+          import json,pathlib
+          root=pathlib.Path("/home/openhands/.openhands/profiles")
+          root.mkdir(parents=True,exist_ok=True)
+          old=root/"qwen25coder7b-instruct.json"
+          new=root/"gptoss20b.json"
+          if new.exists():
+              o=json.loads(new.read_text())
+          elif old.exists():
+              o=json.loads(old.read_text())
+          else:
+              o={}
+          o["model"]="openai/gpt-oss:20b"
+          o["base_url"]="http://127.0.0.1:18114/v1"
+          o["api_key"]=o.get("api_key") or "local-lifeos-gateway"
+          o["native_tool_calling"]=True
+          if "name" in o:
+              o["name"]="gptoss20b"
+          new.write_text(json.dumps(o,indent=2)+"\\n")
+          if old.exists(): old.unlink()
+          print("OPENHANDS_DEPLOY_GPT_OSS_PROFILE=PASS")
+          PY
+          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
+          test -n "$api_key"
+          curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' \
+            --data '{"agent_settings_diff":{"llm":{"model":"openai/gpt-oss:20b","base_url":"http://127.0.0.1:18114/v1","native_tool_calling":true},"enable_switch_llm_tool":false}}' \
+            http://127.0.0.1:18000/api/settings >/tmp/openhands-deploy-gptoss.json
+          python3 - <<'PY'
+          import json
+          o=json.load(open("/tmp/openhands-deploy-gptoss.json"))["agent_settings"]
+          assert o["llm"]["model"]=="openai/gpt-oss:20b"
+          assert o["llm"]["base_url"]=="http://127.0.0.1:18114/v1"
+          assert o["llm"]["native_tool_calling"] is True
+          assert o["enable_switch_llm_tool"] is False
+          print("OPENHANDS_DEPLOY_GPT_OSS_ACTIVE=PASS")
+          PY
+
           # Verify accepted Pi state survives a full service restart; do not invoke an LLM.
           test "$(cat "$HOME/workspace/pi5-persistence.txt")" = "Agent Canvas Pi5 persistence PASS"
           acceptance_file="$(find "$HOME/workspace/project" -name canvas-acceptance.txt -type f -print -quit)"
