@@ -7,6 +7,7 @@ DASH=HA/'.storage/lovelace.dashboard_house_status'
 REG=HA/'.storage/lovelace_dashboards'
 RESOURCE=HA/'.storage/lovelace_resources'
 CARD=HA/'www'/'house-status'/'lifeos-house-status-v3.js'
+CONFIG=HA/'configuration.yaml'
 
 def fail(name,detail=''):
  print('FAIL:',name); print(detail); raise SystemExit(1)
@@ -63,6 +64,7 @@ registered=[x for x in rdata if str(x.get('url','')).startswith('/local/house-st
 if len(registered)!=1: fail('House Status frontend resource not registered with HA storage schema',repr(registered))
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
+if '/local/house-status/lifeos-house-status-v3.js' not in CONFIG.read_text(): fail('House Status frontend extra_module_url missing')
 print('frontend_custom_card=PASS')
 print('frontend_static_contract=PASS')
 print('leave_house=RUNTIME_AUTOMATION_PENDING_SUPPORTED_HA_CONFIG_PATH')
