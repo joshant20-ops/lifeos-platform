@@ -55,8 +55,12 @@ panel="""panel_custom:
 # Replace an existing LifeOS panel block if present, otherwise append.
 pat=r'(?ms)^panel_custom:\n(?:  - .*\n(?:    .*\n)*)*'
 if 'name: lifeos-house-status' in s:
-    # Conservative targeted replacement from panel_custom through our config mode line.
-    s=re.sub(r'(?ms)^panel_custom:\n.*?^      mode: domestic\n',panel,s,count=1)
+    # Replace the existing LifeOS panel block deterministically, regardless of its prior module version.
+    start=s.index('panel_custom:\n')
+    name=s.index('  - name: lifeos-house-status',start)
+    next_item=s.find('\n  - name:',name+1)
+    end=len(s) if next_item<0 else next_item+1
+    s=s[:start]+panel+(s[end:] if next_item>=0 else '\n')
 elif 'panel_custom:\n' in s:
     insert=panel.split('\n',1)[1]
     s=s.replace('panel_custom:\n','panel_custom:\n'+insert,1)
