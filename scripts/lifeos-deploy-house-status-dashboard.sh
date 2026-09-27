@@ -39,6 +39,18 @@ python3 - "$CONFIG" <<'PY'
 from pathlib import Path
 import sys,re
 p=Path(sys.argv[1]); s=p.read_text()
+# Remove all prior LifeOS House Status panel registrations. Duplicate url_path entries make
+# Home Assistant retain/resolve the stale panel even when a newer panel is added first.
+lines=s.splitlines(True)
+out=[]; i=0
+while i < len(lines):
+    if lines[i].startswith('  - name: lifeos-house-status') or lines[i].startswith('  - name: lifeos-house-status-v'):
+        i+=1
+        while i < len(lines) and not lines[i].startswith('  - name:') and not (lines[i] and not lines[i][0].isspace()):
+            i+=1
+        continue
+    out.append(lines[i]); i+=1
+s=''.join(out)
 # Remove the former global extra-module hook; panel_custom owns module loading now.
 s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v[0-9]+)?\.js(?:\?[^\s]+)?\s*$\n?', '', s)
 # Install one native Home Assistant custom panel, outside Lovelace.
