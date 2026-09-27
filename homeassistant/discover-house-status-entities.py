@@ -100,19 +100,19 @@ try:
     cfg=(base/'configuration.yaml').read_text()
     start=cfg.find('panel_custom:')
     frag=cfg[start:start+900] if start>=0 else ''
-    v5=base/'www/house-status/lifeos-house-status-v5.js'
+    v5=base/'www/house-status/lifeos-house-status-v11.js'
     v5txt=v5.read_text() if v5.exists() else ''
-    probe=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123/local/house-status/lifeos-house-status-v5.js'],text=True,capture_output=True,timeout=10)
+    probe=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123/local/house-status/lifeos-house-status-v11.js'],text=True,capture_output=True,timeout=10)
     print(json.dumps({'native_panel_diagnostics':{
       'config_fragment':frag,
-      'v5_exists':v5.exists(),
-      'v5_bytes':len(v5txt),
-      'v5_defines_v5':"customElements.define('lifeos-house-status-v5'" in v5txt,
-      'v5_has_axes':'Octopus price (p/kWh)' in v5txt and 'Cost (£)' in v5txt,
-      'v5_has_duplicate_mode_strip':'<div class="tabs">' in v5txt,
+      'v11_exists':v5.exists(),
+      'v11_bytes':len(v5txt),
+      'v11_defines_v5':"customElements.define('lifeos-house-status-v11'" in v5txt,
+      'v11_has_axes':'Octopus price (p/kWh)' in v5txt and 'Cost (£)' in v5txt,
+      'v11_has_duplicate_mode_strip':'<div class="tabs">' in v5txt,
       'served_rc':probe.returncode,
       'served_bytes':len(probe.stdout),
-      'served_defines_v5':"customElements.define('lifeos-house-status-v5'" in probe.stdout,
+      'served_defines_v11':"customElements.define('lifeos-house-status-v11'" in probe.stdout,
       'served_has_axes':'Octopus price (p/kWh)' in probe.stdout and 'Cost (£)' in probe.stdout,
       'served_has_duplicate_mode_strip':'<div class="tabs">' in probe.stdout,
       'served_error':probe.stderr[-500:]
