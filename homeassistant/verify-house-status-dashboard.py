@@ -6,7 +6,7 @@ HA=Path('/opt/stacks/homeassistant/config')
 DASH=HA/'.storage/lovelace.dashboard_house_status'
 REG=HA/'.storage/lovelace_dashboards'
 RESOURCE=HA/'.storage/lovelace_resources'
-CARD=HA/'www'/'house-status'/'lifeos-house-status-card.js'
+CARD=HA/'www'/'house-status'/'lifeos-house-status-v3.js'
 
 def fail(name,detail=''):
  print('FAIL:',name); print(detail); raise SystemExit(1)
@@ -59,7 +59,7 @@ print('energy_ledger=RUNTIME_WIRED')
 resource=RESOURCE
 if not resource.exists(): fail('lovelace resource registry missing')
 rdata=json.loads(resource.read_text()).get('data',{}).get('items',[])
-registered=[x for x in rdata if str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-card.js?v=') and x.get('type')=='module']
+registered=[x for x in rdata if str(x.get('url','')).startswith('/local/house-status/lifeos-house-status-v3.js?v=') and x.get('type')=='module']
 if len(registered)!=1: fail('House Status frontend resource not registered with HA storage schema',repr(registered))
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
