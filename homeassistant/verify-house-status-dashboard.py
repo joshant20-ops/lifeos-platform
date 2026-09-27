@@ -62,7 +62,7 @@ if registered: fail('legacy House Status Lovelace resource remains',repr(registe
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
 cfg=CONFIG.read_text()
-if 'panel_custom:' not in cfg or 'name: lifeos-house-status' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v3.js' not in cfg: fail('native House Status panel_custom registration missing')
+if 'panel_custom:' not in cfg or 'name: lifeos-house-status' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v4.js' not in cfg: fail('native House Status panel_custom registration missing')
 print('frontend_native_panel=PASS')
 print('frontend_static_contract=PASS')
 print('leave_house=RUNTIME_AUTOMATION_PENDING_SUPPORTED_HA_CONFIG_PATH')
