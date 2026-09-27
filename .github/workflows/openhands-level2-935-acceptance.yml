@@ -85,15 +85,23 @@ jobs:
           )
           assert status == 200, status
 
-          prompt = """Continue the staged OpenHands autonomous-engineering acceptance testing in joshant20-ops/lifeos-platform.
-
-Start with Level 2 acceptance issue #935.
-
-Read issue #935 and its comments, inspect the repository, diagnose the defect, implement and test the fix, push the branch, create a PR, follow CI, respond to failures if any, and continue autonomously until the task is genuinely complete or a real blocker requires user input.
-
-Use the repository and GitHub tools available to you. Do not merely describe commands or provide a script for someone else to run. Do not invent a different task. Do not ask for permission for routine repository, test, GitHub, PR, CI, or verification actions.
-
-Do not close the acceptance issue yourself. Do not alter the accepted OpenHands architecture. Finish with concise evidence: diagnosis, changed paths, tests, commit/branch, PR URL, and CI state."""
+          prompt = (
+              "Continue the staged OpenHands autonomous-engineering acceptance "
+              "testing in joshant20-ops/lifeos-platform.\n\n"
+              "Start with Level 2 acceptance issue #935.\n\n"
+              "Read issue #935 and its comments, inspect the repository, diagnose "
+              "the defect, implement and test the fix, push the branch, create a "
+              "PR, follow CI, respond to failures if any, and continue autonomously "
+              "until the task is genuinely complete or a real blocker requires "
+              "user input.\n\n"
+              "Use the repository and GitHub tools available to you. Do not merely "
+              "describe commands or provide a script for someone else to run. Do "
+              "not invent a different task. Do not ask for permission for routine "
+              "repository, test, GitHub, PR, CI, or verification actions.\n\n"
+              "Do not close the acceptance issue yourself. Do not alter the accepted "
+              "OpenHands architecture. Finish with concise evidence: diagnosis, "
+              "changed paths, tests, commit/branch, PR URL, and CI state."
+          )
           cid = uuid.uuid4().hex
           try:
               _, settings = request("/api/settings", expose=True)
