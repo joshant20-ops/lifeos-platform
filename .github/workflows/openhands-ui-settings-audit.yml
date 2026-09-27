@@ -64,6 +64,38 @@ jobs:
           PY
           docker exec lifeos-agent-canvas test -f /home/openhands/.openhands/profiles/gptoss20b.json
           docker exec lifeos-agent-canvas test ! -e /home/openhands/.openhands/profiles/qwen25coder7b-instruct.json
+          echo ENSURE_GPT_OSS_LLM_PROFILE
+          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
+          test -n "$api_key"
+          python3 - "$api_key" <<'PY'
+          import json,sys,urllib.request,urllib.error
+          key=sys.argv[1]; base='http://127.0.0.1:18000'
+          headers={'X-Session-API-Key':key,'Content-Type':'application/json'}
+          def req(path,method='GET',data=None):
+              body=None if data is None else json.dumps(data).encode()
+              r=urllib.request.Request(base+path,data=body,headers=headers,method=method)
+              try:
+                  with urllib.request.urlopen(r,timeout=30) as x:
+                      raw=x.read(); return x.status,(json.loads(raw) if raw else None)
+              except urllib.error.HTTPError as e:
+                  raw=e.read(); return e.code,(json.loads(raw) if raw else None)
+          status,profiles=req('/api/profiles')
+          assert status==200,(status,profiles)
+          names=[p.get('name') if isinstance(p,dict) else p for p in profiles.get('profiles',[])]
+          print('OPENHANDS_LLM_PROFILES_BEFORE='+','.join(str(x) for x in names))
+          payload={'llm':{'model':'openai/gpt-oss:20b','base_url':'http://127.0.0.1:18114/v1','api_key':'local-lifeos-gateway','native_tool_calling':True}}
+          status,out=req('/api/profiles/gpt-oss-20b','POST',payload)
+          assert status in (200,201),(status,out)
+          status,out=req('/api/profiles/gpt-oss-20b/activate','POST',{})
+          assert status in (200,201,204),(status,out)
+          status,profiles=req('/api/profiles')
+          assert status==200
+          names=[p.get('name') if isinstance(p,dict) else p for p in profiles.get('profiles',[])]
+          assert 'gpt-oss-20b' in names,names
+          assert profiles.get('active_profile')=='gpt-oss-20b',profiles.get('active_profile')
+          print('OPENHANDS_GPT_OSS_VISIBLE_PROFILE=PASS')
+          print('OPENHANDS_GPT_OSS_ACTIVE_PROFILE=PASS')
+          PY
           echo CONFIGURE_GPT_OSS_NATIVE_TOOL_CALLING
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
           test -n "$api_key"
