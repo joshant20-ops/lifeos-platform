@@ -84,7 +84,7 @@ try:
     frontend['resources']=json.loads(rp.read_text()).get('data',{}).get('items',[]) if rp.exists() else []
     frontend['card_exists']=cp.exists()
     frontend['card_defines_element']=("customElements.define('lifeos-house-status'" in cp.read_text()) if cp.exists() else False
-    probe=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123/local/house-status/lifeos-house-status-card.js'],text=True,capture_output=True,timeout=10)
+    active=next((x for x in frontend['resources'] if x.get('id')=='lifeos_house_status_card'),{})\n    active_url=str(active.get('url','')).split('?',1)[0]\n    frontend['active_url']=active_url\n    probe=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123'+active_url],text=True,capture_output=True,timeout=10)
     frontend['served_rc']=probe.returncode
     frontend['served_bytes']=len(probe.stdout)
     frontend['served_defines_element']="customElements.define('lifeos-house-status'" in probe.stdout
