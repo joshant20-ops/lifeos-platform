@@ -1,0 +1,82 @@
+name: LifeOS GPT-OSS Cross-App AI Exercise
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/lifeos-gpt-oss-cross-app-ai-exercise.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  exercise:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 45
+    steps:
+      - name: Sync canonical checkout
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+      - name: Exercise shared AI consumers with synthetic inputs
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          cleanup() {
+            python3 - <<'PY' >/dev/null 2>&1 || true
+          import importlib.util,pathlib
+          p=pathlib.Path("governor/ai_broker.py")
+          s=importlib.util.spec_from_file_location("cleanup",p)
+          m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+          m._publish_lease("released",required=False)
+          PY
+          }
+          trap cleanup EXIT
+          python3 - <<'PY'
+          import importlib.util,json,pathlib,sys
+          root=pathlib.Path("/home/joshan/lifeos-platform")
+          sys.path.insert(0,str(root))
+          from governor import ai_broker
+          assert ai_broker.OLLAMA_MODEL=="gpt-oss:20b", ai_broker.OLLAMA_MODEL
+          ai_broker._publish_lease("active"); ai_broker._wake_local_ai()
+          print("MODEL=gpt-oss:20b")
+          def load(name,rel):
+              p=root/rel
+              s=importlib.util.spec_from_file_location(name,p)
+              m=importlib.util.module_from_spec(s); s.loader.exec_module(m)
+              return m
+          em=load("email_selector","homelab/live/home/joshan/automation/lifeos_email_selector.py")
+          e={"from":"records@example.test","subject":"Your annual account record","body":"Please retain this yearly account record for your files. It confirms the account review completed on 14 September 2026.","attachments":[]}
+          assert em.deterministic(e) is None
+          x=em.classify(e); assert x.get("classifier")=="local_ai",x
+          print("EMAIL_SELECTOR_AI=PASS")
+          pm=load("paperless_ai","homelab/live/home/joshan/automation/lifeos_paperless_local_ai.py")
+          d={"id":-1,"title":"Synthetic service record","content":"Synthetic test only. Northwind Services completed an annual inspection on 14 September 2026. Amount GBP 125.00. Keep this record for reference."}
+          x=pm.analyse(d); assert x["status"]=="ok" and x["local_ai_model"]=="gpt-oss:20b" and x["paperless_writeback_performed"] is False,x
+          print("PAPERLESS_INTELLIGENCE_AI=PASS")
+          jm=load("paperless_junk","homelab/live/home/joshan/automation/lifeos_paperless_junk_audit.py")
+          rows=jm.classify([{"id":-101,"title":"Synthetic official record","content":"Annual service record retained for household evidence."},{"id":-102,"title":"Synthetic promotion","content":"Limited promotional offer. Save on accessories this weekend."}])
+          assert {r["id"] for r in rows}=={-101,-102}
+          print("PAPERLESS_JUNK_AI=PASS")
+          sm=load("selective","homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py")
+          class Msg:
+              def get(self,k,default=""): return {"Subject":"Synthetic account evidence"}.get(k,default)
+          att={"filename":"synthetic-record.pdf","mime":"application/pdf","payload":b"synthetic"}
+          x=sm.local_triage(Msg(),att); assert isinstance(x,dict),x
+          print("EMAIL_PAPERLESS_SELECTIVE_AI=PASS")
+          r=ai_broker.generate('LifeOS Personal Administration synthetic test. Return only JSON with keys status and action. status must be PASS and action must be review_calendar_request.',privacy="local-only",force_provider="ollama")
+          j=json.loads(str(r["text"]).strip().strip("`").removeprefix("json").strip())
+          assert j.get("status")=="PASS" and j.get("action")=="review_calendar_request",j
+          print("PA_LOCAL_AI=PASS")
+          r=ai_broker.generate('Synthetic LifeOS assistant test. Return only JSON with status PASS and intent inspect_energy_dashboard.',privacy="local-only",force_provider="ollama")
+          j=json.loads(str(r["text"]).strip().strip("`").removeprefix("json").strip())
+          assert j.get("status")=="PASS" and j.get("intent")=="inspect_energy_dashboard",j
+          print("ASSISTANT_AI=PASS")
+          zm=load("z97","homelab/live/home/joshan/automation/z97_job_submitter.py")
+          assert zm.ai_broker.OLLAMA_MODEL=="gpt-oss:20b"
+          print("Z97_JOB_SUBMITTER_MODEL=PASS")
+          print("CROSS_APP_GPT_OSS_AI_EXERCISE=PASS")
+          PY
