@@ -65,7 +65,6 @@ else:
 p.write_text(s)
 PY
 docker exec homeassistant python -m homeassistant --script check_config -c /config >/dev/null
-python3 "$MODULE_INSTALLER" "$HA_CONFIG"
 python3 "$DEPLOYER"
 docker restart homeassistant >/dev/null
 for _ in $(seq 1 60); do state=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' homeassistant 2>/dev/null || true); [[ "$state" == "healthy" || "$state" == "running" ]] && break; sleep 2; done
