@@ -6,7 +6,7 @@ HA=Path('/opt/stacks/homeassistant/config')
 DASH=HA/'.storage/lovelace.dashboard_house_status'
 REG=HA/'.storage/lovelace_dashboards'
 RESOURCE=HA/'.storage/lovelace_resources'
-CARD=HA/'www'/'house-status'/'lifeos-house-status-v3.js'
+CARD=HA/'www'/'house-status'/'lifeos-house-status-v4.js'
 CONFIG=HA/'configuration.yaml'
 
 def fail(name,detail=''):
