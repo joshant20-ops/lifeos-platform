@@ -66,7 +66,7 @@ if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v10' not in cfg or '
 if cfg.count('url_path: house-status')!=1: fail('duplicate House Status panel registrations remain',str(cfg.count('url_path: house-status')))
 if 'lifeos-house-status-v4.js' in cfg or 'lifeos-house-status-v5.js' in cfg: fail('stale House Status panel remains')
 blob=card.read_text()
-for marker in ['Today','Tomorrow','Octopus price (p/kWh)','Cost (£)','Gas cost','axis-cost','axis-price','data-period="day"','data-period="month"','data-period="year"','data-period="range"','data-shift="-1"','data-date-picker','type="date"','Electricity used (excluding battery and car charging), export and gas. Costs shown in £.','data-mode="doorbell"']:
+for marker in ['Today','Tomorrow','Octopus price (p/kWh)','Cost (£)','Gas cost','axis-cost','axis-price','data-period="day"','data-period="month"','data-period="year"','data-period="range"','data-shift="-1"','data-date-picker','type="date"','rawHi=vals.length?Math.max(...vals):0','rawPlo=pvals.length?Math.min(...pvals):0','Electricity used (excluding battery and car charging), export and gas. Costs shown in £.','data-mode="doorbell"']:
  if marker not in blob: fail('reference UI marker missing',marker)
 if '<div class="tabs">' in blob: fail('duplicate in-page mode strip returned')
 # Domestic view must not expose export line/card; export remains available to Full Energy Flow and total-cost calculation.
