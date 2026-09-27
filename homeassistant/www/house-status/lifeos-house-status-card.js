@@ -3,6 +3,10 @@ class LifeOSHouseStatusCard extends HTMLElement {
   static getConfigElement(){ return document.createElement('lifeos-house-status-editor'); }
   setConfig(config){ this.config=config||{}; this.render(); }
   set hass(hass){ this._hass=hass; this.render(); }
+  period(){return this._period||'today';}
+  anchor(){return this._anchor||new Date();}
+  periodStart(){const a=new Date(this.anchor());a.setHours(0,0,0,0);if(this.period()==='month')a.setDate(1);if(this.period()==='year'){a.setMonth(0);a.setDate(1);}return a;}
+  shiftPeriod(dir){const a=new Date(this.anchor());if(this.period()==='month')a.setMonth(a.getMonth()+dir);else if(this.period()==='year')a.setFullYear(a.getFullYear()+dir);else a.setDate(a.getDate()+dir);this._anchor=a;this.render();}
   getCardSize(){ return 10; }
   val(id,def=0){ const s=this._hass?.states?.[id]; const n=Number(s?.state); return Number.isFinite(n)?n:def; }
   money(id){ return '£'+this.val(id).toFixed(2); }
@@ -18,13 +22,13 @@ class LifeOSHouseStatusCard extends HTMLElement {
       .floor{min-height:320px;display:flex;align-items:center;justify-content:center;border:1px dashed #31566a;border-radius:8px;color:var(--muted);background:#071923}.status{display:grid;grid-template-columns:1fr 1fr;gap:10px}.secure,.leave{padding:14px;border-radius:9px;font-size:18px;font-weight:750}.secure{border:1px solid #237d61;background:#0a3a31}.leave{border:1px solid #a43a4a;background:#501a25;text-align:center}.legend{display:flex;gap:22px;flex-wrap:wrap;color:var(--muted);font-size:13px}
       @media(max-width:850px){.app{padding:10px}.top{grid-template-columns:1fr auto}.controls{display:contents}.datewrap{grid-column:2;grid-row:1}.hanav{margin:-10px -10px 10px}.haitem{min-width:52px;padding:11px 12px}.top{flex-wrap:wrap}.title{font-size:22px}.period{grid-column:1 / -1;grid-row:2;width:auto;overflow:auto}.p{flex:0 0 auto;text-align:center;padding:7px 11px;font-size:12px}.datewrap{margin-left:auto}.date{width:auto;text-align:center}.cards{grid-template-columns:repeat(2,1fr)}.chartslot{min-height:300px}.status{grid-template-columns:1fr}.floor{min-height:240px}}
     </style>`;
-    const nav=`<div class="hanav"><div class="hamb">☰</div><div class="haitem ${mode==='domestic'?'active':''}" data-mode="domestic">⌂</div><div class="haitem ${mode==='flow'?'active':''}" data-mode="flow">⚡</div><div class="haitem ${mode==='home'?'active':''}" data-mode="home">▣</div><div class="haitem ${mode==='doorbell'?'active':''}" data-mode="doorbell">▥</div></div><div class="top"><div class="title">⌂ House Status</div><div class="controls">${mode!=='home'&&mode!=='doorbell'?'<div class="period"><div class="p active">Today</div><div class="p">Day</div><div class="p">Month</div><div class="p">Year</div><div class="p">Date range</div></div>':''}<div class="datewrap"><div class="arrow">‹</div><div class="date">${new Date().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div><div class="arrow">›</div></div></div></div>`;
+    const nav=`<div class="hanav"><div class="hamb">☰</div><div class="haitem ${mode==='domestic'?'active':''}" data-mode="domestic">⌂</div><div class="haitem ${mode==='flow'?'active':''}" data-mode="flow">⚡</div><div class="haitem ${mode==='home'?'active':''}" data-mode="home">▣</div><div class="haitem ${mode==='doorbell'?'active':''}" data-mode="doorbell">▥</div></div><div class="top"><div class="title">⌂ House Status</div><div class="controls">${mode!=='home'&&mode!=='doorbell'?'<div class="period"><div class="p '+(this.period()==='today'?'active':'')+'" data-period="today">Today</div><div class="p '+(this.period()==='day'?'active':'')+'" data-period="day">Day</div><div class="p '+(this.period()==='month'?'active':'')+'" data-period="month">Month</div><div class="p '+(this.period()==='year'?'active':'')+'" data-period="year">Year</div><div class="p '+(this.period()==='range'?'active':'')+'" data-period="range">Date range</div></div>':''}<div class="datewrap"><div class="arrow" data-shift="-1">‹</div><div class="date">${this.anchor().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}</div><div class="arrow" data-shift="1">›</div></div></div></div>`;
     const report=this._hass.states['sensor.lifeos_energy_report']?.attributes?.intervals||[];
     const tariff=this._hass.states['sensor.lifeos_energy_tariff_horizon']?.attributes?.slots||[];
     const octopusTariff=this._hass.states['sensor.lifeos_energy_tariff_horizon'];
     const svgChart=(flow=false)=>{
       const W=1000,H=290,padL=68,padR=68,padT=38,padB=48,iw=W-padL-padR,ih=H-padT-padB;
-      const now=new Date(), day0=new Date(now);day0.setHours(0,0,0,0);const day1=new Date(day0);day1.setDate(day1.getDate()+1);const day2=new Date(day1);day2.setDate(day2.getDate()+1);
+      const now=new Date(), day0=this.periodStart(); let day1=new Date(day0),day2=new Date(day0); if(this.period()==='month'){day1.setMonth(day1.getMonth()+1);day2=new Date(day1);}else if(this.period()==='year'){day1.setFullYear(day1.getFullYear()+1);day2=new Date(day1);}else{day1.setDate(day1.getDate()+1);day2=new Date(day1);day2.setDate(day2.getDate()+1);}
       const t0=day0.getTime(),t1=day1.getTime(),t2=day2.getTime(),span=t2-t0,x=t=>padL+((t-t0)/span)*iw;
       const stamp=o=>new Date(o.valid_from||o.local_from||o.start||0).getTime();
       const todayReport=report.filter(o=>{const t=stamp(o);return t>=t0&&t<t1;});
@@ -59,10 +63,12 @@ class LifeOSHouseStatusCard extends HTMLElement {
     else { body='<div class="panel"><div class="heading">Doorbell</div><div class="floor">Ring Front Door · live view integration retained for the dedicated doorbell view</div></div>'; }
     this.innerHTML=css+`<div class="app">${nav}${body}</div>`;
     this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this.config={...(this.config||{}),mode:el.dataset.mode};this.render();});
+    this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;if(p==='range'){const raw=prompt('Start date (YYYY-MM-DD)',this.anchor().toISOString().slice(0,10));if(!raw)return;const d=new Date(raw+'T00:00:00');if(Number.isNaN(d.getTime()))return;this._anchor=d;}this._period=p;this.render();});
+    this.querySelectorAll('[data-shift]').forEach(el=>el.onclick=()=>this.shiftPeriod(Number(el.dataset.shift)));
   }
 }
-if(!customElements.get('lifeos-house-status-v9')) customElements.define('lifeos-house-status-v9',LifeOSHouseStatusCard);
-window.customCards=window.customCards||[];window.customCards.push({type:'lifeos-house-status-v9',name:'LifeOS House Status',description:'Reference-locked House Status UI'});
+if(!customElements.get('lifeos-house-status-v10')) customElements.define('lifeos-house-status-v10',LifeOSHouseStatusCard);
+window.customCards=window.customCards||[];window.customCards.push({type:'lifeos-house-status-v10',name:'LifeOS House Status',description:'Reference-locked House Status UI'});
 
 class LifeOSHouseStatusEditor extends HTMLElement { setConfig(config){this.config=config;} set hass(hass){this._hass=hass;} }
 if(!customElements.get('lifeos-house-status-editor')) customElements.define('lifeos-house-status-editor',LifeOSHouseStatusEditor);
