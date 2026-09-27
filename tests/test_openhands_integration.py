@@ -265,3 +265,31 @@ def test_openhands_sdk_defers_completion_to_native_conversation():
     assert "objective_evidence_not_produced" not in runner
     assert "Continue the SAME engineering objective." not in runner
     assert "Governor independently verifies" in runner
+
+
+def test_canvas_deploy_persists_repository_task_grounding_contract():
+    workflow = (ROOT / ".github/workflows/openhands-native-ui-deploy.yml").read_text()
+    assert "<LIFEOS_REPOSITORY_TASK_GROUNDING_V1>" in workflow
+    assert "first response must invoke the native terminal tool" in workflow
+    assert "inspect /projects/lifeos-platform" in workflow
+    assert "Do not invent a different task" in workflow
+    assert "propose a script for the user to run" in workflow
+    assert '"agent_context": {' in workflow
+    assert '"system_message_suffix": desired_suffix' in workflow
+    persistence = workflow.split(
+        "Verify accepted Pi state survives a full service restart", 1
+    )[1]
+    assert "OPENHANDS_DEPLOY_REPOSITORY_TASK_GROUNDING_PERSISTENCE=PASS" in persistence
+    assert 'assert "<LIFEOS_REPOSITORY_TASK_GROUNDING_V1>" in suffix' in persistence
+
+
+def test_canvas_grounding_regression_is_action_first_and_repository_specific():
+    workflow = (ROOT / ".github/workflows/openhands-native-ui-deploy.yml").read_text()
+    grounding = workflow.split(
+        'grounding = """<LIFEOS_REPOSITORY_TASK_GROUNDING_V1>', 1
+    )[1].split("</LIFEOS_REPOSITORY_TASK_GROUNDING_V1>", 1)[0]
+    first_action = grounding.index("first response must invoke the native terminal tool")
+    repository = grounding.index("/projects/lifeos-platform")
+    forbidden_tutorial = grounding.index("propose a script for the user to run")
+    completion = grounding.index("Continue autonomously until complete")
+    assert first_action < repository < forbidden_tutorial < completion
