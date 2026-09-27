@@ -250,4 +250,38 @@ jobs:
           PY
           '
 
+          echo TARGETED_EVENT_SHAPE
+          docker exec -i lifeos-agent-canvas python - <<'PY'
+          import json, pathlib
+          root = pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations/3ca801e5b31941e38bf1b7611f3ac44d")
+          for path in sorted((root / "events").glob("*.json")):
+              value = json.loads(path.read_text())
+              print("TARGET_EVENT=" + path.name)
+              print("TOP_KEYS=" + ",".join(value.keys()))
+              def walk(v, p="$"):
+                  if isinstance(v, dict):
+                      for k, x in v.items():
+                          if any(w in k.lower() for w in ("token","secret","password","cookie","authorization","api_key")):
+                              continue
+                          yield from walk(x, p+"."+k)
+                  elif isinstance(v, list):
+                      for i, x in enumerate(v):
+                          yield from walk(x, p+f"[{i}]")
+                  elif isinstance(v, str) and p.lower().endswith((".role",".source",".kind",".type",".text",".content",".name",".action")):
+                      yield p, v
+              for p, v in walk(value):
+                  if len(v) <= 8000:
+                      print("TARGET_SCALAR=" + path.name + "|" + p + "|" + v.replace("\\n","\\n"))
+          base = json.loads((root / "base_state.json").read_text())
+          print("TARGET_WORKDIR=" + str(base.get("workspace",{}).get("working_dir")))
+          print("TARGET_ACTIVATED_SKILLS=" + ",".join(base.get("activated_knowledge_skills",[])))
+          suffix = base.get("agent",{}).get("agent_context",{}).get("system_message_suffix","")
+          print("TARGET_SYSTEM_SUFFIX=" + suffix.replace("\\n","\\n")[:12000])
+          PY
+
+          echo PACKAGE_PHRASE_SEARCH
+          docker exec lifeos-agent-canvas sh -c '
+            grep -R -n -I -E "quick one-step workflow|minimal CHANGELOG|Autonomous Fix for Issue|CHANGELOG.md" /build/node_modules/@openhands /usr/local/lib/python3.*/site-packages/openhands* 2>/dev/null | head -100 || true
+          '
+
           echo OPENHANDS_LEVEL2_DIAGNOSTIC=PASS
