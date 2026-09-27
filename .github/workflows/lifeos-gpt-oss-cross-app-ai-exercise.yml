@@ -76,7 +76,8 @@ jobs:
           assert j.get("status")=="PASS" and j.get("intent")=="inspect_energy_dashboard",j
           print("ASSISTANT_AI=PASS")
           zm=load("z97","homelab/live/home/joshan/automation/z97_job_submitter.py")
-          assert zm.ai_broker.OLLAMA_MODEL=="gpt-oss:20b"
-          print("Z97_JOB_SUBMITTER_MODEL=PASS")
+          x=zm.submit_pa_local('Synthetic Z97 PA bridge test. Return only JSON with status PASS and route local_ai_broker.')
+          assert x.get("ok") is True and x.get("model")=="gpt-oss:20b" and x.get("route")=="local_ai_broker",x
+          print("Z97_JOB_SUBMITTER_AI=PASS")
           print("CROSS_APP_GPT_OSS_AI_EXERCISE=PASS")
           PY
