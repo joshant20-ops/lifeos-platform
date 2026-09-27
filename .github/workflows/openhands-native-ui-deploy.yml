@@ -133,12 +133,18 @@ jobs:
           import json,pathlib
           root=pathlib.Path("/home/openhands/.openhands/profiles")
           root.mkdir(parents=True,exist_ok=True)
+          def load_profile(p):
+              raw=p.read_text()
+              # Repair the legacy workflow bug that wrote a literal \\n after JSON.
+              if raw.endswith("\\n"):
+                  raw=raw[:-2]
+              return json.loads(raw)
           old=root/"qwen25coder7b-instruct.json"
           new=root/"gptoss20b.json"
           if new.exists():
-              o=json.loads(new.read_text())
+              o=load_profile(new)
           elif old.exists():
-              o=json.loads(old.read_text())
+              o=load_profile(old)
           else:
               o={}
           o["model"]="openai/gpt-oss:20b"
@@ -147,7 +153,7 @@ jobs:
           o["native_tool_calling"]=True
           if "name" in o:
               o["name"]="gptoss20b"
-          new.write_text(json.dumps(o,indent=2)+"\\n")
+          new.write_text(json.dumps(o,indent=2)+"\n")
           if old.exists(): old.unlink()
           print("OPENHANDS_DEPLOY_GPT_OSS_PROFILE=PASS")
           PY
