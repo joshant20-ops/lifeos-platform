@@ -39,7 +39,7 @@ jobs:
           echo CANVAS_RECENT_LOGS
           docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
           echo NORMALIZE_VISIBLE_LOCAL_LLM_PROFILE
-          docker exec lifeos-agent-canvas python - <<'PY'
+          docker exec -i lifeos-agent-canvas python - <<'PY'
           import json,pathlib
           root=pathlib.Path("/home/openhands/.openhands/profiles")
           old=root/"qwen25coder7b-instruct.json"
