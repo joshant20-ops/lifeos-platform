@@ -38,6 +38,32 @@ jobs:
           docker exec lifeos-agent-canvas sh -c 'grep -rhoE "conversationUrl:[A-Za-z_$][A-Za-z0-9_$]*,sessionApiKey:[A-Za-z_$][A-Za-z0-9_$]*" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | sort -u | head -30; grep -rhoE "new [A-Za-z_$][A-Za-z0-9_$]*\\([^)]*conversationUrl:[^)]{0,160}" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | head -30' || true
           echo CANVAS_RECENT_LOGS
           docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
+          echo NORMALIZE_VISIBLE_LOCAL_LLM_PROFILE
+          docker exec lifeos-agent-canvas python - <<'PY'
+          import json,pathlib
+          root=pathlib.Path("/home/openhands/.openhands/profiles")
+          old=root/"qwen25coder7b-instruct.json"
+          new=root/"gptoss20b.json"
+          if old.exists():
+              o=json.loads(old.read_text())
+          elif new.exists():
+              o=json.loads(new.read_text())
+          else:
+              raise SystemExit("No persisted local LLM profile found")
+          # LLM profiles store connection fields at top level. Preserve credentials
+          # and unrelated stock settings while moving the accepted local profile.
+          o["model"]="openai/gpt-oss:20b"
+          o["base_url"]="http://127.0.0.1:18114/v1"
+          o["native_tool_calling"]=True
+          if "name" in o:
+              o["name"]="gptoss20b"
+          new.write_text(json.dumps(o,indent=2)+"\\n")
+          if old != new and old.exists():
+              old.unlink()
+          print("OPENHANDS_VISIBLE_GPT_OSS_PROFILE=PASS")
+          PY
+          docker exec lifeos-agent-canvas test -f /home/openhands/.openhands/profiles/gptoss20b.json
+          docker exec lifeos-agent-canvas test ! -e /home/openhands/.openhands/profiles/qwen25coder7b-instruct.json
           echo CONFIGURE_GPT_OSS_NATIVE_TOOL_CALLING
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
           test -n "$api_key"
