@@ -63,6 +63,8 @@ card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
 cfg=CONFIG.read_text()
 if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v5' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v5.js' not in cfg: fail('native House Status panel_custom registration missing')
+if cfg.count('url_path: house-status')!=1: fail('duplicate House Status panel registrations remain',str(cfg.count('url_path: house-status')))
+if 'lifeos-house-status-v4.js' in cfg: fail('stale v4 House Status panel remains')
 print('frontend_native_panel=PASS')
 print('frontend_static_contract=PASS')
 print('leave_house=RUNTIME_AUTOMATION_PENDING_SUPPORTED_HA_CONFIG_PATH')
