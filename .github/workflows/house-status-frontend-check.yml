@@ -1,0 +1,25 @@
+name: House Status Frontend Check
+on:
+  push:
+    paths: ['homeassistant/www/house-status/lifeos-house-status-card.js','.github/workflows/house-status-frontend-check.yml']
+  pull_request:
+    paths: ['homeassistant/www/house-status/lifeos-house-status-card.js','.github/workflows/house-status-frontend-check.yml']
+jobs:
+  javascript:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node --check homeassistant/www/house-status/lifeos-house-status-card.js
+      - name: Execute registration
+        run: |
+          node <<'NODE'
+          global.HTMLElement=class {};
+          global.document={createElement:()=>({})};
+          const r=new Map();
+          global.customElements={get:n=>r.get(n),define:(n,c)=>r.set(n,c)};
+          global.window={};
+          require('./homeassistant/www/house-status/lifeos-house-status-card.js');
+          if(!customElements.get('lifeos-house-status')) throw new Error('lifeos-house-status not registered');
+          if(!customElements.get('lifeos-house-status-editor')) throw new Error('editor not registered');
+          console.log('HOUSE_STATUS_FRONTEND_EXECUTION=PASS');
+          NODE
