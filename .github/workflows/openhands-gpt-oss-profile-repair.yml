@@ -1,0 +1,40 @@
+name: Repair OpenHands GPT-OSS UI Profile
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/openhands-gpt-oss-profile-repair.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  repair:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Repair and verify visible GPT-OSS profile
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker exec -i lifeos-agent-canvas python - <<'PY'
+          import json,pathlib
+          root=pathlib.Path("/home/openhands/.openhands/profiles")
+          old=root/"qwen25coder7b-instruct.json"
+          new=root/"gptoss20b.json"
+          src=old if old.exists() else new
+          raw=src.read_text()
+          if raw.endswith("\\n"):
+              raw=raw[:-2]
+          o=json.loads(raw)
+          o["model"]="openai/gpt-oss:20b"
+          o["base_url"]="http://127.0.0.1:18114/v1"
+          o["native_tool_calling"]=True
+          if "name" in o:
+              o["name"]="gptoss20b"
+          new.write_text(json.dumps(o,indent=2)+"\n")
+          if old.exists() and old != new:
+              old.unlink()
+          json.loads(new.read_text())
+          print("OPENHANDS_VISIBLE_GPT_OSS_PROFILE_REPAIR=PASS")
+          PY
+          docker exec lifeos-agent-canvas test -f /home/openhands/.openhands/profiles/gptoss20b.json
+          docker exec lifeos-agent-canvas test ! -e /home/openhands/.openhands/profiles/qwen25coder7b-instruct.json
