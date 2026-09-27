@@ -46,17 +46,19 @@ def main():
     TARGET.write_text(json.dumps(src,indent=2)+'\n')
     reg=load(REGISTRY); items=reg.setdefault('data',{}).setdefault('items',[])
     items[:]=[x for x in items if x.get('url_path')!='house-status' and x.get('id')!='dashboard_house_status']
-    items.append({'id':'dashboard_house_status','show_in_sidebar':True,'icon':'mdi:home-heart','title':'House Status','require_admin':False,'mode':'storage','url_path':'house-status'})
+    
+    # House Status is a native panel_custom page; do not register a Lovelace dashboard at the same path.
     REGISTRY.write_text(json.dumps(reg,indent=2)+'\n')
     resources=load(RESOURCES); ritems=resources.setdefault('data',{}).setdefault('items',[])
     ritems[:]=[x for x in ritems if not str(x.get('url','')).startswith('/local/house-status/lifeos-house-status')]
     card_src=pathlib.Path(__file__).with_name('www')/'house-status'/'lifeos-house-status-card.js'
     card_rev=hashlib.sha256(card_src.read_bytes()).hexdigest()[:12]
-    ritems.append({'id':'lifeos_house_status_card','url':f'/local/house-status/lifeos-house-status-v3.js?v={card_rev}','type':'module'})
+    
+    # panel_custom owns loading this module; no Lovelace resource entry.
     RESOURCES.write_text(json.dumps(resources,indent=2)+'\n')
     print('DEPLOY: PASS')
     print('dashboard=/house-status')
-    print('views=domestic-energy-consumption,full-energy-flow,home-status,doorbell')
+    print('frontend=panel_custom url_path=house-status')
     return 0
 
 if __name__=='__main__': sys.exit(main())
