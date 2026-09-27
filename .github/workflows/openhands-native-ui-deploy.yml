@@ -219,6 +219,38 @@ jobs:
               "/api/profiles/gpt-oss-20b/activate", "POST", {}
           )
           assert status in (200, 201, 204), (status, output)
+
+          # GPT-OSS needs a short, high-priority repository-task contract in the
+          # stock Canvas prompt. The full upstream prompt and native tools remain
+          # unchanged; this suffix prevents a repository instruction from being
+          # answered as a generic tutorial and names the persistent checkout that
+          # Canvas cannot infer from its isolated per-conversation working dir.
+          grounding_marker = "<LIFEOS_REPOSITORY_TASK_GROUNDING_V1>"
+          grounding = """<LIFEOS_REPOSITORY_TASK_GROUNDING_V1>
+          For an explicit repository engineering task, your first response must invoke the native terminal tool. Inspect the current working directory, then inspect /projects/lifeos-platform when the named LifeOS repository is not present there. Ground every path and claim in tool output. Do not invent a different task, propose a script for the user to run, or finish with instructions instead of performing the requested investigation, edit, and deterministic verification. Continue autonomously until complete or an actual external blocker is observed through a tool.
+          </LIFEOS_REPOSITORY_TASK_GROUNDING_V1>"""
+          status, settings = request("/api/settings")
+          assert status == 200, (status, settings)
+          context = settings["agent_settings"].get("agent_context") or {}
+          suffix = context.get("system_message_suffix") or ""
+          if grounding_marker in suffix:
+              suffix = suffix.split(grounding_marker, 1)[0].rstrip()
+          desired_suffix = (suffix + "\n\n" + grounding).strip()
+          status, output = request(
+              "/api/settings",
+              "PATCH",
+              {
+                  "agent_settings_diff": {
+                      "agent_context": {
+                          "system_message_suffix": desired_suffix
+                      }
+                  }
+              },
+          )
+          assert status == 200, (status, output)
+          active = output["agent_settings"]
+          assert grounding_marker in active["agent_context"]["system_message_suffix"]
+          print("OPENHANDS_DEPLOY_REPOSITORY_TASK_GROUNDING=PASS")
           print("OPENHANDS_DEPLOY_GPT_OSS_PROFILE_ACTIVATED=PASS")
           PY
 
@@ -264,6 +296,11 @@ jobs:
           assert llm["base_url"] == "http://127.0.0.1:18114/v1"
           assert llm["native_tool_calling"] is True
           assert agent["enable_switch_llm_tool"] is False
+          suffix = agent["agent_context"]["system_message_suffix"]
+          assert "<LIFEOS_REPOSITORY_TASK_GROUNDING_V1>" in suffix
+          assert "/projects/lifeos-platform" in suffix
+          assert "first response must invoke the native terminal tool" in suffix
+          print("OPENHANDS_DEPLOY_REPOSITORY_TASK_GROUNDING_PERSISTENCE=PASS")
           print("OPENHANDS_DEPLOY_GPT_OSS_PROFILE_PERSISTENCE=PASS")
           PY
 
