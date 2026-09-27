@@ -40,7 +40,7 @@ from pathlib import Path
 import sys,re
 p=Path(sys.argv[1]); s=p.read_text()
 # Remove the former global extra-module hook; panel_custom owns module loading now.
-s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v3)?\.js(?:\?[^\s]+)?\s*$\n?', '', s)
+s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v[0-9]+)?\.js(?:\?[^\s]+)?\s*$\n?', '', s)
 # Install one native Home Assistant custom panel, outside Lovelace.
 panel="""panel_custom:
   - name: lifeos-house-status
