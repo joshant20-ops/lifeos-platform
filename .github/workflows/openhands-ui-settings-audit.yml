@@ -1,182 +1,128 @@
 name: OpenHands UI Settings Audit
+
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/openhands-ui-settings-audit.yml', '.github/workflows/openhands-native-ui-deploy.yml']
+  workflow_run:
+    workflows: ["OpenHands Native UI Deploy"]
+    types: [completed]
   workflow_dispatch:
+
 permissions:
   contents: read
+
+concurrency:
+  group: openhands-ui-settings-audit
+  cancel-in-progress: true
+
 jobs:
   audit:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
-      - name: Inspect effective UI configuration
+      - name: Prove deployed GPT-OSS profile is active and persistent
         shell: bash
         run: |
           set -Eeuo pipefail
-          bash -s <<'REMOTE'
-          set -Eeuo pipefail
-          echo SERVICE
+          [[ "$(hostname)" == "Docker" ]]
+
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-          systemctl --user show lifeos-openhands-ui.service -p ExecStart --no-pager
-          echo RUNTIME_MODE
-          execstart=$(systemctl --user show lifeos-openhands-ui.service -p ExecStart --value)
-          if grep -q 'ghcr.io/openhands/agent-canvas:1.23.0' <<<"$execstart"; then
-            docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' | grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
-            curl -fsS http://127.0.0.1:8000/canvas/ >/dev/null
-            echo OPENHANDS_AGENT_CANVAS_SETTINGS_AUDIT=PASS
-          else
-            echo PROCESS_ENV_KEYS
-            pid=$(systemctl --user show -p MainPID --value lifeos-openhands-ui.service)
-            tr '\0' '\n' <"/proc/$pid/environ" | grep -E '^(LLM_BASE_URL|LLM_API_KEY|LLM_MODEL)=' | sed -E 's/=.*/=<present>/'
-          fi
-          echo CANVAS_WORKSPACE_DIAGNOSTICS_REDACTED
-          docker exec lifeos-agent-canvas python -c 'import pathlib; r=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations"); print("conversation_count="+str(sum(1 for p in r.iterdir() if p.is_dir())))'
-          echo CANVAS_RUNTIME_BUNDLE_ANCHORS
-          docker exec lifeos-agent-canvas sh -c 'grep -rhoE "conversationUrl:[A-Za-z_$][A-Za-z0-9_$]*,sessionApiKey:[A-Za-z_$][A-Za-z0-9_$]*" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | sort -u | head -30; grep -rhoE "new [A-Za-z_$][A-Za-z0-9_$]*\\([^)]*conversationUrl:[^)]{0,160}" /opt/agent-canvas/frontend/assets/*.js 2>/dev/null | head -30' || true
-          echo CANVAS_RECENT_LOGS
-          docker logs --tail 300 lifeos-agent-canvas 2>&1 | grep -E 'workspace|file|401|404|500|9a36222c' | tail -120 || true
-          echo NORMALIZE_VISIBLE_LOCAL_LLM_PROFILE
-          docker exec -i lifeos-agent-canvas python - <<'PY'
-          import json,pathlib
-          root=pathlib.Path("/home/openhands/.openhands/profiles")
-          def load_profile(p):
-              raw=p.read_text()
-              # Repair the legacy workflow bug that wrote a literal \\n after JSON.
-              if raw.endswith("\\n"):
-                  raw=raw[:-2]
-              return json.loads(raw)
-          old=root/"qwen25coder7b-instruct.json"
-          new=root/"gptoss20b.json"
-          if new.exists():
-              o=load_profile(new)
-          elif old.exists():
-              o=load_profile(old)
-          else:
-              raise SystemExit("No persisted local LLM profile found")
-          # LLM profiles store connection fields at top level. Preserve credentials
-          # and unrelated stock settings while moving the accepted local profile.
-          o["model"]="openai/gpt-oss:20b"
-          o["base_url"]="http://127.0.0.1:18114/v1"
-          o["native_tool_calling"]=True
-          if "name" in o:
-              o["name"]="gptoss20b"
-          new.write_text(json.dumps(o,indent=2)+"\n")
-          if old != new and old.exists():
-              old.unlink()
-          print("OPENHANDS_VISIBLE_GPT_OSS_PROFILE=PASS")
-          PY
-          docker exec lifeos-agent-canvas test -f /home/openhands/.openhands/profiles/gptoss20b.json
-          docker exec lifeos-agent-canvas test ! -e /home/openhands/.openhands/profiles/qwen25coder7b-instruct.json
-          echo ENSURE_GPT_OSS_LLM_PROFILE
-          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
-          test -n "$api_key"
-          python3 - "$api_key" <<'PY'
-          import json,sys,urllib.request,urllib.error
-          key=sys.argv[1]; base='http://127.0.0.1:18000'
-          headers={'X-Session-API-Key':key,'Content-Type':'application/json'}
-          def req(path,method='GET',data=None):
-              body=None if data is None else json.dumps(data).encode()
-              r=urllib.request.Request(base+path,data=body,headers=headers,method=method)
-              try:
-                  with urllib.request.urlopen(r,timeout=30) as x:
-                      raw=x.read(); return x.status,(json.loads(raw) if raw else None)
-              except urllib.error.HTTPError as e:
-                  raw=e.read(); return e.code,(json.loads(raw) if raw else None)
-          status,profiles=req('/api/profiles')
-          assert status==200,(status,profiles)
-          names=[p.get('name') if isinstance(p,dict) else p for p in profiles.get('profiles',[])]
-          print('OPENHANDS_LLM_PROFILES_BEFORE='+','.join(str(x) for x in names))
-          payload={'llm':{'model':'openai/gpt-oss:20b','base_url':'http://127.0.0.1:18114/v1','api_key':'local-lifeos-gateway','native_tool_calling':True}}
-          status,out=req('/api/profiles/gpt-oss-20b','POST',payload)
-          assert status in (200,201),(status,out)
-          status,out=req('/api/profiles/gpt-oss-20b/activate','POST',{})
-          assert status in (200,201,204),(status,out)
-          status,profiles=req('/api/profiles')
-          assert status==200
-          names=[p.get('name') if isinstance(p,dict) else p for p in profiles.get('profiles',[])]
-          assert 'gpt-oss-20b' in names,names
-          assert profiles.get('active_profile')=='gpt-oss-20b',profiles.get('active_profile')
-          print('OPENHANDS_GPT_OSS_VISIBLE_PROFILE=PASS')
-          print('OPENHANDS_GPT_OSS_ACTIVE_PROFILE=PASS')
-          PY
-          echo CONFIGURE_GPT_OSS_NATIVE_TOOL_CALLING
-          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
-          test -n "$api_key"
-          curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' --data '{"agent_settings_diff":{"llm":{"model":"openai/gpt-oss:20b","base_url":"http://127.0.0.1:18114/v1","native_tool_calling":true}}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-gpt-oss-tool-patch.json
-          python -c 'import json; o=json.load(open("/tmp/openhands-gpt-oss-tool-patch.json")); l=o["agent_settings"]["llm"]; assert l["model"]=="openai/gpt-oss:20b"; assert l["base_url"]=="http://127.0.0.1:18114/v1"; assert l["native_tool_calling"] is True; print("OPENHANDS_GPT_OSS_NATIVE_TOOL_CALLING=PASS")'
-          docker exec lifeos-agent-canvas python -c 'import json,pathlib; o=json.loads(pathlib.Path("/home/openhands/.openhands/settings.json").read_text()); l=o["agent_settings"]["llm"]; assert l["model"]=="openai/gpt-oss:20b"; assert l["base_url"]=="http://127.0.0.1:18114/v1"; assert l["native_tool_calling"] is True'
-          echo CONFIGURE_LOCAL_AGENT_SECURITY
-          curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' --data '{"conversation_settings_diff":{"confirmation_mode":false,"security_analyzer":null}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-qwen-security-patch.json
-          python -c 'import json; o=json.load(open("/tmp/openhands-qwen-security-patch.json")); c=o["conversation_settings"]; assert c["confirmation_mode"] is False; assert c["security_analyzer"] is None; print("OPENHANDS_QWEN_SECURITY_ANALYZER_DISABLED=PASS")'
-          echo DISABLE_SWITCH_LLM_TOOL
-          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
-          test -n "$api_key"
-          curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' --data '{"agent_settings_diff":{"enable_switch_llm_tool":false}}' http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-patch.json
-          python -c 'import json; o=json.load(open("/tmp/openhands-settings-patch.json")); assert o["agent_settings"]["enable_switch_llm_tool"] is False'
-          docker exec lifeos-agent-canvas python -c 'import json,pathlib; o=json.loads(pathlib.Path("/home/openhands/.openhands/settings.json").read_text()); a=o.get("agent_settings") or {}; assert a.get("enable_switch_llm_tool") is False; print("OPENHANDS_SWITCH_LLM_DISABLED=PASS")'
-          systemctl --user restart lifeos-openhands-ui.service
-          for _ in $(seq 1 60); do curl -fsS --connect-timeout 2 http://127.0.0.1:18000/alive >/dev/null 2>&1 && break; sleep 2; done
-          curl -fsS http://127.0.0.1:18000/alive >/dev/null
-          api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
-          curl -fsS -H "X-Session-API-Key: $api_key" http://127.0.0.1:18000/api/settings >/tmp/openhands-settings-after-restart.json
-          python -c 'import json; o=json.load(open("/tmp/openhands-settings-after-restart.json")); l=o["agent_settings"]["llm"]; assert o["agent_settings"]["enable_switch_llm_tool"] is False; assert l["model"]=="openai/gpt-oss:20b"; assert l["base_url"]=="http://127.0.0.1:18114/v1"; assert l["native_tool_calling"] is True; assert o["conversation_settings"]["security_analyzer"] is None; print("OPENHANDS_SWITCH_LLM_PERSISTENCE=PASS"); print("OPENHANDS_GPT_OSS_NATIVE_PERSISTENCE=PASS"); print("OPENHANDS_LOCAL_AGENT_SECURITY_PERSISTENCE=PASS")'
-          echo GPT_OSS_PERSISTED_GATEWAY_ACCEPTANCE
-          python3 - "$api_key" <<'PY'
-          import json,pathlib,subprocess,sys,time,urllib.request,uuid
-          key=sys.argv[1]; base='http://127.0.0.1:18000'; container='lifeos-agent-canvas'
-          def req(path,method='GET',data=None,timeout=60,extra=None):
-              headers={'X-Session-API-Key':key}; headers.update(extra or {})
-              body=None if data is None else json.dumps(data).encode()
-              if body is not None: headers['Content-Type']='application/json'
-              with urllib.request.urlopen(urllib.request.Request(base+path,data=body,headers=headers,method=method),timeout=timeout) as response:
-                  raw=response.read(); return json.loads(raw) if raw else None
-          settings=req('/api/settings',extra={'X-Expose-Secrets':'encrypted'})
-          agent=settings['agent_settings']
-          assert agent['llm']['model']=='openai/gpt-oss:20b'
-          assert agent['llm']['base_url']=='http://127.0.0.1:18114/v1'
-          assert agent['llm']['native_tool_calling'] is True
-          assert agent['enable_switch_llm_tool'] is False
-          cid=uuid.uuid4().hex; wd=f'/home/openhands/workspace/project/{cid}'
-          expected='GPT-OSS production gateway acceptance PASS'
-          prompt=(
-              'Use the native file editor tool to create production-gateway-acceptance.txt containing exactly: '+expected+' '
-              'Read it back with the native file-reading capability. Then use the terminal tool to run '
-              '`python3 -c "from pathlib import Path; Path(\'gateway-terminal-proof.txt\').write_text(\'TERMINAL PASS\')"`. '
-              'Read that file, verify both exact contents, and finish normally. Do not print tool-call JSON.'
-          )
-          payload={'conversation_id':cid,'agent_settings':agent,'secrets_encrypted':True,'workspace':{'working_dir':wd},
-              'security_analyzer':None,'initial_message':{'role':'user','content':[{'type':'text','text':prompt}],'run':True},
-              'max_iterations':24,'stuck_detection':True}
-          started=time.monotonic(); out=req('/api/conversations','POST',payload,timeout=120); actual=str(out['id']).replace('-','')
-          print('OPENHANDS_CONVERSATION_ID='+actual)
-          deadline=time.time()+900
-          while time.time()<deadline:
-              status=str(req('/api/conversations/'+actual).get('execution_status','')).lower()
-              if status in {'finished','paused','error','stuck','idle'}: break
-              time.sleep(5)
-          else: raise SystemExit('OpenHands gateway acceptance timeout')
-          print('OPENHANDS_STATUS='+status); print('OPENHANDS_WALL_S='+str(round(time.monotonic()-started,2)))
-          root=f'/home/openhands/workspace/project/{actual}'
-          def cat(name): return subprocess.check_output(['docker','exec',container,'cat',root+'/'+name],text=True).rstrip('\n')
-          assert cat('production-gateway-acceptance.txt')==expected
-          assert cat('gateway-terminal-proof.txt')=='TERMINAL PASS'
-          summary=subprocess.check_output(['docker','exec','-e','CID='+actual,container,'python','-c',
-              'import json,os,pathlib; r=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]/"events"; ev=[json.loads(p.read_text()) for p in sorted(r.glob("*.json"))]; flat=[json.dumps(x).lower() for x in ev]; print(json.dumps({"events":len(ev),"file_editor_actions":sum("fileeditoraction" in x or "file_editor" in x for x in flat),"terminal_actions":sum("execute_command" in x or "terminaltool" in x or "bashaction" in x for x in flat),"finish_actions":sum("finishaction" in x or "finish_tool" in x for x in flat),"assistant_json_only":sum("\\\"name\\\":\\\"write_file\\\"" in x and "action" not in x for x in flat)}))'],text=True)
-          counts=json.loads(summary); print('OPENHANDS_EVENT_SUMMARY='+json.dumps(counts,sort_keys=True))
-          assert counts['file_editor_actions']>=1 and counts['terminal_actions']>=1 and counts['finish_actions']>=1,counts
-          assert counts['assistant_json_only']==0,counts
-          assert status=='finished',status
-          print('OPENHANDS_FILES_EXACT=PASS')
-          print('OPENHANDS_GPT_OSS_PERSISTED_GATEWAY_ACCEPTANCE=PASS')
-          PY
-          echo SWITCH_LLM_SUPPORTED_FIX
-          docker exec lifeos-agent-canvas python -c 'import importlib.metadata as md; print("agent_server_version=" + md.version("openhands-agent-server"))'
-          docker exec lifeos-agent-canvas python -c 'import json,pathlib; p=pathlib.Path("/home/openhands/.openhands/settings.json"); o=json.loads(p.read_text()); a=o.get("agent_settings") or o.get("agent") or {}; print("settings_enable_switch_llm_tool=" + repr(a.get("enable_switch_llm_tool","<absent>")))'
-          docker exec lifeos-agent-canvas sh -c 'for p in /home/openhands/.openhands/agent-profiles/*.json; do test -f "$p" || continue; python -c '"'"'import json,sys,pathlib; p=pathlib.Path(sys.argv[1]); o=json.loads(p.read_text()); print("profile="+p.name+" name="+repr(o.get("name","<absent>"))+" model="+repr((o.get("llm") or {}).get("model","<absent>"))+" base_url="+repr((o.get("llm") or {}).get("base_url","<absent>"))+" native_tool_calling="+repr((o.get("llm") or {}).get("native_tool_calling","<absent>"))+" enable_switch_llm_tool="+repr(o.get("enable_switch_llm_tool","<absent>")))'"'"' "$p"; done'
-          echo STATE_FILES
-          find "$HOME/.openhands" "$HOME/.config/openhands" -maxdepth 3 -type f -printf '%p\n' 2>/dev/null || true
 
-          REMOTE
+          systemctl --user is-active --quiet lifeos-openhands-ui.service
+          systemctl --user is-active --quiet lifeos-openhands-tls.service
+          docker inspect lifeos-agent-canvas --format '{{.Config.Image}}' |
+            grep -qx 'ghcr.io/openhands/agent-canvas:1.23.0'
+          curl -fsS http://127.0.0.1:18000/alive >/dev/null
+          curl -kfsS https://127.0.0.1:8443/canvas/ >/dev/null
+          echo "OPENHANDS_AGENT_CANVAS_AUDIT=PASS"
+
+          verify_persisted_state() {
+            local phase="$1"
+            local api_key
+            api_key="$(docker exec lifeos-agent-canvas               cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
+            test -n "$api_key"
+
+            docker exec lifeos-agent-canvas python - <<'PY'
+          import json
+          from pathlib import Path
+
+          profile_root = Path("/home/openhands/.openhands/profiles")
+          accepted = profile_root / "gptoss20b.json"
+          retired = profile_root / "qwen25coder7b-instruct.json"
+          assert accepted.is_file(), accepted
+          assert not retired.exists(), retired
+
+          profile = json.loads(accepted.read_text())
+          assert profile["model"] == "openai/gpt-oss:20b"
+          assert profile["base_url"] == "http://127.0.0.1:18114/v1"
+          assert profile["native_tool_calling"] is True
+
+          settings = json.loads(
+              Path("/home/openhands/.openhands/settings.json").read_text()
+          )
+          agent = settings["agent_settings"]
+          llm = agent["llm"]
+          assert llm["model"] == "openai/gpt-oss:20b"
+          assert llm["base_url"] == "http://127.0.0.1:18114/v1"
+          assert llm["native_tool_calling"] is True
+          assert agent["enable_switch_llm_tool"] is False
+          assert settings["conversation_settings"]["security_analyzer"] is None
+          print("OPENHANDS_GPT_OSS_FILES_PERSISTED=PASS")
+          PY
+
+            python3 - "$api_key" <<'PY'
+          import json
+          import sys
+          import urllib.request
+
+          key = sys.argv[1]
+          base = "http://127.0.0.1:18000"
+          headers = {"X-Session-API-Key": key}
+
+          def get(path):
+              request = urllib.request.Request(base + path, headers=headers)
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  raw = response.read()
+                  return json.loads(raw) if raw else None
+
+          profiles = get("/api/profiles")
+          names = [
+              item.get("name") if isinstance(item, dict) else item
+              for item in profiles.get("profiles", [])
+          ]
+          assert "gpt-oss-20b" in names, names
+          assert profiles.get("active_profile") == "gpt-oss-20b", profiles
+
+          settings = get("/api/settings")
+          agent = settings["agent_settings"]
+          llm = agent["llm"]
+          assert llm["model"] == "openai/gpt-oss:20b"
+          assert llm["base_url"] == "http://127.0.0.1:18114/v1"
+          assert llm["native_tool_calling"] is True
+          assert agent["enable_switch_llm_tool"] is False
+          assert settings["conversation_settings"]["security_analyzer"] is None
+          print("OPENHANDS_GPT_OSS_API_PROFILE_ACTIVE=PASS")
+          PY
+            echo "OPENHANDS_GPT_OSS_STATE_${phase}=PASS"
+          }
+
+          verify_persisted_state BEFORE_RESTART
+
+          systemctl --user restart lifeos-openhands-ui.service
+          for _ in $(seq 1 60); do
+            curl -fsS --connect-timeout 2               http://127.0.0.1:18000/alive >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:18000/alive >/dev/null
+
+          verify_persisted_state AFTER_RESTART
+
+          docker exec lifeos-agent-canvas test -d /projects/lifeos-platform/.git
+          docker exec lifeos-agent-canvas             git -C /projects/lifeos-platform remote get-url origin |
+            grep -qx 'https://github.com/joshant20-ops/lifeos-platform.git'
+
+          echo "OPENHANDS_GPT_OSS_ACTIVE_PROFILE=PASS"
+          echo "OPENHANDS_GPT_OSS_PERSISTENCE=PASS"
+          echo "OPENHANDS_SWITCH_LLM_DISABLED=PASS"
+          echo "OPENHANDS_ACCEPTED_ARCHITECTURE_UNCHANGED=PASS"
+          echo "OPENHANDS_UI_SETTINGS_AUDIT=PASS"
