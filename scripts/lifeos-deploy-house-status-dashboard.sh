@@ -37,17 +37,32 @@ install -o root -g root -m 0644 "$SOURCE_ASSET" "$ASSET_TARGET"
 install -o root -g root -m 0644 "$CARD_SOURCE" "$CARD_TARGET"; MUTATED=1
 python3 - "$CONFIG" <<'PY'
 from pathlib import Path
-import sys
+import sys,re
 p=Path(sys.argv[1]); s=p.read_text()
-url='    - /local/house-status/lifeos-house-status-v3.js'
-if url not in s:
-    if 'frontend:\n' not in s:
-        raise SystemExit('frontend section missing')
-    if '  extra_module_url:\n' in s:
-        s=s.replace('  extra_module_url:\n','  extra_module_url:\n'+url+'\n',1)
-    else:
-        s=s.replace('frontend:\n','frontend:\n  extra_module_url:\n'+url+'\n',1)
-    p.write_text(s)
+# Remove the former global extra-module hook; panel_custom owns module loading now.
+s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v3)?\.js(?:\?[^\s]+)?\s*$\n?', '', s)
+# Install one native Home Assistant custom panel, outside Lovelace.
+panel="""panel_custom:
+  - name: lifeos-house-status
+    sidebar_title: House Status
+    sidebar_icon: mdi:home-heart
+    url_path: house-status
+    module_url: /local/house-status/lifeos-house-status-v3.js
+    require_admin: false
+    config:
+      mode: domestic
+"""
+# Replace an existing LifeOS panel block if present, otherwise append.
+pat=r'(?ms)^panel_custom:\n(?:  - .*\n(?:    .*\n)*)*'
+if 'name: lifeos-house-status' in s:
+    # Conservative targeted replacement from panel_custom through our config mode line.
+    s=re.sub(r'(?ms)^panel_custom:\n.*?^      mode: domestic\n',panel,s,count=1)
+elif 'panel_custom:\n' in s:
+    insert=panel.split('\n',1)[1]
+    s=s.replace('panel_custom:\n','panel_custom:\n'+insert,1)
+else:
+    s=s.rstrip()+'\n\n'+panel
+p.write_text(s)
 PY
 docker exec homeassistant python -m homeassistant --script check_config -c /config >/dev/null
 python3 "$MODULE_INSTALLER" "$HA_CONFIG"
