@@ -172,6 +172,56 @@ jobs:
           print("OPENHANDS_DEPLOY_GPT_OSS_ACTIVE=PASS")
           PY
 
+          # Create and activate the named Canvas profile through the supported API.
+          # Deployment owns desired state; audits remain read-only.
+          python3 - "$api_key" <<'PY'
+          import json
+          import sys
+          import urllib.error
+          import urllib.request
+
+          key = sys.argv[1]
+          base = "http://127.0.0.1:18000"
+          headers = {
+              "X-Session-API-Key": key,
+              "Content-Type": "application/json",
+          }
+
+          def request(path, method="GET", data=None):
+              body = None if data is None else json.dumps(data).encode()
+              req = urllib.request.Request(
+                  base + path,
+                  data=body,
+                  headers=headers,
+                  method=method,
+              )
+              try:
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      raw = response.read()
+                      return response.status, json.loads(raw) if raw else None
+              except urllib.error.HTTPError as error:
+                  raw = error.read()
+                  return error.code, json.loads(raw) if raw else None
+
+          payload = {
+              "llm": {
+                  "model": "openai/gpt-oss:20b",
+                  "base_url": "http://127.0.0.1:18114/v1",
+                  "api_key": "local-lifeos-gateway",
+                  "native_tool_calling": True,
+              }
+          }
+          status, output = request(
+              "/api/profiles/gpt-oss-20b", "POST", payload
+          )
+          assert status in (200, 201), (status, output)
+          status, output = request(
+              "/api/profiles/gpt-oss-20b/activate", "POST", {}
+          )
+          assert status in (200, 201, 204), (status, output)
+          print("OPENHANDS_DEPLOY_GPT_OSS_PROFILE_ACTIVATED=PASS")
+          PY
+
           # Verify accepted Pi state survives a full service restart; do not invoke an LLM.
           test "$(cat "$HOME/workspace/pi5-persistence.txt")" = "Agent Canvas Pi5 persistence PASS"
           acceptance_file="$(find "$HOME/workspace/project" -name canvas-acceptance.txt -type f -print -quit)"
@@ -181,6 +231,41 @@ jobs:
           systemctl --user restart lifeos-openhands-tls.service
           for _ in $(seq 1 60); do curl -kfsS --connect-timeout 2 https://127.0.0.1:8443/canvas/ >/dev/null 2>&1 && break; sleep 2; done
           test "$(cat "$acceptance_file")" = "Agent Canvas Pi5 functional acceptance PASS"
+
+          api_key="$(docker exec lifeos-agent-canvas             cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
+          test -n "$api_key"
+          python3 - "$api_key" <<'PY'
+          import json
+          import sys
+          import urllib.request
+
+          key = sys.argv[1]
+          base = "http://127.0.0.1:18000"
+          headers = {"X-Session-API-Key": key}
+
+          def get(path):
+              req = urllib.request.Request(base + path, headers=headers)
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  raw = response.read()
+                  return json.loads(raw) if raw else None
+
+          profiles = get("/api/profiles")
+          names = [
+              item.get("name") if isinstance(item, dict) else item
+              for item in profiles.get("profiles", [])
+          ]
+          assert "gpt-oss-20b" in names, names
+          assert profiles.get("active_profile") == "gpt-oss-20b", profiles
+
+          settings = get("/api/settings")
+          agent = settings["agent_settings"]
+          llm = agent["llm"]
+          assert llm["model"] == "openai/gpt-oss:20b"
+          assert llm["base_url"] == "http://127.0.0.1:18114/v1"
+          assert llm["native_tool_calling"] is True
+          assert agent["enable_switch_llm_tool"] is False
+          print("OPENHANDS_DEPLOY_GPT_OSS_PROFILE_PERSISTENCE=PASS")
+          PY
 
           # One-time legacy cleanup is intentionally not part of normal deploys.
           # Engineer OpenHands runtime/state was retired after verified Pi5 cutover.
