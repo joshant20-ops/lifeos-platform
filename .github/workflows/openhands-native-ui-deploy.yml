@@ -50,8 +50,10 @@ jobs:
             rm -rf "$HOME/lifeos-projects/lifeos-platform"
             git clone --no-local "$HOME/lifeos-platform" "$HOME/lifeos-projects/lifeos-platform"
           fi
-          # Canvas persists this checkout as its own UID.  Mark the fixed
-          # LifeOS checkout safe for the self-hosted runner before host-side git.
+          # Canvas persists the checkout as its own UID. Restore host ownership
+          # before runner-side Git operations, then normalize it for Canvas below.
+          docker run --rm --user root -v "$HOME/lifeos-projects:/projects" \
+            --entrypoint /bin/sh "$image" -c "chown -R $(id -u):$(id -g) /projects/lifeos-platform"
           git config --global --add safe.directory "$HOME/lifeos-projects/lifeos-platform"
           git -C "$HOME/lifeos-projects/lifeos-platform" remote set-url origin https://github.com/joshant20-ops/lifeos-platform.git
           git -C "$HOME/lifeos-projects/lifeos-platform" fetch origin main
