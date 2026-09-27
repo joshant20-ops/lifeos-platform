@@ -22,7 +22,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           cid=0c1e5acf80984e64b7001c08f5c6ed57
-          docker exec -e CID="$cid" lifeos-agent-canvas python - <<'PY'
+          docker exec -i -e CID="$cid" lifeos-agent-canvas python - <<'PY'
           import json
           import os
           import pathlib
