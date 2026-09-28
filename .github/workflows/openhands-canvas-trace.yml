@@ -1,9 +1,11 @@
 name: OpenHands Canvas File Trace
-# Runtime refresh: 2026-09-28 workspace diagnostic
+# Runtime refresh: 2026-09-28 workspace diagnostic pr
 
 on:
   push:
     branches: [main]
+    paths: ['.github/workflows/openhands-canvas-trace.yml']
+  pull_request:
     paths: ['.github/workflows/openhands-canvas-trace.yml']
   workflow_dispatch:
 
