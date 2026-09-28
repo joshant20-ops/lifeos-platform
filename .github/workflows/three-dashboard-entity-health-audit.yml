@@ -1,0 +1,44 @@
+name: Three Dashboard Entity Health Audit
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/three-dashboard-entity-health-audit.yml']
+permissions: {contents: read}
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Audit referenced entities against HA registry and runtime states
+        shell: bash
+        run: |
+          sudo python3 - <<'PY'
+          import json,re,pathlib
+          root=pathlib.Path('/opt/stacks/homeassistant/config/.storage')
+          names=['lovelace.dashboard_homelab','lovelace.dashboard_lifeos','lovelace.lifeos_control']
+          reg=json.loads((root/'core.entity_registry').read_text()).get('data',{}).get('entities',[])
+          registry={x.get('entity_id'):x for x in reg if x.get('entity_id')}
+          # Restore-state cache gives runtime truth without unauthenticated HTTP API.
+          restore={}
+          rp=root/'core.restore_state'
+          if rp.exists():
+            rd=json.loads(rp.read_text()).get('data',[])
+            for x in rd:
+              st=x.get('state') if isinstance(x,dict) else None
+              if isinstance(st,dict) and st.get('entity_id'): restore[st['entity_id']]=st.get('state')
+          allrefs=set()
+          for name in names:
+            d=json.loads((root/name).read_text()); blob=json.dumps(d)
+            refs=sorted(set(re.findall(r'(?:sensor|binary_sensor|switch|button|input_text|input_boolean|camera|event)\.[A-Za-z0-9_]+',blob)))
+            print('\nDASH='+name)
+            for e in refs:
+              allrefs.add(e); rr=registry.get(e)
+              print('REF entity=%s registered=%s disabled=%s restored_state=%r'%(e,bool(rr),rr.get('disabled_by') if rr else None,restore.get(e,'<none>')))
+          print('\nMISSING_REFERENCES='+repr(sorted(e for e in allrefs if e not in registry)))
+          print('UNKNOWN_RESTORED='+repr(sorted(e for e in allrefs if restore.get(e) in ('unknown','unavailable'))))
+          print('\nCANDIDATE_TOWER_ENTITIES')
+          for e in sorted(registry):
+            if any(k in e for k in ('tower','z97','lifeos_control','lifeos_system_health','lifeos_attention','lifeos_watchman','lifeos_closed_loop')):
+              rr=registry[e]
+              print('CAND entity=%s disabled=%s restored_state=%r'%(e,rr.get('disabled_by'),restore.get(e,'<none>')))
+          PY
