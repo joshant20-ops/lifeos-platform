@@ -1,0 +1,72 @@
+name: LifeOS Private Document Relationships
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lifeos-pip-document-links.py'
+      - 'scripts/lifeos-pip-p6-p10-core.py'
+      - 'tests/test_pip_document_relationships.py'
+      - '.github/workflows/lifeos-pip-document-links.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pip-document-links
+  cancel-in-progress: false
+
+jobs:
+  link-documents:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 45
+    steps:
+      - name: Validate and propose private document links
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+          python3 -m pytest -q tests/test_pip_document_relationships.py tests/test_pip_p6_p10_functional.py
+
+          state_dir="$HOME/.local/state/lifeos/pip"
+          relationship_db="$state_dir/cross_system.sqlite3"
+          mkdir -p "$state_dir"
+          before="$(python3 - "$relationship_db" <<'PY'
+          import sqlite3,sys
+          db=sqlite3.connect(sys.argv[1])
+          exists=db.execute("select count(*) from sqlite_master where type='table' and name='relationship'").fetchone()[0]
+          print(db.execute("select count(*) from relationship").fetchone()[0] if exists else 0)
+          PY
+          )"
+
+          output="$(python3 scripts/lifeos-pip-document-links.py --limit 10 --commit)"
+          printf '%s\n' "$output"
+          grep -q '^PIP_LINK_INVALID=0$' <<<"$output"
+          grep -q '^PIP_LINK_PERSISTED=YES$' <<<"$output"
+          grep -q '^PIP_LINK_PRIVACY=LOCAL_ONLY$' <<<"$output"
+          grep -q '^PIP_LINK_PAPERLESS_WRITEBACK=NONE$' <<<"$output"
+          grep -q '^PIP_LINK_AUTHORITATIVE_MUTATION=NONE$' <<<"$output"
+
+          candidates="$(sed -n 's/^PIP_LINK_CANDIDATES=//p' <<<"$output")"
+          test -n "$candidates"
+          test "$candidates" -ge 1
+
+          python3 - "$relationship_db" "$before" <<'PY'
+          import os,sqlite3,sys
+          path,before=sys.argv[1],int(sys.argv[2])
+          db=sqlite3.connect(path)
+          after=db.execute("select count(*) from relationship").fetchone()[0]
+          proposals=db.execute("select count(*) from relationship_proposal").fetchone()[0]
+          assert after==before, (before,after)
+          assert proposals>=0
+          assert os.stat(path).st_mode & 0o777 == 0o600
+          print("PIP_LINK_AUTHORITY_UNCHANGED=PASS")
+          print("PIP_LINK_DB_PERMISSIONS=PASS")
+          print("PIP_LINK_PROPOSAL_STORE=PASS")
+          PY
