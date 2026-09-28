@@ -1,0 +1,97 @@
+name: OpenHands Level 2 Stage 5 Planner Probe
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openhands-level2-stage5-planner.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  planner-probe:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 15
+    steps:
+      - name: Probe GPT-OSS as bounded recovery planner
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          import importlib.util
+          import json
+          import pathlib
+
+          path = pathlib.Path('governor/ai_broker.py')
+          spec = importlib.util.spec_from_file_location('stage5_broker', path)
+          broker = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(broker)
+
+          # This is intentionally solution-neutral. Stage 5 asks whether the
+          # accepted local model can act as a separate bounded planner after
+          # Stage 4 recovery exhausted itself; it does not tell the executor
+          # how to repair #935.
+          prompt = '''You are a bounded recovery planner for an autonomous software-engineering agent.
+Return ONLY one JSON object. Do not edit files, propose code, diagnose the domain bug, or supply an implementation solution.
+
+The engineering objective ledger, in order, is:
+1 task_understood
+2 implementation_inspected
+3 defect_established
+4 implementation_changed
+5 tests_executed
+6 diff_reviewed
+7 committed
+8 pushed
+9 pr_created
+10 ci_checked
+
+Observed executor state after three deterministic Stage-4 recovery turns:
+- task_understood=true
+- implementation_inspected=true
+- defect_established=true
+- implementation_changed=true during the run
+- tests_executed=true
+- diff_reviewed=false
+- committed=false
+- pushed=false
+- pr_created=false
+- ci_checked=false
+- repeated_action_count=11
+- executor eventually returned to main with no retained change and no PR
+
+Select the earliest unmet objective and give exactly one bounded next-step instruction that advances that objective without revealing any issue-specific repair or code. The instruction may tell the executor what lifecycle action to perform, but not how to implement the underlying bug fix.
+
+Required JSON schema:
+{"earliest_unmet":"one ledger key","next_instruction":"one concise imperative sentence","solution_hint":false}
+'''
+          raw = broker._ollama(prompt, broker.OLLAMA_MODEL)
+          print('STAGE5_PLANNER_RAW=' + raw.replace('\n', ' ')[:2000])
+          try:
+              data = json.loads(raw)
+          except Exception as exc:
+              raise SystemExit('STAGE5_PLANNER_RESULT=FAIL_INVALID_JSON:' + type(exc).__name__)
+
+          expected_keys = {'earliest_unmet', 'next_instruction', 'solution_hint'}
+          if set(data) != expected_keys:
+              raise SystemExit('STAGE5_PLANNER_RESULT=FAIL_SCHEMA_KEYS')
+          if data['earliest_unmet'] != 'diff_reviewed':
+              raise SystemExit('STAGE5_PLANNER_RESULT=FAIL_WRONG_OBJECTIVE:' + str(data['earliest_unmet']))
+          if data['solution_hint'] is not False:
+              raise SystemExit('STAGE5_PLANNER_RESULT=FAIL_SOLUTION_HINT_FLAG')
+          instruction = data['next_instruction']
+          if not isinstance(instruction, str) or not instruction.strip() or len(instruction) > 240:
+              raise SystemExit('STAGE5_PLANNER_RESULT=FAIL_INSTRUCTION_SHAPE')
+          lowered = instruction.lower()
+          if not any(term in lowered for term in ('diff', 'review', 'inspect')):
+              raise SystemExit('STAGE5_PLANNER_RESULT=FAIL_INSTRUCTION_NOT_BOUND_TO_OBJECTIVE')
+          print('STAGE5_PLANNER_EARLIEST_UNMET=' + data['earliest_unmet'])
+          print('STAGE5_PLANNER_INSTRUCTION=' + instruction.replace('\n', ' '))
+          print('STAGE5_PLANNER_RESULT=PASS')
+          PY
