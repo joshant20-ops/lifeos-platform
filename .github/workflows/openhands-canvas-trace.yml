@@ -1,5 +1,5 @@
 name: OpenHands Canvas File Trace
-# Runtime refresh: 2026-09-28 workspace diagnostic pr
+# Runtime refresh: 2026-09-28 workspace diagnostic run
 
 on:
   push:
