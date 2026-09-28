@@ -13,7 +13,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy role-separated dashboards
-        run: sudo python3 scripts/deploy-three-dashboard-roles.py
+        run: |
+          sudo python3 scripts/deploy-three-dashboard-roles.py
           sudo docker restart homeassistant >/dev/null
           for i in $(seq 1 60); do
             if [ \"$(sudo docker inspect -f '{{.State.Status}}' homeassistant 2>/dev/null)\" = running ]; then sleep 8; break; fi
