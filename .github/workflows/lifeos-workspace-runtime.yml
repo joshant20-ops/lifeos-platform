@@ -2,7 +2,7 @@ name: LifeOS workspace runtime diagnostic
 
 on:
   push:
-    branches: [fix/lifeos-workspace-runtime]
+    branches: [main, fix/lifeos-workspace-runtime]
     paths:
       - '.github/workflows/lifeos-workspace-runtime.yml'
   workflow_dispatch:
