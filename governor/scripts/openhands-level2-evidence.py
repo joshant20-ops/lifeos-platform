@@ -55,6 +55,14 @@ def summarize(root: pathlib.Path) -> dict[str, Any]:
     prompt_tokens: list[int] = []
     completion_tokens: list[int] = []
     total_tokens: list[int] = []
+    activity = {
+        "tests_executed": False,
+        "diff_reviewed": False,
+        "commit_attempted": False,
+        "push_attempted": False,
+        "pr_attempted": False,
+        "ci_checked": False,
+    }
 
     for event in events:
         source = event.get("source")
@@ -88,6 +96,18 @@ def summarize(root: pathlib.Path) -> dict[str, Any]:
                 if candidate.startswith("/projects/"):
                     inspected_paths.add(candidate)
             lower = (command + " " + path).lower()
+            activity["tests_executed"] |= bool(re.search(
+                r"(^|[;&| ]|python -m )(pytest|unittest|npm test|npm run test|go test|cargo test|make test)([ ;&|]|$)",
+                command,
+                re.I,
+            ))
+            activity["diff_reviewed"] |= "git diff" in lower
+            activity["commit_attempted"] |= "git commit" in lower
+            activity["push_attempted"] |= "git push" in lower
+            activity["pr_attempted"] |= bool(re.search(r"\bgh\s+pr\s+create\b", command))
+            activity["ci_checked"] |= bool(re.search(
+                r"\bgh\s+(pr\s+checks|run\s+(watch|view|list))\b", command
+            ))
             if (
                 ("issue" in lower and "935" in lower)
                 or "/issues/935" in lower
@@ -122,7 +142,7 @@ def summarize(root: pathlib.Path) -> dict[str, Any]:
         None,
     )
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "conversation_id": root.name,
         "effective_model": llm.get("model"),
         "configured_context": configured_context,
@@ -134,6 +154,7 @@ def summarize(root: pathlib.Path) -> dict[str, Any]:
         "empty_agent_messages": empty_agent_messages,
         "recovery_messages": recovery_messages,
         "issue_935_inspected": issue_935_inspected,
+        "activity": activity,
         "inspected_paths": sorted(inspected_paths)[:50],
         "usage_samples": {
             "prompt_tokens": prompt_tokens[-20:],
