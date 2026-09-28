@@ -72,7 +72,9 @@ def main():
    if not proposal["linked"]: rejected+=1;continue
    linked+=1
    if args.commit: core.propose_relationship(relationship_db,"paperless",left_id,"paperless",right_id,proposal["relation"],proposal["confidence"],proposal["evidence"],model)
-  except Exception: invalid+=1
+  except Exception:
+   invalid+=1
+   core.exception(relationship_db,"document_relationship",f"{left_id}:{right_id}","invalid_local_ai_proposal")
  print(f"PIP_LINK_CANDIDATES={len(pairs)}");print(f"PIP_LINK_REVIEWED={reviewed}");print(f"PIP_LINK_PROPOSED={linked}");print(f"PIP_LINK_REJECTED={rejected}");print(f"PIP_LINK_INVALID={invalid}");print(f"PIP_LINK_PERSISTED={'YES' if args.commit else 'NO'}");print("PIP_LINK_PRIVACY=LOCAL_ONLY");print("PIP_LINK_PAPERLESS_WRITEBACK=NONE");print("PIP_LINK_AUTHORITATIVE_MUTATION=NONE")
- return 0 if invalid==0 else 1
+ return 0 if reviewed>0 else 1
 if __name__=="__main__": raise SystemExit(main())

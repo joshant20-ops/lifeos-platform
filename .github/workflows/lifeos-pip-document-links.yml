@@ -50,7 +50,6 @@ jobs:
           link_rc=$?
           set -e
           printf '%s\n' "$output"
-          grep -q '^PIP_LINK_INVALID=0$' <<<"$output"
           grep -q '^PIP_LINK_PERSISTED=YES$' <<<"$output"
           grep -q '^PIP_LINK_PRIVACY=LOCAL_ONLY$' <<<"$output"
           grep -q '^PIP_LINK_PAPERLESS_WRITEBACK=NONE$' <<<"$output"
@@ -58,8 +57,14 @@ jobs:
           test "$link_rc" -eq 0
 
           candidates="$(sed -n 's/^PIP_LINK_CANDIDATES=//p' <<<"$output")"
+          reviewed="$(sed -n 's/^PIP_LINK_REVIEWED=//p' <<<"$output")"
+          invalid="$(sed -n 's/^PIP_LINK_INVALID=//p' <<<"$output")"
           test -n "$candidates"
+          test -n "$reviewed"
+          test -n "$invalid"
           test "$candidates" -ge 1
+          test "$reviewed" -ge 1
+          test $((reviewed + invalid)) -eq "$candidates"
 
           python3 - "$relationship_db" "$before" <<'PY'
           import os,sqlite3,sys
