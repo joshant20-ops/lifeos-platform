@@ -30,6 +30,14 @@ jobs:
                       fs=pathlib.Path('/opt/stacks/homeassistant/config/www')/ref.removeprefix('/local/'); print(f'LOCAL_REF ref={ref!r} exists={fs.exists()} size={fs.stat().st_size if fs.exists() else 0}')
           reg=root/'core.entity_registry'; known={str(x.get('entity_id')) for x in json.loads(reg.read_text()).get('data',{}).get('entities',[]) if isinstance(x,dict)} if reg.exists() else set()
           for ent in sorted(set(re.findall(r'(?:sensor|binary_sensor|switch|button|input_text|input_boolean)\\.[A-Za-z0-9_]+',json.dumps(views)))): print(f'ENTITY_REF entity={ent} registered={ent in known}')
+          p02=next((v for v in views if v.get('path')=='homelab'),{})
+          def walk(x):
+              if isinstance(x,dict):
+                  if 'entity' in x: print('P02_ENTITY='+str(x.get('entity')))
+                  for y in x.values(): walk(y)
+              elif isinstance(x,list):
+                  for y in x: walk(y)
+          walk(p02)
           for name in ('lifeos_entities.json','lifeos_identifier_index.json','lifeos_tasks.json','lifeos_timeline.json','lifeos_chat.html','lifeos_fact_engine_summary.md'):
               fp=pathlib.Path('/opt/stacks/homeassistant/config/www')/name
               print(f'KNOWN_LOCAL name={name} exists={fp.exists()} size={fp.stat().st_size if fp.exists() else 0}')
