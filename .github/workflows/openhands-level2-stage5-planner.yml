@@ -33,44 +33,23 @@ jobs:
           broker = importlib.util.module_from_spec(spec)
           spec.loader.exec_module(broker)
 
-          # This is intentionally solution-neutral. Stage 5 asks whether the
-          # accepted local model can act as a separate bounded planner after
-          # Stage 4 recovery exhausted itself; it does not tell the executor
-          # how to repair #935.
-          prompt = '''You are a bounded recovery planner for an autonomous software-engineering agent.
-Return ONLY one JSON object. Do not edit files, propose code, diagnose the domain bug, or supply an implementation solution.
-
-The engineering objective ledger, in order, is:
-1 task_understood
-2 implementation_inspected
-3 defect_established
-4 implementation_changed
-5 tests_executed
-6 diff_reviewed
-7 committed
-8 pushed
-9 pr_created
-10 ci_checked
-
-Observed executor state after three deterministic Stage-4 recovery turns:
-- task_understood=true
-- implementation_inspected=true
-- defect_established=true
-- implementation_changed=true during the run
-- tests_executed=true
-- diff_reviewed=false
-- committed=false
-- pushed=false
-- pr_created=false
-- ci_checked=false
-- repeated_action_count=11
-- executor eventually returned to main with no retained change and no PR
-
-Select the earliest unmet objective and give exactly one bounded next-step instruction that advances that objective without revealing any issue-specific repair or code. The instruction may tell the executor what lifecycle action to perform, but not how to implement the underlying bug fix.
-
-Required JSON schema:
-{"earliest_unmet":"one ledger key","next_instruction":"one concise imperative sentence","solution_hint":false}
-'''
+          prompt = (
+              'You are a bounded recovery planner for an autonomous software-engineering agent.\n'
+              'Return ONLY one JSON object. Do not edit files, propose code, diagnose the domain bug, or supply an implementation solution.\n\n'
+              'The engineering objective ledger, in order, is:\n'
+              '1 task_understood\n2 implementation_inspected\n3 defect_established\n4 implementation_changed\n'
+              '5 tests_executed\n6 diff_reviewed\n7 committed\n8 pushed\n9 pr_created\n10 ci_checked\n\n'
+              'Observed executor state after three deterministic Stage-4 recovery turns:\n'
+              '- task_understood=true\n- implementation_inspected=true\n- defect_established=true\n'
+              '- implementation_changed=true during the run\n- tests_executed=true\n- diff_reviewed=false\n'
+              '- committed=false\n- pushed=false\n- pr_created=false\n- ci_checked=false\n'
+              '- repeated_action_count=11\n- executor eventually returned to main with no retained change and no PR\n\n'
+              'Select the earliest unmet objective and give exactly one bounded next-step instruction that advances that objective '
+              'without revealing any issue-specific repair or code. The instruction may tell the executor what lifecycle action to '
+              'perform, but not how to implement the underlying bug fix.\n\n'
+              'Required JSON schema:\n'
+              '{"earliest_unmet":"one ledger key","next_instruction":"one concise imperative sentence","solution_hint":false}\n'
+          )
           raw = broker._ollama(prompt, broker.OLLAMA_MODEL)
           print('STAGE5_PLANNER_RAW=' + raw.replace('\n', ' ')[:2000])
           try:
