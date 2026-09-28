@@ -1,0 +1,33 @@
+name: Three Dashboard Runtime Inventory
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/three-dashboard-runtime-inventory.yml']
+permissions: {contents: read}
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Inventory Homelab, LifeOS and LifeOS Control
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, re
+          root=pathlib.Path('/opt/stacks/homeassistant/config/.storage')
+          reg=json.loads((root/'lovelace_dashboards').read_text()).get('data',{}).get('items',[])
+          print('REGISTRY='+repr([(x.get('title'),x.get('url_path'),x.get('mode'),x.get('show_in_sidebar')) for x in reg]))
+          for name in ('lovelace.dashboard_homelab','lovelace.dashboard_lifeos','lovelace.lifeos_control'):
+              p=root/name
+              print('\nDASHBOARD',name,'exists='+str(p.exists()))
+              if not p.exists(): continue
+              d=json.loads(p.read_text()); views=d.get('data',{}).get('config',{}).get('views',[])
+              for v in views:
+                  cards=v.get('cards',[]) if isinstance(v.get('cards'),list) else []
+                  print('VIEW',repr(v.get('title')),repr(v.get('path')),'cards='+str(len(cards)))
+                  for i,c in enumerate(cards):
+                      if not isinstance(c,dict): continue
+                      ents=sorted(set(re.findall(r'(?:sensor|binary_sensor|switch|button|input_text|input_boolean)\.[A-Za-z0-9_]+',json.dumps(c))))
+                      label=c.get('title') or c.get('heading') or c.get('type')
+                      print(' CARD',i,repr(label),'type='+str(c.get('type')),'entities='+repr(ents[:20]))
+          PY
