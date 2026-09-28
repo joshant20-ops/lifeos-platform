@@ -28,7 +28,7 @@ hv=views(docs[HOMELAB]); lv=views(docs[LIFEOS]); cv=views(docs[CONTROL])
 # Preserve known-good live cards; only change dashboard ownership and human-facing titles.
 infra=bypath(hv,'homelab'); infra['title']='Overview'; infra['path']='overview'; infra['icon']='mdi:server-network'
 network=bypath(cv,'network'); network['title']='Network'; network['icon']='mdi:lan'
-tower=bypath(cv,'z97'); tower['title']='Tower'; tower['path']='tower'; tower['icon']='mdi:server'
+tower=bypath(cv,'z97'); tower['title']='Tower'; tower['path']='tower'; tower['icon']='mdi:server'\n# Drop stale pre-migration Tower control cards; retain registered Z97 telemetry/history.\nstale=('binary_sensor.tower_accessible','sensor.tower_lifecycle','switch.tower_power','switch.turn_on','switch.turn_off')\ntower['cards']=[c for c in tower.get('cards',[]) if not any(x in json.dumps(c) for x in stale)]
 docs[HOMELAB]['data']['config']['views']=[infra,network,tower]
 
 pa=bypath(hv,'overview'); pa['title']='Overview'; pa['icon']='mdi:account-heart'
