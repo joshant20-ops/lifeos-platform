@@ -256,6 +256,23 @@ jobs:
               print('TITLES='+' | '.join(titles[:80]))
               print('CARD_TYPES='+','.join(sorted(set(card_types))))
           PY
+          python3 - <<'PY'
+import json, pathlib, re
+p=pathlib.Path('/opt/stacks/homeassistant/config/.storage/lovelace.dashboard_homelab')
+d=json.loads(p.read_text()); views=d['data']['config']['views']
+for v in views:
+    if v.get('path') not in ('overview','chat','documents') and not any(x in str(v.get('title','')) for x in ('P01','P04','P07')): continue
+    for card in v.get('cards',[]):
+        blob=json.dumps(card)
+        refs=sorted(set(re.findall(r'(?:/local/|https?://)[^" ]+',blob)))
+        ents=sorted(set(re.findall(r'(?:sensor|binary_sensor|input_text|input_boolean)\\.[a-zA-Z0-9_]+',blob)))
+        if refs or ents:
+            print('CARD_REF title=%r refs=%r entities=%r' % (card.get('title'),refs,ents))
+            for ref in refs:
+                if ref.startswith('/local/'):
+                    fs=pathlib.Path('/opt/stacks/homeassistant/config/www')/ref.removeprefix('/local/')
+                    print(f'LOCAL_REF path={fs} exists={fs.exists()} size={fs.stat().st_size if fs.exists() else 0}')
+PY
           systemctl is-enabled lifeos-pa-dashboard-refresh.timer || true
           systemctl is-active lifeos-pa-dashboard-refresh.timer || true
           systemctl status lifeos-pa-dashboard-refresh.service --no-pager -n 10 2>/dev/null | sed -E 's/(token|key|secret|password)=[^ ]+/\1=<redacted>/Ig' || true
