@@ -1,0 +1,46 @@
+name: LifeOS workspace runtime diagnostic
+
+on:
+  push:
+    branches: [main, fix/lifeos-workspace-runtime]
+    paths:
+      - '.github/workflows/lifeos-workspace-runtime.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Synchronize diagnostic checkout
+        uses: actions/checkout@v4
+
+      - name: Locate workspace renderer without exposing private data
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "DIAGNOSTIC_START=PASS"
+          roots=(/opt/stacks/homeassistant/config /home/joshan)
+          for root in "${roots[@]}"; do
+            [[ -d "$root" ]] || continue
+            while IFS= read -r -d '' file; do
+              if grep -Ilq -m1 -E 'P01-B01|Open P07 Chat|Identifier Index|No current high-priority LifeOS items' "$file" 2>/dev/null; then
+                stat -c 'MATCH path=%n size=%s mtime=%y' "$file"
+                sha256sum "$file" | sed 's/^/MATCH_SHA256 /'
+              fi
+            done < <(find "$root" -xdev -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.py' -o -name '*.md' \) -print0 2>/dev/null)
+          done
+          echo "SERVICES_BEGIN"
+          systemctl list-unit-files --no-legend 2>/dev/null | awk 'tolower($1) ~ /lifeos|dashboard|workspace/ {print $1, $2}' | head -100
+          systemctl list-timers --all --no-legend 2>/dev/null | awk 'tolower($0) ~ /lifeos|dashboard|workspace/ {print}' | head -100
+          echo "SERVICES_END"
+          for dir in /opt/stacks/homeassistant/config/www/lifeos /home/joshan/.local/state/lifeos-pa-autonomy; do
+            if [[ -d "$dir" ]]; then
+              echo "DIR=$dir"
+              find "$dir" -maxdepth 2 -type f -printf '%p|%s|%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | sort | head -200
+            fi
+          done
+          echo "DIAGNOSTIC_END=PASS"
