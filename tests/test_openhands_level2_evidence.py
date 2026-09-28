@@ -22,7 +22,7 @@ def write_conversation(tmp_path):
         {"kind": "MessageEvent", "source": "user", "llm_message": {"content": [{"type": "text", "text": "issue #935"}]}},
         {"kind": "ActionEvent", "source": "agent", "action": {"kind": "TerminalAction", "command": "gh issue view 935 && pytest -q && git diff && git commit -am fix && git push && gh pr create && gh pr checks"}},
         {"kind": "ObservationEvent", "source": "environment", "usage": {"prompt_tokens": 7000, "completion_tokens": 40}},
-        {"kind": "ActionEvent", "source": "agent", "action": {"kind": "TerminalAction", "command": "gh issue view 935"}},
+        {"kind": "ActionEvent", "source": "agent", "action": {"kind": "TerminalAction", "command": "gh issue view 935 && pytest -q && git diff && git commit -am fix && git push && gh pr create && gh pr checks"}},
         {"kind": "MessageEvent", "source": "agent", "llm_message": {"content": []}},
         {"kind": "MessageEvent", "source": "environment", "llm_message": {"content": [{"type": "text", "text": "Your last response did not include a function call or a message. Please use a tool to proceed with the task."}]}},
     ]
