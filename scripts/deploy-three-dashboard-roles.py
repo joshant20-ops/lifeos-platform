@@ -26,7 +26,7 @@ docs={p:load(p) for p in FILES}
 hv=views(docs[HOMELAB]); lv=views(docs[LIFEOS]); cv=views(docs[CONTROL])
 
 # Preserve known-good live cards; only change dashboard ownership and human-facing titles.
-infra=bypath(hv,'homelab'); infra['title']='Overview'; infra['path']='overview'; infra['icon']='mdi:server-network'
+infra=bypath(hv,'homelab') if any(v.get('path')=='homelab' for v in hv) else bypath(hv,'overview'); infra['title']='Overview'; infra['path']='overview'; infra['icon']='mdi:server-network'
 network=bypath(cv,'network'); network['title']='Network'; network['icon']='mdi:lan'
 tower=bypath(cv,'z97'); tower['title']='Tower'; tower['path']='tower'; tower['icon']='mdi:server'
 # Drop stale pre-migration Tower control cards; retain registered Z97 telemetry/history.
@@ -34,17 +34,17 @@ stale=('binary_sensor.tower_accessible','sensor.tower_lifecycle','switch.tower_p
 tower['cards']=[c for c in tower.get('cards',[]) if not any(x in json.dumps(c) for x in stale)]
 docs[HOMELAB]['data']['config']['views']=[infra,network,tower]
 
-pa=bypath(hv,'overview'); pa['title']='Overview'; pa['icon']='mdi:account-heart'
+pa=bypath(lv,'overview'); pa['title']='Overview'; pa['icon']='mdi:account-heart'
 # System Status belongs to Control, not the personal-assistant landing page.
 pa['cards']=[c for c in pa.get('cards',[]) if c.get('title')!='P01-B05 — System Status']
-personal_docs=bypath(hv,'documents'); personal_docs['title']='Documents'; personal_docs['icon']='mdi:file-document-multiple'
-chat=bypath(hv,'lifeos-chat'); chat['title']='Ask LifeOS'; chat['icon']='mdi:message-text'
-important=bypath(hv,'important-information'); important['title']='Important Information'; important['icon']='mdi:information-outline'
+personal_docs=bypath(lv,'documents'); personal_docs['title']='Documents'; personal_docs['icon']='mdi:file-document-multiple'
+chat=bypath(lv,'lifeos-chat'); chat['title']='Ask LifeOS'; chat['icon']='mdi:message-text'
+important=bypath(lv,'important-information'); important['title']='Important Information'; important['icon']='mdi:information-outline'
 docs[LIFEOS]['data']['config']['views']=[pa,personal_docs,chat,important]
 
-control_overview=bypath(lv,'overview'); control_overview['title']='Overview'; control_overview['icon']='mdi:robot-industrial'
-autonomous=bypath(lv,'autonomous-work'); autonomous['title']='Autonomous Work'; autonomous['icon']='mdi:source-pull'
-energy_ai=bypath(lv,'energy-ai'); energy_ai['title']='Energy AI'; energy_ai['icon']='mdi:brain'
+control_overview=bypath(cv,'overview'); control_overview['title']='Overview'; control_overview['icon']='mdi:robot-industrial'
+autonomous=bypath(cv,'autonomous-work'); autonomous['title']='Autonomous Work'; autonomous['icon']='mdi:source-pull'
+energy_ai=bypath(cv,'energy-ai'); energy_ai['title']='Energy AI'; energy_ai['icon']='mdi:brain'
 safety=bypath(cv,'execution-safety'); safety['title']='Execution Safety'; safety['icon']='mdi:shield-check'
 docs[CONTROL]['data']['config']['views']=[control_overview,autonomous,energy_ai,safety]
 
