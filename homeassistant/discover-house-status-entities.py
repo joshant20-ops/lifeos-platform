@@ -79,14 +79,14 @@ except Exception as exc:
 # Emit a compact active-panel summary before the large entity registry so issue evidence cannot truncate it.
 try:
     cfg_early=Path('/opt/stacks/homeassistant/config/configuration.yaml').read_text()
-    m_early=re.search(r'(?ms)^panel_custom:\\n.*?^  - name: (lifeos-house-status-v\\d+)\\n.*?^    url_path: house-status\\n.*?^    module_url: (/local/house-status/[^\\s]+)',cfg_early)
+    m_early=re.search(r'(?ms)^panel_custom:\n.*?^  - name: (lifeos-house-status-v\d+)\n.*?^    url_path: house-status\n.*?^    module_url: (/local/house-status/[^\s]+)',cfg_early)
     n_early=m_early.group(1) if m_early else ''
     u_early=m_early.group(2) if m_early else ''
     p_early=Path('/opt/stacks/homeassistant/config/www')/u_early.removeprefix('/local/') if u_early else None
     t_early=p_early.read_text() if p_early and p_early.exists() else ''
     q_early=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123'+u_early],text=True,capture_output=True,timeout=10) if u_early else None
     sv_early=q_early.stdout if q_early else ''
-    print(json.dumps({'active_panel_summary':{'name':n_early,'url':u_early,'file_exists':bool(p_early and p_early.exists()),'file_bytes':len(t_early),'file_defines_expected':bool(n_early and f"customElements.define('{n_early}'" in t_early),'file_has_zero_line':'data-zero-line' in t_early,'file_has_camera_stream':'ha-camera-stream' in t_early,'served_rc':q_early.returncode if q_early else None,'served_bytes':len(sv_early),'served_defines_expected':bool(n_early and f"customElements.define('{n_early}'" in sv_early),'served_has_zero_line':'data-zero-line' in sv_early,'served_has_camera_stream':'ha-camera-stream' in sv_early}},sort_keys=True))
+    print(json.dumps({'active_panel_summary':{'name':n_early,'url':u_early,'file_exists':bool(p_early and p_early.exists()),'file_bytes':len(t_early),'file_defines_expected':bool(n_early and f"customElements.define('{n_early}'" in t_early),'file_has_zero_line':'data-zero-line' in t_early,'file_has_native_picture_card':'hui-picture-entity-card' in t_early,'served_rc':q_early.returncode if q_early else None,'served_bytes':len(sv_early),'served_defines_expected':bool(n_early and f"customElements.define('{n_early}'" in sv_early),'served_has_zero_line':'data-zero-line' in sv_early,'served_has_native_picture_card':'hui-picture-entity-card' in sv_early}},sort_keys=True))
 except Exception as exc:
     print(json.dumps({'active_panel_summary':{'error':repr(exc)}},sort_keys=True))
 print(json.dumps({'house_status_candidates':picked,'current_states':states,'frontend':frontend},indent=2,sort_keys=True,default=str))
@@ -115,7 +115,7 @@ try:
     cfg=(base/'configuration.yaml').read_text()
     start=cfg.find('panel_custom:')
     frag=cfg[start:start+1200] if start>=0 else ''
-    m=re.search(r'(?ms)^panel_custom:\\n.*?^  - name: (lifeos-house-status-v\\d+)\\n.*?^    url_path: house-status\\n.*?^    module_url: (/local/house-status/[^\\s]+)',cfg)
+    m=re.search(r'(?ms)^panel_custom:\n.*?^  - name: (lifeos-house-status-v\d+)\n.*?^    url_path: house-status\n.*?^    module_url: (/local/house-status/[^\s]+)',cfg)
     active_name=m.group(1) if m else ''
     active_url=m.group(2) if m else ''
     active_path=base/'www'/active_url.removeprefix('/local/') if active_url else None
@@ -131,13 +131,13 @@ try:
       'active_defines_expected':bool(active_name and f"customElements.define('{active_name}'" in active_txt),
       'active_has_axes':'Octopus price (p/kWh)' in active_txt and 'Cost (£)' in active_txt,
       'active_has_zero_line':'data-zero-line' in active_txt,
-      'active_has_camera_stream':'ha-camera-stream' in active_txt,
+      'active_has_native_picture_card':'hui-picture-entity-card' in active_txt,
       'served_rc':probe.returncode if probe else None,
       'served_bytes':len(served),
       'served_defines_expected':bool(active_name and f"customElements.define('{active_name}'" in served),
       'served_has_axes':'Octopus price (p/kWh)' in served and 'Cost (£)' in served,
       'served_has_zero_line':'data-zero-line' in served,
-      'served_has_camera_stream':'ha-camera-stream' in served,
+      'served_has_native_picture_card':'hui-picture-entity-card' in served,
       'served_error':probe.stderr[-500:] if probe else 'active panel not found'
     }},indent=2,sort_keys=True))
 except Exception as exc:
