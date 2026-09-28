@@ -52,6 +52,8 @@ try:
                     enc=json.dumps(v,default=str)
                     if len(enc)<=12000: safe[k]=v
                 states[eid]={'state':s.get('state'),'attributes':safe}
+    else:
+        states={'_state_probe_error':(raw.stderr or raw.stdout or f'rc={raw.returncode}')[-2000:]}
 except Exception as exc:
     states={'_state_probe_error':str(exc)}
 
@@ -95,27 +97,35 @@ try:
 except Exception as exc:
     frontend['error']=repr(exc)
 print(json.dumps({'frontend_resource_diagnostics':frontend},indent=2,sort_keys=True))
-# Native panel diagnostics (read-only).
+# Native panel diagnostics (read-only). Follow the active panel_custom module_url rather than a stale hard-coded version.
 try:
     cfg=(base/'configuration.yaml').read_text()
     start=cfg.find('panel_custom:')
-    frag=cfg[start:start+900] if start>=0 else ''
-    v5=base/'www/house-status/lifeos-house-status-v11.js'
-    v5txt=v5.read_text() if v5.exists() else ''
-    probe=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123/local/house-status/lifeos-house-status-v11.js'],text=True,capture_output=True,timeout=10)
+    frag=cfg[start:start+1200] if start>=0 else ''
+    m=re.search(r'(?ms)^panel_custom:\\n.*?^  - name: (lifeos-house-status-v\\d+)\\n.*?^    url_path: house-status\\n.*?^    module_url: (/local/house-status/[^\\s]+)',cfg)
+    active_name=m.group(1) if m else ''
+    active_url=m.group(2) if m else ''
+    active_path=base/'www'/active_url.removeprefix('/local/') if active_url else None
+    active_txt=active_path.read_text() if active_path and active_path.exists() else ''
+    probe=subprocess.run(['docker','exec','homeassistant','wget','-qO-','http://127.0.0.1:8123'+active_url],text=True,capture_output=True,timeout=10) if active_url else None
+    served=probe.stdout if probe else ''
     print(json.dumps({'native_panel_diagnostics':{
       'config_fragment':frag,
-      'v11_exists':v5.exists(),
-      'v11_bytes':len(v5txt),
-      'v11_defines_v5':"customElements.define('lifeos-house-status-v11'" in v5txt,
-      'v11_has_axes':'Octopus price (p/kWh)' in v5txt and 'Cost (£)' in v5txt,
-      'v11_has_duplicate_mode_strip':'<div class="tabs">' in v5txt,
-      'served_rc':probe.returncode,
-      'served_bytes':len(probe.stdout),
-      'served_defines_v11':"customElements.define('lifeos-house-status-v11'" in probe.stdout,
-      'served_has_axes':'Octopus price (p/kWh)' in probe.stdout and 'Cost (£)' in probe.stdout,
-      'served_has_duplicate_mode_strip':'<div class="tabs">' in probe.stdout,
-      'served_error':probe.stderr[-500:]
+      'active_name':active_name,
+      'active_url':active_url,
+      'active_exists':bool(active_path and active_path.exists()),
+      'active_bytes':len(active_txt),
+      'active_defines_expected':bool(active_name and f"customElements.define('{active_name}'" in active_txt),
+      'active_has_axes':'Octopus price (p/kWh)' in active_txt and 'Cost (£)' in active_txt,
+      'active_has_zero_line':'data-zero-line' in active_txt,
+      'active_has_camera_stream':'ha-camera-stream' in active_txt,
+      'served_rc':probe.returncode if probe else None,
+      'served_bytes':len(served),
+      'served_defines_expected':bool(active_name and f"customElements.define('{active_name}'" in served),
+      'served_has_axes':'Octopus price (p/kWh)' in served and 'Cost (£)' in served,
+      'served_has_zero_line':'data-zero-line' in served,
+      'served_has_camera_stream':'ha-camera-stream' in served,
+      'served_error':probe.stderr[-500:] if probe else 'active panel not found'
     }},indent=2,sort_keys=True))
 except Exception as exc:
     print(json.dumps({'native_panel_diagnostics':{'error':repr(exc)}}))
