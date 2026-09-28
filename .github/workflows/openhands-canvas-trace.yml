@@ -1,5 +1,5 @@
 name: OpenHands Canvas File Trace
-# Runtime refresh: 2026-09-28
+# Runtime refresh: 2026-09-28 workspace diagnostic
 
 on:
   push:
@@ -85,3 +85,21 @@ jobs:
           echo '=== HTTPS INGRESS REQUESTS ==='
           docker logs --since 30m lifeos-agent-canvas-tls 2>&1 | grep -Ei 'workspace|canvas-acceptance|execute_bash_command|401|404|422|500|workspace-session' | tail -200 || true
           REMOTE
+
+      - name: Trace LifeOS workspace renderer safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          for root in /opt/stacks/homeassistant/config /home/joshan; do
+            [[ -d "$root" ]] || continue
+            while IFS= read -r -d '' file; do
+              if grep -Ilq -m1 -E 'P01-B01|Open P07 Chat|Identifier Index|No current high-priority LifeOS items' "$file" 2>/dev/null; then
+                stat -c 'WORKSPACE_MATCH path=%n size=%s mtime=%y' "$file"
+                sha256sum "$file" | sed 's/^/WORKSPACE_MATCH_SHA256 /'
+              fi
+            done < <(find "$root" -xdev -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.py' -o -name '*.md' \) -print0 2>/dev/null)
+          done
+          echo WORKSPACE_UNITS_BEGIN
+          systemctl list-unit-files --no-legend 2>/dev/null | awk 'tolower($1) ~ /lifeos|dashboard|workspace/ {print $1, $2}' | head -100
+          systemctl list-timers --all --no-legend 2>/dev/null | awk 'tolower($0) ~ /lifeos|dashboard|workspace/ {print}' | head -100
+          echo WORKSPACE_UNITS_END
