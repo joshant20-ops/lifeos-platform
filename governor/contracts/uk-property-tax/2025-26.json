@@ -1,0 +1,32 @@
+{
+  "tax_year": "2025-26",
+  "version": "sa105-2026-v0.1",
+  "authority": {
+    "form": "HMRC SA105 2026",
+    "url": "https://www.gov.uk/government/publications/self-assessment-uk-property-sa105",
+    "form_revision": "HMRC 12/25",
+    "caveat": "Draft mapping only. Uncertain deductibility remains unresolved; no submission path."
+  },
+  "boxes": {
+    "20": "Total rents and other income from property",
+    "24": "Rent, rates, insurance and ground rents",
+    "25": "Property repairs and maintenance",
+    "26": "Non-residential property finance costs",
+    "27": "Legal, management and other professional fees",
+    "28": "Costs of services provided, including wages",
+    "29": "Other allowable property expenses",
+    "36": "Costs of replacing domestic items - residential lettings only",
+    "44": "Residential property finance costs"
+  },
+  "categories": {
+    "rental_income": {"box": "20"},
+    "rent_rates_insurance_ground_rent": {"box": "24"},
+    "repairs_maintenance": {"box": "25"},
+    "non_residential_finance_cost": {"box": "26"},
+    "legal_management_professional": {"box": "27"},
+    "services_wages": {"box": "28"},
+    "other_allowable": {"box": "29"},
+    "replacement_domestic_items": {"box": "36"},
+    "residential_finance_cost": {"box": "44", "finance_cost": true}
+  }
+}
