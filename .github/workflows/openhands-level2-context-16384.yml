@@ -41,6 +41,61 @@ jobs:
           done
           ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor true
 
+          # Ollama's OpenAI-compatible endpoint ignored per-request options in
+          # the first probe (ollama ps remained at 8192). Apply a reversible
+          # service-level override so this attempt genuinely changes context.
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          override=/etc/systemd/system/ollama.service.d/99-lifeos-context-experiment.conf
+          backup=/tmp/lifeos-ollama-context-experiment.backup
+          marker=/tmp/lifeos-ollama-context-experiment.marker
+          sudo -n mkdir -p /etc/systemd/system/ollama.service.d
+          if sudo -n test -f "$override"; then
+            sudo -n cp "$override" "$backup"
+            echo existing >"$marker"
+          else
+            echo absent >"$marker"
+          fi
+          printf '%s\n' '[Service]' 'Environment=OLLAMA_CONTEXT_LENGTH=16384' |
+            sudo -n tee "$override" >/dev/null
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl restart ollama
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 2
+          done
+          systemctl show ollama --property=Environment --value |
+            grep -q 'OLLAMA_CONTEXT_LENGTH=16384'
+          echo TOWER_CONTEXT_OVERRIDE_16384=PASS
+          REMOTE
+
+          restore_context() {
+            ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE' || true
+          set -Eeuo pipefail
+          override=/etc/systemd/system/ollama.service.d/99-lifeos-context-experiment.conf
+          backup=/tmp/lifeos-ollama-context-experiment.backup
+          marker=/tmp/lifeos-ollama-context-experiment.marker
+          if [[ -f "$marker" ]] && grep -qx existing "$marker" && [[ -f "$backup" ]]; then
+            sudo -n cp "$backup" "$override"
+          else
+            sudo -n rm -f "$override"
+          fi
+          rm -f "$backup" "$marker"
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl restart ollama
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 2
+          done
+          if systemctl show ollama --property=Environment --value |
+             grep -q 'OLLAMA_CONTEXT_LENGTH=16384'; then
+            echo TOWER_CONTEXT_ROLLBACK=FAIL
+            exit 1
+          fi
+          echo TOWER_CONTEXT_ROLLBACK=PASS
+          REMOTE
+          }
+
           docker exec lifeos-agent-canvas sh -c '
             set -eu
             git -C /projects/lifeos-platform fetch origin main
@@ -67,6 +122,7 @@ jobs:
           cleanup() {
             kill "$monitor_pid" 2>/dev/null || true
             wait "$monitor_pid" 2>/dev/null || true
+            restore_context
             python3 - <<'PY' >/dev/null 2>&1 || true
           import importlib.util,pathlib
           path=pathlib.Path("governor/ai_broker.py")
@@ -126,7 +182,6 @@ jobs:
               assert llm["model"]=="openai/gpt-oss:20b"
               assert llm["native_tool_calling"] is True
               llm["max_input_tokens"]=16384
-              llm["litellm_extra_body"]={"options":{"num_ctx":16384}}
               payload={
                   "conversation_id":cid,
                   "agent_settings":agent,
@@ -187,4 +242,5 @@ jobs:
             python3 -c 'import json,sys; print("OPENHANDS_LEVEL2_16384_PRS="+json.dumps([{"number":p["number"],"state":p["state"],"url":p["html_url"],"sha":p["head"]["sha"]} for p in json.loads(sys.argv[1])],sort_keys=True))' "$pr_json"
           fi
           echo "OPENHANDS_LEVEL2_16384_PR_COUNT=$pr_count"
+          restore_context
           echo OPENHANDS_LEVEL2_CONTEXT_16384_EXPERIMENT=COMPLETE
