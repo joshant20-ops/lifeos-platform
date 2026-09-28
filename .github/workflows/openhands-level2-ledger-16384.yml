@@ -1,0 +1,345 @@
+name: OpenHands Level 2 Ledger 16384 Experiment
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openhands-level2-ledger-16384.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  experiment:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 55
+    steps:
+      - name: Run clean #935 at 16384 context
+        shell: bash
+        env:
+          ACCEPTANCE_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+
+          python3 - <<'PY'
+          import importlib.util, pathlib
+          path=pathlib.Path("governor/ai_broker.py")
+          spec=importlib.util.spec_from_file_location("wake",path)
+          module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+          module._publish_lease("active")
+          module._wake_local_ai()
+          PY
+          for attempt in $(seq 1 70); do
+            ssh -o BatchMode=yes -o ConnectTimeout=4 TowerPC.Tailor true >/dev/null 2>&1 && break
+            sleep 3
+          done
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor true
+
+          # Ollama's OpenAI-compatible endpoint ignored per-request options in
+          # the first probe (ollama ps remained at 8192). Apply a reversible
+          # service-level override so this attempt genuinely changes context.
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          override=/etc/systemd/system/ollama.service.d/99-lifeos-context-experiment.conf
+          backup=/tmp/lifeos-ollama-context-experiment.backup
+          marker=/tmp/lifeos-ollama-context-experiment.marker
+          sudo -n mkdir -p /etc/systemd/system/ollama.service.d
+          if sudo -n test -f "$override"; then
+            sudo -n cp "$override" "$backup"
+            echo existing >"$marker"
+          else
+            echo absent >"$marker"
+          fi
+          printf '%s\n' '[Service]' 'Environment=OLLAMA_CONTEXT_LENGTH=16384' |
+            sudo -n tee "$override" >/dev/null
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl restart ollama
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 2
+          done
+          systemctl show ollama --property=Environment --value |
+            grep -q 'OLLAMA_CONTEXT_LENGTH=16384'
+          echo TOWER_CONTEXT_OVERRIDE_16384=PASS
+          REMOTE
+
+          restore_context() {
+            ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE' || true
+          set -Eeuo pipefail
+          override=/etc/systemd/system/ollama.service.d/99-lifeos-context-experiment.conf
+          backup=/tmp/lifeos-ollama-context-experiment.backup
+          marker=/tmp/lifeos-ollama-context-experiment.marker
+          if [[ -f "$marker" ]] && grep -qx existing "$marker" && [[ -f "$backup" ]]; then
+            sudo -n cp "$backup" "$override"
+          else
+            sudo -n rm -f "$override"
+          fi
+          rm -f "$backup" "$marker"
+          sudo -n systemctl daemon-reload
+          sudo -n systemctl restart ollama
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
+            sleep 2
+          done
+          if systemctl show ollama --property=Environment --value |
+             grep -q 'OLLAMA_CONTEXT_LENGTH=16384'; then
+            echo TOWER_CONTEXT_ROLLBACK=FAIL
+            exit 1
+          fi
+          echo TOWER_CONTEXT_ROLLBACK=PASS
+          REMOTE
+          }
+
+          docker exec lifeos-agent-canvas sh -c '
+            set -eu
+            git -C /projects/lifeos-platform fetch origin main
+            git -C /projects/lifeos-platform checkout main
+            git -C /projects/lifeos-platform reset --hard origin/main
+            git -C /projects/lifeos-platform clean -fd
+          '
+
+          monitor=/tmp/openhands-level2-context-16384-resources.log
+          : >"$monitor"
+          (
+            while true; do
+              date -u +RESOURCE_SAMPLE_TIME=%FT%TZ
+              ssh -o BatchMode=yes -o ConnectTimeout=5 TowerPC.Tailor '
+                free -b | awk "NR==2 {print \"RESOURCE_MEMORY used=\"\$3\" available=\"\$7}"
+                nvidia-smi --query-gpu=memory.used,temperature.gpu,power.draw --format=csv,noheader,nounits |
+                  sed "s/^/RESOURCE_GPU /"
+                ollama ps | tail -n +2 | sed "s/^/RESOURCE_OLLAMA /"
+              ' || true
+              sleep 20
+            done
+          ) >>"$monitor" 2>&1 &
+          monitor_pid=$!
+          cleanup() {
+            kill "$monitor_pid" 2>/dev/null || true
+            wait "$monitor_pid" 2>/dev/null || true
+            restore_context
+            python3 - <<'PY' >/dev/null 2>&1 || true
+          import importlib.util,pathlib
+          path=pathlib.Path("governor/ai_broker.py")
+          spec=importlib.util.spec_from_file_location("release",path)
+          module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+          module._publish_lease("released",required=False)
+          PY
+          }
+          trap cleanup EXIT
+
+          api_key="$(docker exec lifeos-agent-canvas cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
+          test -n "$api_key"
+          python3 - "$api_key" <<'PY'
+          import json, os, subprocess, sys, time, urllib.request, uuid
+
+          key=sys.argv[1]
+          token=os.environ["ACCEPTANCE_GITHUB_TOKEN"]
+          base="http://127.0.0.1:18000"
+          headers={"X-Session-API-Key":key,"Content-Type":"application/json"}
+
+          def request(path,method="GET",data=None,expose=False,timeout=120):
+              h=dict(headers)
+              if expose: h["X-Expose-Secrets"]="encrypted"
+              body=None if data is None else json.dumps(data).encode()
+              req=urllib.request.Request(base+path,data=body,headers=h,method=method)
+              with urllib.request.urlopen(req,timeout=timeout) as response:
+                  raw=response.read()
+                  return response.status,json.loads(raw) if raw else None
+
+          status,_=request("/api/settings/secrets","PUT",{
+              "name":"GITHUB_TOKEN","value":token,
+              "description":"ephemeral Level 2 ledger experiment",
+          })
+          assert status==200
+          hydrate_env=dict(os.environ)
+          hydrate_env["GITHUB_TOKEN"]=token
+          hydrated=subprocess.check_output([
+              "python3", "governor/scripts/openhands-github-task-hydrate.py",
+              "--repo", "joshant20-ops/lifeos-platform",
+              "--issue", "935",
+              "--workspace", "/projects/lifeos-platform",
+          ],env=hydrate_env,text=True)
+          ledger_objectives=(
+              "Persistent engineering task ledger (objectives, not solution hints):\n"
+              "1. Understand the issue and acceptance criteria.\n"
+              "2. Inspect the relevant implementation.\n"
+              "3. Establish the defect with deterministic evidence.\n"
+              "4. Make an implementation change.\n"
+              "5. Execute relevant tests.\n"
+              "6. Review the resulting diff.\n"
+              "7. Commit on a task branch.\n"
+              "8. Push the task branch.\n"
+              "9. Create a pull request.\n"
+              "10. Check CI and respond to failures.\n"
+          )
+          prompt=hydrated+"\n"+ledger_objectives+"\n"+(
+              "Continue the staged OpenHands autonomous-engineering acceptance "
+              "testing in joshant20-ops/lifeos-platform.\n\n"
+              "Start with Level 2 acceptance issue #935.\n\n"
+              "Read issue #935 and its comments, inspect the repository, diagnose "
+              "the defect, implement and test the fix, push the branch, create a "
+              "PR, follow CI, respond to failures if any, and continue autonomously "
+              "until the task is genuinely complete or a real blocker requires "
+              "user input.\n\n"
+              "Use the repository and GitHub tools available to you. Do not merely "
+              "describe commands or provide a script for someone else to run. Do "
+              "not invent a different task. Do not ask for permission for routine "
+              "repository, test, GitHub, PR, CI, or verification actions.\n\n"
+              "Do not close the acceptance issue yourself. Do not alter the accepted "
+              "OpenHands architecture. Finish with concise evidence: diagnosis, "
+              "changed paths, tests, commit/branch, PR URL, and CI state."
+          )
+          cid=uuid.uuid4().hex
+          try:
+              _,settings=request("/api/settings",expose=True)
+              agent=settings["agent_settings"]
+              llm=agent["llm"]
+              assert llm["model"]=="openai/gpt-oss:20b"
+              assert llm["native_tool_calling"] is True
+              llm["max_input_tokens"]=16384
+              payload={
+                  "conversation_id":cid,
+                  "agent_settings":agent,
+                  "secrets_encrypted":True,
+                  "workspace":{"working_dir":"/projects/lifeos-platform"},
+                  "secrets":{"GITHUB_TOKEN":{
+                      "kind":"LookupSecret",
+                      "url":"/api/settings/secrets/GITHUB_TOKEN",
+                      "description":"workflow-scoped GitHub credential",
+                  }},
+                  "security_analyzer":None,
+                  "initial_message":{"role":"user","content":[{"type":"text","text":prompt}],"run":True},
+                  "max_iterations":60,
+                  "stuck_detection":True,
+                  "autotitle":False,
+              }
+              started=time.monotonic()
+              _,created=request("/api/conversations","POST",payload)
+              actual=str(created["id"]).replace("-","")
+              print("OPENHANDS_LEVEL2_LEDGER_16384_CONVERSATION_ID="+actual,flush=True)
+              root="/home/openhands/.openhands/agent-canvas/conversations/"+actual
+              baseline=subprocess.check_output([
+                  "docker","exec","lifeos-agent-canvas","git","-C",
+                  "/projects/lifeos-platform","rev-parse","HEAD"
+              ],text=True).strip()
+
+              def wait_for_terminal(limit):
+                  deadline=time.time()+limit
+                  state=""
+                  seen_running=False
+                  while time.time()<deadline:
+                      _,conversation=request("/api/conversations/"+actual)
+                      state=str(conversation.get("execution_status","")).lower()
+                      seen_running |= state=="running"
+                      if state in {"finished","paused","error","stuck","idle"} and (seen_running or state in {"error","stuck"}):
+                          return state
+                      time.sleep(10)
+                  return state
+
+              state=wait_for_terminal(1200)
+              recoveries=0
+              for recovery_round in range(3):
+                  summary_text=subprocess.check_output([
+                      "docker","exec","-i","lifeos-agent-canvas","python","-",root
+                  ],input=open("governor/scripts/openhands-level2-evidence.py").read(),text=True)
+                  evidence=json.loads(summary_text)
+                  def repo(*args):
+                      return subprocess.check_output([
+                          "docker","exec","lifeos-agent-canvas","git","-C",
+                          "/projects/lifeos-platform",*args
+                      ],text=True).strip()
+                  branch=repo("branch","--show-current")
+                  head=repo("rev-parse","HEAD")
+                  dirty=bool(repo("status","--porcelain"))
+                  remote=""
+                  if branch and branch!="main":
+                      try:
+                          remote=repo("ls-remote","origin","refs/heads/"+branch).split()[0]
+                      except Exception:
+                          remote=""
+                  req=urllib.request.Request(
+                      "https://api.github.com/repos/joshant20-ops/lifeos-platform/pulls?state=open&per_page=100",
+                      headers={"Authorization":"Bearer "+token,"Accept":"application/vnd.github+json"},
+                  )
+                  with urllib.request.urlopen(req,timeout=30) as response:
+                      pulls=json.load(response)
+                  matching=[p for p in pulls if p.get("head",{}).get("ref")==branch and p.get("head",{}).get("sha")==head]
+                  activity=evidence.get("activity",{})
+                  inspected=[
+                      p for p in evidence.get("inspected_paths",[])
+                      if not p.endswith("README.md") and p!="/projects/lifeos-platform"
+                  ]
+                  snapshot={
+                      "task_understood":True,
+                      "implementation_inspected":bool(inspected),
+                      "defect_established":activity.get("tests_executed",False),
+                      "implementation_changed":dirty or head!=baseline,
+                      "tests_executed":activity.get("tests_executed",False),
+                      "diff_reviewed":activity.get("diff_reviewed",False),
+                      "committed":head!=baseline,
+                      "pushed":branch!="main" and remote==head,
+                      "pr_created":bool(matching),
+                      "ci_checked":activity.get("ci_checked",False),
+                      "repeated_action_count":evidence.get("repeated_action_count",0),
+                  }
+                  ledger_text=subprocess.check_output([
+                      "python3","governor/scripts/openhands-task-ledger.py"
+                  ],input=json.dumps(snapshot),text=True)
+                  ledger=json.loads(ledger_text)
+                  print("OPENHANDS_LEVEL2_LEDGER_16384_PROGRESS="+json.dumps({
+                      "round":recovery_round,"snapshot":snapshot,
+                      "earliest_unmet":ledger["earliest_unmet"],
+                      "stalled":ledger["stalled"],
+                  },sort_keys=True),flush=True)
+                  if ledger["complete"]:
+                      break
+                  request("/api/conversations/"+actual+"/events","POST",{
+                      "role":"user",
+                      "content":[{"type":"text","text":ledger["recovery_message"]}],
+                      "run":False,
+                  })
+                  request("/api/conversations/"+actual+"/run","POST")
+                  recoveries+=1
+                  state=wait_for_terminal(900)
+
+              print("OPENHANDS_LEVEL2_LEDGER_16384_STATUS="+state,flush=True)
+              print("OPENHANDS_LEVEL2_LEDGER_16384_RECOVERIES="+str(recoveries),flush=True)
+              print("OPENHANDS_LEVEL2_LEDGER_16384_WALL_S="+str(round(time.monotonic()-started,2)),flush=True)
+              summary=subprocess.check_output([
+                  "docker","exec","-i","lifeos-agent-canvas","python","-",root
+              ],input=open("governor/scripts/openhands-level2-evidence.py").read(),text=True)
+              print("OPENHANDS_LEVEL2_LEDGER_16384_EVIDENCE="+summary.strip(),flush=True)
+          finally:
+              try: request("/api/settings/secrets/GITHUB_TOKEN","DELETE")
+              except Exception: pass
+          PY
+
+          kill "$monitor_pid" 2>/dev/null || true
+          wait "$monitor_pid" 2>/dev/null || true
+          echo OPENHANDS_LEVEL2_LEDGER_16384_RESOURCE_BEGIN
+          tail -240 "$monitor"
+          echo OPENHANDS_LEVEL2_LEDGER_16384_RESOURCE_END
+
+          branch="$(docker exec lifeos-agent-canvas git -C /projects/lifeos-platform branch --show-current)"
+          head="$(docker exec lifeos-agent-canvas git -C /projects/lifeos-platform rev-parse HEAD)"
+          base_head="$(docker exec lifeos-agent-canvas git -C /projects/lifeos-platform rev-parse origin/main)"
+          changed=false
+          [[ "$head" != "$base_head" ]] && changed=true
+          echo "OPENHANDS_LEVEL2_LEDGER_16384_BRANCH=$branch"
+          echo "OPENHANDS_LEVEL2_LEDGER_16384_HEAD=$head"
+          echo "OPENHANDS_LEVEL2_LEDGER_16384_CHANGED=$changed"
+          pr_count=0
+          if [[ "$branch" != main ]]; then
+            pr_json="$(curl -fsS -H "Authorization: Bearer $ACCEPTANCE_GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/joshant20-ops/lifeos-platform/pulls?state=all&head=joshant20-ops:$branch")"
+            pr_count="$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])))' "$pr_json")"
+            python3 -c 'import json,sys; print("OPENHANDS_LEVEL2_LEDGER_16384_PRS="+json.dumps([{"number":p["number"],"state":p["state"],"url":p["html_url"],"sha":p["head"]["sha"]} for p in json.loads(sys.argv[1])],sort_keys=True))' "$pr_json"
+          fi
+          echo "OPENHANDS_LEVEL2_LEDGER_16384_PR_COUNT=$pr_count"
+          restore_context
+          echo OPENHANDS_LEVEL2_LEDGER_16384_EXPERIMENT=COMPLETE

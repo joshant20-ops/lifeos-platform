@@ -20,9 +20,9 @@ def write_conversation(tmp_path):
     }))
     records = [
         {"kind": "MessageEvent", "source": "user", "llm_message": {"content": [{"type": "text", "text": "issue #935"}]}},
-        {"kind": "ActionEvent", "source": "agent", "action": {"kind": "TerminalAction", "command": "gh issue view 935"}},
+        {"kind": "ActionEvent", "source": "agent", "action": {"kind": "TerminalAction", "command": "gh issue view 935 && pytest -q && git diff && git commit -am fix && git push && gh pr create && gh pr checks"}},
         {"kind": "ObservationEvent", "source": "environment", "usage": {"prompt_tokens": 7000, "completion_tokens": 40}},
-        {"kind": "ActionEvent", "source": "agent", "action": {"kind": "TerminalAction", "command": "gh issue view 935"}},
+        {"kind": "ActionEvent", "source": "agent", "action": {"kind": "TerminalAction", "command": "gh issue view 935 && pytest -q && git diff && git commit -am fix && git push && gh pr create && gh pr checks"}},
         {"kind": "MessageEvent", "source": "agent", "llm_message": {"content": []}},
         {"kind": "MessageEvent", "source": "environment", "llm_message": {"content": [{"type": "text", "text": "Your last response did not include a function call or a message. Please use a tool to proceed with the task."}]}},
     ]
@@ -44,6 +44,15 @@ def test_summary_is_bounded_and_detects_progress_failure(tmp_path):
     assert result["recovery_messages"] == 1
     assert result["usage_samples"]["prompt_tokens"] == [7000]
     assert result["terminal_state"] == "stuck"
+    assert result["schema_version"] == 2
+    assert result["activity"] == {
+        "tests_executed": True,
+        "diff_reviewed": True,
+        "commit_attempted": True,
+        "push_attempted": True,
+        "pr_attempted": True,
+        "ci_checked": True,
+    }
 
 
 def test_summary_does_not_emit_secret_values(tmp_path):
