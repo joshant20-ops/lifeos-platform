@@ -79,7 +79,7 @@ except Exception as exc:
 # Emit a compact active-panel summary before the large entity registry so issue evidence cannot truncate it.
 try:
     cfg_early=Path('/opt/stacks/homeassistant/config/configuration.yaml').read_text()
-    m_early=re.search(r'(?ms)^panel_custom:\\n.*?^  - name: (lifeos-house-status-v\\d+)\\n.*?^    url_path: house-status\\n.*?^    module_url: (/local/house-status/[^\\s]+)',cfg_early)
+    m_early=re.search(r'(?ms)^panel_custom:\n.*?^  - name: (lifeos-house-status-v\d+)\n.*?^    url_path: house-status\n.*?^    module_url: (/local/house-status/[^\s]+)',cfg_early)
     n_early=m_early.group(1) if m_early else ''
     u_early=m_early.group(2) if m_early else ''
     p_early=Path('/opt/stacks/homeassistant/config/www')/u_early.removeprefix('/local/') if u_early else None
@@ -115,7 +115,7 @@ try:
     cfg=(base/'configuration.yaml').read_text()
     start=cfg.find('panel_custom:')
     frag=cfg[start:start+1200] if start>=0 else ''
-    m=re.search(r'(?ms)^panel_custom:\\n.*?^  - name: (lifeos-house-status-v\\d+)\\n.*?^    url_path: house-status\\n.*?^    module_url: (/local/house-status/[^\\s]+)',cfg)
+    m=re.search(r'(?ms)^panel_custom:\n.*?^  - name: (lifeos-house-status-v\d+)\n.*?^    url_path: house-status\n.*?^    module_url: (/local/house-status/[^\s]+)',cfg)
     active_name=m.group(1) if m else ''
     active_url=m.group(2) if m else ''
     active_path=base/'www'/active_url.removeprefix('/local/') if active_url else None
