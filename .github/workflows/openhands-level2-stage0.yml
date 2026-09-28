@@ -1,0 +1,66 @@
+name: OpenHands Level 2 Stage 0 Instrumentation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/openhands-level2-stage0.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Capture bounded baseline and Tower context evidence
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+
+          cid=0c1e5acf80984e64b7001c08f5c6ed57
+          root="$HOME/.openhands/agent-canvas/conversations/$cid"
+          test -d "$root/events"
+          python3 governor/scripts/openhands-level2-evidence.py "$root" |
+            sed 's/^/OPENHANDS_LEVEL2_BASELINE=/'
+
+          docker inspect lifeos-agent-canvas --format 'OPENHANDS_IMAGE={{.Config.Image}} OPENHANDS_STATUS={{.State.Status}}'
+          docker exec -e CID="$cid" lifeos-agent-canvas python -c '
+          import json,os,pathlib
+          root=pathlib.Path("/home/openhands/.openhands/agent-canvas/conversations")/os.environ["CID"]
+          base=json.loads((root/"base_state.json").read_text())
+          llm=base.get("agent",{}).get("llm",{})
+          allowed=("model","base_url","native_tool_calling","max_input_tokens","max_output_tokens","context_window","num_ctx","temperature","timeout")
+          print("OPENHANDS_LEVEL2_LLM_CONFIG="+json.dumps({k:llm.get(k) for k in allowed if k in llm},sort_keys=True))
+          system=json.loads(sorted((root/"events").glob("event-*.json"))[0].read_text())
+          prompt=(system.get("system_prompt") or {}).get("text","")
+          dynamic=(system.get("dynamic_context") or {}).get("text","")
+          tools=system.get("tools") or []
+          print("OPENHANDS_LEVEL2_SYSTEM_CHARS="+str(len(prompt)))
+          print("OPENHANDS_LEVEL2_DYNAMIC_CHARS="+str(len(dynamic)))
+          print("OPENHANDS_LEVEL2_TOOL_SCHEMA_CHARS="+str(len(json.dumps(tools))))
+          print("OPENHANDS_LEVEL2_TOOL_COUNT="+str(len(tools)))
+          '
+
+          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          echo TOWER_MEMORY_BEGIN
+          free -b
+          echo TOWER_MEMORY_END
+          echo TOWER_OLLAMA_PS_BEGIN
+          ollama ps
+          echo TOWER_OLLAMA_PS_END
+          echo TOWER_GPU_BEGIN
+          nvidia-smi --query-gpu=name,memory.total,memory.used,temperature.gpu,power.draw --format=csv,noheader,nounits
+          echo TOWER_GPU_END
+          echo TOWER_OLLAMA_SERVICE_CONTEXT_BEGIN
+          systemctl show ollama --property=Environment --value |
+            tr ' ' '\n' | grep -E '^(OLLAMA_CONTEXT_LENGTH|OLLAMA_KEEP_ALIVE|CUDA_VISIBLE_DEVICES)=' || true
+          echo TOWER_OLLAMA_SERVICE_CONTEXT_END
+          REMOTE
+          echo OPENHANDS_LEVEL2_STAGE0=PASS
