@@ -1,9 +1,11 @@
 name: OpenHands Canvas File Trace
-# Runtime refresh: 2026-09-28 workspace diagnostic
+# Runtime refresh: 2026-09-28 workspace structure diagnostic
 
 on:
   push:
     branches: [main]
+    paths: ['.github/workflows/openhands-canvas-trace.yml']
+  pull_request:
     paths: ['.github/workflows/openhands-canvas-trace.yml']
   workflow_dispatch:
 
@@ -99,6 +101,24 @@ jobs:
               fi
             done < <(find "$root" -xdev -type f \( -name '*.html' -o -name '*.js' -o -name '*.json' -o -name '*.py' -o -name '*.md' \) -print0 2>/dev/null)
           done
+          python3 - <<'PY'
+import json, pathlib
+root=pathlib.Path('/opt/stacks/homeassistant/config/.storage')
+for p in sorted(root.glob('lovelace*')):
+    if not p.is_file(): continue
+    try: d=json.loads(p.read_text())
+    except Exception: continue
+    cfg=d.get('data',{}).get('config',{})
+    views=cfg.get('views',[]) if isinstance(cfg,dict) else []
+    titles=[]
+    for v in views:
+        titles.append('VIEW:'+str(v.get('title') or v.get('path') or '<untitled>'))
+        for card in v.get('cards',[]):
+            if isinstance(card,dict) and card.get('title'): titles.append('CARD:'+str(card['title']))
+    if any('P01-' in x or 'LifeOS' in x for x in titles):
+        print(f'DASHBOARD path={p} size={p.stat().st_size} mtime={p.stat().st_mtime_ns}')
+        print('DASHBOARD_TITLES='+' | '.join(titles[:80]))
+PY
           echo WORKSPACE_UNITS_BEGIN
           systemctl list-unit-files --no-legend 2>/dev/null | awk 'tolower($1) ~ /lifeos|dashboard|workspace/ {print $1, $2}' | head -100
           systemctl list-timers --all --no-legend 2>/dev/null | awk 'tolower($0) ~ /lifeos|dashboard|workspace/ {print}' | head -100
