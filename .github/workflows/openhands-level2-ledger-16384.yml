@@ -229,15 +229,17 @@ jobs:
                   "/projects/lifeos-platform","rev-parse","HEAD"
               ],text=True).strip()
 
-              def wait_for_terminal(limit):
-                  deadline=time.time()+limit
+              def wait_for_terminal(limit, minimum_wait=20):
+                  started_wait=time.time()
+                  deadline=started_wait+limit
                   state=""
-                  seen_running=False
                   while time.time()<deadline:
                       _,conversation=request("/api/conversations/"+actual)
                       state=str(conversation.get("execution_status","")).lower()
-                      seen_running |= state=="running"
-                      if state in {"finished","paused","error","stuck","idle"} and (seen_running or state in {"error","stuck"}):
+                      if (
+                          state in {"finished","paused","error","stuck","idle"}
+                          and time.time()-started_wait>=minimum_wait
+                      ):
                           return state
                       time.sleep(10)
                   return state
@@ -302,9 +304,8 @@ jobs:
                   request("/api/conversations/"+actual+"/events","POST",{
                       "role":"user",
                       "content":[{"type":"text","text":ledger["recovery_message"]}],
-                      "run":False,
+                      "run":True,
                   })
-                  request("/api/conversations/"+actual+"/run","POST")
                   recoveries+=1
                   state=wait_for_terminal(900)
 
