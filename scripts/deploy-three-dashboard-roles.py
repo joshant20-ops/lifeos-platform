@@ -54,8 +54,7 @@ for p in FILES:
     shutil.copy2(p,BACKUPS/f'{p.name}.before-role-separation.{stamp}.json')
 for p,d in docs.items():
     tmp=p.with_name(p.name+'.role-separation.tmp')
-    tmp.write_text(json.dumps(d,indent=2)+'
-')
+    tmp.write_text(json.dumps(d,indent=2)+chr(10))
     json.loads(tmp.read_text())
     tmp.replace(p)
 
