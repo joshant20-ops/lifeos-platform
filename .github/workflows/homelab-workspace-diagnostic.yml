@@ -1,0 +1,35 @@
+name: Homelab Workspace Diagnostic
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/homelab-workspace-diagnostic.yml']
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Inspect active Homelab dashboard safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json,pathlib,re,hashlib
+          root=pathlib.Path('/opt/stacks/homeassistant/config/.storage'); p=root/'lovelace.dashboard_homelab'
+          d=json.loads(p.read_text()); views=d.get('data',{}).get('config',{}).get('views',[])
+          print('ACTIVE_SHA256='+hashlib.sha256(p.read_bytes()).hexdigest())
+          for v in views:
+              title=str(v.get('title') or v.get('path') or '<untitled>'); cards=v.get('cards',[]) if isinstance(v.get('cards'),list) else []
+              print(f'VIEW title={title!r} path={v.get("path")!r} cards={len(cards)}')
+              for i,c in enumerate(cards):
+                  if not isinstance(c,dict): continue
+                  blob=json.dumps(c); refs=sorted(set(re.findall(r'/local/[^" ]+',blob))); ents=sorted(set(re.findall(r'(?:sensor|binary_sensor|switch|button|input_text|input_boolean)\\.[A-Za-z0-9_]+',blob)))
+                  print(f'CARD view={title!r} index={i} type={c.get("type")!r} title={c.get("title")!r} refs={refs!r} entities={ents!r}')
+                  for ref in refs:
+                      fs=pathlib.Path('/opt/stacks/homeassistant/config/www')/ref.removeprefix('/local/'); print(f'LOCAL_REF ref={ref!r} exists={fs.exists()} size={fs.stat().st_size if fs.exists() else 0}')
+          reg=root/'core.entity_registry'; known={str(x.get('entity_id')) for x in json.loads(reg.read_text()).get('data',{}).get('entities',[]) if isinstance(x,dict)} if reg.exists() else set()
+          for ent in sorted(set(re.findall(r'(?:sensor|binary_sensor|switch|button|input_text|input_boolean)\\.[A-Za-z0-9_]+',json.dumps(views)))): print(f'ENTITY_REF entity={ent} registered={ent in known}')
+          for bp in sorted((root/'.lifeos-backups').glob('lovelace.dashboard_homelab*.json'))[-12:]:
+              bd=json.loads(bp.read_text()); bv=bd.get('data',{}).get('config',{}).get('views',[]); print(f'BACKUP name={bp.name} cards={[len(v.get("cards",[])) for v in bv]}')
+          PY
