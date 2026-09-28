@@ -24,9 +24,10 @@ jobs:
           git reset --hard origin/main
 
           cid=0c1e5acf80984e64b7001c08f5c6ed57
-          root="$HOME/.openhands/agent-canvas/conversations/$cid"
-          test -d "$root/events"
-          python3 governor/scripts/openhands-level2-evidence.py "$root" |
+          container_root="/home/openhands/.openhands/agent-canvas/conversations/$cid"
+          docker exec lifeos-agent-canvas test -d "$container_root/events"
+          docker exec -i lifeos-agent-canvas python - "$container_root" \
+            < governor/scripts/openhands-level2-evidence.py |
             sed 's/^/OPENHANDS_LEVEL2_BASELINE=/'
 
           docker inspect lifeos-agent-canvas --format 'OPENHANDS_IMAGE={{.Config.Image}} OPENHANDS_STATUS={{.State.Status}}'
