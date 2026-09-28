@@ -220,3 +220,42 @@ jobs:
 
           python3 -m json.tool \
             renovate.json >/dev/null
+
+  workspace-runtime-diagnostic:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Compare active homelab dashboard safely
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import hashlib, json, pathlib
+          root=pathlib.Path('/opt/stacks/homeassistant/config/.storage')
+          paths=[root/'lovelace.dashboard_homelab']
+          paths += sorted((root/'.lifeos-backups').glob('lovelace.dashboard_homelab*.json'))[-8:]
+          for p in paths:
+              if not p.is_file(): continue
+              try: d=json.loads(p.read_text())
+              except Exception as e:
+                  print(f'DASHBOARD path={p} parse={type(e).__name__}')
+                  continue
+              cfg=d.get('data',{}).get('config',{})
+              views=cfg.get('views',[]) if isinstance(cfg,dict) else []
+              titles=[]; card_types=[]
+              def walk(x):
+                  if isinstance(x,dict):
+                      if x.get('title'): titles.append(str(x['title']))
+                      if x.get('type'): card_types.append(str(x['type']))
+                      for v in x.values(): walk(v)
+                  elif isinstance(x,list):
+                      for v in x: walk(v)
+              walk(views)
+              digest=hashlib.sha256(p.read_bytes()).hexdigest()
+              print(f'DASHBOARD path={p} sha256={digest} views={len(views)}')
+              print('TITLES='+' | '.join(titles[:80]))
+              print('CARD_TYPES='+','.join(sorted(set(card_types))))
+          PY
+          systemctl is-enabled lifeos-pa-dashboard-refresh.timer || true
+          systemctl is-active lifeos-pa-dashboard-refresh.timer || true
+          systemctl status lifeos-pa-dashboard-refresh.service --no-pager -n 10 2>/dev/null | sed -E 's/(token|key|secret|password)=[^ ]+/\1=<redacted>/Ig' || true
