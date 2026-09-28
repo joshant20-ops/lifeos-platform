@@ -28,7 +28,10 @@ hv=views(docs[HOMELAB]); lv=views(docs[LIFEOS]); cv=views(docs[CONTROL])
 # Preserve known-good live cards; only change dashboard ownership and human-facing titles.
 infra=bypath(hv,'homelab'); infra['title']='Overview'; infra['path']='overview'; infra['icon']='mdi:server-network'
 network=bypath(cv,'network'); network['title']='Network'; network['icon']='mdi:lan'
-tower=bypath(cv,'z97'); tower['title']='Tower'; tower['path']='tower'; tower['icon']='mdi:server'\n# Drop stale pre-migration Tower control cards; retain registered Z97 telemetry/history.\nstale=('binary_sensor.tower_accessible','sensor.tower_lifecycle','switch.tower_power','switch.turn_on','switch.turn_off')\ntower['cards']=[c for c in tower.get('cards',[]) if not any(x in json.dumps(c) for x in stale)]
+tower=bypath(cv,'z97'); tower['title']='Tower'; tower['path']='tower'; tower['icon']='mdi:server'
+# Drop stale pre-migration Tower control cards; retain registered Z97 telemetry/history.
+stale=('binary_sensor.tower_accessible','sensor.tower_lifecycle','switch.tower_power','switch.turn_on','switch.turn_off')
+tower['cards']=[c for c in tower.get('cards',[]) if not any(x in json.dumps(c) for x in stale)]
 docs[HOMELAB]['data']['config']['views']=[infra,network,tower]
 
 pa=bypath(hv,'overview'); pa['title']='Overview'; pa['icon']='mdi:account-heart'
@@ -51,7 +54,8 @@ for p in FILES:
     shutil.copy2(p,BACKUPS/f'{p.name}.before-role-separation.{stamp}.json')
 for p,d in docs.items():
     tmp=p.with_name(p.name+'.role-separation.tmp')
-    tmp.write_text(json.dumps(d,indent=2)+'\n')
+    tmp.write_text(json.dumps(d,indent=2)+'
+')
     json.loads(tmp.read_text())
     tmp.replace(p)
 
