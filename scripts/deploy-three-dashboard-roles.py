@@ -27,8 +27,8 @@ hv=views(docs[HOMELAB]); lv=views(docs[LIFEOS]); cv=views(docs[CONTROL])
 
 # Preserve known-good live cards; only change dashboard ownership and human-facing titles.
 infra=bypath(hv,'homelab') if any(v.get('path')=='homelab' for v in hv) else bypath(hv,'overview'); infra['title']='Overview'; infra['path']='overview'; infra['icon']='mdi:server-network'
-network=bypath(cv,'network'); network['title']='Network'; network['icon']='mdi:lan'
-tower=bypath(cv,'z97'); tower['title']='Tower'; tower['path']='tower'; tower['icon']='mdi:server'
+network=bypath(hv,'network') if any(v.get('path')=='network' for v in hv) else bypath(cv,'network'); network['title']='Network'; network['icon']='mdi:lan'
+tower=bypath(hv,'tower') if any(v.get('path')=='tower' for v in hv) else bypath(cv,'z97'); tower['title']='Tower'; tower['path']='tower'; tower['icon']='mdi:server'
 # Drop stale pre-migration Tower control cards; retain registered Z97 telemetry/history.
 stale=('binary_sensor.tower_accessible','sensor.tower_lifecycle','switch.tower_power','switch.turn_on','switch.turn_off')
 tower['cards']=[c for c in tower.get('cards',[]) if not any(x in json.dumps(c) for x in stale)]
