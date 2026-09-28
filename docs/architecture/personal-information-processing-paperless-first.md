@@ -142,3 +142,26 @@ The corrected governed native-exception shadow reproduced the accepted P2 baseli
 The bounded real semantic canary run `35324638387` then selected three documents only from that native-unresolved set and processed all three successfully through the governed local-only Tower Ollama route. All three returned the strict seven-field structured schema. Sanitised evidence reported `P4_AI_CANARY_SELECTED=3`, `P4_AI_VALID_STRUCTURED=3`, `P4_AI_PRIVACY=LOCAL_ONLY`, `P4_AI_PAPERLESS_WRITEBACK=NONE`, `P4_AI_PRIVATE_CONTENT_EMITTED=NONE`, `RESULT=PASS` and `CANONICAL_CLEAN=PASS`. Paperless Local AI deployment, stable broker contract, contract audit and repository CI also passed for the same revision.
 
 An earlier strict-schema run accepted two of three outputs and rejected one; that failure was retained as evidence that malformed semantic output fails closed. The producer prompt was tightened rather than weakening validation, after which the bounded canary passed three of three. P4 is accepted. P5 may now build a progressive, resumable backlog state machine around Paperless-first native resolution and this exception-only local semantic path; it must not turn Tower Ollama into a default full-corpus processor and must not auto-delete documents.
+
+
+## Post-P10 governed cross-document relationships
+
+LifeOS may now propose links between documents from the durable P5 semantic
+exception results. Candidate generation is deterministic and bounded: two
+documents become candidates only when their already-extracted structured
+records share an exact normalised organisation, date or amount. GPT-OSS then
+reviews only those candidate pairs through Governor's `local-only` Ollama
+route.
+
+The model returns a strict relationship schema and may cite only the
+deterministically supplied shared evidence. Unsupported or invented evidence,
+unknown relationship types, malformed JSON, non-local providers and invalid
+confidence values fail closed. Source documents and OCR remain authoritative
+in Paperless and are not copied into the relationship database.
+
+AI output is stored only as a `REVIEW` proposal (or `REJECTED` below the
+confidence threshold). It never creates an authoritative relationship.
+Promotion requires a separate deterministic/manual review operation, which
+retains provenance. Processing is idempotent, capped at 20 pairs per invocation
+and scheduled as a bounded daily Pi-orchestrated job; inference remains on the
+Tower through the existing Governor lifecycle.
