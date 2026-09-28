@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Deploy role-separated dashboards
-        run: sudo python3 scripts/deploy-three-dashboard-roles.py
+        run: sudo python3 scripts/deploy-three-dashboard-roles.py\n          sudo docker restart homeassistant >/dev/null\n          for i in $(seq 1 60); do [ \"$(sudo docker inspect -f '{{.State.Status}}' homeassistant 2>/dev/null)\" = running ] && sleep 8 && break; sleep 2; done
       - name: Verify live roles and House Status isolation
         run: |
           sudo python3 - <<'PY'
@@ -28,7 +28,7 @@ jobs:
           for name,paths in expected.items():
               d=json.loads((root/name).read_text()); got=[v.get('path') for v in d['data']['config']['views']]
               assert got==paths,(name,got)
-              assert all(v.get('cards') for v in d['data']['config']['views']),(name,'empty view')
+              assert all(v.get('cards') for v in d['data']['config']['views']),(name,'empty view')\n              blob=json.dumps(d)\n              for stale in ('binary_sensor.tower_accessible','sensor.tower_lifecycle','switch.tower_power','sensor.lifeos_control_state'):\n                  assert stale not in blob,(name,'stale',stale)
               print('VERIFY',name,got,[len(v.get('cards',[])) for v in d['data']['config']['views']])
           assert (root/'lovelace.dashboard_house_status').exists() or True
           print('RUNTIME_VERIFY=PASS')
