@@ -225,7 +225,7 @@ jobs:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 5
     steps:
-      - name: Compare active homelab dashboard safely
+      - name: Compare active homelab dashboard and references safely
         shell: bash
         run: |
           set -Eeuo pipefail
