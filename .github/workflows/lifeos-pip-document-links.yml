@@ -74,23 +74,3 @@ jobs:
           print("PIP_LINK_DB_PERMISSIONS=PASS")
           print("PIP_LINK_PROPOSAL_STORE=PASS")
           PY
- <<<"$output"
-          test "$link_rc" -eq 0
-
-          candidates="$(sed -n 's/^PIP_LINK_CANDIDATES=//p' <<<"$output")"
-          test -n "$candidates"
-          test "$candidates" -ge 1
-
-          python3 - "$relationship_db" "$before" <<'PY'
-          import os,sqlite3,sys
-          path,before=sys.argv[1],int(sys.argv[2])
-          db=sqlite3.connect(path)
-          after=db.execute("select count(*) from relationship").fetchone()[0]
-          proposals=db.execute("select count(*) from relationship_proposal").fetchone()[0]
-          assert after==before, (before,after)
-          assert proposals>=0
-          assert os.stat(path).st_mode & 0o777 == 0o600
-          print("PIP_LINK_AUTHORITY_UNCHANGED=PASS")
-          print("PIP_LINK_DB_PERMISSIONS=PASS")
-          print("PIP_LINK_PROPOSAL_STORE=PASS")
-          PY
