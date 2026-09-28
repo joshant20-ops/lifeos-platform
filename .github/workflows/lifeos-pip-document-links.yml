@@ -54,7 +54,9 @@ jobs:
           grep -q '^PIP_LINK_PERSISTED=YES$' <<<"$output"
           grep -q '^PIP_LINK_PRIVACY=LOCAL_ONLY$' <<<"$output"
           grep -q '^PIP_LINK_PAPERLESS_WRITEBACK=NONE$' <<<"$output"
-          grep -q '^PIP_LINK_AUTHORITATIVE_MUTATION=NONE
+          grep -q '^PIP_LINK_AUTHORITATIVE_MUTATION=NONE$' <<<"$output"
+          test "$link_rc" -eq 0
+
           candidates="$(sed -n 's/^PIP_LINK_CANDIDATES=//p' <<<"$output")"
           test -n "$candidates"
           test "$candidates" -ge 1
