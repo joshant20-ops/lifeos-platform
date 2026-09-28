@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Bounded local-only cross-document relationship proposals for LifeOS."""
 from __future__ import annotations
-import argparse,importlib.util,itertools,json,re
+import argparse,importlib.util,itertools,json,re,sys
 from pathlib import Path
 REPO=Path("/home/joshan/lifeos-platform")
 if not REPO.exists(): REPO=Path(__file__).resolve().parents[1]
+if str(REPO) not in sys.path: sys.path.insert(0,str(REPO))
 def load(name,path):
  spec=importlib.util.spec_from_file_location(name,path);module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
 state=load("pip_state",REPO/"scripts/lifeos-pip-p5-backlog-state.py")
