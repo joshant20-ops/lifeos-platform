@@ -19,7 +19,7 @@ jobs:
           global.customElements={get:n=>r.get(n),define:(n,c)=>r.set(n,c)};
           global.window={};
           require('./homeassistant/www/house-status/lifeos-house-status-card.js');
-          if(!customElements.get('lifeos-house-status-v15')) throw new Error('lifeos-house-status-v15 not registered');
+          if(!customElements.get('lifeos-house-status-v16')) throw new Error('lifeos-house-status-v16 not registered');
           if(!customElements.get('lifeos-house-status-editor')) throw new Error('editor not registered');
           console.log('HOUSE_STATUS_FRONTEND_EXECUTION=PASS');
           NODE
