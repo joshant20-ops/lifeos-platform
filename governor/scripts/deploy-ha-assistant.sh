@@ -58,6 +58,10 @@ WorkingDirectory=/usr/local/libexec/lifeos-assistant.d
 Environment=PYTHONPATH=/usr/local/libexec/lifeos-assistant.d
 Environment=LIFEOS_AI_POLICY=/usr/local/libexec/lifeos-assistant.d/policy.json
 Environment=LIFEOS_PROVIDER_ROUTER=/usr/local/libexec/lifeos-assistant.d/provider_router.py
+LoadCredential=ai-broker.env:/home/joshan/.config/lifeos/ai-broker.env
+LoadCredential=provider-secrets.env:/home/joshan/.config/lifeos/provider-secrets.env
+Environment=LIFEOS_AI_BROKER_CONFIG=%d/ai-broker.env
+Environment=LIFEOS_PROVIDER_SECRETS=%d/provider-secrets.env
 ExecStart=/usr/bin/python3 /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py
 Restart=on-failure
 RestartSec=5
@@ -70,6 +74,12 @@ ProtectHome=true
 WantedBy=multi-user.target
 UNIT
 
+# Validate required private runtime inputs before restarting. The files remain
+# protected in the user's home; systemd LoadCredential copies them into a
+# private, read-only per-service credential directory at activation time.
+sudo test -r /home/joshan/.config/lifeos/ai-broker.env
+sudo test -r /home/joshan/.config/lifeos/provider-secrets.env
+
 sudo systemctl daemon-reload
 sudo systemctl restart lifeos-assistant.service
 sudo systemctl enable lifeos-assistant.service >/dev/null
@@ -79,6 +89,11 @@ for _ in $(seq 1 20); do
   if curl -fsS --max-time 3 http://127.0.0.1:${PORT}/health >/dev/null; then break; fi
   sleep 1
 done
+if ! curl -fsS --max-time 3 http://127.0.0.1:${PORT}/health >/dev/null; then
+  sudo systemctl status lifeos-assistant.service --no-pager -l || true
+  sudo journalctl -u lifeos-assistant.service -n 40 --no-pager || true
+  exit 7
+fi
 HEALTH=$(curl -fsS --max-time 3 http://127.0.0.1:${PORT}/health)
 python3 - "$HEALTH" <<'PY'
 import json,sys
