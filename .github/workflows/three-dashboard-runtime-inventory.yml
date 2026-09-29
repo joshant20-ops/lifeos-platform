@@ -98,7 +98,7 @@ jobs:
               print('TASK_SERVICE_STATE='+unit+':'+','.join(k+'='+v for k,v in sorted(props.items())))
               if props.get('Result') not in {'success',''}:
                   journal,_=output(['journalctl','-u',unit,'-n','80','--no-pager','-o','cat'])
-                  categories=set(re.findall(r'\\b([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))\\b',journal))
+                  categories=set(re.findall(r'([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))',journal))
                   if 'No such file or directory' in journal: categories.add('MissingPath')
                   if 'Connection refused' in journal: categories.add('ConnectionRefused')
                   if 'timed out' in journal.lower(): categories.add('Timeout')
