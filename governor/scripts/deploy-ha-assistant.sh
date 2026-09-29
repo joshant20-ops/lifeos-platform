@@ -11,10 +11,13 @@ PORT=8791
 
 printf '===== LIFEOS HOME ASSISTANT AI DEPLOY =====\n'
 
-printf '\n===== 1/6 — SYNC =====\n'
-git -C "$REPO" fetch origin main
-git -C "$REPO" reset --hard origin/main
+printf '\n===== 1/6 — CANONICAL CHECKOUT =====\n'
+# The root-owned deployment gateway already requires this checkout to be clean
+# and exactly aligned with origin/main before invoking this script. Do not
+# perform network Git operations here: the child executes as root and must not
+# inherit or require the unprivileged runner/user GitHub credentials.
 printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
+test -z "$(git -C "$REPO" status --porcelain)"
 
 printf '\n===== 2/6 — PREFLIGHT =====\n'
 python3 -m py_compile "$BRIDGE"
