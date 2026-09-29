@@ -41,8 +41,6 @@ User=joshan
 Group=joshan
 Environment=LIFEOS_ASSISTANT_PORT=8791
 Environment=LIFEOS_AGENT_URL=http://127.0.0.1:8790
-Environment=LIFEOS_ASSISTANT_MODEL_URL=http://192.168.0.201:11434/api/generate
-Environment=LIFEOS_ASSISTANT_MODEL=qwen2.5-coder:7b-instruct
 Environment=LIFEOS_ASSISTANT_UI=/usr/local/share/lifeos-assistant.html
 ExecStart=/usr/local/libexec/lifeos-assistant
 Restart=on-failure
@@ -71,8 +69,9 @@ import json,sys
 j=json.loads(sys.argv[1])
 assert j['status']=='ok'
 assert j['agent']=='ok'
+assert j['inference']=='governor-routed'
 print('ASSISTANT_HEALTH=PASS')
-print('LOCAL_MODEL='+j['model'])
+print('INFERENCE='+j['inference'])
 PY
 curl -fsS --max-time 3 http://127.0.0.1:${PORT}/ | grep -q 'LifeOS Assistant'
 TEST=$(curl -fsS --max-time 90 -H 'Content-Type: application/json' \
