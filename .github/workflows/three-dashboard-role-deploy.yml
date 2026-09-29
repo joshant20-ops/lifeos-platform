@@ -5,7 +5,7 @@ on:
     paths:
       - 'scripts/deploy-three-dashboard-roles.py'
       - 'homeassistant/verify-lifeos-dashboard.py'
-      - 'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
+      - 'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'\n      - 'governor/scripts/deploy-pa-task-reconciler.sh'\n      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
       - 'homelab/live/home/joshan/automation/scripts/lifeos_paperless_memory_index.py'
       - 'homelab/live/home/joshan/automation/scripts/lifeos_paperless_notes_reader.py'
       - 'homelab/live/home/joshan/automation/scripts/lifeos_evidence_link_proposals_refresh.py'
@@ -14,7 +14,7 @@ permissions: {contents: read}
 jobs:
   deploy-verify:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 5
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - name: Deploy role-separated dashboards
@@ -47,9 +47,9 @@ jobs:
           assert (root/'lovelace.dashboard_house_status').exists() or True
           print('RUNTIME_VERIFY=PASS')
           PY
-      - name: Reconcile personal tasks from Gmail and Paperless
+      - name: Deploy recurring personal task reconciliation
         run: |
-          sudo install -m 0755 homelab/live/home/joshan/automation/lifeos_task_reconciler.py /home/joshan/automation/lifeos_task_reconciler.py
-          sudo /home/joshan/automation/lifeos_run.sh python3 /home/joshan/automation/lifeos_task_reconciler.py
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-pa-task-reconciler
       - name: Verify personal LifeOS dashboard contract
         run: sudo python3 homeassistant/verify-lifeos-dashboard.py
