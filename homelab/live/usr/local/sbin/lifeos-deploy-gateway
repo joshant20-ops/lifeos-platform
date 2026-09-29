@@ -43,6 +43,10 @@ OPS = {
         'script': 'scripts/lifeos-deploy-governor-managed-engineer.sh',
         'privileged': True,
     },
+    'deploy-lifeos-assistant': {
+        'script': 'governor/scripts/deploy-ha-assistant.sh',
+        'privileged': True,
+    },
     'proof-801-semaphore-governor': {
         'script': 'scripts/lifeos-801-fresh-semaphore-governor-proof.sh',
         'privileged': True,
