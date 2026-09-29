@@ -10,7 +10,42 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ai_broker import BrokerError, generate
-from autonomous_agent import classify_privacy
+import re
+
+PRIVACY_DOMAIN_POLICY_PATH = pathlib.Path(os.environ.get("LIFEOS_PRIVACY_DOMAIN_POLICY", pathlib.Path(__file__).with_name("privacy-domain-policy.json")))
+PRIVATE_PATTERNS = (
+    r"\\bpaperless\\b", r"\\bprivate (?:data|documents?|files?|records?|information)\\b",
+    r"\\bpersonal (?:data|documents?|files?|records?|information)\\b",
+    r"\\bmedical (?:data|records?|documents?|information)\\b", r"\\bhealth (?:data|records?|documents?|information)\\b",
+    r"\\bpassport(?:s)?\\b", r"\\bbank (?:accounts?|statements?|details|records?|documents?)\\b",
+    r"\\bfinancial (?:statements?|records?|data|documents?)\\b", r"\\bpersonal (?:invoice|invoices|email|emails|mailbox|inbox)\\b",
+    r"\\b(?:email|emails|mailbox|inbox)\\b.{0,40}\\b(?:private|personal|messages?|content)\\b",
+)
+
+def _privacy_domain_policy():
+    try:
+        policy=json.loads(PRIVACY_DOMAIN_POLICY_PATH.read_text())
+        if policy.get("schema_version") != 1 or policy.get("fail_closed") is not True or not isinstance(policy.get("domains"), dict): return None
+        return policy
+    except Exception: return None
+
+def _privacy_term_matches(lower, term):
+    normalized=re.escape(str(term).strip().lower()).replace(r"\\ ", r"[\\s_-]+").replace(r"\\-", r"[\\s_-]+")
+    return bool(normalized and re.search(rf"(?<!\\w){normalized}(?!\\w)", lower))
+
+def classify_privacy(text, domain=None):
+    lower=str(text or "").lower()
+    if any(re.search(pattern, lower) for pattern in PRIVATE_PATTERNS): return "local-only"
+    policy=_privacy_domain_policy()
+    if policy is None: return "local-only"
+    domains=policy["domains"]
+    if domain:
+        key=re.sub(r"[\\s_]+", "-", str(domain).strip().lower()); rule=domains.get(key)
+        if not isinstance(rule, dict): return "local-only"
+        return "local-only" if rule.get("privacy") == "local-only" else str(policy.get("default") or "normal")
+    for rule in domains.values():
+        if isinstance(rule, dict) and rule.get("privacy") == "local-only" and any(_privacy_term_matches(lower,t) for t in rule.get("request_terms", ())): return "local-only"
+    return str(policy.get("default") or "normal")
 
 PORT = int(os.environ.get("LIFEOS_ASSISTANT_PORT", "8791"))
 AGENT_URL = os.environ.get("LIFEOS_AGENT_URL", "http://127.0.0.1:8790")
