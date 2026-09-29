@@ -96,6 +96,13 @@ jobs:
               props=dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
               service_props[unit]=props
               print('TASK_SERVICE_STATE='+unit+':'+','.join(k+'='+v for k,v in sorted(props.items())))
+              if props.get('Result') not in {'success',''}:
+                  journal,_=output(['journalctl','-u',unit,'-n','80','--no-pager','-o','cat'])
+                  categories=set(re.findall(r'([A-Za-z][A-Za-z0-9_]*(?:Error|Exception))',journal))
+                  if 'No such file or directory' in journal: categories.add('MissingPath')
+                  if 'Connection refused' in journal: categories.add('ConnectionRefused')
+                  if 'timed out' in journal.lower(): categories.add('Timeout')
+                  print('TASK_SERVICE_FAILURE_CATEGORIES='+(','.join(sorted(categories)) if categories else 'UNCLASSIFIED'))
           timer_props={}
           for unit in task_timers:
               raw,_=output(['systemctl','show',unit,'-p','ActiveState','-p','UnitFileState','-p','LastTriggerUSec','-p','NextElapseUSecRealtime','-p','OnUnitActiveUSec','-p','RandomizedDelayUSec'])
