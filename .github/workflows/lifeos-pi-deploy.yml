@@ -14,6 +14,7 @@ on:
           - deploy-tower-metrics
           - deploy-snapshot-exporter
           - deploy-governor-managed-engineer
+          - deploy-lifeos-assistant
           - deploy-energy-opportunity-api
           - capability-stage3-systemd-cleanup
           - verify-transaction-core
@@ -37,6 +38,9 @@ on:
       - 'governor/autonomous_agent.py'
       - 'governor/privacy-domain-policy.json'
       - 'governor/systemd/lifeos-autonomous-agent.service'
+      - 'governor/assistant_bridge.py'
+      - 'governor/assistant_ui.html'
+      - 'governor/scripts/deploy-ha-assistant.sh'
   issues:
     types: [opened]
 
