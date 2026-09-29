@@ -47,6 +47,10 @@ OPS = {
         'script': 'governor/scripts/deploy-ha-assistant.sh',
         'privileged': True,
     },
+    'deploy-pa-task-reconciler': {
+        'script': 'governor/scripts/deploy-pa-task-reconciler.sh',
+        'privileged': True,
+    },
     'proof-801-semaphore-governor': {
         'script': 'scripts/lifeos-801-fresh-semaphore-governor-proof.sh',
         'privileged': True,
