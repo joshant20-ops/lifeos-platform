@@ -34,9 +34,11 @@ printf '\n===== 3/6 — INSTALL =====\n'
 sudo install -d -o root -g root -m 0755 /usr/local/libexec/lifeos-assistant.d
 sudo install -m 0755 "$BRIDGE" /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py
 sudo install -m 0644 "$REPO/governor/ai_broker.py" /usr/local/libexec/lifeos-assistant.d/ai_broker.py
+sudo install -m 0644 "$REPO/governor/autonomous_agent.py" /usr/local/libexec/lifeos-assistant.d/autonomous_agent.py
+sudo install -m 0644 "$REPO/governor/policy.json" /usr/local/libexec/lifeos-assistant.d/policy.json
 sudo install -m 0644 "$REPO/engineer/provider_router.py" /usr/local/libexec/lifeos-assistant.d/provider_router.py
 sudo install -m 0644 "$UI" /usr/local/share/lifeos-assistant.html
-sudo python3 -m py_compile /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py /usr/local/libexec/lifeos-assistant.d/ai_broker.py /usr/local/libexec/lifeos-assistant.d/provider_router.py
+sudo python3 -m py_compile /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py /usr/local/libexec/lifeos-assistant.d/ai_broker.py /usr/local/libexec/lifeos-assistant.d/autonomous_agent.py /usr/local/libexec/lifeos-assistant.d/provider_router.py
 
 sudo tee /etc/systemd/system/lifeos-assistant.service >/dev/null <<'UNIT'
 [Unit]
@@ -52,8 +54,10 @@ Group=joshan
 Environment=LIFEOS_ASSISTANT_PORT=8791
 Environment=LIFEOS_AGENT_URL=http://127.0.0.1:8790
 Environment=LIFEOS_ASSISTANT_UI=/usr/local/share/lifeos-assistant.html
-WorkingDirectory=/home/joshan/lifeos-platform
-Environment=PYTHONPATH=/home/joshan/lifeos-platform/governor:/home/joshan/lifeos-platform/engineer
+WorkingDirectory=/usr/local/libexec/lifeos-assistant.d
+Environment=PYTHONPATH=/usr/local/libexec/lifeos-assistant.d
+Environment=LIFEOS_AI_POLICY=/usr/local/libexec/lifeos-assistant.d/policy.json
+Environment=LIFEOS_PROVIDER_ROUTER=/usr/local/libexec/lifeos-assistant.d/provider_router.py
 ExecStart=/usr/bin/python3 /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py
 Restart=on-failure
 RestartSec=5
