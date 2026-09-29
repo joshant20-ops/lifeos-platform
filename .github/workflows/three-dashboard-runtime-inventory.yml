@@ -151,7 +151,7 @@ jobs:
           for item in pathlib.Path('/proc').iterdir():
               if not item.name.isdigit(): continue
               try:
-                  cmd=(item/'cmdline').read_bytes().replace(b'\\0',b' ').decode(errors='ignore')
+                  cmd=(item/'cmdline').read_bytes().replace(bytes([0]),b' ').decode(errors='ignore')
                   if 'lifeos_task_reconciler.py' in cmd and int(item.name)!=os.getpid(): running.append(item.name)
               except (OSError,ValueError): pass
           print('RECONCILER_PROCESS_COUNT='+str(len(running)))
