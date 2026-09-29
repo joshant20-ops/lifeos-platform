@@ -40,7 +40,7 @@ jobs:
           git fetch --prune origin main
           git show origin/main:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
           sudo -n python3 - <<'PY'
-          import hashlib, json, os, pathlib, re, subprocess, sys, time
+          import hashlib, imaplib, json, os, pathlib, re, ssl, subprocess, sys, time
           from collections import Counter
 
           repo=pathlib.Path('/home/joshan/lifeos-platform')
@@ -48,6 +48,10 @@ jobs:
           state_path=automation/'state/lifeos_personal_tasks.json'
           published=pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json')
           checks=[]
+          sys.path.insert(0,str(repo))
+          sys.path.insert(0,str(automation))
+          from lifeos_email_paperless_selective import imap_credentials
+          from lifeos_task_reconciler import paperless_search
 
           def check(name, ok):
               checks.append((name, bool(ok)))
@@ -112,6 +116,27 @@ jobs:
           check('HOME_ASSISTANT_CONTAINER_RUNNING',any(x.startswith('homeassistant|Up ') for x in relevant))
           check('PAPERLESS_CONTAINER_RUNNING',any('paperless' in x.lower() and '|up ' in x.lower() for x in relevant))
 
+          try:
+              username,password=imap_credentials()
+              client=imaplib.IMAP4_SSL('imap.gmail.com',993,ssl_context=ssl.create_default_context())
+              try:
+                  client.login(username,password)
+                  status,_=client.select('INBOX',readonly=True)
+                  check('GMAIL_READ_ONLY_ACCESS',status=='OK')
+              finally:
+                  try: client.logout()
+                  except Exception: pass
+          except Exception as exc:
+              print('GMAIL_READ_ONLY_ACCESS=UNAVAILABLE:'+type(exc).__name__)
+              check('GMAIL_READ_ONLY_ACCESS',False)
+          try:
+              rows=paperless_search('lifeos')
+              print('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP=PASS')
+              check('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP',isinstance(rows,list))
+          except Exception as exc:
+              print('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP=UNAVAILABLE:'+type(exc).__name__)
+              check('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP',False)
+
           source=repo/'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
           installed=automation/'lifeos_task_reconciler.py'
           def digest(path):
@@ -119,6 +144,8 @@ jobs:
           source_hash=digest(source); installed_hash=digest(installed)
           print('RECONCILER_SOURCE_INSTALLED_MATCH='+('YES' if source_hash and source_hash==installed_hash else 'NO'))
           check('RECONCILER_SOURCE_INSTALLED_MATCH',bool(source_hash) and source_hash==installed_hash)
+          source_text=source.read_text(errors='ignore') if source.is_file() else ''
+          check('PRIVATE_INFERENCE_LOCAL_ONLY','ai_broker._ollama(' in source_text)
 
           running=[]
           for item in pathlib.Path('/proc').iterdir():
@@ -172,6 +199,9 @@ jobs:
               count=int(payloads['PERSISTED'].get('messages_considered') or 0)
               print('MODEL_CLASSIFICATION_CALLS_UPPER_BOUND_PER_SCAN='+str(count))
               print('MODEL_USAGE_EXACT_COUNTER=NOT_EXPOSED_BY_CURRENT_RECONCILER')
+              older=sum(1 for x in payloads['PERSISTED'].get('tasks',[])+payloads['PERSISTED'].get('resolved',[]) if isinstance(x,dict) and int(x.get('observed_at') or now)>0 and int(x.get('observed_at') or now)<now-90*86400)
+              print('PERSISTED_RECORDS_OUTSIDE_90_DAY_SCAN='+str(older))
+              print('BOUNDED_SCAN_PERSISTENCE='+('LIVE_EVIDENCE' if older else 'NOT_DEMONSTRATED_BY_CURRENT_RECORDS'))
           failures=[name for name,ok in checks if not ok]
           print('GATE_A_RUNTIME_INVENTORY='+('PASS' if not failures else 'FAIL'))
           print('GATE_A_FAILED_CHECKS='+(','.join(failures) if failures else 'NONE'))
