@@ -39,7 +39,7 @@ jobs:
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
           git show origin/main:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
-          sudo -n python3 - <<'PY'
+          sudo -n python3 -u - <<'PY'
           import hashlib, imaplib, json, os, pathlib, re, ssl, subprocess, sys, time
           from collections import Counter
 
@@ -118,7 +118,7 @@ jobs:
 
           try:
               username,password=imap_credentials()
-              client=imaplib.IMAP4_SSL('imap.gmail.com',993,ssl_context=ssl.create_default_context())
+              client=imaplib.IMAP4_SSL('imap.gmail.com',993,ssl_context=ssl.create_default_context(),timeout=10)
               try:
                   client.login(username,password)
                   status,_=client.select('INBOX',readonly=True)
@@ -158,13 +158,8 @@ jobs:
           print('RECONCILER_PROCESS_COUNT='+str(len(running)))
           check('NO_COMPETING_RECONCILER_PROCESS',len(running)<=1)
 
-          publisher_files=[]
-          if automation.exists():
-              for p in automation.rglob('*.py'):
-                  if any(part.lower() in {'archive','archived','backup','backups','state'} for part in p.parts): continue
-                  try: body=p.read_text(errors='ignore')
-                  except OSError: continue
-                  if 'www/lifeos_tasks.json' in body: publisher_files.append(str(p.relative_to(automation)))
+          publisher_scan=subprocess.run(['rg','-l','--glob','*.py','--glob','!archive/**','--glob','!archived/**','--glob','!backup/**','--glob','!backups/**','--glob','!state/**',r'www/lifeos_tasks\.json',str(automation)],text=True,capture_output=True,check=False,timeout=20)
+          publisher_files=sorted(str(pathlib.Path(x).relative_to(automation)) for x in publisher_scan.stdout.splitlines() if x)
           print('RUNTIME_TASK_PUBLISHERS='+','.join(sorted(publisher_files)))
           check('ONE_RUNTIME_TASK_PUBLISHER',len(publisher_files)==1 and publisher_files[0]=='lifeos_task_reconciler.py')
 
