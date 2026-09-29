@@ -1,5 +1,7 @@
 name: Three Dashboard Runtime Inventory
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main, audit-lifeos-control-20260929]
     paths: ['.github/workflows/three-dashboard-runtime-inventory.yml']
