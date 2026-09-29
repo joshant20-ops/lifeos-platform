@@ -5,6 +5,7 @@ SRC="$REPO/homelab/live/home/joshan/automation/lifeos_task_reconciler.py"
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED reason=must_run_on_pi5_Docker"; exit 20; }
 python3 -m py_compile "$SRC"
 install -o root -g root -m 0755 "$SRC" /home/joshan/automation/lifeos_task_reconciler.py
+install -o root -g root -m 0644 "$REPO/homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py" /home/joshan/automation/lifeos_email_paperless_selective.py
 cat >/etc/systemd/system/lifeos-task-reconciler.service <<'UNIT'
 [Unit]
 Description=LifeOS personal task reconciliation from Gmail and Paperless
@@ -13,8 +14,12 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=root
+Environment=HOME=/home/joshan
 WorkingDirectory=/home/joshan/automation
-ExecStart=/home/joshan/automation/lifeos_run.sh python3 /home/joshan/automation/lifeos_task_reconciler.py
+LoadCredential=gmail-imap-user:/etc/lifeos/secrets/gmail-imap-user
+LoadCredential=gmail-imap-password:/etc/lifeos/secrets/gmail-imap-password
+LoadCredential=paperless_token:/etc/lifeos/secrets/paperless-api-token
+ExecStart=/usr/bin/python3 /home/joshan/automation/lifeos_task_reconciler.py
 TimeoutStartSec=30min
 Nice=10
 UNIT
