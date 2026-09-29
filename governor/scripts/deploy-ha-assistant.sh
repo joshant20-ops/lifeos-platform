@@ -24,7 +24,10 @@ python3 -m py_compile "$BRIDGE"
 test -s "$UI"
 grep -q 'LifeOS Assistant' "$UI"
 curl -fsS --max-time 5 http://127.0.0.1:8790/health >/dev/null
-curl -fsS --max-time 5 http://192.168.0.201:11434/api/tags >/dev/null
+# Do not require the Tower/Ollama endpoint to be awake here. The assistant
+# imports ai_broker, whose local inference path owns the MQTT lease, WoL and
+# readiness retry lifecycle. The conversational acceptance below exercises it.
+python3 -m py_compile "$REPO/governor/ai_broker.py"
 printf 'PREFLIGHT=PASS\n'
 
 printf '\n===== 3/6 — INSTALL =====\n'
