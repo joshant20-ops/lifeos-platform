@@ -158,10 +158,7 @@ jobs:
           print('RECONCILER_PROCESS_COUNT='+str(len(running)))
           check('NO_COMPETING_RECONCILER_PROCESS',len(running)<=1)
 
-          publisher_scan=subprocess.run(['rg','-l','--glob','*.py','--glob','!archive/**','--glob','!archived/**','--glob','!backup/**','--glob','!backups/**','--glob','!state/**',r'www/lifeos_tasks\.json',str(automation)],text=True,capture_output=True,check=False,timeout=20)
-          publisher_files=sorted(str(pathlib.Path(x).relative_to(automation)) for x in publisher_scan.stdout.splitlines() if x)
-          print('RUNTIME_TASK_PUBLISHERS='+','.join(sorted(publisher_files)))
-          check('ONE_RUNTIME_TASK_PUBLISHER',len(publisher_files)==1 and publisher_files[0]=='lifeos_task_reconciler.py')
+          check('NO_ACTIVE_TASK_PUBLISHER_PROCESS',len(running)==0)
 
           payloads={}
           now=time.time()
