@@ -58,10 +58,12 @@ WorkingDirectory=/usr/local/libexec/lifeos-assistant.d
 Environment=PYTHONPATH=/usr/local/libexec/lifeos-assistant.d
 Environment=LIFEOS_AI_POLICY=/usr/local/libexec/lifeos-assistant.d/policy.json
 Environment=LIFEOS_PROVIDER_ROUTER=/usr/local/libexec/lifeos-assistant.d/provider_router.py
-LoadCredential=ai-broker.env:/home/joshan/.config/lifeos/ai-broker.env
-LoadCredential=provider-secrets.env:/home/joshan/.config/lifeos/provider-secrets.env
-Environment=LIFEOS_AI_BROKER_CONFIG=%d/ai-broker.env
-Environment=LIFEOS_PROVIDER_SECRETS=%d/provider-secrets.env
+RuntimeDirectory=lifeos-assistant
+RuntimeDirectoryMode=0700
+Environment=LIFEOS_AI_BROKER_CONFIG=/run/lifeos-assistant/ai-broker.env
+Environment=LIFEOS_PROVIDER_SECRETS=/run/lifeos-assistant/provider-secrets.env
+ExecStartPre=+/usr/bin/install -o joshan -g joshan -m 0600 /home/joshan/.config/lifeos/ai-broker.env /run/lifeos-assistant/ai-broker.env
+ExecStartPre=+/usr/bin/install -o joshan -g joshan -m 0600 /home/joshan/.config/lifeos/provider-secrets.env /run/lifeos-assistant/provider-secrets.env
 ExecStart=/usr/bin/python3 /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py
 Restart=on-failure
 RestartSec=5
@@ -74,9 +76,10 @@ ProtectHome=true
 WantedBy=multi-user.target
 UNIT
 
-# Validate required private runtime inputs before restarting. The files remain
-# protected in the user's home; systemd LoadCredential copies them into a
-# private, read-only per-service credential directory at activation time.
+# Validate required private runtime inputs before restarting. ExecStartPre copies
+# them into the service's private /run directory as strict 0600 regular files,
+# satisfying provider_router's fail-closed secret-file contract without exposing
+# the user's home to the running service.
 sudo test -r /home/joshan/.config/lifeos/ai-broker.env
 sudo test -r /home/joshan/.config/lifeos/provider-secrets.env
 
