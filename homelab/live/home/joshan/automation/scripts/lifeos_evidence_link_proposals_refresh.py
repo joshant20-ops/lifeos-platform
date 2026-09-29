@@ -20,7 +20,7 @@ import json, time, html
 STATE = Path("/home/joshan/automation/state/evidence_link_proposals.json")
 LOGS = Path("/home/joshan/automation/logs")
 HA = Path("/opt/stacks/homeassistant/config")
-LOVELACE = HA / ".storage" / "lovelace.dashboard_homelab"
+LOVELACE = HA / ".storage" / "lovelace.dashboard_lifeos"
 
 def read_json(p, d):
     try:
