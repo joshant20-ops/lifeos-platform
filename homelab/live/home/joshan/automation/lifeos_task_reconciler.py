@@ -6,7 +6,7 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, imaplib, json, os, re, ssl, sys, time
+import email, imaplib, json, os, re, ssl, sys, time\nfrom email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -19,8 +19,8 @@ from lifeos_email_paperless_selective import secret, paperless_token
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
 OUT=HA/"www/lifeos_tasks.json"
-MAX_MESSAGES=int(os.getenv("LIFEOS_TASK_EMAIL_LIMIT","150"))
-LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))
+MAX_MESSAGES=int(os.getenv("LIFEOS_TASK_EMAIL_LIMIT","40"))
+LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))\nSTALE_DAYS=int(os.getenv("LIFEOS_TASK_STALE_DAYS","180"))
 
 def parse_json(raw):
     s=str(raw).strip()
@@ -62,15 +62,26 @@ def paperless_search(query):
 def key(d):
     return re.sub(r"[^a-z0-9]+","-",((d.get("counterparty") or "")+" "+(d.get("topic") or d.get("title") or "")).lower()).strip("-")[:120]
 
+def load_previous():
+    try:
+        data=json.loads(STATE.read_text())
+        rows=(data.get("tasks") or [])+(data.get("resolved") or [])
+        return {str(x.get("id")):x for x in rows if isinstance(x,dict) and x.get("id")}
+    except Exception:return {}
+
+def message_time(msg):
+    try:return int(parsedate_to_datetime(str(msg.get("Date",""))).timestamp())
+    except Exception:return int(time.time())
+
 def main():
+    previous=load_previous()
     user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
     password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
     c=imaplib.IMAP4_SSL(os.getenv("LIFEOS_IMAP_HOST","imap.gmail.com"),int(os.getenv("LIFEOS_IMAP_PORT","993")),ssl_context=ssl.create_default_context())
     c.login(user,password);c.select("INBOX",readonly=True)
     status,rows=c.search(None,"SINCE",time.strftime("%d-%b-%Y",time.localtime(time.time()-LOOKBACK_DAYS*86400)))
     ids=(rows[0].split() if status=="OK" and rows else [])[-MAX_MESSAGES:]
-    tasks={}
-    errors=0
+    observations=[];errors=0
     for uid in ids:
         try:
             st,data=c.fetch(uid,"(RFC822)")
@@ -80,15 +91,33 @@ def main():
             if not d["actionable"] or d["status"]=="NONE":continue
             k=key(d)
             if not k:continue
-            evidence=paperless_search(d.get("evidence_query") or d.get("topic") or d.get("title"))
-            item={"id":k,"title":str(d.get("title") or "Untitled task")[:160],"status":d["status"],"due_date":d.get("due_date"),"counterparty":d.get("counterparty"),"topic":d.get("topic"),"source":"gmail","email_message_id":str(msg.get("Message-ID",""))[:300],"paperless_evidence":evidence,"updated_from_email":str(msg.get("Date",""))[:100]}
-            tasks[k]=item
+            observations.append((message_time(msg),k,d,msg))
         except Exception: errors+=1
     c.logout()
-    open_tasks=[x for x in tasks.values() if x["status"]!="DONE"]
+    # Reconcile chronologically so a later completion/update wins over an older
+    # request. Preserve prior state when a task is outside this bounded scan.
+    tasks=dict(previous)
+    for observed,k,d,msg in sorted(observations,key=lambda x:x[0]):
+        evidence=paperless_search(d.get("evidence_query") or d.get("topic") or d.get("title"))
+        old=tasks.get(k,{})
+        tasks[k]={
+            "id":k,"title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
+            "status":d["status"],"due_date":d.get("due_date") or old.get("due_date"),
+            "counterparty":d.get("counterparty") or old.get("counterparty"),
+            "topic":d.get("topic") or old.get("topic"),"source":"gmail",
+            "email_message_id":str(msg.get("Message-ID",""))[:300],
+            "paperless_evidence":evidence or old.get("paperless_evidence",[]),
+            "updated_from_email":str(msg.get("Date",""))[:100],"observed_at":observed,
+            "reason":str(d.get("reason") or "")[:300]
+        }
+    cutoff=int(time.time())-STALE_DAYS*86400
+    tasks={k:v for k,v in tasks.items() if int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE"}
+    open_tasks=[x for x in tasks.values() if x.get("status")!="DONE"]
+    resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
-    payload={"schema":"lifeos_tasks_v2","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"errors":errors,"tasks":open_tasks,"resolved":[x for x in tasks.values() if x["status"]=="DONE"],"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived task state"}}
+    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"errors":errors,"tasks":open_tasks,"resolved":resolved,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
-    STATE.write_text(json.dumps(payload,indent=2)+"\n");OUT.write_text(json.dumps(payload,indent=2)+"\n")
-    print(json.dumps({"tasks":len(open_tasks),"resolved":len(payload["resolved"]),"messages":len(ids),"errors":errors}))
+    tmp=STATE.with_suffix(".tmp");tmp.write_text(json.dumps(payload,indent=2)+"\n");tmp.replace(STATE)
+    outtmp=OUT.with_suffix(".tmp");outtmp.write_text(json.dumps(payload,indent=2)+"\n");outtmp.replace(OUT)
+    print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"errors":errors}))
 if __name__=="__main__":main()
