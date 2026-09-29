@@ -50,6 +50,7 @@ jobs:
           checks=[]
           sys.path.insert(0,str(repo))
           sys.path.insert(0,str(automation))
+          sys.path.append(str(repo/'homelab/live/home/joshan/automation'))
           from lifeos_email_paperless_selective import imap_credentials
           from lifeos_task_reconciler import paperless_search
 
