@@ -20,7 +20,7 @@ import json, time, subprocess, re, html
 BASE = Path("/home/joshan/automation")
 LOGS = BASE / "logs"
 HA = Path("/opt/stacks/homeassistant/config")
-LOVELACE = HA / ".storage" / "lovelace.dashboard_homelab"
+LOVELACE = HA / ".storage" / "lovelace.dashboard_lifeos"
 
 OUT = LOGS / "paperless_memory_index.json"
 SUMMARY = LOGS / "paperless_memory_index_summary.json"
