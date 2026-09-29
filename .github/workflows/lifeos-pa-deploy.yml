@@ -1,0 +1,45 @@
+name: LifeOS PA Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pa-deploy.yml'
+      - 'governor/assistant_bridge.py'
+      - 'governor/assistant_ui.html'
+      - 'governor/scripts/deploy-ha-assistant.sh'
+      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pa-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-and-accept:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Align canonical checkout
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain)"
+      - name: Refresh fixed deployment gateway
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+      - name: Deploy and accept LifeOS PA
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-lifeos-assistant
