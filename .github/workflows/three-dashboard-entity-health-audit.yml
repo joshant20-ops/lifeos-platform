@@ -1,5 +1,6 @@
 name: Three Dashboard Entity Health Audit
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths: ['.github/workflows/three-dashboard-entity-health-audit.yml']
