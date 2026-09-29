@@ -20,6 +20,7 @@ printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 test -z "$(git -C "$REPO" status --porcelain)"
 
 printf '\n===== 2/6 — PREFLIGHT =====\n'
+bash -n "$REPO/governor/scripts/deploy-ha-assistant.sh"
 python3 -m py_compile "$BRIDGE"
 test -s "$UI"
 grep -q 'LifeOS Assistant' "$UI"
@@ -108,16 +109,34 @@ print('ASSISTANT_HEALTH=PASS')
 print('INFERENCE='+j['inference'])
 PY
 curl -fsS --max-time 3 http://127.0.0.1:${PORT}/ | grep -q 'LifeOS Assistant'
-TEST=$(curl -fsS --max-time 90 -H 'Content-Type: application/json' \
-  -d '{"messages":[{"role":"user","content":"I want a read-only health check for LifeOS. Understand the goal and suggest one useful improvement, but do not run anything."}]}' \
-  http://127.0.0.1:${PORT}/assist)
+TEST_BODY_FILE=$(mktemp)
+trap 'rm -f "$TEST_BODY_FILE"' EXIT
+TEST_CODE=$(curl -sS --max-time 360 -o "$TEST_BODY_FILE" -w '%{http_code}' \
+  -H 'Content-Type: application/json' \
+  -d '{"messages":[{"role":"user","content":"I want a read-only health check for LifeOS. Understand the goal and suggest one useful improvement, but do not run anything."}],"privacy_domain":"personal-administration"}' \
+  http://127.0.0.1:${PORT}/assist) || {
+    RC=$?
+    printf 'CONVERSATION_CURL_RC=%s\n' "$RC"
+    cat "$TEST_BODY_FILE" || true
+    sudo journalctl -u lifeos-assistant.service -n 40 --no-pager || true
+    exit "$RC"
+  }
+TEST=$(cat "$TEST_BODY_FILE")
+if [[ "$TEST_CODE" != "200" ]]; then
+  printf 'CONVERSATION_HTTP=%s\n' "$TEST_CODE"
+  printf 'CONVERSATION_ERROR=%s\n' "$TEST"
+  sudo journalctl -u lifeos-assistant.service -n 40 --no-pager || true
+  exit 22
+fi
 python3 - "$TEST" <<'PY'
 import json,sys
 j=json.loads(sys.argv[1])
 assert isinstance(j.get('reply'),str) and j['reply']
 assert 'ready_to_run' in j
 assert isinstance(j.get('improvements'),list)
+assert j.get('privacy') == 'local-only'
 print('CONVERSATION=PASS')
+print('CONVERSATION_PROVIDER='+str(j.get('provider')))
 PY
 
 printf '\n===== 5/6 — HOME ASSISTANT TARGET =====\n'
@@ -134,41 +153,8 @@ title: LifeOS Assistant
 YAML
 printf 'HA_CARD_FALLBACK_END\n'
 
-printf '\n===== 6/6 — CODEX HOME ASSISTANT INTEGRATION =====\n'
-HA_JOB=$(cat <<EOF
-Integrate the already-running LifeOS Assistant into the existing Home Assistant frontend as a first-class AI assistant surface. The assistant is reachable on the trusted LAN at ${ASSISTANT_URL} and must remain LAN-only.
-
-Desired user experience:
-- Put the LifeOS Assistant somewhere natural and easy to reach in Home Assistant, preferably as its own LifeOS/AI view or sidebar entry if that can be done safely with the current HA setup; otherwise use a full-width Webpage/iframe card on the existing LifeOS dashboard.
-- Preserve the existing Home Assistant dashboard style and do not replace or remove existing cards.
-- The primary surface must be the conversational assistant, not the raw autonomous job/debug UI.
-- Verify the embedded page actually loads from Home Assistant's point of view where possible, not merely that YAML parses.
-- Avoid duplicate cards or duplicate sidebar entries.
-- Keep the assistant unavailable from the public internet.
-- Do not expose HA secrets, tokens, credentials, entity history or private user data to cloud Codex. Runtime discovery requiring private HA data must happen locally on Pi5. Cloud Codex may author generic code/config only.
-- If Home Assistant uses UI/storage-mode dashboards, do not directly corrupt .storage files. Prefer supported HA mechanisms/APIs or a safe configuration approach. Back up any configuration changed before applying it.
-- Validate Home Assistant configuration before restart/reload, and make changes reversible.
-- If the existing setup makes a direct sidebar panel unsafe, install the iframe card in the most appropriate existing LifeOS dashboard and report why.
-- After installation, verify the assistant conversation UI is visible and that it can submit an approved engineering job to the existing Pi5 agent.
-
-Return clear runtime evidence showing where it was added, validation results, and the final HA navigation path/view name.
-EOF
-)
-HA_JSON=$(python3 - "$HA_JOB" <<'PY'
-import json,sys
-print(json.dumps({'request':sys.argv[1]}))
-PY
-)
-HA_SUBMIT=$(curl -fsS --max-time 15 -H 'Content-Type: application/json' -d "$HA_JSON" 'http://127.0.0.1:8790/jobs?async=1')
-python3 - "$HA_SUBMIT" <<'PY'
-import json,sys
-j=json.loads(sys.argv[1])
-assert j['status']=='QUEUED'
-print('HA_INTEGRATION_JOB='+j['id'])
-print('HA_INTEGRATION_STATUS='+j['status'])
-PY
-
+printf '\n===== 6/6 — DEPLOYMENT RESULT =====\n'
 printf 'RESULT=PASS\n'
-printf 'PRIVACY=conversation_local_before_cloud_engineering\n'
-printf 'NOTE=Home_Assistant_integration_continues_as_autonomous_job\n'
+printf 'PRIVACY=pa_conversation_local_only\n'
+printf 'NOTE=Home_Assistant_target_reported_without_enqueuing_duplicate_engineering_jobs\n'
 printf 'Elapsed=%ss\n' "$(( $(date +%s)-START ))"

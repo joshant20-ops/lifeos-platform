@@ -229,3 +229,14 @@ def test_ollama_content_tool_fallback_maps_described_command_value_to_owner():
     assert call is not None
     assert call["function"]["name"] == "file_editor"
     assert json.loads(call["function"]["arguments"])["command"] == "view"
+
+
+def test_canonical_policy_routes_private_normal_work_to_gpt_oss():
+    policy = BROKER.ROUTER.load_policy(ROOT / "governor" / "policy.json")
+    eligible, considered = BROKER.ROUTER.eligible_providers(
+        policy, "normal", set(), privacy="local-only", available_adapters={"local-builder", "codex"}
+    )
+    assert eligible
+    assert eligible[0]["id"] == "ollama"
+    assert eligible[0]["api_model"] == "gpt-oss:20b"
+    assert next(x for x in considered if x["provider"] == "ollama")["status"] == "AVAILABLE"

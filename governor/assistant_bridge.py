@@ -102,7 +102,11 @@ def analyse(messages, privacy_domain=None):
         content = str(item.get("content", ""))[:6000]
         history.append(f"{role.upper()}: {content}")
         raw_context.append(content)
-    privacy = classify_privacy("\n".join(raw_context), domain=privacy_domain)
+    # The PA is personal by definition: its conversational context may contain
+    # household/personal data even when a particular sentence looks generic.
+    # Keep PA inference local-first/fail-closed; only the separately approved
+    # engineering brief may cross the sanitized engineering boundary.
+    privacy = "local-only"
     prompt = SYSTEM + "\n\nConversation:\n" + "\n".join(history) + "\n\nReturn the JSON now."
     routed = generate(prompt, privacy=privacy, task_class="normal")
     parsed = json.loads(routed["text"])
