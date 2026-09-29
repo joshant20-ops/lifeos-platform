@@ -1,7 +1,8 @@
-# Personal Information Processing
+# Personal Information Processing — superseded custom-first design
 
-Status: gated implementation; **P0, P1 and P2 accepted**. P3 is the next gate; P4 through
-P10 remain blocked until their preceding acceptance gate has durable evidence.
+> **SUPERSEDED:** This document preserves the earlier custom-first P0–P2 design and its historical acceptance evidence. It is not the current implementation plan and must not be used to infer outstanding gates. The canonical production architecture is [Personal Information Processing — Paperless-first reset](personal-information-processing-paperless-first.md), where revised P0–P10 are accepted. The OTS ownership boundary is [PA OTS authority map](pa-ots-authority-map.md).
+
+Status: historical/superseded. Earlier P0–P2 evidence remains useful for provenance only; P3–P10 in this design are not current backlog.
 
 ## Authority and privacy
 
