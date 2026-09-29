@@ -20,6 +20,7 @@ printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 test -z "$(git -C "$REPO" status --porcelain)"
 
 printf '\n===== 2/6 — PREFLIGHT =====\n'
+bash -n "$REPO/governor/scripts/deploy-ha-assistant.sh"
 python3 -m py_compile "$BRIDGE"
 test -s "$UI"
 grep -q 'LifeOS Assistant' "$UI"
@@ -108,17 +109,34 @@ print('ASSISTANT_HEALTH=PASS')
 print('INFERENCE='+j['inference'])
 PY
 curl -fsS --max-time 3 http://127.0.0.1:${PORT}/ | grep -q 'LifeOS Assistant'
-TEST=$(curl -sS --max-time 360 -H 'Content-Type: application/json' \
+TEST_BODY_FILE=$(mktemp)
+trap 'rm -f "$TEST_BODY_FILE"' EXIT
+TEST_CODE=$(curl -sS --max-time 360 -o "$TEST_BODY_FILE" -w '%{http_code}' \
+  -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"I want a read-only health check for LifeOS. Understand the goal and suggest one useful improvement, but do not run anything."}],"privacy_domain":"personal-administration"}' \
-  -w '\n%{http_code}' http://127.0.0.1:${PORT}/assist)
-TEST_CODE="${TEST##*
+  http://127.0.0.1:${PORT}/assist) || {
+    RC=$?
+    printf 'CONVERSATION_CURL_RC=%s\n' "$RC"
+    cat "$TEST_BODY_FILE" || true
+    sudo journalctl -u lifeos-assistant.service -n 40 --no-pager || true
+    exit "$RC"
+  }
+TEST=$(cat "$TEST_BODY_FILE")
+if [[ "$TEST_CODE" != "200" ]]; then
+  printf 'CONVERSATION_HTTP=%s\n' "$TEST_CODE"
+  printf 'CONVERSATION_ERROR=%s\n' "$TEST"
+  sudo journalctl -u lifeos-assistant.service -n 40 --no-pager || true
+  exit 22
+fi
 python3 - "$TEST" <<'PY'
 import json,sys
 j=json.loads(sys.argv[1])
 assert isinstance(j.get('reply'),str) and j['reply']
 assert 'ready_to_run' in j
 assert isinstance(j.get('improvements'),list)
+assert j.get('privacy') == 'local-only'
 print('CONVERSATION=PASS')
+print('CONVERSATION_PROVIDER='+str(j.get('provider')))
 PY
 
 printf '\n===== 5/6 — HOME ASSISTANT TARGET =====\n'
