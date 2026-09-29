@@ -1,0 +1,39 @@
+name: Homelab Dashboard V2 Deploy
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/deploy-homelab-dashboard-v2.py'
+      - '.github/workflows/homelab-dashboard-v2-deploy.yml'
+permissions: {contents: read}
+jobs:
+  deploy-verify:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy audited Homelab dashboard
+        run: |
+          sudo python3 scripts/deploy-homelab-dashboard-v2.py
+          sudo docker restart homeassistant >/dev/null
+          for i in $(seq 1 60); do
+            [ "$(sudo docker inspect -f '{{.State.Status}}' homeassistant 2>/dev/null)" = running ] && { sleep 8; break; }
+            sleep 2
+          done
+      - name: Verify live Homelab dashboard
+        run: |
+          sudo python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/opt/stacks/homeassistant/config/.storage/lovelace.dashboard_homelab')
+          d=json.loads(p.read_text()); vs=d['data']['config']['views']
+          assert [v.get('path') for v in vs]==['overview','network','tower']
+          assert all(v.get('type')=='sections' for v in vs)
+          assert all(v.get('sections') for v in vs)
+          blob=json.dumps(d)
+          for stale in ('P02-B01','P02-B02','P04-B01','P04-B02','P04-B03'):
+              assert stale not in blob, stale
+          print('HOMELAB_V2_VERIFY=PASS')
+          print('VIEWS='+repr([(v.get('title'),v.get('path'),sum(len(s.get('cards',[])) for s in v.get('sections',[]))) for v in vs]))
+          PY
