@@ -6,7 +6,8 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, imaplib, json, os, re, ssl, sys, time\nfrom email.utils import parsedate_to_datetime
+import email, imaplib, json, os, re, ssl, sys, time
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -20,7 +21,8 @@ HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
 OUT=HA/"www/lifeos_tasks.json"
 MAX_MESSAGES=int(os.getenv("LIFEOS_TASK_EMAIL_LIMIT","40"))
-LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))\nSTALE_DAYS=int(os.getenv("LIFEOS_TASK_STALE_DAYS","180"))
+LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))
+STALE_DAYS=int(os.getenv("LIFEOS_TASK_STALE_DAYS","180"))
 
 def parse_json(raw):
     s=str(raw).strip()
