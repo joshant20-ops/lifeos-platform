@@ -57,13 +57,15 @@ if len(lifeos)!=1 or legacy:
 try:
     d=json.loads(DASH.read_text()); views=d['data']['config']['views']; by={v.get('path'):v for v in views}
 except Exception as e: fail('dashboard JSON',repr(e))
-for path,count in {'overview':7,'energy-ai':11,'autonomous-work':8}.items():
-    got=len(by.get(path,{}).get('cards',[]))
-    if got!=count: fail('dashboard structure',f'{path}: expected={count} actual={got}')
-blob=json.dumps(by['overview'])
-required=['sensor.tower_pc_tower_status','binary_sensor.tower_pc_tower_accessible','switch.tower_pc_tower_power']
-missing=[x for x in required if x not in blob]
-if missing: fail('Tower controls in dashboard','missing='+','.join(missing))
+expected_paths=['overview','documents','lifeos-chat','important-information']
+if [v.get('path') for v in views] != expected_paths:
+    fail('dashboard structure',f"expected_paths={expected_paths} actual={[v.get('path') for v in views]}")
+if any(not by[p].get('cards') for p in expected_paths):
+    fail('dashboard structure','one or more LifeOS views are empty')
+blob=json.dumps(d)
+for forbidden in ('sensor.tower_pc_tower_status','binary_sensor.tower_pc_tower_accessible','switch.tower_pc_tower_power','sensor.lifeos_control_state'):
+    if forbidden in blob: fail('dashboard role isolation','forbidden='+forbidden)
+required=[]
 
 r=subprocess.run(['docker','exec','homeassistant','python3','-c',"import json; d=json.load(open('/config/.storage/core.entity_registry')); print('\\n'.join(e.get('entity_id','') for e in d.get('data',{}).get('entities',[])))"],text=True,capture_output=True)
 if r.returncode: fail('HA entity registry',(r.stdout+r.stderr).strip())
@@ -118,7 +120,7 @@ if r.returncode or r.stdout.strip()!='online':
 print('LIFEOS_HA_GATE=PASS')
 print(f'homeassistant={ha_health}')
 print('dashboard=/lifeos legacy=absent drift=none')
-print('views=overview:7,energy-ai:11,autonomous-work:8 tower_controls=3/3')
+print('views=overview,documents,lifeos-chat,important-information role_isolation=PASS')
 print('tower_controller=active drift=none')
 print(f'tower_wol=CONFIGURED broadcast={cfg.get("broadcast")} port={port}')
 print('tower_switch_command_path=lifeos/tower/power/set PASS')
