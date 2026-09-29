@@ -11,11 +11,13 @@
       "cost": "deterministic",
       "capability": 1,
       "priority": 0,
-      "task_classes": ["deterministic"]
+      "task_classes": [
+        "deterministic"
+      ]
     },
     {
       "id": "ollama",
-      "role": "local-private-engineer",
+      "role": "local-private-assistant-engineer",
       "adapter": "local-builder",
       "privacy": "local",
       "private_only": true,
@@ -23,9 +25,13 @@
       "cost": "local",
       "capability": 2,
       "priority": 10,
-      "api_model": "qwen2.5-coder:7b-instruct",
-      "openhands_model": "ollama/qwen2.5-coder:7b",
-      "task_classes": ["tiny", "offline", "normal"]
+      "api_model": "gpt-oss:20b",
+      "openhands_model": "ollama/gpt-oss:20b",
+      "task_classes": [
+        "tiny",
+        "offline",
+        "normal"
+      ]
     },
     {
       "id": "codex",
@@ -36,7 +42,12 @@
       "cost": "scarce",
       "capability": 5,
       "priority": 10,
-      "task_classes": ["normal", "substantial", "review", "escalation"]
+      "task_classes": [
+        "normal",
+        "substantial",
+        "review",
+        "escalation"
+      ]
     }
   ],
   "routing": {
