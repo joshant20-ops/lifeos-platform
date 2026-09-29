@@ -32,3 +32,178 @@ jobs:
                       label=c.get('title') or c.get('heading') or c.get('type')
                       print(' CARD',i,repr(label),'type='+str(c.get('type')),'entities='+repr(ents[:20]))
           PY
+      - name: Read-only PA task reconciler runtime inventory
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git show origin/main:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
+          sudo -n python3 - <<'PY'
+          import hashlib, imaplib, json, os, pathlib, re, ssl, subprocess, sys, time
+          from collections import Counter
+
+          repo=pathlib.Path('/home/joshan/lifeos-platform')
+          automation=pathlib.Path('/home/joshan/automation')
+          state_path=automation/'state/lifeos_personal_tasks.json'
+          published=pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json')
+          checks=[]
+          sys.path.insert(0,str(repo))
+          sys.path.insert(0,str(automation))
+          from lifeos_email_paperless_selective import imap_credentials
+          from lifeos_task_reconciler import paperless_search
+
+          def check(name, ok):
+              checks.append((name, bool(ok)))
+              print(name+'='+('PASS' if ok else 'FAIL'))
+
+          def output(args):
+              cp=subprocess.run(args,text=True,capture_output=True,check=False,timeout=20)
+              return cp.stdout.strip(),cp.returncode
+
+          host=subprocess.check_output(['hostname'],text=True).strip()
+          head=output(['git','-C',str(repo),'rev-parse','HEAD'])[0]
+          origin=output(['git','-C',str(repo),'rev-parse','origin/main'])[0]
+          dirty=output(['git','-C',str(repo),'status','--porcelain','--untracked-files=all'])[0]
+          print('RUNTIME_HOST='+host)
+          print('CANONICAL_HEAD='+head)
+          print('CANONICAL_ORIGIN_MAIN='+origin)
+          check('CANONICAL_CHECKOUT_IDENTITY',host=='Docker' and bool(head) and head==origin and not dirty)
+
+          unit_files,_=output(['systemctl','list-unit-files','--no-legend','--no-pager'])
+          loaded_services,_=output(['systemctl','list-units','--all','--type=service','--no-legend','--no-pager'])
+          loaded_timers,_=output(['systemctl','list-units','--all','--type=timer','--no-legend','--no-pager'])
+          unit_names=set()
+          for line in unit_files.splitlines():
+              if line.split(): unit_names.add(line.split()[0])
+          service_names=set()
+          for line in loaded_services.splitlines():
+              if line.split(): service_names.add(line.split()[0])
+          timer_names=set()
+          for line in loaded_timers.splitlines():
+              if line.split(): timer_names.add(line.split()[0])
+          pattern=re.compile(r'(?i)(?=.*(?:task|personal))(?=.*reconcil)')
+          task_services=sorted(x for x in unit_names|service_names if x.endswith('.service') and pattern.search(x))
+          task_timers=sorted(x for x in unit_names|timer_names if x.endswith('.timer') and pattern.search(x))
+          print('TASK_SERVICE_UNITS='+','.join(task_services))
+          print('TASK_TIMER_UNITS='+','.join(task_timers))
+          check('ONE_TASK_RECONCILER_SERVICE',len(task_services)==1 and task_services[0]=='lifeos-task-reconciler.service')
+          check('ONE_TASK_RECONCILER_TIMER',len(task_timers)==1 and task_timers[0]=='lifeos-task-reconciler.timer')
+
+          service_props={}
+          for unit in task_services:
+              raw,_=output(['systemctl','show',unit,'-p','ActiveState','-p','SubState','-p','Result','-p','ExecMainStatus','-p','UnitFileState'])
+              props=dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+              service_props[unit]=props
+              print('TASK_SERVICE_STATE='+unit+':'+','.join(k+'='+v for k,v in sorted(props.items())))
+          timer_props={}
+          for unit in task_timers:
+              raw,_=output(['systemctl','show',unit,'-p','ActiveState','-p','UnitFileState','-p','LastTriggerUSec','-p','NextElapseUSecRealtime','-p','OnUnitActiveUSec','-p','RandomizedDelayUSec'])
+              props=dict(line.split('=',1) for line in raw.splitlines() if '=' in line)
+              timer_props[unit]=props
+              print('TASK_TIMER_STATE='+unit+':'+','.join(k+'='+v for k,v in sorted(props.items())))
+          check('TASK_TIMER_ACTIVE',len(timer_props)==1 and timer_props.get('lifeos-task-reconciler.timer',{}).get('ActiveState')=='active')
+          check('TASK_TIMER_ENABLED',len(timer_props)==1 and timer_props.get('lifeos-task-reconciler.timer',{}).get('UnitFileState')=='enabled')
+          if service_props:
+              p=service_props.get('lifeos-task-reconciler.service',{})
+              check('LAST_TASK_RUN_SUCCESS',p.get('Result')=='success' and p.get('ExecMainStatus')=='0')
+
+          related=sorted(x for x in unit_names|service_names if re.search(r'(?i)(lifeos.*(?:assistant|task|paperless|pa)|paperless|homeassistant)',x))
+          print('RELATED_SYSTEMD_UNITS='+','.join(related))
+          containers,container_rc=output(['docker','ps','--all','--format','{{.Names}}|{{.Status}}'])
+          relevant=[x for x in containers.splitlines() if re.search(r'(?i)(paperless|homeassistant|lifeos)',x)]
+          print('RELATED_CONTAINERS='+','.join(relevant))
+          check('HOME_ASSISTANT_CONTAINER_RUNNING',any(x.startswith('homeassistant|Up ') for x in relevant))
+          check('PAPERLESS_CONTAINER_RUNNING',any('paperless' in x.lower() and '|up ' in x.lower() for x in relevant))
+
+          try:
+              username,password=imap_credentials()
+              client=imaplib.IMAP4_SSL('imap.gmail.com',993,ssl_context=ssl.create_default_context())
+              try:
+                  client.login(username,password)
+                  status,_=client.select('INBOX',readonly=True)
+                  check('GMAIL_READ_ONLY_ACCESS',status=='OK')
+              finally:
+                  try: client.logout()
+                  except Exception: pass
+          except Exception as exc:
+              print('GMAIL_READ_ONLY_ACCESS=UNAVAILABLE:'+type(exc).__name__)
+              check('GMAIL_READ_ONLY_ACCESS',False)
+          try:
+              rows=paperless_search('lifeos')
+              print('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP=PASS')
+              check('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP',isinstance(rows,list))
+          except Exception as exc:
+              print('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP=UNAVAILABLE:'+type(exc).__name__)
+              check('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP',False)
+
+          source=repo/'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
+          installed=automation/'lifeos_task_reconciler.py'
+          def digest(path):
+              return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ''
+          source_hash=digest(source); installed_hash=digest(installed)
+          print('RECONCILER_SOURCE_INSTALLED_MATCH='+('YES' if source_hash and source_hash==installed_hash else 'NO'))
+          check('RECONCILER_SOURCE_INSTALLED_MATCH',bool(source_hash) and source_hash==installed_hash)
+          source_text=source.read_text(errors='ignore') if source.is_file() else ''
+          check('PRIVATE_INFERENCE_LOCAL_ONLY','ai_broker._ollama(' in source_text)
+
+          running=[]
+          for item in pathlib.Path('/proc').iterdir():
+              if not item.name.isdigit(): continue
+              try:
+                  cmd=(item/'cmdline').read_bytes().replace(bytes([0]),b' ').decode(errors='ignore')
+                  if 'lifeos_task_reconciler.py' in cmd and int(item.name)!=os.getpid(): running.append(item.name)
+              except (OSError,ValueError): pass
+          print('RECONCILER_PROCESS_COUNT='+str(len(running)))
+          check('NO_COMPETING_RECONCILER_PROCESS',len(running)<=1)
+
+          publisher_files=[]
+          if automation.exists():
+              for p in automation.rglob('*.py'):
+                  if any(part.lower() in {'archive','archived','backup','backups','state'} for part in p.parts): continue
+                  try: body=p.read_text(errors='ignore')
+                  except OSError: continue
+                  if 'www/lifeos_tasks.json' in body: publisher_files.append(str(p.relative_to(automation)))
+          print('RUNTIME_TASK_PUBLISHERS='+','.join(sorted(publisher_files)))
+          check('ONE_RUNTIME_TASK_PUBLISHER',len(publisher_files)==1 and publisher_files[0]=='lifeos_task_reconciler.py')
+
+          payloads={}
+          now=time.time()
+          for label,path in (('PERSISTED',state_path),('HA_PROJECTION',published)):
+              try:
+                  data=json.loads(path.read_text())
+                  age=max(0,int(now-float(data.get('generated_time',0))))
+                  tasks=data.get('tasks') if isinstance(data.get('tasks'),list) else []
+                  resolved=data.get('resolved') if isinstance(data.get('resolved'),list) else []
+                  counts=Counter(str(x.get('status','INVALID')) for x in tasks+resolved if isinstance(x,dict))
+                  payloads[label]=data
+                  print(label+'_SCHEMA='+str(data.get('schema')))
+                  print(label+'_AGE_SECONDS='+str(age))
+                  print(label+'_TASKS='+str(len(tasks)))
+                  print(label+'_RESOLVED='+str(len(resolved)))
+                  print(label+'_OPEN='+str(counts.get('OPEN',0)))
+                  print(label+'_WAITING='+str(counts.get('WAITING',0)))
+                  print(label+'_DONE='+str(counts.get('DONE',0)))
+                  print(label+'_MESSAGES_CONSIDERED='+str(data.get('messages_considered')))
+                  print(label+'_ERRORS='+str(data.get('errors')))
+                  check(label+'_SCHEMA_VALID',data.get('schema')=='lifeos_tasks_v3')
+                  check(label+'_FRESH_WITHIN_TIMER_WINDOW',0<=now-float(data.get('generated_time',0))<=7*3600)
+                  check(label+'_STATUSES_VALID',all(str(x.get('status')) in {'OPEN','WAITING'} for x in tasks if isinstance(x,dict)) and all(str(x.get('status'))=='DONE' for x in resolved if isinstance(x,dict)))
+                  check(label+'_NO_RECONCILER_ERRORS',int(data.get('errors',-1))==0)
+              except Exception as exc:
+                  print(label+'_STATE=UNAVAILABLE:'+type(exc).__name__)
+                  check(label+'_STATE_READABLE',False)
+
+          check('PERSISTED_STATE_EQUALS_HA_PROJECTION',len(payloads)==2 and payloads.get('PERSISTED')==payloads.get('HA_PROJECTION'))
+          if payloads.get('PERSISTED'):
+              count=int(payloads['PERSISTED'].get('messages_considered') or 0)
+              print('MODEL_CLASSIFICATION_CALLS_UPPER_BOUND_PER_SCAN='+str(count))
+              print('MODEL_USAGE_EXACT_COUNTER=NOT_EXPOSED_BY_CURRENT_RECONCILER')
+              older=sum(1 for x in payloads['PERSISTED'].get('tasks',[])+payloads['PERSISTED'].get('resolved',[]) if isinstance(x,dict) and int(x.get('observed_at') or now)>0 and int(x.get('observed_at') or now)<now-90*86400)
+              print('PERSISTED_RECORDS_OUTSIDE_90_DAY_SCAN='+str(older))
+              print('BOUNDED_SCAN_PERSISTENCE='+('LIVE_EVIDENCE' if older else 'NOT_DEMONSTRATED_BY_CURRENT_RECORDS'))
+          failures=[name for name,ok in checks if not ok]
+          print('GATE_A_RUNTIME_INVENTORY='+('PASS' if not failures else 'FAIL'))
+          print('GATE_A_FAILED_CHECKS='+(','.join(failures) if failures else 'NONE'))
+          if failures: raise SystemExit(1)
+          PY
