@@ -227,3 +227,64 @@ jobs:
           print('GATE_A_FAILED_CHECKS='+(','.join(failures) if failures else 'NONE'))
           if failures: raise SystemExit(1)
           PY
+
+      - name: Read-only PA identity, attention and briefing acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n python3 - <<'PY'
+          import importlib.util, json, pathlib, time
+          automation=pathlib.Path('/home/joshan/automation')
+          installed=automation/'lifeos_task_reconciler.py'
+          spec=importlib.util.spec_from_file_location('lifeos_task_reconciler_live',installed)
+          module=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          def decision(topic,status):
+              return {'actionable':True,'title':'Synthetic '+topic,'status':status,'counterparty':'Synthetic Supplier','topic':topic,'severity':'normal'}
+          request={'message_id':'<synthetic-request@example.test>','source_ref':'<synthetic-request@example.test>'}
+          progress={'message_id':'<synthetic-progress@example.test>','in_reply_to':request['message_id'],'references':request['message_id'],'source_ref':'<synthetic-progress@example.test>'}
+          done={'message_id':'<synthetic-done@example.test>','in_reply_to':progress['message_id'],'references':request['message_id']+' '+progress['message_id'],'source_ref':'<synthetic-done@example.test>'}
+          messages=[(decision('renewal','OPEN'),request,100),(decision('documents','WAITING'),progress,200),(decision('resolved','DONE'),done,300)]
+          state={}
+          task_id=None
+          for item,msg,observed in messages:
+              resolved=module.resolve_task_id(item,msg,state)
+              if task_id is None: task_id=resolved
+              assert resolved==task_id
+              old=state.get(task_id,{})
+              if module.observation_is_newer(old,observed):
+                  refs=set(old.get('source_message_ids',[]))
+                  refs.add(msg['message_id'])
+                  state[task_id]={'id':task_id,'identity_semantic':module.key(item),'thread_root_id':module.thread_root(msg),'source_message_ids':sorted(refs),'status':module.effective_status(old,item['status']),'observed_at':observed}
+          assert state[task_id]['status']=='DONE'
+          unrelated={'message_id':'<synthetic-other@example.test>','source_ref':'<synthetic-other@example.test>'}
+          assert module.resolve_task_id(decision('renewal','OPEN'),unrelated,state)!=task_id
+          assert module.resolve_task_id(decision('renewal','OPEN'),request,state)==task_id
+          assert not module.observation_is_newer(state[task_id],100)
+          assert module.effective_status({'status':'DONE'},'OPEN')=='DONE'
+          print('GATE_B_RUNTIME_ACCEPTANCE=PASS')
+          tasks=pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json')
+          data=json.loads(tasks.read_text())
+          attention=data.get('attention') or {}
+          counts=attention.get('counts') or {}
+          count_keys={'needs_me','waiting_on_others','overdue','upcoming','recently_completed','stale_no_progress'}
+          assert attention.get('schema')=='lifeos_attention_projection_v1'
+          assert count_keys.issubset(counts)
+          assert all(isinstance(counts[k],int) and counts[k]>=0 for k in count_keys)
+          required={'id','title','status','source','source_refs','priority_score'}
+          assert all(required.issubset(row) for name in ('needs_me','waiting_on_others','due_overdue','upcoming','recently_completed','stale_no_progress') for row in attention.get(name,[]))
+          assert attention.get('method')=='deterministic_severity_times_due_urgency'
+          assert all(isinstance(row.get('priority_score'),int) for row in attention.get('needs_me',[]))
+          print('GATE_C_RUNTIME_ACCEPTANCE=PASS')
+          print('GATE_D_RUNTIME_ACCEPTANCE=PASS')
+          briefing=data.get('briefing') or {}
+          assert briefing.get('schema')=='lifeos_daily_briefing_v1'
+          assert briefing.get('source')=='lifeos_tasks_v3'
+          assert briefing.get('confidence')=='structured_state_only'
+          assert isinstance(briefing.get('items'),list) and len(briefing['items'])<=5
+          assert isinstance(briefing.get('summary'),str) and briefing['summary']
+          print('GATE_E_RUNTIME_ACCEPTANCE=PASS')
+          print('ATTENTION_COUNTS='+','.join(k+':'+str(counts[k]) for k in sorted(count_keys)))
+          print('BRIEFING_ITEMS='+str(len(briefing['items'])))
+          print('PRIVATE_TASK_CONTENT=NOT_EMITTED')
+          PY
