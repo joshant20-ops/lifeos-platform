@@ -191,14 +191,14 @@ _PENDING_PA_ACTIONS_LOCK = __import__("threading").Lock()
 def _parse_pa_action(question):
     q = " ".join(str(question or "").strip().split())
     patterns = [
-        ("snooze", r"^(?:please\\s+)?snooze\\s+(.+?)\\s+until\\s+(\\d{4}-\\d{2}-\\d{2})[.!]?$"),
-        ("severity", r"^(?:please\\s+)?set\\s+severity\\s+of\\s+(.+?)\\s+to\\s+(low|normal|high)[.!]?$"),
-        ("due_date", r"^(?:please\\s+)?(?:set|change)\\s+due\\s+date\\s+of\\s+(.+?)\\s+to\\s+(\\d{4}-\\d{2}-\\d{2})[.!]?$"),
-        ("dismiss", r"^(?:please\\s+)?dismiss\\s+(.+?)(?:\\s+as\\s+not\\s+a\\s+task)?[.!]?$"),
-        ("reopen", r"^(?:please\\s+)?reopen\\s+(.+?)[.!]?$"),
-        ("close", r"^(?:please\\s+)?(?:complete|close)\\s+(.+?)[.!]?$"),
-        ("close", r"^(?:please\\s+)?mark\\s+(.+?)\\s+(?:as\\s+)?(?:done|complete|completed)[.!]?$"),
-        ("comment", r"^(?:please\\s+)?(?:add|leave|record)\\s+(?:a\\s+)?(?:comment|note)\\s+[\\"'](.{1,1000})[\\"']\\s+(?:on|for|to)\\s+(.+?)[.!]?$"),
+        ("snooze", r"^(?:please\s+)?snooze\s+(.+?)\s+until\s+(\d{4}-\d{2}-\d{2})[.!]?$"),
+        ("severity", r"^(?:please\s+)?set\s+severity\s+of\s+(.+?)\s+to\s+(low|normal|high)[.!]?$"),
+        ("due_date", r"^(?:please\s+)?(?:set|change)\s+due\s+date\s+of\s+(.+?)\s+to\s+(\d{4}-\d{2}-\d{2})[.!]?$"),
+        ("dismiss", r"^(?:please\s+)?dismiss\s+(.+?)(?:\s+as\s+not\s+a\s+task)?[.!]?$"),
+        ("reopen", r"^(?:please\s+)?reopen\s+(.+?)[.!]?$"),
+        ("close", r"^(?:please\s+)?(?:complete|close)\s+(.+?)[.!]?$"),
+        ("close", r"^(?:please\s+)?mark\s+(.+?)\s+(?:as\s+)?(?:done|complete|completed)[.!]?$"),
+        ("comment", r"^(?:please\s+)?(?:add|leave|record)\s+(?:a\s+)?(?:comment|note)\s+[\"'](.{1,1000})[\"']\s+(?:on|for|to)\s+(.+?)[.!]?$"),
     ]
     for action, pattern in patterns:
         match = re.match(pattern, q, re.I)
@@ -209,9 +209,9 @@ def _parse_pa_action(question):
             return {"action": action, "target": target.strip(), "note": note.strip()}
         target, value = match.groups() if action in {"snooze", "severity", "due_date"} else (match.group(1), "")
         fields = {"snooze": {"until": value}, "severity": {"severity": value.lower()}, "due_date": {"due_date": value}}
-        return {"action": action, "target": target.strip(" \\"'"), **fields.get(action, {})}
+        return {"action": action, "target": target.strip(" \"'"), **fields.get(action, {})}
     # Recognize incomplete note requests and ask for the bounded quoted-note form.
-    if re.match(r"^(?:please\\s+)?(?:add|leave|record)\\s+(?:a\\s+)?(?:comment|note)\\b", q, re.I):
+    if re.match(r"^(?:please\s+)?(?:add|leave|record)\s+(?:a\s+)?(?:comment|note)\b", q, re.I):
         return {"action": "clarify_note"}
     return None
 
@@ -224,7 +224,7 @@ def _task_rows(payload):
 
 def _resolve_pa_action_target(target, payload):
     rows = _task_rows(payload)
-    wanted = " ".join(str(target or "").lower().split()).strip(" .?!\\"'")
+    wanted = " ".join(str(target or "").lower().split()).strip(" .?!\"'")
     exact_id = [x for x in rows if str(x.get("id") or "").lower() == wanted]
     if len(exact_id) == 1:
         return exact_id, rows
@@ -286,7 +286,7 @@ def _verify_user_action(task_id, action, fields, before_count):
 
 def process_pa_action(question, client_key="local"):
     q = " ".join(str(question or "").strip().split())
-    confirm = re.fullmatch(r"confirm\\s+([a-z0-9][a-z0-9-]{0,119})", q, re.I)
+    confirm = re.fullmatch(r"confirm\s+([a-z0-9][a-z0-9-]{0,119})", q, re.I)
     if confirm:
         task_id = confirm.group(1).lower()
         with _PENDING_PA_ACTIONS_LOCK:
