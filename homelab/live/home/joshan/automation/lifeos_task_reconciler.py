@@ -19,6 +19,7 @@ from lifeos_email_paperless_selective import secret, paperless_token
 
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
+SCAN_STATE=Path("/home/joshan/automation/state/lifeos_personal_task_scan.json")
 OUT=HA/"www/lifeos_tasks.json"
 MAX_MESSAGES=int(os.getenv("LIFEOS_TASK_EMAIL_LIMIT","6"))
 LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))
@@ -70,29 +71,51 @@ def load_previous():
         return {str(x.get("id")):x for x in rows if isinstance(x,dict) and x.get("id")}
     except Exception:return {}
 
+def load_scan_state():
+    try:
+        data=json.loads(SCAN_STATE.read_text())
+        return data if data.get("schema")=="lifeos_task_scan_v1" else {}
+    except Exception:return {}
+
 def message_time(date_value):
     try:return int(parsedate_to_datetime(str(date_value or "")).timestamp())
     except Exception:return int(time.time())
 
 def main():
     previous=load_previous()
+    scan=load_scan_state()
     user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
     password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
     c=imaplib.IMAP4_SSL(os.getenv("LIFEOS_IMAP_HOST","imap.gmail.com"),int(os.getenv("LIFEOS_IMAP_PORT","993")),ssl_context=ssl.create_default_context())
     c.login(user,password);c.select("INBOX",readonly=True)
-    status,rows=c.search(None,"SINCE",time.strftime("%d-%b-%Y",time.localtime(time.time()-LOOKBACK_DAYS*86400)))
-    ids=(rows[0].split() if status=="OK" and rows else [])[-MAX_MESSAGES:]
+    try:
+        _,validity_rows=c.response("UIDVALIDITY")
+        uidvalidity=(validity_rows or [b""])[0].decode(errors="ignore")
+    except Exception:
+        uidvalidity=""
+    if scan.get("uidvalidity")!=uidvalidity:
+        scan={}
+    status,rows=c.uid("search",None,"SINCE",time.strftime("%d-%b-%Y",time.localtime(time.time()-LOOKBACK_DAYS*86400)))
+    all_ids=sorted({int(x) for x in (rows[0].split() if status=="OK" and rows else [])})
+    cursor=int(scan.get("before_uid") or 0)
+    candidates=[x for x in all_ids if not cursor or x<cursor]
+    if not candidates:
+        candidates=all_ids
+    ids=candidates[-MAX_MESSAGES:]
+    next_cursor=ids[0] if ids else 0
     fetched=[];errors=0
     for uid in ids:
         try:
-            st,data=c.fetch(uid,"(RFC822)")
+            st,data=c.uid("fetch",str(uid),"(RFC822)")
             if st!="OK":continue
             raw=next(x[1] for x in data if isinstance(x,tuple));msg=email.message_from_bytes(raw)
+            message_id=str(msg.get("Message-ID",""))[:300]
             fetched.append({
                 "from":str(msg.get("From",""))[:300],
                 "subject":str(msg.get("Subject",""))[:500],
                 "date":str(msg.get("Date",""))[:100],
-                "message_id":str(msg.get("Message-ID",""))[:300],
+                "message_id":message_id,
+                "source_ref":message_id or (uidvalidity+":"+str(uid)),
                 "body":text_of(msg),
             })
         except Exception: errors+=1
@@ -102,12 +125,25 @@ def main():
         pass
 
     # Keep the network mailbox session out of the slow local inference loop.
+    processed_order=list(scan.get("processed_message_ids") or [])
+    processed=set(processed_order)
+    new_fetched=[]
+    messages_reused=0
+    for compact in fetched:
+        if compact["source_ref"] in processed:
+            messages_reused+=1
+        else:
+            new_fetched.append(compact)
     print("TASK_SCAN_FETCHED="+str(len(fetched)),flush=True)
     observations=[]
-    for index,compact in enumerate(fetched,1):
-        print("TASK_CLASSIFICATION_PROGRESS="+str(index)+"/"+str(len(fetched)),flush=True)
+    classification_attempts=0
+    for index,compact in enumerate(new_fetched,1):
+        print("TASK_CLASSIFICATION_PROGRESS="+str(index)+"/"+str(len(new_fetched)),flush=True)
         try:
+            classification_attempts+=1
             d=classify(compact)
+            processed.add(compact["source_ref"])
+            processed_order.append(compact["source_ref"])
             if not d["actionable"] or d["status"]=="NONE":continue
             k=key(d)
             if not k:continue
@@ -134,9 +170,11 @@ def main():
     open_tasks=[x for x in tasks.values() if x.get("status")!="DONE"]
     resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
-    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"errors":errors,"tasks":open_tasks,"resolved":resolved,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
+    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
     tmp=STATE.with_suffix(".tmp");tmp.write_text(json.dumps(payload,indent=2)+"\n");tmp.replace(STATE)
     outtmp=OUT.with_suffix(".tmp");outtmp.write_text(json.dumps(payload,indent=2)+"\n");outtmp.replace(OUT)
-    print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"errors":errors}))
+    scan_payload={"schema":"lifeos_task_scan_v1","uidvalidity":uidvalidity,"before_uid":next_cursor,"processed_message_ids":processed_order[-10000:],"updated_time":int(time.time())}
+    scan_tmp=SCAN_STATE.with_suffix(".tmp");scan_tmp.write_text(json.dumps(scan_payload,indent=2)+"\n");scan_tmp.replace(SCAN_STATE)
+    print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"classified":classification_attempts,"reused":messages_reused,"errors":errors}))
 if __name__=="__main__":main()
