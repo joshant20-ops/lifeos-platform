@@ -43,3 +43,12 @@ Stage 8 is satisfied by retaining Home Assistant as the authoritative device/aut
 ## Closure proof
 
 The household Energy integration remains accepted only while live Pi5 evidence proves: specialist API health, deterministic replay/dedupe, HA entity registration, common attention integration, internal scheduler operation, retirement of the legacy JSON/timer bridge, Home Assistant/Mosquitto/Predbat/LifeOS Energy health, and a clean canonical repository.
+
+
+## Personal Administration obligation projection
+
+The existing Gmail obligation index publishes a thin, deterministic `attention` projection inside `lifeos_tasks_v3`. It reuses the established Household Intelligence attention surface and keeps Gmail as message authority. Projection rows contain the stable obligation ID, user-facing short task summary, status, due date, severity, score, source references and observation time. They do not copy message bodies or document contents, and they do not create a new database or publisher.
+
+Priority is calculated as severity × due-date urgency. Severity uses the local classifier's bounded low/normal/high label, defaulting to normal when absent or invalid. Urgency is 5 for overdue, 4 for today/tomorrow, 3 for seven days, 2 for thirty days and 1 without a due date. The projection separately groups Needs me, Waiting on others, Due/overdue, Upcoming, Recently completed and Stale/no-progress. These are deterministic views of the same derived task state.
+
+The bounded daily briefing is generated from that structured projection during the existing reconciler run. It has a maximum of five items, includes stable provenance references and states that its confidence comes from structured state. It does not rescan Gmail or Paperless, call a model, send notifications, or create a scheduler.
