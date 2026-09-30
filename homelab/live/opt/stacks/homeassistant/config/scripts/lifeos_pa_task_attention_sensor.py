@@ -5,6 +5,9 @@ import json
 import re
 import time
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from lifeos_pa_user_state import apply_user_state, read_user_state
 
 TASKS = Path("/config/www/lifeos_tasks.json")
 def safe_markdown(value):
@@ -13,7 +16,7 @@ def safe_markdown(value):
 
 def main():
     try:
-        payload = json.loads(TASKS.read_text())
+        payload = apply_user_state(json.loads(TASKS.read_text()), read_user_state())
         attention = payload.get("attention") or {}
         briefing = payload.get("briefing") or {}
         if payload.get("schema") != "lifeos_tasks_v3":
@@ -29,18 +32,17 @@ def main():
         generated = int(payload.get("generated_time") or 0)
         if not generated or time.time() - generated > 7 * 3600:
             raise ValueError("stale")
-        items = briefing.get("items") or []
-        if not isinstance(items, list) or len(items) > 5:
-            raise ValueError("briefing")
+        all_tasks = (payload.get("tasks") or []) + (payload.get("resolved") or [])
+        items = [
+            {k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_refs", "paperless_evidence", "user_comments", "snoozed_until", "status_source", "severity_source", "due_date_source")}
+            for x in all_tasks if isinstance(x, dict) and x.get("id")
+        ][:100]
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"
         out = {
             "state": state,
             **counts,
             "briefing": str(briefing.get("summary") or "Briefing unavailable."),
-            "items": [
-                {"title": safe_markdown(x.get("title")), "due_date": x.get("due_date")}
-                for x in items if isinstance(x, dict)
-            ],
+            "items": items,
             "source": "lifeos_tasks_v3",
             "generated_time": generated,
             "age_seconds": max(0, int(time.time() - generated)),
