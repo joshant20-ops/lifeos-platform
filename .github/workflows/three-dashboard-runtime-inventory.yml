@@ -234,6 +234,49 @@ jobs:
           if failures: raise SystemExit(1)
           PY
 
+      - name: Deep acceptance — force fresh reconciler cycle
+        id: deep_cycle
+        if: ${{ always() && steps.gate_a.outcome == 'success' }}
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess, time
+          state=pathlib.Path('/home/joshan/automation/state/lifeos_personal_tasks.json')
+          scan=pathlib.Path('/home/joshan/automation/state/lifeos_personal_task_scan.json')
+          published=pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json')
+          def load(p): return json.loads(p.read_text())
+          def digest(p): return hashlib.sha256(p.read_bytes()).hexdigest()
+          before=load(state); before_scan=load(scan); before_hash=digest(state)
+          before_generated=float(before.get('generated_time') or 0)
+          before_processed=len(before_scan.get('processed_message_ids') or [])
+          started=time.time()
+          cp=subprocess.run(['sudo','-n','systemctl','start','lifeos-task-reconciler.service'],text=True,capture_output=True,timeout=420)
+          print('DEEP_RECONCILER_START_RC='+str(cp.returncode))
+          if cp.returncode: raise SystemExit(cp.returncode)
+          props=subprocess.check_output(['systemctl','show','lifeos-task-reconciler.service','-p','Result','-p','ExecMainStatus'],text=True)
+          print('DEEP_RECONCILER_SERVICE_RESULT='+','.join(x for x in props.splitlines() if x))
+          after=load(state); after_scan=load(scan); projection=load(published)
+          after_generated=float(after.get('generated_time') or 0)
+          after_processed=len(after_scan.get('processed_message_ids') or [])
+          print('DEEP_CYCLE_DURATION_SECONDS='+str(int(time.time()-started)))
+          print('DEEP_GENERATED_TIME_ADVANCED='+str(after_generated>before_generated))
+          print('DEEP_SCAN_PROCESSED_BEFORE='+str(before_processed))
+          print('DEEP_SCAN_PROCESSED_AFTER='+str(after_processed))
+          print('DEEP_STATE_CHANGED='+str(digest(state)!=before_hash))
+          print('DEEP_MESSAGES_CONSIDERED='+str(int(after.get('messages_considered') or 0)))
+          print('DEEP_MESSAGES_CLASSIFIED='+str(int(after.get('messages_classified') or 0)))
+          print('DEEP_MESSAGES_REUSED='+str(int(after.get('messages_reused') or 0)))
+          assert after_generated>=started-2 and after_generated>before_generated
+          assert after.get('schema')=='lifeos_tasks_v3'
+          assert after_scan.get('schema')=='lifeos_task_scan_v1'
+          assert after_processed>=before_processed
+          assert projection==after
+          assert int(after.get('errors') or 0)==0
+          print('DEEP_GMAIL_TO_PERSISTED_TO_HA_PROJECTION=PASS')
+          PY
+
       - name: Gates B-E — installed identity and live projection acceptance
         id: gates_be
         if: ${{ always() }}
