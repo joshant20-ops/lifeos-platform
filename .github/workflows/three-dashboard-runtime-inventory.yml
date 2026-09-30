@@ -1,6 +1,7 @@
 name: Three Dashboard Runtime Inventory
 on:
   workflow_dispatch:
+    # Manual reruns remain available; push-path changes also provide acceptance evidence.
   push:
     branches: [main]
     paths: ['.github/workflows/three-dashboard-runtime-inventory.yml']
