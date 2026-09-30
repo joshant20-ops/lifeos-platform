@@ -6,7 +6,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(REPO / "governor"))
-from governor import pa_user_state
+import pa_user_state as bridge_user_state
 import assistant_bridge as bridge
 
 
@@ -43,13 +43,13 @@ def test_conversation_proposes_then_confirms_and_verifies_user_close(tmp_path, m
     proposal = bridge.process_pa_action("close Synthetic renewal 1", "client-a")
     assert proposal["action_status"] == "proposed"
     assert proposal["action_task_id"] == "renewal-abc123"
-    assert pa_user_state.read_user_state()["revision"] == 0
+    assert bridge_user_state.read_user_state()["revision"] == 0
     result = bridge.process_pa_action("confirm renewal-abc123", "client-a")
     assert result["action_status"] == "verified"
     state = pa_user_state.read_user_state()
     assert state["obligations"]["renewal-abc123"]["status_override"] == "DONE"
     replay = {"schema": "lifeos_tasks_v3", "generated_time": 1790790000, "tasks": fixture(tasks), "resolved": []}
-    assert pa_user_state.apply_user_state(replay, state)["resolved"][0]["status"] == "DONE"
+    assert bridge_user_state.apply_user_state(replay, state)["resolved"][0]["status"] == "DONE"
 
 
 def test_ambiguous_conversation_action_requests_identity_without_mutation(tmp_path, monkeypatch):
