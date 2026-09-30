@@ -110,7 +110,8 @@ print('INFERENCE='+j['inference'])
 PY
 curl -fsS --max-time 3 http://127.0.0.1:${PORT}/ | grep -q 'LifeOS Assistant'
 TEST_BODY_FILE=$(mktemp)
-trap 'rm -f "$TEST_BODY_FILE"' EXIT
+PA_BODY_FILE=$(mktemp)
+trap 'rm -f "$TEST_BODY_FILE" "$PA_BODY_FILE"' EXIT
 TEST_CODE=$(curl -sS --max-time 360 -o "$TEST_BODY_FILE" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
   -d '{"messages":[{"role":"user","content":"I want a read-only health check for LifeOS. Understand the goal and suggest one useful improvement, but do not run anything."}],"privacy_domain":"personal-administration"}' \
@@ -138,6 +139,36 @@ assert j.get('privacy') == 'local-only'
 print('CONVERSATION=PASS')
 print('CONVERSATION_PROVIDER='+str(j.get('provider')))
 PY
+
+check_pa_query() {
+  local question="$1"
+  local name="$2"
+  local payload
+  payload=$(python3 - "$question" <<'PY'
+import json,sys
+print(json.dumps({"messages":[{"role":"user","content":sys.argv[1]}],"privacy_domain":"personal-administration"}))
+PY
+)
+  local code
+  code=$(curl -sS --max-time 20 -o "$PA_BODY_FILE" -w '%{http_code}' \
+    -H 'Content-Type: application/json' -d "$payload" "http://127.0.0.1:$PORT/assist")
+  [[ "$code" == "200" ]] || { echo "PA_RETRIEVAL_HTTP=FAIL"; exit 23; }
+  python3 - "$PA_BODY_FILE" "$name" <<'PY'
+import json,sys
+j=json.load(open(sys.argv[1]))
+assert j.get('provider')=='structured_local_state'
+assert j.get('route')=='structured_pa_state'
+assert j.get('source_schema')=='lifeos_tasks_v3'
+assert j.get('privacy')=='local-only'
+assert j.get('ready_to_run') is False
+print('PA_RETRIEVAL_'+sys.argv[2].upper()+'=PASS')
+PY
+}
+check_pa_query 'What needs me?' 'needs_me'
+check_pa_query 'What am I waiting for?' 'waiting'
+check_pa_query 'What changed?' 'changed'
+check_pa_query 'What is due soon?' 'due_soon'
+check_pa_query 'What evidence do I have for insurance?' 'evidence'
 
 printf '\n===== 5/6 — HOME ASSISTANT TARGET =====\n'
 LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
