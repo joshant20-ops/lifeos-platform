@@ -70,8 +70,8 @@ def load_previous():
         return {str(x.get("id")):x for x in rows if isinstance(x,dict) and x.get("id")}
     except Exception:return {}
 
-def message_time(msg):
-    try:return int(parsedate_to_datetime(str(msg.get("Date",""))).timestamp())
+def message_time(date_value):
+    try:return int(parsedate_to_datetime(str(date_value or "")).timestamp())
     except Exception:return int(time.time())
 
 def main():
