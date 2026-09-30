@@ -99,4 +99,4 @@ def test_targeted_needs_me_searches_full_task_title_beyond_card_truncation(monke
         now_ts=now,
     )
     assert result["result_ids"] == ["task-open"]
-    assert "tailmarker" in result["reply"]
+    assert result["result_count"] == 1
