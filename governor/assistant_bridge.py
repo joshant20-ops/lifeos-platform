@@ -99,10 +99,13 @@ def _read_pa_task_state(now_ts=None):
 def pa_structured_answer(question, payload=None, now_ts=None):
     """Answer supported everyday PA questions from the local derived task view."""
     q=" ".join(str(question or "").lower().split())
+    payload=apply_user_state(payload) if isinstance(payload,dict) else payload
     route=None
     query_term=""
     if any(x in q for x in ("what needs me","what needs my attention","what do i need to do","what should i do next")):
         route="needs_me"
+        targeted=re.search(r"what needs (?:me|my attention) (?:about|for) (.+)$",q)
+        if targeted: query_term=targeted.group(1).strip(" ?.!")[:100]
     elif any(x in q for x in ("what am i waiting for","what are others doing","waiting on others","what is someone else doing")):
         route="waiting_on_others"
     elif any(x in q for x in ("what changed","what has changed","what changed recently")):
@@ -123,6 +126,9 @@ def pa_structured_answer(question, payload=None, now_ts=None):
     now_ts=int(now_ts if now_ts is not None else time.time())
     if route=="needs_me":
         items=list(attention.get("needs_me") or [x for x in payload.get("tasks",[]) if x.get("status")=="OPEN"])
+        if query_term:
+            tokens=[x for x in re.findall(r"[a-z0-9]+",query_term) if len(x)>1]
+            items=[x for x in items if tokens and all(t in " ".join(str(x.get(k) or "") for k in ("title","topic","counterparty","id")).lower() for t in tokens)]
         label="Needs me"
     elif route=="waiting_on_others":
         items=list(attention.get("waiting_on_others") or [x for x in payload.get("tasks",[]) if x.get("status")=="WAITING"])
@@ -177,8 +183,9 @@ def pa_structured_answer(question, payload=None, now_ts=None):
                 title=str(item.get("title") or "Untitled task")[:160]
                 status=str(item.get("status") or "").lower()
                 due=str(item.get("due_date") or "")
+                severity=str(item.get("severity") or "normal").lower()
                 suffix=("; due "+due) if due else ""
-                lines.append(f"- {title} ({status}{suffix})")
+                lines.append(f"- {title} ({status}; {severity}{suffix})")
             reply=f"{label} ({len(unique)} shown):\n"+"\n".join(lines)
     reply+="\n\nSource: local structured PA state. Confidence: structured state only; source references are retained."
     return {"handled":True,"ok":True,"route":"structured_pa_state","source_schema":"lifeos_tasks_v3","privacy":"local-only","confidence":"structured_state_only","matched_view":route,"reply":reply,"result_count":len(unique),"result_ids":[str(x.get("id") or "") for x in unique[:20]]}
