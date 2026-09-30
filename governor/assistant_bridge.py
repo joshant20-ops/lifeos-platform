@@ -10,6 +10,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ai_broker import BrokerError, generate
+from pa_user_state import apply_user_state, mutate_action, read_user_state
 import re
 
 PRIVACY_DOMAIN_POLICY_PATH = pathlib.Path(os.environ.get("LIFEOS_PRIVACY_DOMAIN_POLICY", pathlib.Path(__file__).with_name("privacy-domain-policy.json")))
@@ -90,7 +91,7 @@ def _read_pa_task_state(now_ts=None):
         now_ts=int(now_ts if now_ts is not None else time.time())
         if payload.get("schema")!="lifeos_tasks_v3" or not generated or now_ts-generated>7*3600:
             return None
-        return payload
+        return apply_user_state(payload)
     except Exception:
         return None
 
@@ -180,7 +181,182 @@ def pa_structured_answer(question, payload=None, now_ts=None):
                 lines.append(f"- {title} ({status}{suffix})")
             reply=f"{label} ({len(unique)} shown):\n"+"\n".join(lines)
     reply+="\n\nSource: local structured PA state. Confidence: structured state only; source references are retained."
-    return {"handled":True,"ok":True,"route":"structured_pa_state","source_schema":"lifeos_tasks_v3","privacy":"local-only","confidence":"structured_state_only","matched_view":route,"reply":reply,"result_count":len(unique)}
+    return {"handled":True,"ok":True,"route":"structured_pa_state","source_schema":"lifeos_tasks_v3","privacy":"local-only","confidence":"structured_state_only","matched_view":route,"reply":reply,"result_count":len(unique),"result_ids":[str(x.get("id") or "") for x in unique[:20]]}
+
+
+_PENDING_PA_ACTIONS = {}
+_PENDING_PA_ACTIONS_LOCK = __import__("threading").Lock()
+
+
+def _parse_pa_action(question):
+    q = " ".join(str(question or "").strip().split())
+    patterns = [
+        ("snooze", r"^(?:please\\s+)?snooze\\s+(.+?)\\s+until\\s+(\\d{4}-\\d{2}-\\d{2})[.!]?$"),
+        ("severity", r"^(?:please\\s+)?set\\s+severity\\s+of\\s+(.+?)\\s+to\\s+(low|normal|high)[.!]?$"),
+        ("due_date", r"^(?:please\\s+)?(?:set|change)\\s+due\\s+date\\s+of\\s+(.+?)\\s+to\\s+(\\d{4}-\\d{2}-\\d{2})[.!]?$"),
+        ("dismiss", r"^(?:please\\s+)?dismiss\\s+(.+?)(?:\\s+as\\s+not\\s+a\\s+task)?[.!]?$"),
+        ("reopen", r"^(?:please\\s+)?reopen\\s+(.+?)[.!]?$"),
+        ("close", r"^(?:please\\s+)?(?:complete|close)\\s+(.+?)[.!]?$"),
+        ("close", r"^(?:please\\s+)?mark\\s+(.+?)\\s+(?:as\\s+)?(?:done|complete|completed)[.!]?$"),
+        ("comment", r"^(?:please\\s+)?(?:add|leave|record)\\s+(?:a\\s+)?(?:comment|note)\\s+[\\"'](.{1,1000})[\\"']\\s+(?:on|for|to)\\s+(.+?)[.!]?$"),
+    ]
+    for action, pattern in patterns:
+        match = re.match(pattern, q, re.I)
+        if not match:
+            continue
+        if action == "comment":
+            note, target = match.groups()
+            return {"action": action, "target": target.strip(), "note": note.strip()}
+        target, value = match.groups() if action in {"snooze", "severity", "due_date"} else (match.group(1), "")
+        fields = {"snooze": {"until": value}, "severity": {"severity": value.lower()}, "due_date": {"due_date": value}}
+        return {"action": action, "target": target.strip(" \\"'"), **fields.get(action, {})}
+    # Recognize incomplete note requests and ask for the bounded quoted-note form.
+    if re.match(r"^(?:please\\s+)?(?:add|leave|record)\\s+(?:a\\s+)?(?:comment|note)\\b", q, re.I):
+        return {"action": "clarify_note"}
+    return None
+
+
+def _task_rows(payload):
+    if not isinstance(payload, dict):
+        return []
+    return [x for x in list(payload.get("tasks") or []) + list(payload.get("resolved") or []) if isinstance(x, dict)]
+
+
+def _resolve_pa_action_target(target, payload):
+    rows = _task_rows(payload)
+    wanted = " ".join(str(target or "").lower().split()).strip(" .?!\\"'")
+    exact_id = [x for x in rows if str(x.get("id") or "").lower() == wanted]
+    if len(exact_id) == 1:
+        return exact_id, rows
+    exact_title = [x for x in rows if str(x.get("title") or "").strip().lower() == wanted]
+    if len(exact_title) == 1:
+        return exact_title, rows
+    tokens = [x for x in re.findall(r"[a-z0-9]+", wanted) if len(x) > 1 and x not in {"task", "obligation", "the", "my", "a", "an"}]
+    matches = []
+    if tokens:
+        for row in rows:
+            hay = " ".join(str(row.get(k) or "") for k in ("id", "title", "topic", "counterparty")).lower()
+            if all(token in hay for token in tokens):
+                matches.append(row)
+    return matches, rows
+
+
+def _pa_action_reply(reply, *, needs_clarification=False, action_status="", task_id=""):
+    return {
+        "reply": reply,
+        "understanding": "A bounded PA action on the existing local obligation view.",
+        "needs_clarification": needs_clarification,
+        "clarifying_question": reply if needs_clarification else "",
+        "improvements": [],
+        "ready_to_run": False,
+        "proposed_job": "",
+        "privacy": "local-only",
+        "provider": "structured_local_state",
+        "route": "structured_pa_action",
+        "source_schema": "lifeos_tasks_v3",
+        "action_status": action_status,
+        "action_task_id": task_id,
+    }
+
+
+def _verify_user_action(task_id, action, fields, before_count):
+    payload = _read_pa_task_state()
+    if not payload:
+        return False
+    row = next((x for x in _task_rows(payload) if str(x.get("id") or "") == task_id), None)
+    if not row:
+        return False
+    if action == "close":
+        return row.get("status") == "DONE" and row.get("status_source") == "user"
+    if action == "reopen":
+        return row.get("status") == "OPEN" and row.get("status_source") == "user"
+    if action == "dismiss":
+        return row.get("status") == "DISMISSED" and row.get("status_source") == "user"
+    if action == "snooze":
+        return row.get("snoozed_until") == fields.get("until")
+    if action == "severity":
+        return row.get("severity") == fields.get("severity") and row.get("severity_source") == "user"
+    if action == "due_date":
+        return row.get("due_date") == fields.get("due_date") and row.get("due_date_source") == "user"
+    if action == "comment":
+        comments = row.get("user_comments") or []
+        return len(comments) > before_count and comments[-1].get("source") == "user_comment"
+    return False
+
+
+def process_pa_action(question, client_key="local"):
+    q = " ".join(str(question or "").strip().split())
+    confirm = re.fullmatch(r"confirm\\s+([a-z0-9][a-z0-9-]{0,119})", q, re.I)
+    if confirm:
+        task_id = confirm.group(1).lower()
+        with _PENDING_PA_ACTIONS_LOCK:
+            pending = _PENDING_PA_ACTIONS.pop(str(client_key), None)
+        if not pending or pending.get("expires_at", 0) < time.time() or pending.get("task_id") != task_id:
+            return _pa_action_reply("There is no current matching PA action to confirm. Please make the request again.", needs_clarification=True, action_status="expired")
+        payload = _read_pa_task_state()
+        if not payload or not any(str(x.get("id") or "") == task_id for x in _task_rows(payload)):
+            return _pa_action_reply("That obligation is no longer available in the current local task view; I did not change it.", needs_clarification=True, action_status="stale", task_id=task_id)
+        fields = {k: pending[k] for k in ("note", "until", "severity", "due_date") if k in pending}
+        state = read_user_state()
+        existing = (state.get("obligations") or {}).get(task_id) or {}
+        before_count = len(existing.get("comments") or [])
+        try:
+            mutate_action(task_id, pending["action"], **fields)
+            if not _verify_user_action(task_id, pending["action"], fields, before_count):
+                raise ValueError("action_verification_failed")
+        except Exception as exc:
+            return _pa_action_reply("I couldn't verify that PA change, so I can't report it as complete.", action_status="failed")
+        verb = {"comment": "Added your note to", "close": "Marked complete", "reopen": "Reopened", "dismiss": "Dismissed as not a task", "snooze": "Snoozed", "severity": "Updated severity for", "due_date": "Updated due date for"}[pending["action"]]
+        return _pa_action_reply(f"{verb} {pending['title']}. The user-owned state is verified in the local PA view.", action_status="verified", task_id=task_id)
+
+    intent = _parse_pa_action(q)
+    if not intent:
+        return None
+    if intent["action"] == "clarify_note":
+        return _pa_action_reply('To add a note, use: add comment "your note" to <exact obligation title or id>. I will ask you to confirm before saving it.', needs_clarification=True, action_status="clarification")
+    payload = _read_pa_task_state()
+    if not payload:
+        return _pa_action_reply("The local PA task view is stale or unavailable; I did not change anything.", needs_clarification=True, action_status="unavailable")
+    matches, rows = _resolve_pa_action_target(intent.get("target"), payload)
+    if len(matches) != 1:
+        if matches:
+            choices = "; ".join(f"{str(x.get('title') or 'Untitled')[:100]} (id {x.get('id')})" for x in matches[:5])
+            reply = "That identifies more than one obligation. Please choose one exact id: " + choices
+        else:
+            reply = "I couldn't match that to an obligation in the current local task view. Please give its exact title or id."
+        return _pa_action_reply(reply, needs_clarification=True, action_status="ambiguous")
+    task = matches[0]
+    action = intent["action"]
+    fields = {k: intent[k] for k in ("note", "until", "severity", "due_date") if k in intent}
+    try:
+        # Validate dates/severity before asking for confirmation without mutating state.
+        if action == "snooze":
+            from datetime import date
+            date.fromisoformat(fields["until"])
+        elif action == "due_date":
+            from datetime import date
+            date.fromisoformat(fields["due_date"])
+        elif action == "severity" and fields["severity"] not in {"low", "normal", "high"}:
+            raise ValueError("severity_invalid")
+        elif action == "comment" and (not fields.get("note") or len(fields["note"]) > 1000):
+            raise ValueError("comment_invalid")
+    except Exception:
+        return _pa_action_reply("That action needs a valid date, severity, or non-empty note. I did not change anything.", needs_clarification=True, action_status="invalid_input", task_id=str(task.get("id") or ""))
+    task_id = str(task.get("id") or "")
+    with _PENDING_PA_ACTIONS_LOCK:
+        _PENDING_PA_ACTIONS[str(client_key)] = {
+            "task_id": task_id,
+            "title": str(task.get("title") or "Untitled obligation")[:160],
+            "action": action,
+            **fields,
+            "expires_at": time.time() + 300,
+        }
+    return _pa_action_reply(
+        f"I found {str(task.get('title') or 'Untitled obligation')[:160]}. Confirm by replying: confirm {task_id}. Nothing changes until you confirm.",
+        needs_clarification=True,
+        action_status="proposed",
+        task_id=task_id,
+    )
 
 
 def post_json(url, payload, timeout=180):
@@ -195,7 +371,7 @@ def get_json(url, timeout=10):
         return json.load(response)
 
 
-def analyse(messages, privacy_domain=None):
+def analyse(messages, privacy_domain=None, client_key="local"):
     history = []
     raw_context = []
     last_user = ""
@@ -205,9 +381,12 @@ def analyse(messages, privacy_domain=None):
         history.append(f"{role.upper()}: {content}")
         raw_context.append(content)
         if role == "user": last_user = content
+    action = process_pa_action(last_user, client_key=client_key)
+    if action:
+        return action
     structured = pa_structured_answer(last_user)
     if structured:
-        return {"reply":structured["reply"],"understanding":"Answer from the local structured PA view.","needs_clarification":False,"clarifying_question":"","improvements":[],"ready_to_run":False,"proposed_job":"","privacy":"local-only","provider":"structured_local_state","route":structured["route"],"source_schema":structured["source_schema"],"confidence":structured["confidence"]}
+        return {"reply":structured["reply"],"understanding":"Answer from the local structured PA view.","needs_clarification":False,"clarifying_question":"","improvements":[],"ready_to_run":False,"proposed_job":"","privacy":"local-only","provider":"structured_local_state","route":structured["route"],"source_schema":structured["source_schema"],"confidence":structured["confidence"],"result_ids":structured.get("result_ids",[])}
     # The PA is personal by definition: its conversational context may contain
     # household/personal data even when a particular sentence looks generic.
     # Keep PA inference local-first/fail-closed; only the separately approved
@@ -386,7 +565,7 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(messages, list) or not messages:
                     self.send_json(400, {"error": "messages_required"})
                     return
-                self.send_json(200, analyse(messages, privacy_domain=body.get("privacy_domain")))
+                self.send_json(200, analyse(messages, privacy_domain=body.get("privacy_domain"), client_key=self.client_address[0]))
             except BrokerError as exc:
                 self.send_json(503, {"error": "inference_unavailable", "detail": str(exc)})
             except Exception as exc:
