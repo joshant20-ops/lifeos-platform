@@ -141,7 +141,7 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
         }
 
 
-def apply_user_state(tasks, state=None):
+def apply_user_annotations(tasks, state=None):
     state = state if state is not None else read_user_state()
     obligations = state.get("obligations") or {}
     result = []
@@ -340,7 +340,7 @@ def apply_user_state(payload, state=None):
         base.pop("severity_source", None)
         base.pop("due_date_source", None)
         machine_rows.append(base)
-    effective = apply_user_state(machine_rows, state)
+    effective = apply_user_annotations(machine_rows, state)
     result["tasks"] = [x for x in effective if str(x.get("status") or "").upper() not in {"DONE", "DISMISSED"}]
     result["resolved"] = [x for x in effective if str(x.get("status") or "").upper() in {"DONE", "DISMISSED"}]
     try:
