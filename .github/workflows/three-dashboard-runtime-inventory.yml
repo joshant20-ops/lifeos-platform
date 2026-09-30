@@ -288,3 +288,74 @@ jobs:
           print('BRIEFING_ITEMS='+str(len(briefing['items'])))
           print('PRIVATE_TASK_CONTENT=NOT_EMITTED')
           PY
+
+      - name: Read-only live Home Assistant PA acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN python3 - <<'PY'
+          import json, os, pathlib, urllib.request
+          token=os.environ['HA_TOKEN'].strip()
+          assert token
+          def state(entity):
+              req=urllib.request.Request(
+                  'http://127.0.0.1:8123/api/states/'+entity,
+                  headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=10) as response:
+                  assert response.status==200
+                  return json.load(response)
+          pa=state('sensor.lifeos_pa_task_attention')
+          assert pa.get('state') not in {'unknown','unavailable',None}
+          attrs=pa.get('attributes') or {}
+          for key in ('needs_me','waiting_on_others','overdue','upcoming','recently_completed','stale_no_progress'):
+              assert isinstance(attrs.get(key),int) and attrs[key]>=0
+          assert attrs.get('source')=='lifeos_tasks_v3'
+          assert int(attrs.get('generated_time') or 0)>0
+          summary=state('sensor.lifeos_attention_summary')
+          assert summary.get('state') not in {'unknown','unavailable',None}
+          dashboard=pathlib.Path('/opt/stacks/homeassistant/config/.storage/lovelace.dashboard_lifeos')
+          data=json.loads(dashboard.read_text())
+          views=data.get('data',{}).get('config',{}).get('views',[])
+          overview=next(v for v in views if v.get('path')=='overview')
+          cards=overview.get('cards') or []
+          personal=[c for c in cards if isinstance(c,dict) and c.get('title')=='Personal Attention']
+          assert len(personal)==1
+          assert 'sensor.lifeos_pa_task_attention' in json.dumps(personal[0])
+          print('GATE_F_RUNTIME_ACCEPTANCE=PASS')
+          print('PA_ATTENTION_STATE='+str(pa.get('state')))
+          print('PA_ATTENTION_COUNTS='+','.join(k+':'+str(attrs[k]) for k in ('needs_me','waiting_on_others','overdue','upcoming','recently_completed','stale_no_progress')))
+          print('LIFEOS_ATTENTION_SUMMARY=AVAILABLE')
+          print('LIFEOS_OVERVIEW_PERSONAL_ATTENTION_CARD=PASS')
+          PY
+
+      - name: Read-only live everyday PA retrieval acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json, urllib.request
+          questions=[
+              ('needs_me','What needs me?'),
+              ('waiting','What am I waiting for?'),
+              ('changed','What changed?'),
+              ('due_soon','What is due soon?'),
+              ('evidence','What evidence do I have for insurance?'),
+          ]
+          for name,question in questions:
+              body=json.dumps({'messages':[{'role':'user','content':question}],'privacy_domain':'personal-administration'}).encode()
+              req=urllib.request.Request('http://127.0.0.1:8791/assist',data=body,headers={'Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req,timeout=20) as response:
+                  assert response.status==200
+                  data=json.load(response)
+              assert data.get('provider')=='structured_local_state'
+              assert data.get('route')=='structured_pa_state'
+              assert data.get('source_schema')=='lifeos_tasks_v3'
+              assert data.get('privacy')=='local-only'
+              assert data.get('ready_to_run') is False
+              assert not data.get('proposed_job')
+              print('GATE_G_QUERY_'+name.upper()+'=PASS')
+          print('GATE_G_RUNTIME_ACCEPTANCE=PASS')
+          print('GATE_G_PROVIDER=structured_local_state')
+          print('GATE_G_PRIVACY=local-only')
+          print('GATE_G_PRIVATE_ANSWER_TEXT=NOT_LOGGED')
+          PY
