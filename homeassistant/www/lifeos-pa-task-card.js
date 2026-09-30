@@ -30,7 +30,7 @@ class LifeOSPATaskCard extends HTMLElement {
       const status = String(task.status || "").toUpperCase();
       const closed = status === "DONE" || status === "DISMISSED";
       const evidence = [];
-      for (const ref of (task.source_refs || []).slice(0, 3)) {
+      for (const ref of (task.source_refs || task.source_message_ids || []).slice(0, 3)) {
         const query = encodeURIComponent("rfc822msgid:" + String(ref).replace(/[<>]/g, ""));
         evidence.push('<a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + query + '">Gmail evidence</a>');
       }
