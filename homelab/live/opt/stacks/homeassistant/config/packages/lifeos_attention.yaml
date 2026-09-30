@@ -18,6 +18,12 @@ template:
             {% set issues = issues + ['📡 Pi3 controller not ready'] %}
           {% endif %}
 
+          {% if states('sensor.lifeos_pa_task_attention') == 'attention' %}
+            {% set needs_me = state_attr('sensor.lifeos_pa_task_attention', 'needs_me') | int(0) %}
+            {% set due = state_attr('sensor.lifeos_pa_task_attention', 'overdue') | int(0) + state_attr('sensor.lifeos_pa_task_attention', 'upcoming') | int(0) %}
+            {% set issues = issues + ['PA: ' ~ needs_me ~ ' need attention; ' ~ due ~ ' due or overdue'] %}
+          {% endif %}
+
           {% if states('sensor.lifeos_energy_opportunity_attention') == 'attention' %}
             {% set issues = issues + ['⚡ Negative-price energy opportunity'] %}
           {% endif %}
@@ -27,3 +33,23 @@ template:
           {% else %}
             {{ issues | join(' | ') }}
           {% endif %}
+
+command_line:
+  - sensor:
+      name: "LifeOS PA Task Attention"
+      unique_id: lifeos_pa_task_attention
+      command: "python3 /config/scripts/lifeos_pa_task_attention_sensor.py"
+      scan_interval: 60
+      value_template: "{{ value_json.state | default('unavailable') }}"
+      json_attributes:
+        - needs_me
+        - waiting_on_others
+        - overdue
+        - upcoming
+        - recently_completed
+        - stale_no_progress
+        - briefing
+        - items
+        - source
+        - generated_time
+        - age_seconds
