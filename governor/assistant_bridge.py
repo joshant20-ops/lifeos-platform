@@ -135,7 +135,7 @@ def pa_structured_answer(question, payload=None, now_ts=None):
         all_items=list(payload.get("tasks",[]))+list(payload.get("resolved",[]))
         items=[x for x in all_items if 0<=now_ts-int(x.get("observed_at") or 0)<=7*86400]
         items.sort(key=lambda x:(-int(x.get("observed_at") or 0),str(x.get("id",""))))
-        label="Changed in the last seven days"
+        label="Observed in source messages during the last seven days"
     else:
         tokens=[x for x in re.findall(r"[a-z0-9]+",query_term) if len(x)>1]
         all_items=list(payload.get("tasks",[]))+list(payload.get("resolved",[]))
