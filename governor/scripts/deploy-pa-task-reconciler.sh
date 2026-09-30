@@ -56,6 +56,11 @@ PY
 HA_CONFIG=/opt/stacks/homeassistant/config
 HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"
 HA_SENSOR="$HA_CONFIG/scripts/lifeos_pa_task_attention_sensor.py"
+HA_USER_MODULE="$HA_CONFIG/scripts/lifeos_pa_user_state.py"
+HA_ACTION="$HA_CONFIG/scripts/lifeos_pa_user_action.py"
+HA_ACTIONS="$HA_CONFIG/packages/lifeos_actions.yaml"
+PA_STATE_DIR="$HA_CONFIG/lifeos-pa-state"
+PA_USER_STATE="$PA_STATE_DIR/user_state.json"
 BACKUP_DIR=/home/joshan/automation/backups
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$BACKUP_DIR"
@@ -70,6 +75,26 @@ if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_p
   install -o root -g root -m 0755 "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py" "$HA_SENSOR"
   HA_CHANGED=1
 fi
+if ! cmp -s "$REPO/governor/pa_user_state.py" "$HA_USER_MODULE"; then
+  install -o root -g root -m 0644 "$REPO/governor/pa_user_state.py" "$HA_USER_MODULE"
+  HA_CHANGED=1
+fi
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py" "$HA_ACTION"; then
+  install -o root -g root -m 0755 "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py" "$HA_ACTION"
+  HA_CHANGED=1
+fi
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_actions.yaml" "$HA_ACTIONS"; then
+  cp -a "$HA_ACTIONS" "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP"
+  install -o root -g root -m 0644 "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_actions.yaml" "$HA_ACTIONS"
+  HA_CHANGED=1
+fi
+install -d -o joshan -g joshan -m 0700 "$PA_STATE_DIR"
+if [[ ! -e "$PA_USER_STATE" ]]; then
+  install -o joshan -g joshan -m 0600 /dev/null "$PA_USER_STATE"
+  sudo -u joshan sh -c 'printf "%s\n" "{\"schema\":\"lifeos_pa_user_state_v1\",\"revision\":0,\"obligations\":{}}" > "$1"' sh "$PA_USER_STATE"
+fi
+chown joshan:joshan "$PA_USER_STATE"
+chmod 0600 "$PA_USER_STATE"
 if ! python3 "$REPO/homeassistant/deploy-lifeos-dashboard.py" --check >/dev/null 2>&1; then
   python3 "$REPO/homeassistant/deploy-lifeos-dashboard.py"
   HA_CHANGED=1
@@ -78,6 +103,9 @@ if [ "$HA_CHANGED" -eq 1 ]; then
   if ! docker exec homeassistant python -m homeassistant --script check_config --config /config; then
     if [ -f "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" ]; then
       cp -a "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" "$HA_PACKAGE"
+    fi
+    if [ -f "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP" ]; then
+      cp -a "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP" "$HA_ACTIONS"
     fi
     echo 'HA_CONFIG_VALIDATION=FAIL'
     exit 1
