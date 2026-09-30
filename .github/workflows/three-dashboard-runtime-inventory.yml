@@ -197,8 +197,22 @@ jobs:
           check('PERSISTED_STATE_EQUALS_HA_PROJECTION',len(payloads)==2 and payloads.get('PERSISTED')==payloads.get('HA_PROJECTION'))
           if payloads.get('PERSISTED'):
               count=int(payloads['PERSISTED'].get('messages_considered') or 0)
-              print('MODEL_CLASSIFICATION_CALLS_UPPER_BOUND_PER_SCAN='+str(count))
+              classified=int(payloads['PERSISTED'].get('messages_classified') or 0)
+              reused=int(payloads['PERSISTED'].get('messages_reused') or 0)
+              print('MODEL_CLASSIFICATION_ATTEMPTS_PER_SCAN='+str(classified))
+              print('MESSAGES_REUSED_FROM_CACHE='+str(reused))
               print('MODEL_USAGE_EXACT_COUNTER=NOT_EXPOSED_BY_CURRENT_RECONCILER')
+          scan_path=automation/'state/lifeos_personal_task_scan.json'
+          try:
+              scan=json.loads(scan_path.read_text())
+              processed=scan.get('processed_message_ids',[])
+              print('SCAN_CHECKPOINT_SCHEMA='+str(scan.get('schema')))
+              print('SCAN_CHECKPOINT_PROCESSED_COUNT='+str(len(processed) if isinstance(processed,list) else 0))
+              print('SCAN_CHECKPOINT_CURSOR_PRESENT='+str(int(scan.get('before_uid') or 0)>0))
+              check('SCAN_CHECKPOINT_VALID',scan.get('schema')=='lifeos_task_scan_v1' and bool(scan.get('uidvalidity')) and int(scan.get('before_uid') or 0)>0 and isinstance(processed,list))
+          except Exception as exc:
+              print('SCAN_CHECKPOINT=UNAVAILABLE:'+type(exc).__name__)
+              check('SCAN_CHECKPOINT_VALID',False)
               older=sum(1 for x in payloads['PERSISTED'].get('tasks',[])+payloads['PERSISTED'].get('resolved',[]) if isinstance(x,dict) and int(x.get('observed_at') or now)>0 and int(x.get('observed_at') or now)<now-90*86400)
               print('PERSISTED_RECORDS_OUTSIDE_90_DAY_SCAN='+str(older))
               print('BOUNDED_SCAN_PERSISTENCE='+('LIVE_EVIDENCE' if older else 'NOT_DEMONSTRATED_BY_CURRENT_RECORDS'))
