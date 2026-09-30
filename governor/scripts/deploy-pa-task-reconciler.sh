@@ -52,3 +52,53 @@ print('RESOLVED_TASKS='+str(len(j['resolved'])))
 print('MESSAGES_CONSIDERED='+str(j.get('messages_considered')))
 print('ERRORS='+str(j.get('errors')))
 PY
+
+HA_CONFIG=/opt/stacks/homeassistant/config
+HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"
+HA_SENSOR="$HA_CONFIG/scripts/lifeos_pa_task_attention_sensor.py"
+BACKUP_DIR=/home/joshan/automation/backups
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+mkdir -p "$BACKUP_DIR"
+HA_CHANGED=0
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml" "$HA_PACKAGE"; then
+  cp -a "$HA_PACKAGE" "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP"
+  install -o root -g root -m 0644 "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml" "$HA_PACKAGE"
+  HA_CHANGED=1
+fi
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py" "$HA_SENSOR"; then
+  install -d -o root -g root -m 0755 "$HA_CONFIG/scripts"
+  install -o root -g root -m 0755 "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py" "$HA_SENSOR"
+  HA_CHANGED=1
+fi
+if ! python3 "$REPO/homeassistant/deploy-lifeos-dashboard.py" --check >/dev/null 2>&1; then
+  python3 "$REPO/homeassistant/deploy-lifeos-dashboard.py"
+  HA_CHANGED=1
+fi
+if [ "$HA_CHANGED" -eq 1 ]; then
+  if ! docker exec homeassistant python -m homeassistant --script check_config --config /config; then
+    if [ -f "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" ]; then
+      cp -a "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" "$HA_PACKAGE"
+    fi
+    echo 'HA_CONFIG_VALIDATION=FAIL'
+    exit 1
+  fi
+  echo 'HA_CONFIG_VALIDATION=PASS'
+  docker restart homeassistant >/dev/null
+  ready=0
+  for _ in $(seq 1 60); do
+    if curl -fsS --max-time 3 http://127.0.0.1:8123/ >/dev/null; then ready=1; break; fi
+    sleep 2
+  done
+  if [ "$ready" -ne 1 ]; then
+    if [ -f "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" ]; then
+      cp -a "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" "$HA_PACKAGE"
+      docker restart homeassistant >/dev/null || true
+    fi
+    echo 'HA_CORE_RESTART=FAIL'
+    exit 1
+  fi
+  echo 'HA_CORE_RESTART=PASS'
+else
+  echo 'HA_CONFIG_CHANGE=NONE'
+fi
+docker exec homeassistant python3 /config/scripts/lifeos_pa_task_attention_sensor.py | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("state") in {"attention","clear"}; print("PA_ATTENTION_SENSOR=PASS"); print("NEEDS_ME="+str(d.get("needs_me",0))); print("WAITING="+str(d.get("waiting_on_others",0))); print("DUE_OR_OVERDUE="+str(int(d.get("overdue",0))+int(d.get("upcoming",0))))'
