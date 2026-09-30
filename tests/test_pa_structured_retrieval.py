@@ -84,3 +84,19 @@ def test_stale_task_state_fails_closed(monkeypatch,tmp_path):
     result=mod.pa_structured_answer("What needs me?",payload=None,now_ts=2000000)
     assert result is not None and result["ok"] is False
     assert result["privacy"]=="local-only"
+
+
+def test_targeted_needs_me_searches_full_task_title_beyond_card_truncation(monkeypatch,tmp_path):
+    mod=load_bridge(monkeypatch,tmp_path)
+    now=1736899200
+    payload=state(now)
+    long_title="Synthetic home insurance renewal " + ("extended phrase " * 14) + "tailmarker"
+    payload["tasks"][0]["title"]=long_title
+    payload["attention"]["needs_me"][0]["title"]=long_title[:160]
+    result=mod.pa_structured_answer(
+        "What needs me about " + long_title + "?",
+        payload=payload,
+        now_ts=now,
+    )
+    assert result["result_ids"] == ["task-open"]
+    assert "tailmarker" in result["reply"]
