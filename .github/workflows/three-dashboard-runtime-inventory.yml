@@ -34,7 +34,9 @@ jobs:
                       label=c.get('title') or c.get('heading') or c.get('type')
                       print(' CARD',i,repr(label),'type='+str(c.get('type')),'entities='+repr(ents[:20]))
           PY
-      - name: Read-only PA task reconciler runtime inventory
+      - name: Gate A — live reconciler runtime inventory
+        id: gate_a
+        continue-on-error: true
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -230,7 +232,10 @@ jobs:
           if failures: raise SystemExit(1)
           PY
 
-      - name: Read-only PA identity, attention and briefing acceptance
+      - name: Gates B-E — installed identity and live projection acceptance
+        id: gates_be
+        if: ${{ always() }}
+        continue-on-error: true
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -291,7 +296,10 @@ jobs:
           print('PRIVATE_TASK_CONTENT=NOT_EMITTED')
           PY
 
-      - name: Read-only live Home Assistant PA acceptance
+      - name: Gate F — live Home Assistant PA acceptance
+        id: gate_f
+        if: ${{ always() }}
+        continue-on-error: true
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -330,7 +338,10 @@ jobs:
           print('LIFEOS_OVERVIEW_PERSONAL_ATTENTION_CARD=PASS')
           PY
 
-      - name: Read-only live everyday PA retrieval acceptance
+      - name: Gate G — live everyday PA retrieval acceptance
+        id: gate_g
+        if: ${{ always() }}
+        continue-on-error: true
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -362,8 +373,40 @@ jobs:
           print('GATE_G_PRIVATE_ANSWER_TEXT=NOT_LOGGED')
           PY
 
+      - name: A-G end-to-end system acceptance
+        id: system_acceptance
+        if: ${{ always() }}
+        shell: bash
+        env:
+          GATE_A: ${{ steps.gate_a.outcome }}
+          GATES_BE: ${{ steps.gates_be.outcome }}
+          GATE_F: ${{ steps.gate_f.outcome }}
+          GATE_G: ${{ steps.gate_g.outcome }}
+        run: |
+          set -Eeuo pipefail
+          echo "INDIVIDUAL_GATE_A=$GATE_A"
+          echo "INDIVIDUAL_GATES_B_E=$GATES_BE"
+          echo "INDIVIDUAL_GATE_F=$GATE_F"
+          echo "INDIVIDUAL_GATE_G=$GATE_G"
+          [[ "$GATE_A" == success ]]
+          [[ "$GATES_BE" == success ]]
+          [[ "$GATE_F" == success ]]
+          [[ "$GATE_G" == success ]]
+          curl -fsS --max-time 5 http://127.0.0.1:8791/health >/dev/null
+          test -s /opt/stacks/homeassistant/config/www/lifeos_tasks.json
+          python3 - <<'PY'
+          import json, pathlib, time
+          p=json.loads(pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json').read_text())
+          assert p.get('schema')=='lifeos_tasks_v3'
+          assert (p.get('attention') or {}).get('schema')=='lifeos_attention_projection_v1'
+          assert (p.get('briefing') or {}).get('schema')=='lifeos_daily_briefing_v1'
+          assert time.time()-float(p.get('generated_time') or 0)<=7*3600
+          print('A_G_DATA_CHAIN=PASS')
+          PY
+          echo "A_G_END_TO_END_SYSTEM_ACCEPTANCE=PASS"
+
       - name: Record A-G live acceptance receipt
-        if: ${{ success() }}
+        if: ${{ success() && steps.system_acceptance.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
