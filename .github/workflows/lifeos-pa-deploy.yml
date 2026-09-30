@@ -7,6 +7,19 @@ on:
       - '.github/workflows/lifeos-pa-deploy.yml'
       - 'governor/assistant_bridge.py'
       - 'governor/assistant_ui.html'
+      - 'governor/pa_user_state.py'
+      - 'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
+      - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml'
+      - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_actions.yaml'
+      - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py'
+      - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py'
+      - 'homeassistant/lifeos-dashboard.json'
+      - 'homeassistant/deploy-lifeos-dashboard.py'
+      - 'homeassistant/www/lifeos-pa-task-card.js'
+      - 'governor/scripts/deploy-pa-task-reconciler.sh'
+      - 'scripts/accept-pa-governed-actions.py'
+      - 'tests/personal_admin/test_pa_user_state.py'
+      - 'tests/personal_admin/test_assistant_pa_actions.py'
       - 'governor/scripts/deploy-ha-assistant.sh'
       - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
 
@@ -42,4 +55,6 @@ jobs:
       - name: Deploy and accept LifeOS PA
         run: |
           set -Eeuo pipefail
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-pa-task-reconciler
           sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-lifeos-assistant
+          sudo -n python3 /home/joshan/lifeos-platform/scripts/accept-pa-governed-actions.py
