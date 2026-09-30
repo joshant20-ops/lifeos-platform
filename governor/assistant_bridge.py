@@ -106,7 +106,7 @@ def pa_structured_answer(question, payload=None, now_ts=None):
         route="waiting_on_others"
     elif any(x in q for x in ("what changed","what has changed","what changed recently")):
         route="changed"
-    elif any(x in q for x in ("due soon","due this week","what is overdue","what's overdue","what is due")):
+    elif any(x in q for x in ("due soon","due this week","overdue","what is due")):
         route="due"
     else:
         match=re.search(r"\bevidence\b.{0,80}?\b(?:for|about)\s+(.+)$",q)
