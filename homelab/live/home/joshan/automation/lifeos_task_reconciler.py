@@ -156,7 +156,7 @@ def main():
         candidates=all_ids
     ids=candidates[-MAX_MESSAGES:]
     next_cursor=ids[0] if ids else 0
-    fetched=[];errors=0
+    fetched=[];errors=0;fetch_errors=0;fetch_error_types=set()
     for uid in ids:
         try:
             st,data=c.uid("fetch",str(uid),"(RFC822)")
@@ -173,7 +173,8 @@ def main():
                 "source_ref":message_id or (uidvalidity+":"+str(uid)),
                 "body":text_of(msg),
             })
-        except Exception: errors+=1
+        except Exception as exc:
+            errors+=1;fetch_errors+=1;fetch_error_types.add(type(exc).__name__)
     try:
         c.logout()
     except Exception:
@@ -191,7 +192,7 @@ def main():
             new_fetched.append(compact)
     print("TASK_SCAN_FETCHED="+str(len(fetched)),flush=True)
     observations=[]
-    classification_attempts=0
+    classification_attempts=0;classification_errors=0;classification_error_types=set()
     for index,compact in enumerate(new_fetched,1):
         print("TASK_CLASSIFICATION_PROGRESS="+str(index)+"/"+str(len(new_fetched)),flush=True)
         try:
@@ -203,7 +204,8 @@ def main():
             k=key(d)
             if not k:continue
             observations.append((message_time(compact.get("date")),k,d,compact))
-        except Exception: errors+=1
+        except Exception as exc:
+            errors+=1;classification_errors+=1;classification_error_types.add(type(exc).__name__)
     # Reconcile chronologically so a later completion/update wins over an older
     # request. Preserve prior state when a task is outside this bounded scan.
     tasks=dict(previous)
@@ -243,5 +245,9 @@ def main():
     outtmp=OUT.with_suffix(".tmp");outtmp.write_text(json.dumps(payload,indent=2)+"\n");outtmp.replace(OUT)
     scan_payload={"schema":"lifeos_task_scan_v1","uidvalidity":uidvalidity,"before_uid":next_cursor,"processed_message_ids":processed_order[-10000:],"updated_time":int(time.time())}
     scan_tmp=SCAN_STATE.with_suffix(".tmp");scan_tmp.write_text(json.dumps(scan_payload,indent=2)+"\n");scan_tmp.replace(SCAN_STATE)
+    print('TASK_FETCH_ERRORS='+str(fetch_errors),flush=True)
+    print('TASK_FETCH_ERROR_TYPES='+(','.join(sorted(fetch_error_types)) or 'NONE'),flush=True)
+    print('TASK_CLASSIFICATION_ERRORS='+str(classification_errors),flush=True)
+    print('TASK_CLASSIFICATION_ERROR_TYPES='+(','.join(sorted(classification_error_types)) or 'NONE'),flush=True)
     print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"classified":classification_attempts,"reused":messages_reused,"errors":errors}))
 if __name__=="__main__":main()
