@@ -122,9 +122,9 @@ def main():
             "status":d["status"],"due_date":d.get("due_date") or old.get("due_date"),
             "counterparty":d.get("counterparty") or old.get("counterparty"),
             "topic":d.get("topic") or old.get("topic"),"source":"gmail",
-            "email_message_id":str(compact.get("message_id",""))[:300],
+            "email_message_id":str(msg.get("message_id",""))[:300],
             "paperless_evidence":evidence or old.get("paperless_evidence",[]),
-            "updated_from_email":str(compact.get("date",""))[:100],"observed_at":observed,
+            "updated_from_email":str(msg.get("date",""))[:100],"observed_at":observed,
             "reason":str(d.get("reason") or "")[:300]
         }
     cutoff=int(time.time())-STALE_DAYS*86400
