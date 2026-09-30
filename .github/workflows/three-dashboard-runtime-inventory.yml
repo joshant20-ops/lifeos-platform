@@ -4,7 +4,9 @@ on:
   push:
     branches: [main]
     paths: ['.github/workflows/three-dashboard-runtime-inventory.yml']
-permissions: {contents: read}
+permissions:
+  contents: read
+  issues: write
 jobs:
   inspect:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
@@ -359,3 +361,31 @@ jobs:
           print('GATE_G_PRIVACY=local-only')
           print('GATE_G_PRIVATE_ANSWER_TEXT=NOT_LOGGED')
           PY
+
+      - name: Record A-G live acceptance receipt
+        if: ${{ success() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh issue comment 1441 --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
+## Automated live A–G acceptance receipt
+
+**Result: PASS**
+
+The self-hosted `lifeos-pi5` runtime inventory completed every preceding acceptance step successfully on canonical `main` at `${GITHUB_SHA}`.
+
+This means the same run passed:
+- Gate A live reconciler/systemd/Gmail/Paperless/persisted-state inventory with no failed aggregate checks;
+- Gate B installed-runtime identity/progression/replay contract;
+- Gates C–E validation against the real HA-published task/attention/briefing state;
+- Gate F read-only queries against the running Home Assistant API plus the live LifeOS Overview storage;
+- Gate G read-only HTTP queries against the running PA for all five everyday retrieval intents, requiring `structured_local_state`, `structured_pa_state`, `lifeos_tasks_v3`, `local-only`, and no proposed engineering job.
+
+No private task/email/document/answer content is included in this receipt.
+
+Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+Commit: `${GITHUB_SHA}`
+EOF
+)"
