@@ -24,7 +24,7 @@ def validate(src):
       for c in v.get('cards',[]):
        for e in c.get('entities',[]): entities.add(e if isinstance(e,str) else e.get('entity'))
     missing=REQUIRED-entities
-    if missing: raise ValueError('Tower controls missing: '+', '.join(sorted(missing))
+    if missing: raise ValueError('Tower controls missing: '+', '.join(sorted(missing)))
     if not any(c.get('type')=='custom:lifeos-pa-task-card' for c in views[0].get('cards',[])): raise ValueError('PA action card missing from Overview')
 
 def normalized_dashboard(x): return x.get('data',{}).get('config',{})
