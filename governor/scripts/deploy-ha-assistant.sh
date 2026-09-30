@@ -63,6 +63,7 @@ Environment=LIFEOS_AI_POLICY=/usr/local/libexec/lifeos-assistant.d/policy.json
 Environment=LIFEOS_PROVIDER_ROUTER=/usr/local/libexec/lifeos-assistant.d/provider_router.py
 RuntimeDirectory=lifeos-assistant
 RuntimeDirectoryMode=0700
+ReadWritePaths=/opt/stacks/homeassistant/config/lifeos-pa-state
 Environment=LIFEOS_AI_BROKER_CONFIG=/run/lifeos-assistant/ai-broker.env
 Environment=LIFEOS_PROVIDER_SECRETS=/run/lifeos-assistant/provider-secrets.env
 ExecStartPre=+/usr/bin/install -o joshan -g joshan -m 0600 /home/joshan/.config/lifeos/ai-broker.env /run/lifeos-assistant/ai-broker.env
