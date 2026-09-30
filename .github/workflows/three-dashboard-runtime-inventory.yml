@@ -243,6 +243,8 @@ jobs:
           sudo -n python3 - <<'PY'
           import importlib.util, json, pathlib, time
           automation=pathlib.Path('/home/joshan/automation')
+          import sys
+          sys.path.insert(0,str(automation))
           installed=automation/'lifeos_task_reconciler.py'
           spec=importlib.util.spec_from_file_location('lifeos_task_reconciler_live',installed)
           module=importlib.util.module_from_spec(spec)
