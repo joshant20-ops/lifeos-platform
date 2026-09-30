@@ -276,6 +276,8 @@ jobs:
           attention=data.get('attention') or {}
           counts=attention.get('counts') or {}
           count_keys={'needs_me','waiting_on_others','overdue','upcoming','recently_completed','stale_no_progress'}
+          print('BE_ATTENTION_SCHEMA='+str(attention.get('schema')))
+          print('BE_ATTENTION_COUNT_KEYS='+','.join(sorted(counts)))
           assert attention.get('schema')=='lifeos_attention_projection_v1'
           assert count_keys.issubset(counts)
           assert all(isinstance(counts[k],int) and counts[k]>=0 for k in count_keys)
@@ -286,6 +288,9 @@ jobs:
           print('GATE_C_RUNTIME_ACCEPTANCE=PASS')
           print('GATE_D_RUNTIME_ACCEPTANCE=PASS')
           briefing=data.get('briefing') or {}
+          print('BE_BRIEFING_SCHEMA='+str(briefing.get('schema')))
+          print('BE_BRIEFING_SOURCE='+str(briefing.get('source')))
+          print('BE_BRIEFING_CONFIDENCE='+str(briefing.get('confidence')))
           assert briefing.get('schema')=='lifeos_daily_briefing_v1'
           assert briefing.get('source')=='lifeos_tasks_v3'
           assert briefing.get('confidence')=='structured_state_only'
@@ -316,6 +321,8 @@ jobs:
                   assert response.status==200
                   return json.load(response)
           pa=state('sensor.lifeos_pa_task_attention')
+          print('F_PA_STATE='+str(pa.get('state')))
+          print('F_PA_ATTRIBUTE_KEYS='+','.join(sorted((pa.get('attributes') or {}).keys())))
           assert pa.get('state') not in {'unknown','unavailable',None}
           attrs=pa.get('attributes') or {}
           for key in ('needs_me','waiting_on_others','overdue','upcoming','recently_completed','stale_no_progress'):
@@ -323,6 +330,7 @@ jobs:
           assert attrs.get('source')=='lifeos_tasks_v3'
           assert int(attrs.get('generated_time') or 0)>0
           summary=state('sensor.lifeos_attention_summary')
+          print('F_SUMMARY_STATE='+str(summary.get('state')))
           assert summary.get('state') not in {'unknown','unavailable',None}
           dashboard=pathlib.Path('/opt/stacks/homeassistant/config/.storage/lovelace.dashboard_lifeos')
           data=json.loads(dashboard.read_text())
@@ -330,6 +338,7 @@ jobs:
           overview=next(v for v in views if v.get('path')=='overview')
           cards=overview.get('cards') or []
           personal=[c for c in cards if isinstance(c,dict) and c.get('title')=='Personal Attention']
+          print('F_PERSONAL_ATTENTION_CARD_COUNT='+str(len(personal)))
           assert len(personal)==1
           assert 'sensor.lifeos_pa_task_attention' in json.dumps(personal[0])
           print('GATE_F_RUNTIME_ACCEPTANCE=PASS')
