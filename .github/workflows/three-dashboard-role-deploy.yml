@@ -21,6 +21,9 @@ jobs:
       - uses: actions/checkout@v4
       - name: Deploy recurring personal task reconciliation
         run: |
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git show origin/main:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
           sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
           sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-pa-task-reconciler
       - name: Deploy role-separated dashboards
