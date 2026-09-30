@@ -165,8 +165,9 @@ def derive_attention(task_rows, now_ts=None, today=None):
         return (-item["priority_score"],item["due_date"] or "9999-99-99",item["id"])
     needs_me=sorted([x for x in rows if x["status"]=="OPEN"],key=rank)
     waiting=sorted([x for x in rows if x["status"]=="WAITING"],key=rank)
-    overdue=[x for x in needs_me if x["due_bucket"]=="overdue"]
-    upcoming=[x for x in needs_me if x["due_bucket"] in {"due_soon","upcoming"}]
+    outstanding=[x for x in rows if x["status"] in {"OPEN","WAITING"}]
+    overdue=sorted([x for x in outstanding if x["due_bucket"]=="overdue"],key=rank)
+    upcoming=sorted([x for x in outstanding if x["due_bucket"] in {"due_soon","upcoming"}],key=rank)
     stale=[x for x in needs_me if x["stale_days"] is not None and x["stale_days"]>=14]
     completed=sorted(
         [x for x in rows if x["status"]=="DONE" and x["observed_at"] and now_ts-x["observed_at"]<=14*86400],
