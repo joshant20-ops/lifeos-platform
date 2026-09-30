@@ -50,6 +50,7 @@ def classify_privacy(text, domain=None):
 PORT = int(os.environ.get("LIFEOS_ASSISTANT_PORT", "8791"))
 AGENT_URL = os.environ.get("LIFEOS_AGENT_URL", "http://127.0.0.1:8790")
 UI_PATH = pathlib.Path(os.environ.get("LIFEOS_ASSISTANT_UI", "/home/joshan/lifeos-platform/governor/assistant_ui.html"))
+PA_TASKS_FILE = pathlib.Path(os.environ.get("LIFEOS_PA_TASKS_FILE", "/opt/stacks/homeassistant/config/www/lifeos_tasks.json"))
 BROKER_TOKEN_FILE = pathlib.Path(
     os.environ.get("LIFEOS_AI_BROKER_TOKEN_FILE", pathlib.Path.home() / ".config/lifeos/ai-broker.token")
 )
@@ -82,6 +83,106 @@ proposed_job: a complete self-contained engineering brief suitable for the LifeO
 """
 
 
+def _read_pa_task_state(now_ts=None):
+    try:
+        payload=json.loads(PA_TASKS_FILE.read_text())
+        generated=int(payload.get("generated_time") or 0)
+        now_ts=int(now_ts if now_ts is not None else time.time())
+        if payload.get("schema")!="lifeos_tasks_v3" or not generated or now_ts-generated>7*3600:
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def pa_structured_answer(question, payload=None, now_ts=None):
+    """Answer supported everyday PA questions from the local derived task view."""
+    q=" ".join(str(question or "").lower().split())
+    route=None
+    query_term=""
+    if any(x in q for x in ("what needs me","what needs my attention","what do i need to do","what should i do next")):
+        route="needs_me"
+    elif any(x in q for x in ("what am i waiting for","what are others doing","waiting on others","what is someone else doing")):
+        route="waiting_on_others"
+    elif any(x in q for x in ("what changed","what has changed","what changed recently")):
+        route="changed"
+    elif any(x in q for x in ("due soon","due this week","overdue","what is due")):
+        route="due"
+    else:
+        match=re.search(r"\bevidence\b.{0,80}?\b(?:for|about)\s+(.+)$",q)
+        if match:
+            route="evidence"
+            query_term=match.group(1).strip(" ?.!")[:100]
+    if not route:
+        return None
+    payload=payload if payload is not None else _read_pa_task_state(now_ts)
+    if not isinstance(payload,dict):
+        return {"handled":True,"ok":False,"route":"structured_pa_state","source_schema":"lifeos_tasks_v3","privacy":"local-only","confidence":"unavailable","reply":"The local PA task view is unavailable or stale, so I can't give a current answer."}
+    attention=payload.get("attention") if isinstance(payload.get("attention"),dict) else {}
+    now_ts=int(now_ts if now_ts is not None else time.time())
+    if route=="needs_me":
+        items=list(attention.get("needs_me") or [x for x in payload.get("tasks",[]) if x.get("status")=="OPEN"])
+        label="Needs me"
+    elif route=="waiting_on_others":
+        items=list(attention.get("waiting_on_others") or [x for x in payload.get("tasks",[]) if x.get("status")=="WAITING"])
+        label="Waiting on others"
+    elif route=="due":
+        items=list(attention.get("due_overdue") or [])+list(attention.get("upcoming") or [])
+        if not items:
+            items=[x for x in payload.get("tasks",[]) if x.get("status") in {"OPEN","WAITING"} and x.get("due_date")]
+        label="Due soon or overdue"
+    elif route=="changed":
+        all_items=list(payload.get("tasks",[]))+list(payload.get("resolved",[]))
+        items=[x for x in all_items if 0<=now_ts-int(x.get("observed_at") or 0)<=7*86400]
+        items.sort(key=lambda x:(-int(x.get("observed_at") or 0),str(x.get("id",""))))
+        label="Observed in source messages during the last seven days"
+    else:
+        tokens=[x for x in re.findall(r"[a-z0-9]+",query_term) if len(x)>1]
+        all_items=list(payload.get("tasks",[]))+list(payload.get("resolved",[]))
+        items=[]
+        for task in all_items:
+            text=" ".join([str(task.get(k) or "") for k in ("title","topic","counterparty")])
+            evidence=task.get("paperless_evidence") or []
+            evidence_text=" ".join(str(x.get(k) or "") for x in evidence if isinstance(x,dict) for k in ("title","document_id"))
+            haystack=(text+" "+evidence_text).lower()
+            if tokens and all(token in haystack for token in tokens):
+                items.append(task)
+        label="Paperless evidence references"
+    unique=[]
+    seen=set()
+    for item in items:
+        if not isinstance(item,dict): continue
+        identity=str(item.get("id") or item.get("email_message_id") or item.get("document_id") or "")
+        if identity and identity not in seen:
+            seen.add(identity)
+            unique.append(item)
+    if route=="evidence":
+        refs=[]
+        for task in unique:
+            for doc in task.get("paperless_evidence") or []:
+                if isinstance(doc,dict):
+                    refs.append(f"Paperless #{doc.get('document_id')}: {str(doc.get('title') or 'document reference')[:120]}")
+        lines=refs[:5]
+        if not lines:
+            reply="No linked Paperless evidence reference for that topic is present in the local PA task view. Ask LifeOS can search Paperless directly."
+        else:
+            reply="Evidence references for "+query_term+":\n- "+"\n- ".join(lines)
+    else:
+        if not unique:
+            reply=f"{label}: none in the current structured PA view."
+        else:
+            lines=[]
+            for item in unique[:5]:
+                title=str(item.get("title") or "Untitled task")[:160]
+                status=str(item.get("status") or "").lower()
+                due=str(item.get("due_date") or "")
+                suffix=("; due "+due) if due else ""
+                lines.append(f"- {title} ({status}{suffix})")
+            reply=f"{label} ({len(unique)} shown):\n"+"\n".join(lines)
+    reply+="\n\nSource: local structured PA state. Confidence: structured state only; source references are retained."
+    return {"handled":True,"ok":True,"route":"structured_pa_state","source_schema":"lifeos_tasks_v3","privacy":"local-only","confidence":"structured_state_only","matched_view":route,"reply":reply,"result_count":len(unique)}
+
+
 def post_json(url, payload, timeout=180):
     data = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"}, method="POST")
@@ -97,11 +198,16 @@ def get_json(url, timeout=10):
 def analyse(messages, privacy_domain=None):
     history = []
     raw_context = []
+    last_user = ""
     for item in messages[-12:]:
         role = str(item.get("role", "user"))[:16]
         content = str(item.get("content", ""))[:6000]
         history.append(f"{role.upper()}: {content}")
         raw_context.append(content)
+        if role == "user": last_user = content
+    structured = pa_structured_answer(last_user)
+    if structured:
+        return {"reply":structured["reply"],"understanding":"Answer from the local structured PA view.","needs_clarification":False,"clarifying_question":"","improvements":[],"ready_to_run":False,"proposed_job":"","privacy":"local-only","provider":"structured_local_state","route":structured["route"],"source_schema":structured["source_schema"],"confidence":structured["confidence"]}
     # The PA is personal by definition: its conversational context may contain
     # household/personal data even when a particular sentence looks generic.
     # Keep PA inference local-first/fail-closed; only the separately approved
@@ -150,6 +256,7 @@ def broker_chat(body):
         raise ValueError("messages_required")
     lines = []
     raw = []
+    last_user = ""
     for item in messages[-24:]:
         if not isinstance(item, dict):
             continue
@@ -164,8 +271,22 @@ def broker_chat(body):
         content = str(content)[:12000]
         lines.append(f"{role.upper()}: {content}")
         raw.append(content)
+        if role == "user": last_user=content
     if not lines:
         raise ValueError("messages_required")
+    structured = pa_structured_answer(last_user)
+    if structured:
+        return {
+            "id": "chatcmpl-" + uuid.uuid4().hex[:20],
+            "object": "chat.completion",
+            "created": int(time.time()),
+            "model": "lifeos-structured-pa",
+            "choices": [{"index": 0, "message": {"role": "assistant", "content": structured["reply"]}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+            "lifeos_provider": "structured_local_state",
+            "lifeos_privacy": "local-only",
+            "lifeos_task_class": "personal-administration",
+        }
     requested_model = str(body.get("model", "lifeos-normal"))
     requested_privacy = "local-only" if "local-only" in requested_model else "normal"
     task_class = "normal"
