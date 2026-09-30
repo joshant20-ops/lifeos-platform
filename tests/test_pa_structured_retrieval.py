@@ -46,10 +46,10 @@ def test_supported_queries_use_local_structured_state(monkeypatch,tmp_path):
     now=1736899200
     payload=state(now)
     cases={
-        "What needs me?":"task-open",
-        "What am I waiting for?":"task-wait",
-        "What changed?":"task-open",
-        "What is due soon?":"task-open",
+        "What needs me?":"Synthetic home insurance renewal",
+        "What am I waiting for?":"Synthetic service reply",
+        "What changed?":"Synthetic home insurance renewal",
+        "What is due soon?":"Synthetic home insurance renewal",
     }
     for question,expected in cases.items():
         result=mod.pa_structured_answer(question,payload=payload,now_ts=now)
