@@ -33,13 +33,15 @@ printf 'PREFLIGHT=PASS\n'
 
 printf '\n===== 3/6 — INSTALL =====\n'
 sudo install -d -o root -g root -m 0755 /usr/local/libexec/lifeos-assistant.d
+sudo install -d -o joshan -g joshan -m 0700 /opt/stacks/homeassistant/config/lifeos-pa-state
 sudo install -m 0755 "$BRIDGE" /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py
 sudo install -m 0644 "$REPO/governor/ai_broker.py" /usr/local/libexec/lifeos-assistant.d/ai_broker.py
 sudo install -m 0644 "$REPO/governor/privacy-domain-policy.json" /usr/local/libexec/lifeos-assistant.d/privacy-domain-policy.json
 sudo install -m 0644 "$REPO/governor/policy.json" /usr/local/libexec/lifeos-assistant.d/policy.json
+sudo install -m 0644 "$REPO/governor/pa_user_state.py" /usr/local/libexec/lifeos-assistant.d/pa_user_state.py
 sudo install -m 0644 "$REPO/engineer/provider_router.py" /usr/local/libexec/lifeos-assistant.d/provider_router.py
 sudo install -m 0644 "$UI" /usr/local/share/lifeos-assistant.html
-sudo python3 -m py_compile /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py /usr/local/libexec/lifeos-assistant.d/ai_broker.py  /usr/local/libexec/lifeos-assistant.d/provider_router.py
+sudo python3 -m py_compile /usr/local/libexec/lifeos-assistant.d/assistant_bridge.py /usr/local/libexec/lifeos-assistant.d/ai_broker.py /usr/local/libexec/lifeos-assistant.d/pa_user_state.py /usr/local/libexec/lifeos-assistant.d/provider_router.py
 
 sudo tee /etc/systemd/system/lifeos-assistant.service >/dev/null <<'UNIT'
 [Unit]
