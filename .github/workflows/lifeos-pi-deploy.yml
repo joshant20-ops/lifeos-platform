@@ -39,9 +39,6 @@ on:
       - 'governor/autonomous_agent.py'
       - 'governor/privacy-domain-policy.json'
       - 'governor/systemd/lifeos-autonomous-agent.service'
-      - 'governor/assistant_bridge.py'
-      - 'governor/assistant_ui.html'
-      - 'governor/scripts/deploy-ha-assistant.sh'
   issues:
     types: [opened]
 
