@@ -150,6 +150,7 @@ def main():
         selected = next((x for x in view.get("items", []) if x.get("id") == task_id), None)
         assert selected and selected.get("user_comment_count", 0) > comment_before
         assert selected.get("user_comments", [])[-1].get("source") == "user_comment"
+        assert selected.get("user_comments", [])[-1].get("text") == NOTE
         assert selected.get("snoozed") is True
         assert task_id not in {x.get("id") for x in (view.get("items") or []) if not x.get("snoozed")}
         print("GATE_H_COMMENT_AND_SNOOZE=PASS")
