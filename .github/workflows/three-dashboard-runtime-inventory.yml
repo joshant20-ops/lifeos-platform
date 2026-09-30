@@ -36,6 +36,7 @@ jobs:
           PY
       - name: Gate A — live reconciler runtime inventory
         id: gate_a
+        if: ${{ always() }}
         continue-on-error: true
         shell: bash
         run: |
@@ -417,23 +418,27 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh issue comment 1441 --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
-## Automated PA gate test receipt
-
-Commit: `${GITHUB_SHA}`
-Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-
-| Test | Outcome |
-|---|---|
-| Gate A | `${GATE_A}` |
-| Gates B–E | `${GATES_BE}` |
-| Gate F | `${GATE_F}` |
-| Gate G | `${GATE_G}` |
-| A–G system | `${SYSTEM}` |
-
-This is a sanitized execution receipt only; no private PA content is included.
-EOF
-)"
+          python3 - <<'PY'
+          import json, os, urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']
+          run=os.environ['GITHUB_RUN_ID']
+          sha=os.environ['GITHUB_SHA']
+          rows={k:os.environ[k] for k in ('GATE_A','GATES_BE','GATE_F','GATE_G','SYSTEM')}
+          body="## Automated PA gate test receipt\n\n"
+          body+=f"Commit: \`{sha}\`\nRun: https://github.com/{repo}/actions/runs/{run}\n\n"
+          body+="| Test | Outcome |\n|---|---|\n"
+          for label,key in (('Gate A','GATE_A'),('Gates B–E','GATES_BE'),('Gate F','GATE_F'),('Gate G','GATE_G'),('A–G system','SYSTEM')):
+              body+=f"| {label} | \`{rows[key]}\` |\n"
+          body+="\nSanitized execution receipt only; no private PA content is included."
+          req=urllib.request.Request(
+              f"https://api.github.com/repos/{repo}/issues/1441/comments",
+              data=json.dumps({'body':body}).encode(),
+              headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'},
+              method='POST')
+          with urllib.request.urlopen(req,timeout=20) as response:
+              assert response.status==201
+          print('GATE_OUTCOME_RECEIPT=POSTED')
+          PY
 
       - name: Record A-G live acceptance receipt
         if: ${{ success() && steps.system_acceptance.outcome == 'success' }}
