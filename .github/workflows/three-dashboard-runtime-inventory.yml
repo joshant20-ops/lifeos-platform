@@ -213,6 +213,7 @@ jobs:
           except Exception as exc:
               print('SCAN_CHECKPOINT=UNAVAILABLE:'+type(exc).__name__)
               check('SCAN_CHECKPOINT_VALID',False)
+          if payloads.get('PERSISTED'):
               older=sum(1 for x in payloads['PERSISTED'].get('tasks',[])+payloads['PERSISTED'].get('resolved',[]) if isinstance(x,dict) and int(x.get('observed_at') or now)>0 and int(x.get('observed_at') or now)<now-90*86400)
               print('PERSISTED_RECORDS_OUTSIDE_90_DAY_SCAN='+str(older))
               print('BOUNDED_SCAN_PERSISTENCE='+('LIVE_EVIDENCE' if older else 'NOT_DEMONSTRATED_BY_CURRENT_RECORDS'))
