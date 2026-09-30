@@ -30,8 +30,8 @@ def _default():
     return {"schema": SCHEMA, "revision": 0, "obligations": {}}
 
 
-def read_user_state(path=STATE_PATH):
-    path = pathlib.Path(path)
+def read_user_state(path=None):
+    path = pathlib.Path(STATE_PATH if path is None else path)
     if not path.exists():
         return _default()
     payload = json.loads(path.read_text(encoding="utf-8"))
@@ -77,7 +77,7 @@ def _valid_date(value, field):
     return parsed.isoformat()
 
 
-def mutate_action(task_id, action, *, note="", until="", severity="", due_date="", path=STATE_PATH, now=None):
+def mutate_action(task_id, action, *, note="", until="", severity="", due_date="", path=None, now=None):
     task_id = str(task_id or "")
     action = str(action or "")
     if not ID_RE.fullmatch(task_id):
@@ -85,7 +85,7 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
     if action not in {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze"}:
         raise ValueError("action_not_allowlisted")
     now = int(time.time() if now is None else now)
-    path = pathlib.Path(path)
+    path = pathlib.Path(STATE_PATH if path is None else path)
     path.parent.mkdir(parents=True, exist_ok=True)
     lock_path = path.parent / ".user-state.lock"
     with lock_path.open("a+", encoding="utf-8") as lock:
