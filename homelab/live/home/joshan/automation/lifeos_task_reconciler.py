@@ -40,8 +40,7 @@ def text_of(msg):
             except Exception: pass
     return "\n".join(chunks)[:12000]
 
-def classify(msg):
-    compact={"from":str(msg.get("From",""))[:300],"subject":str(msg.get("Subject",""))[:500],"date":str(msg.get("Date",""))[:100],"body":text_of(msg)}
+def classify(compact):
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
 {"actionable":true|false,"title":"short task","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short topic","evidence_query":"terms useful for Paperless search","reason":"short"}
 Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
@@ -71,8 +70,8 @@ def load_previous():
         return {str(x.get("id")):x for x in rows if isinstance(x,dict) and x.get("id")}
     except Exception:return {}
 
-def message_time(msg):
-    try:return int(parsedate_to_datetime(str(msg.get("Date",""))).timestamp())
+def message_time(date_value):
+    try:return int(parsedate_to_datetime(str(date_value or "")).timestamp())
     except Exception:return int(time.time())
 
 def main():
@@ -83,19 +82,35 @@ def main():
     c.login(user,password);c.select("INBOX",readonly=True)
     status,rows=c.search(None,"SINCE",time.strftime("%d-%b-%Y",time.localtime(time.time()-LOOKBACK_DAYS*86400)))
     ids=(rows[0].split() if status=="OK" and rows else [])[-MAX_MESSAGES:]
-    observations=[];errors=0
+    fetched=[];errors=0
     for uid in ids:
         try:
             st,data=c.fetch(uid,"(RFC822)")
             if st!="OK":continue
             raw=next(x[1] for x in data if isinstance(x,tuple));msg=email.message_from_bytes(raw)
-            d=classify(msg)
+            fetched.append({
+                "from":str(msg.get("From",""))[:300],
+                "subject":str(msg.get("Subject",""))[:500],
+                "date":str(msg.get("Date",""))[:100],
+                "message_id":str(msg.get("Message-ID",""))[:300],
+                "body":text_of(msg),
+            })
+        except Exception: errors+=1
+    try:
+        c.logout()
+    except Exception:
+        pass
+
+    # Keep the network mailbox session out of the slow local inference loop.
+    observations=[]
+    for compact in fetched:
+        try:
+            d=classify(compact)
             if not d["actionable"] or d["status"]=="NONE":continue
             k=key(d)
             if not k:continue
-            observations.append((message_time(msg),k,d,msg))
+            observations.append((message_time(compact.get("date")),k,d,compact))
         except Exception: errors+=1
-    c.logout()
     # Reconcile chronologically so a later completion/update wins over an older
     # request. Preserve prior state when a task is outside this bounded scan.
     tasks=dict(previous)
@@ -107,9 +122,9 @@ def main():
             "status":d["status"],"due_date":d.get("due_date") or old.get("due_date"),
             "counterparty":d.get("counterparty") or old.get("counterparty"),
             "topic":d.get("topic") or old.get("topic"),"source":"gmail",
-            "email_message_id":str(msg.get("Message-ID",""))[:300],
+            "email_message_id":str(msg.get("message_id",""))[:300],
             "paperless_evidence":evidence or old.get("paperless_evidence",[]),
-            "updated_from_email":str(msg.get("Date",""))[:100],"observed_at":observed,
+            "updated_from_email":str(msg.get("date",""))[:100],"observed_at":observed,
             "reason":str(d.get("reason") or "")[:300]
         }
     cutoff=int(time.time())-STALE_DAYS*86400
