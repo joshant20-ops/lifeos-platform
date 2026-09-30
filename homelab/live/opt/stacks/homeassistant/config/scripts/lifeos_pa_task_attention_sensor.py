@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """Expose the existing PA task projection to Home Assistant without source content."""
+import html
 import json
+import re
 import time
 from pathlib import Path
 
 TASKS = Path("/config/www/lifeos_tasks.json")
-BUCKETS = (
-    "needs_me",
-    "waiting_on_others",
-    "due_overdue",
-    "upcoming",
-    "recently_completed",
-    "stale_no_progress",
-)
+def safe_markdown(value):
+    value=html.escape(str(value or "Untitled task")[:160],quote=False)
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])",r"\\\1",value)
 
 def main():
     try:
@@ -41,7 +38,7 @@ def main():
             **counts,
             "briefing": str(briefing.get("summary") or "Briefing unavailable."),
             "items": [
-                {"title": str(x.get("title") or "Untitled task")[:160], "due_date": x.get("due_date")}
+                {"title": safe_markdown(x.get("title")), "due_date": x.get("due_date")}
                 for x in items if isinstance(x, dict)
             ],
             "source": "lifeos_tasks_v3",
