@@ -143,9 +143,9 @@ def main():
     action_changed = False
     try:
         comment_before = int(task.get("user_comment_count") or 0)
+        action_changed = True
         call_ha_action("comment", task_id, note=NOTE)
         call_ha_action("snooze", task_id, until=(dt.date.today() + dt.timedelta(days=5)).isoformat())
-        action_changed = True
         view = hass_projection()
         selected = next((x for x in view.get("items", []) if x.get("id") == task_id), None)
         assert selected and selected.get("user_comment_count", 0) > comment_before
