@@ -83,7 +83,9 @@ def resolve_task_id(d,msg,tasks):
         known=set(task.get("source_message_ids") or [])
         if task.get("email_message_id"):known.add(str(task["email_message_id"]))
         if refs & known:ref_matches.append((task_id,task))
-        if not task.get("thread_root_id") and task.get("identity_semantic",task_id)==semantic:
+        same_legacy_message=str(task.get("email_message_id") or "")==str(msg.get("message_id") or "")
+        has_no_source_ref=not task.get("email_message_id") and not task.get("source_message_ids")
+        if not task.get("thread_root_id") and task.get("identity_semantic",task_id)==semantic and (same_legacy_message or has_no_source_ref):
             legacy_matches.append((task_id,task))
     semantic_matches=[x for x in ref_matches if x[1].get("identity_semantic")==semantic]
     if len(semantic_matches)==1:return semantic_matches[0][0]
