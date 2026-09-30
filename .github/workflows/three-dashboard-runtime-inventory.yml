@@ -405,6 +405,36 @@ jobs:
           PY
           echo "A_G_END_TO_END_SYSTEM_ACCEPTANCE=PASS"
 
+      - name: Record individual gate outcomes
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GATE_A: ${{ steps.gate_a.outcome }}
+          GATES_BE: ${{ steps.gates_be.outcome }}
+          GATE_F: ${{ steps.gate_f.outcome }}
+          GATE_G: ${{ steps.gate_g.outcome }}
+          SYSTEM: ${{ steps.system_acceptance.outcome }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          gh issue comment 1441 --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
+## Automated PA gate test receipt
+
+Commit: `${GITHUB_SHA}`
+Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+| Test | Outcome |
+|---|---|
+| Gate A | `${GATE_A}` |
+| Gates B–E | `${GATES_BE}` |
+| Gate F | `${GATE_F}` |
+| Gate G | `${GATE_G}` |
+| A–G system | `${SYSTEM}` |
+
+This is a sanitized execution receipt only; no private PA content is included.
+EOF
+)"
+
       - name: Record A-G live acceptance receipt
         if: ${{ success() && steps.system_acceptance.outcome == 'success' }}
         env:
