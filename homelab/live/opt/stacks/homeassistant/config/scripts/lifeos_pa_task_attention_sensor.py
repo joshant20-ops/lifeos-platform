@@ -33,8 +33,9 @@ def main():
         if not generated or time.time() - generated > 7 * 3600:
             raise ValueError("stale")
         all_tasks = (payload.get("tasks") or []) + (payload.get("resolved") or [])
+        snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         items = [
-            {k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_refs", "paperless_evidence", "user_comments", "snoozed_until", "status_source", "severity_source", "due_date_source")}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "snoozed": x.get("id") in snoozed_ids}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ][:100]
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"
