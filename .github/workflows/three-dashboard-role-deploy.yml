@@ -19,6 +19,10 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Deploy recurring personal task reconciliation
+        run: |
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-pa-task-reconciler
       - name: Deploy role-separated dashboards
         run: |
           sudo python3 scripts/deploy-three-dashboard-roles.py
@@ -49,9 +53,5 @@ jobs:
           assert (root/'lovelace.dashboard_house_status').exists() or True
           print('RUNTIME_VERIFY=PASS')
           PY
-      - name: Deploy recurring personal task reconciliation
-        run: |
-          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
-          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-pa-task-reconciler
       - name: Verify personal LifeOS dashboard contract
         run: sudo python3 homeassistant/verify-lifeos-dashboard.py
