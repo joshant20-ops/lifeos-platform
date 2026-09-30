@@ -146,6 +146,7 @@ jobs:
               check('PAPERLESS_READ_ONLY_EVIDENCE_LOOKUP',False)
 
           source=repo/'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
+          sys.path.insert(0,str(automation))
           installed=automation/'lifeos_task_reconciler.py'
           def digest(path):
               return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ''
@@ -233,7 +234,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo -n python3 - <<'PY'
-          import importlib.util, json, pathlib, time
+          import importlib.util, json, pathlib, sys, time
           automation=pathlib.Path('/home/joshan/automation')
           installed=automation/'lifeos_task_reconciler.py'
           spec=importlib.util.spec_from_file_location('lifeos_task_reconciler_live',installed)
