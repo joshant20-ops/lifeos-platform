@@ -6,7 +6,7 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, imaplib, json, os, re, ssl, sys, time
+import email, hashlib, imaplib, json, os, re, ssl, sys, time
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from urllib.parse import urlencode
@@ -64,6 +64,46 @@ def paperless_search(query):
 def key(d):
     return re.sub(r"[^a-z0-9]+","-",((d.get("counterparty") or "")+" "+(d.get("topic") or d.get("title") or "")).lower()).strip("-")[:120]
 
+def reference_ids(msg):
+    values=[str(msg.get("in_reply_to","")),str(msg.get("references",""))]
+    return set(re.findall(r"<[^<>]+>", " ".join(values)))
+
+def thread_root(msg):
+    refs=re.findall(r"<[^<>]+>",str(msg.get("references","")))
+    if refs:return refs[0]
+    replies=re.findall(r"<[^<>]+>",str(msg.get("in_reply_to","")))
+    return replies[0] if replies else (str(msg.get("message_id") or msg.get("source_ref") or "")[:300])
+
+def resolve_task_id(d,msg,tasks):
+    semantic=key(d)
+    refs=reference_ids(msg)
+    ref_matches=[]
+    legacy_matches=[]
+    for task_id,task in tasks.items():
+        known=set(task.get("source_message_ids") or [])
+        if task.get("email_message_id"):known.add(str(task["email_message_id"]))
+        if refs & known:ref_matches.append((task_id,task))
+        same_legacy_message=str(task.get("email_message_id") or "")==str(msg.get("message_id") or "")
+        has_no_source_ref=not task.get("email_message_id") and not task.get("source_message_ids")
+        if not task.get("thread_root_id") and task.get("identity_semantic",task_id)==semantic and (same_legacy_message or has_no_source_ref):
+            legacy_matches.append((task_id,task))
+    semantic_matches=[x for x in ref_matches if x[1].get("identity_semantic")==semantic]
+    if len(semantic_matches)==1:return semantic_matches[0][0]
+    if len(ref_matches)==1:return ref_matches[0][0]
+    if len(legacy_matches)==1:return legacy_matches[0][0]
+    root=thread_root(msg)
+    if not semantic or not root:return ""
+    digest=hashlib.sha256(root.encode("utf-8","replace")).hexdigest()[:12]
+    return semantic[:80]+"-"+digest
+
+def observation_is_newer(old,observed):
+    try:return int(observed)>=int(old.get("observed_at") or 0)
+    except Exception:return True
+
+def effective_status(old,new_status):
+    if old.get("status")=="DONE" and new_status!="DONE":return "DONE"
+    return new_status
+
 def load_previous():
     try:
         data=json.loads(STATE.read_text())
@@ -115,6 +155,8 @@ def main():
                 "subject":str(msg.get("Subject",""))[:500],
                 "date":str(msg.get("Date",""))[:100],
                 "message_id":message_id,
+                "in_reply_to":str(msg.get("In-Reply-To",""))[:500],
+                "references":str(msg.get("References",""))[:2000],
                 "source_ref":message_id or (uidvalidity+":"+str(uid)),
                 "body":text_of(msg),
             })
@@ -153,14 +195,25 @@ def main():
     # request. Preserve prior state when a task is outside this bounded scan.
     tasks=dict(previous)
     for observed,k,d,msg in sorted(observations,key=lambda x:x[0]):
+        task_id=resolve_task_id(d,msg,tasks)
+        if not task_id:continue
+        old=tasks.get(task_id,{})
+        source_ids=set(old.get("source_message_ids") or [])
+        if msg.get("message_id"):source_ids.add(str(msg["message_id"])[:300])
+        if old and not observation_is_newer(old,observed):
+            old["source_message_ids"]=sorted(source_ids)
+            tasks[task_id]=old
+            continue
+        status=effective_status(old,d["status"])
         evidence=paperless_search(d.get("evidence_query") or d.get("topic") or d.get("title"))
-        old=tasks.get(k,{})
-        tasks[k]={
-            "id":k,"title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
-            "status":d["status"],"due_date":d.get("due_date") or old.get("due_date"),
+        tasks[task_id]={
+            "id":task_id,"identity_semantic":key(d),"thread_root_id":thread_root(msg),
+            "title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
+            "status":status,"due_date":d.get("due_date") or old.get("due_date"),
             "counterparty":d.get("counterparty") or old.get("counterparty"),
             "topic":d.get("topic") or old.get("topic"),"source":"gmail",
             "email_message_id":str(msg.get("message_id",""))[:300],
+            "source_message_ids":sorted(source_ids),
             "paperless_evidence":evidence or old.get("paperless_evidence",[]),
             "updated_from_email":str(msg.get("date",""))[:100],"observed_at":observed,
             "reason":str(d.get("reason") or "")[:300]
