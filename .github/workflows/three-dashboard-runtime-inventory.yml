@@ -425,10 +425,10 @@ jobs:
           sha=os.environ['GITHUB_SHA']
           rows={k:os.environ[k] for k in ('GATE_A','GATES_BE','GATE_F','GATE_G','SYSTEM')}
           body="## Automated PA gate test receipt\n\n"
-          body+=f"Commit: \`{sha}\`\nRun: https://github.com/{repo}/actions/runs/{run}\n\n"
+          body+=f"Commit: `{sha}`\nRun: https://github.com/{repo}/actions/runs/{run}\n\n"
           body+="| Test | Outcome |\n|---|---|\n"
           for label,key in (('Gate A','GATE_A'),('Gates B–E','GATES_BE'),('Gate F','GATE_F'),('Gate G','GATE_G'),('A–G system','SYSTEM')):
-              body+=f"| {label} | \`{rows[key]}\` |\n"
+              body+=f"| {label} | `{rows[key]}` |\n"
           body+="\nSanitized execution receipt only; no private PA content is included."
           req=urllib.request.Request(
               f"https://api.github.com/repos/{repo}/issues/1441/comments",
@@ -447,23 +447,14 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          gh issue comment 1441 --repo "$GITHUB_REPOSITORY" --body "$(cat <<EOF
-## Automated live A–G acceptance receipt
-
-**Result: PASS**
-
-The self-hosted `lifeos-pi5` runtime inventory completed every preceding acceptance step successfully on canonical `main` at `${GITHUB_SHA}`.
-
-This means the same run passed:
-- Gate A live reconciler/systemd/Gmail/Paperless/persisted-state inventory with no failed aggregate checks;
-- Gate B installed-runtime identity/progression/replay contract;
-- Gates C–E validation against the real HA-published task/attention/briefing state;
-- Gate F read-only queries against the running Home Assistant API plus the live LifeOS Overview storage;
-- Gate G read-only HTTP queries against the running PA for all five everyday retrieval intents, requiring `structured_local_state`, `structured_pa_state`, `lifeos_tasks_v3`, `local-only`, and no proposed engineering job.
-
-No private task/email/document/answer content is included in this receipt.
-
-Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
-Commit: `${GITHUB_SHA}`
-EOF
-)"
+          python3 - <<'PY'
+          import json, os, urllib.request
+          repo=os.environ['GITHUB_REPOSITORY']; sha=os.environ['GITHUB_SHA']; run=os.environ['GITHUB_RUN_ID']
+          body="## Automated live A-G acceptance receipt\n\n**Result: PASS**\n\n"
+          body+=f"All PA Gates A-G passed on canonical main at {sha}.\n\n"
+          body+="No private task/email/document/answer content is included.\n\n"
+          body+=f"Workflow: https://github.com/{repo}/actions/runs/{run}\nCommit: {sha}"
+          req=urllib.request.Request(f"https://api.github.com/repos/{repo}/issues/1441/comments",data=json.dumps({'body':body}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28','Content-Type':'application/json'},method='POST')
+          with urllib.request.urlopen(req,timeout=20) as response: assert response.status==201
+          print('A_G_PASS_RECEIPT=POSTED')
+          PY
