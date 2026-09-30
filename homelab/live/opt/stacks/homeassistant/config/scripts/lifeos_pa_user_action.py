@@ -6,7 +6,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote_plus
 
 from lifeos_pa_user_state import mutate_action
 
@@ -33,7 +33,7 @@ def main():
     result = mutate_action(
         args.task_id,
         args.action,
-        note=unquote(args.note),
+        note=unquote_plus(args.note),
         until=args.until,
         severity=args.severity,
         due_date=args.due_date,
