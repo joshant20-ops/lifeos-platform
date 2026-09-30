@@ -65,3 +65,31 @@ def test_out_of_order_observation_does_not_replace_newer_task_state():
     assert not reconciler.observation_is_newer(existing, 100)
     assert reconciler.observation_is_newer(existing, 200)
     assert reconciler.observation_is_newer(existing, 300)
+
+
+def test_attention_projection_uses_severity_and_due_urgency_without_source_content():
+    from datetime import date
+    now=1736899200
+    attention=reconciler.derive_attention([
+        {"id":"late-high","title":"Synthetic renewal","status":"OPEN","severity":"high","due_date":"2025-01-14","observed_at":now-20*86400,"source_message_ids":["<synthetic@example.test>"]},
+        {"id":"waiting","title":"Synthetic reply","status":"WAITING","severity":"normal","observed_at":now},
+        {"id":"done","title":"Synthetic done","status":"DONE","severity":"low","observed_at":now},
+    ],now_ts=now,today=date(2025,1,15))
+    assert attention["schema"]=="lifeos_attention_projection_v1"
+    assert attention["needs_me"][0]["id"]=="late-high"
+    assert attention["needs_me"][0]["priority_score"]==15
+    assert attention["counts"]["overdue"]==1
+    assert attention["counts"]["waiting_on_others"]==1
+    assert attention["counts"]["recently_completed"]==1
+    assert "Synthetic renewal" not in str(attention["counts"])
+
+def test_briefing_is_bounded_and_uses_only_structured_projection():
+    attention=reconciler.derive_attention([
+        {"id":str(i),"title":"Synthetic task "+str(i),"status":"OPEN","due_date":"2025-01-16","severity":"normal","observed_at":1736899200}
+        for i in range(8)
+    ],now_ts=1736899200)
+    briefing=reconciler.daily_briefing(attention)
+    assert briefing["source"]=="lifeos_tasks_v3"
+    assert briefing["confidence"]=="structured_state_only"
+    assert len(briefing["items"])==5
+    assert briefing["summary"].startswith("Needs you: 8;")
