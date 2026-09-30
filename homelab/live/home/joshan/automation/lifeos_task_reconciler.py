@@ -17,6 +17,7 @@ REPO=Path(os.getenv("LIFEOS_PLATFORM_REPO","/home/joshan/lifeos-platform"))
 sys.path.insert(0,str(REPO))
 from governor import ai_broker
 from lifeos_email_paperless_selective import secret, paperless_token
+from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state
 
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
@@ -107,121 +108,20 @@ def effective_status(old,new_status):
     if old.get("status")=="DONE" and new_status!="DONE":return "DONE"
     return new_status
 
-def derive_attention(task_rows, now_ts=None, today=None):
-    """Project the existing task index into deterministic attention buckets."""
-    now_ts=int(now_ts if now_ts is not None else time.time())
-    today=today or datetime.fromtimestamp(now_ts).date()
-    severity_factor={"low":1,"normal":2,"high":3}
-    rows=[]
-    for task in task_rows:
-        if not isinstance(task,dict):
-            continue
-        status=str(task.get("status","")).upper()
-        due=task.get("due_date")
-        days_until=None
-        try:
-            days_until=(date.fromisoformat(str(due))-today).days if due else None
-        except (TypeError,ValueError):
-            due=None
-        try:
-            observed=int(task.get("observed_at") or 0)
-        except (TypeError,ValueError):
-            observed=0
-        stale_days=max(0,int((now_ts-observed)/86400)) if observed else None
-        if days_until is not None and days_until < 0:
-            urgency=5
-            due_bucket="overdue"
-        elif days_until is not None and days_until <= 1:
-            urgency=4
-            due_bucket="due_soon"
-        elif days_until is not None and days_until <= 7:
-            urgency=3
-            due_bucket="due_soon"
-        elif days_until is not None and days_until <= 30:
-            urgency=2
-            due_bucket="upcoming"
-        else:
-            urgency=1
-            due_bucket=None
-        severity=str(task.get("severity","normal")).lower()
-        if severity not in severity_factor:
-            severity="normal"
-        score=severity_factor[severity]*urgency
-        projected={
-            "id":str(task.get("id","")),
-            "title":str(task.get("title") or "Untitled task")[:160],
-            "status":status,
-            "due_date":due,
-            "severity":severity,
-            "priority_score":score,
-            "due_bucket":due_bucket,
-            "stale_days":stale_days,
-            "source":"gmail",
-            "source_refs":sorted(set(str(x)[:300] for x in (task.get("source_message_ids") or []) if x))[:5],
-            "observed_at":observed or None,
-        }
-        rows.append(projected)
-    def rank(item):
-        return (-item["priority_score"],item["due_date"] or "9999-99-99",item["id"])
-    needs_me=sorted([x for x in rows if x["status"]=="OPEN"],key=rank)
-    waiting=sorted([x for x in rows if x["status"]=="WAITING"],key=rank)
-    outstanding=[x for x in rows if x["status"] in {"OPEN","WAITING"}]
-    overdue=sorted([x for x in outstanding if x["due_bucket"]=="overdue"],key=rank)
-    upcoming=sorted([x for x in outstanding if x["due_bucket"] in {"due_soon","upcoming"}],key=rank)
-    stale=[x for x in needs_me if x["stale_days"] is not None and x["stale_days"]>=14]
-    completed=sorted(
-        [x for x in rows if x["status"]=="DONE" and x["observed_at"] and now_ts-x["observed_at"]<=14*86400],
-        key=lambda x:(-int(x["observed_at"] or 0),x["id"])
-    )
-    return {
-        "schema":"lifeos_attention_projection_v1",
-        "generated_time":now_ts,
-        "method":"deterministic_severity_times_due_urgency",
-        "urgency_factors":{"overdue":5,"due_today_or_tomorrow":4,"due_within_7_days":3,"due_within_30_days":2,"no_due_date":1},
-        "counts":{
-            "needs_me":len(needs_me),"waiting_on_others":len(waiting),
-            "overdue":len(overdue),"upcoming":len(upcoming),
-            "recently_completed":len(completed),"stale_no_progress":len(stale)
-        },
-        "needs_me":needs_me[:20],
-        "waiting_on_others":waiting[:20],
-        "due_overdue":overdue[:20],
-        "upcoming":upcoming[:20],
-        "recently_completed":completed[:20],
-        "stale_no_progress":stale[:20],
-    }
-
-
-def daily_briefing(attention):
-    counts=attention["counts"]
-    summary=(f"Needs you: {counts['needs_me']}; waiting on others: {counts['waiting_on_others']}; "
-             f"due or overdue: {counts['overdue']+counts['upcoming']}; recently completed: {counts['recently_completed']}.")
-    picked=[]
-    seen=set()
-    for bucket in ("due_overdue","needs_me","waiting_on_others","upcoming","stale_no_progress","recently_completed"):
-        for task in attention[bucket]:
-            if task["id"] and task["id"] not in seen:
-                seen.add(task["id"])
-                picked.append({k:task[k] for k in ("id","title","status","due_date","severity","source","source_refs")})
-            if len(picked)>=5:
-                break
-        if len(picked)>=5:
-            break
-    return {
-        "schema":"lifeos_daily_briefing_v1",
-        "generated_time":attention["generated_time"],
-        "source":"lifeos_tasks_v3",
-        "confidence":"structured_state_only",
-        "summary":summary,
-        "items":picked,
-    }
-
-
 def load_previous():
     try:
         data=json.loads(STATE.read_text())
         rows=(data.get("tasks") or [])+(data.get("resolved") or [])
-        return {str(x.get("id")):x for x in rows if isinstance(x,dict) and x.get("id")}
+        previous={}
+        for x in rows:
+            if not isinstance(x,dict) or not x.get("id"): continue
+            item=dict(x)
+            if str(item.get("machine_status") or "").upper() in {"OPEN","WAITING","DONE","DISMISSED"}:
+                item["status"]=item["machine_status"]
+            item.pop("status_source",None); item.pop("status_set_at",None)
+            item.pop("severity_source",None); item.pop("due_date_source",None)
+            previous[str(item["id"])]=item
+        return previous
     except Exception:return {}
 
 def load_scan_state():
@@ -337,9 +237,7 @@ def main():
     resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
     payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
-    attention=derive_attention(open_tasks+resolved)
-    payload["attention"]=attention
-    payload["briefing"]=daily_briefing(attention)
+    payload=apply_user_state(payload,read_user_state())
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
     tmp=STATE.with_suffix(".tmp");tmp.write_text(json.dumps(payload,indent=2)+"\n");tmp.replace(STATE)
     outtmp=OUT.with_suffix(".tmp");outtmp.write_text(json.dumps(payload,indent=2)+"\n");outtmp.replace(OUT)
