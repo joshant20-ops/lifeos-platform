@@ -203,20 +203,25 @@ jobs:
               print('MESSAGES_REUSED_FROM_CACHE='+str(reused))
               print('MODEL_USAGE_EXACT_COUNTER=NOT_EXPOSED_BY_CURRENT_RECONCILER')
           scan_path=automation/'state/lifeos_personal_task_scan.json'
+          scan_valid=False
+          processed=[]
           try:
               scan=json.loads(scan_path.read_text())
               processed=scan.get('processed_message_ids',[])
+              scan_valid=scan.get('schema')=='lifeos_task_scan_v1' and bool(scan.get('uidvalidity')) and int(scan.get('before_uid') or 0)>0 and isinstance(processed,list)
               print('SCAN_CHECKPOINT_SCHEMA='+str(scan.get('schema')))
               print('SCAN_CHECKPOINT_PROCESSED_COUNT='+str(len(processed) if isinstance(processed,list) else 0))
               print('SCAN_CHECKPOINT_CURSOR_PRESENT='+str(int(scan.get('before_uid') or 0)>0))
-              check('SCAN_CHECKPOINT_VALID',scan.get('schema')=='lifeos_task_scan_v1' and bool(scan.get('uidvalidity')) and int(scan.get('before_uid') or 0)>0 and isinstance(processed,list))
+              check('SCAN_CHECKPOINT_VALID',scan_valid)
           except Exception as exc:
               print('SCAN_CHECKPOINT=UNAVAILABLE:'+type(exc).__name__)
               check('SCAN_CHECKPOINT_VALID',False)
           if payloads.get('PERSISTED'):
               older=sum(1 for x in payloads['PERSISTED'].get('tasks',[])+payloads['PERSISTED'].get('resolved',[]) if isinstance(x,dict) and int(x.get('observed_at') or now)>0 and int(x.get('observed_at') or now)<now-90*86400)
               print('PERSISTED_RECORDS_OUTSIDE_90_DAY_SCAN='+str(older))
-              print('BOUNDED_SCAN_PERSISTENCE='+('LIVE_EVIDENCE' if older else 'NOT_DEMONSTRATED_BY_CURRENT_RECORDS'))
+              considered=int(payloads['PERSISTED'].get('messages_considered') or 0)
+              progressed=scan_valid and len(processed)>considered
+              print('BOUNDED_SCAN_PERSISTENCE='+('CHECKPOINTED_ACROSS_RUNS' if progressed else 'INITIAL_CHECKPOINT_ONLY'))
           failures=[name for name,ok in checks if not ok]
           print('GATE_A_RUNTIME_INVENTORY='+('PASS' if not failures else 'FAIL'))
           print('GATE_A_FAILED_CHECKS='+(','.join(failures) if failures else 'NONE'))
