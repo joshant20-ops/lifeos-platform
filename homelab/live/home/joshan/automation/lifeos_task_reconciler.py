@@ -20,7 +20,7 @@ from lifeos_email_paperless_selective import secret, paperless_token
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
 OUT=HA/"www/lifeos_tasks.json"
-MAX_MESSAGES=int(os.getenv("LIFEOS_TASK_EMAIL_LIMIT","40"))
+MAX_MESSAGES=int(os.getenv("LIFEOS_TASK_EMAIL_LIMIT","6"))
 LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))
 STALE_DAYS=int(os.getenv("LIFEOS_TASK_STALE_DAYS","180"))
 
@@ -102,8 +102,10 @@ def main():
         pass
 
     # Keep the network mailbox session out of the slow local inference loop.
+    print("TASK_SCAN_FETCHED="+str(len(fetched)),flush=True)
     observations=[]
-    for compact in fetched:
+    for index,compact in enumerate(fetched,1):
+        print("TASK_CLASSIFICATION_PROGRESS="+str(index)+"/"+str(len(fetched)),flush=True)
         try:
             d=classify(compact)
             if not d["actionable"] or d["status"]=="NONE":continue
