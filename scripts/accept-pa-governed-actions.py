@@ -193,9 +193,20 @@ def main():
         assert answer.get("route") == "structured_pa_state"
         assert answer.get("source_schema") == "lifeos_tasks_v3"
         assert answer.get("privacy") == "local-only"
-        assert task_id in answer.get("result_ids", [])
-        assert target_due in answer.get("reply", "")
-        assert "high" in answer.get("reply", "").lower()
+        result_ids = answer.get("result_ids", [])
+        reply = str(answer.get("reply", ""))
+        if not isinstance(result_ids, list):
+            result_ids = []
+        # Content-safe diagnostics: never print task IDs, titles, comments, or replies.
+        confidence = answer.get("confidence")
+        print("GATE_H_ASSIST_CONFIDENCE=" + ("structured_state_only" if confidence == "structured_state_only" else "unavailable" if confidence == "unavailable" else "other"))
+        print("GATE_H_ASSIST_RESULT_COUNT=" + str(len(result_ids)))
+        print("GATE_H_ASSIST_TARGET_ID_MATCH=" + ("PASS" if task_id in result_ids else "FAIL"))
+        print("GATE_H_ASSIST_DUE_OVERRIDE_VISIBLE=" + ("PASS" if target_due in reply else "FAIL"))
+        print("GATE_H_ASSIST_SEVERITY_OVERRIDE_VISIBLE=" + ("PASS" if "high" in reply.lower() else "FAIL"))
+        assert task_id in result_ids
+        assert target_due in reply
+        assert "high" in reply.lower()
         print("GATE_H_REOPEN_OVERRIDES_HA_AND_CONVERSATIONAL_RETRIEVAL=PASS")
 
         dashboard = read_json(DASHBOARD)
