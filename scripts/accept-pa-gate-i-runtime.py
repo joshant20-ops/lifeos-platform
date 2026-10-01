@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Sanitized final Gate I acceptance on the canonical lifeos-pi5 runtime."""
 from __future__ import annotations
-import hashlib, json, os, pathlib, re, subprocess, sys, time
+import ast, hashlib, json, os, pathlib, re, subprocess, sys, time
 
 REPO=pathlib.Path('/home/joshan/lifeos-platform')
 HA=pathlib.Path('/opt/stacks/homeassistant/config')
@@ -27,6 +27,35 @@ def read_json(path):
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else ''
+
+def writes_task_projection(path):
+    try:
+        tree=ast.parse(path.read_text(errors='ignore'))
+    except (OSError,SyntaxError):
+        return False
+    bindings=set()
+    for node in ast.walk(tree):
+        if isinstance(node,(ast.Assign,ast.AnnAssign)):
+            value=node.value
+            rendered=ast.unparse(value) if value is not None else ''
+            if 'lifeos_tasks.json' in rendered and 'www' in rendered:
+                targets=node.targets if isinstance(node,ast.Assign) else [node.target]
+                bindings.update(target.id for target in targets if isinstance(target,ast.Name))
+    for node in ast.walk(tree):
+        if not isinstance(node,ast.Call):
+            continue
+        fn=node.func
+        if isinstance(fn,ast.Attribute) and fn.attr in {'replace','rename'}:
+            names={item.id for item in ast.walk(node) if isinstance(item,ast.Name)}
+            if names.intersection(bindings):
+                return True
+        if isinstance(fn,ast.Attribute) and fn.attr in {'write_text','write_bytes'}:
+            if isinstance(fn.value,ast.Name) and fn.value.id in bindings:
+                return True
+        if isinstance(fn,ast.Attribute) and isinstance(fn.value,ast.Name) and fn.value.id=='os' and fn.attr=='replace':
+            if len(node.args)>=2 and isinstance(node.args[1],ast.Name) and node.args[1].id in bindings:
+                return True
+    return False
 
 def main():
     head=run(['git','-C',str(REPO),'rev-parse','HEAD'])
@@ -60,11 +89,7 @@ def main():
             if 'lifeos_task_reconciler.py' in cmd and int(proc.name)!=os.getpid(): running.append(proc.name)
         except (OSError,ValueError): pass
     require('NO_COMPETING_RECONCILER_PROCESS',len(running)==0)
-    py_sources=[]
-    for path in REPO.rglob('*.py'):
-        if 'archive' in path.parts: continue
-        if '/'.join(('www','lifeos_tasks.json')) in path.read_text(errors='ignore'):
-            py_sources.append(str(path.relative_to(REPO)))
+    py_sources=[str(path.relative_to(REPO)) for path in REPO.rglob('*.py') if 'archive' not in path.parts and writes_task_projection(path)]
     require('SINGLE_TASK_VIEW_PUBLISHER',py_sources==[PUBLISHER])
     require('INSTALLED_RECONCILER_MATCHES_SOURCE',bool(digest(SOURCE)) and digest(SOURCE)==digest(RECONCILER))
 
