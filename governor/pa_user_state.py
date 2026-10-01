@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import re
+import stat
 import tempfile
 import time
 import uuid
@@ -24,6 +25,28 @@ SCHEMA = "lifeos_pa_user_state_v1"
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,119}$")
 SEVERITIES = {"low", "normal", "high"}
 STATUSES = {"OPEN", "WAITING", "DONE", "DISMISSED"}
+
+
+
+def drop_to_state_owner(path=None):
+    """Drop a root HA action process to the private overlay directory owner."""
+    target = pathlib.Path(STATE_PATH if path is None else path)
+    directory = target.parent
+    info = directory.lstat()
+    if (not stat.S_ISDIR(info.st_mode) or info.st_uid == 0
+            or stat.S_IMODE(info.st_mode) != 0o700):
+        raise PermissionError("user_state_directory_not_private_user_owned")
+    euid = os.geteuid()
+    if euid == info.st_uid:
+        return
+    if euid != 0:
+        raise PermissionError("user_state_owner_mismatch")
+    # Home Assistant invokes this bridge as root. The assistant service runs as
+    # the directory owner; drop root before the atomic replacement so the 0600
+    # user-state file remains readable only by that same local service account.
+    os.setgroups([info.st_gid])
+    os.setgid(info.st_gid)
+    os.setuid(info.st_uid)
 
 
 def _default():
