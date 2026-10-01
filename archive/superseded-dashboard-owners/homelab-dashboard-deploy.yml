@@ -1,0 +1,40 @@
+name: Homelab Dashboard Deploy
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/deploy-homelab-default-view.py'
+      - '.github/workflows/homelab-dashboard-deploy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy-and-verify:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Make Homelab infrastructure the landing view
+        run: sudo python3 scripts/deploy-homelab-default-view.py
+      - name: Verify live Homelab dashboard
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('/opt/stacks/homeassistant/config/.storage/lovelace.dashboard_homelab')
+          d=json.loads(p.read_text())
+          views=d.get('data',{}).get('config',{}).get('views',[])
+          assert len(views)==6, f'unexpected view count: {len(views)}'
+          paths=[v.get('path') for v in views]
+          assert paths[0]=='homelab', f'Homelab is not first: {paths}'
+          assert len(paths)==len(set(paths)), f'duplicate paths: {paths}'
+          expected={'homelab','overview','energy-p03','documents','lifeos-chat','important-information'}
+          assert set(paths)==expected, f'view set changed: {paths}'
+          cards=[len(v.get('cards',[])) for v in views]
+          assert cards[0]==6, f'Homelab card count changed: {cards[0]}'
+          print('RUNTIME_VERIFY=PASS')
+          print('VIEW_PATHS='+repr(paths))
+          print('CARD_COUNTS='+repr(cards))
+          PY
