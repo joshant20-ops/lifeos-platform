@@ -12,7 +12,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
   money(id){ return '£'+this.val(id).toFixed(2); }
   render(){
     if(!this._hass) return;
-    const mode=this.config?.mode||'domestic';
+    const mode=this._mode||this.config?.mode||'domestic';
     const css=`<style>
       :host{display:block;--bg:#061720;--panel:#081c27;--line:#163747;--text:#f4f7f9;--muted:#b8c6ce;--blue:#168cff}
       *{box-sizing:border-box}.app{background:linear-gradient(145deg,#061720,#031018);color:var(--text);border-radius:14px;padding:14px;font-family:var(--paper-font-body1_-_font-family,Arial,sans-serif)}
@@ -77,7 +77,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     else { const cam=this._hass.states['camera.front_door_live_view']; const ok=cam&&cam.state!=="unavailable"&&cam.state!=="unknown"; const src='/api/camera_proxy/camera.front_door_live_view?token='+encodeURIComponent(cam?.attributes?.access_token||'')+'&ts='+Date.now(); body='<div class="panel"><div class="heading">Doorbell</div>'+(ok?'<div class="doorcam"><img data-doorbell-image src="'+src+'" alt="Front Door" style="display:block;width:100%;max-height:70vh;object-fit:contain;border-radius:10px" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'block\'"><div class="floor" style="display:none">CAMERA IMAGE UNAVAILABLE</div></div>':'<div class="floor">CAMERA UNAVAILABLE</div>')+'</div>'; }
     this.innerHTML=css+`<div class="app">${nav}${body}</div>`;
     const menu=this.querySelector('.hamb');if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
-    this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this.config={...(this.config||{}),mode:el.dataset.mode};this.render();});
+    this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this._mode=el.dataset.mode;this.render();});
     this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this.render();});
     this.querySelectorAll('[data-shift]').forEach(el=>el.onclick=()=>this.shiftPeriod(Number(el.dataset.shift)));
     const picker=this.querySelector('[data-date-picker]');if(picker)picker.onchange=()=>{if(!picker.value)return;const [y,m,d]=picker.value.split('-').map(Number);const chosen=new Date(y,m-1,d);if(Number.isNaN(chosen.getTime()))return;this._anchor=chosen;if(this.period()==='today')this._period='day';this.render();};
