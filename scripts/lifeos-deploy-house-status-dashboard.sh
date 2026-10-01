@@ -34,7 +34,25 @@ if [[ -f "$DASH_TARGET" ]]; then HAD_DASH=1; cp -a "$DASH_TARGET" "$BACKUP_DIR/d
 if [[ -f "$ASSET_TARGET" ]]; then HAD_ASSET=1; cp -a "$ASSET_TARGET" "$BACKUP_DIR/asset"; fi
 if [[ -f "$CARD_TARGET" ]]; then HAD_CARD=1; cp -a "$CARD_TARGET" "$BACKUP_DIR/card"; fi
 install -o root -g root -m 0644 "$SOURCE_ASSET" "$ASSET_TARGET"
-install -o root -g root -m 0644 "$CARD_SOURCE" "$CARD_TARGET"; MUTATED=1
+install -o root -g root -m 0644 "$CARD_SOURCE" "$CARD_TARGET"
+python3 - "$ASSET_DIR/powerdown-events.json" <<'PY'
+import json,sys
+from pathlib import Path
+out=Path(sys.argv[1]); events=[]; seen=set()
+for p in [Path("/opt/lifeos-watch/octopus-powerdown/events.jsonl")]:
+    if not p.exists(): continue
+    for line in p.read_text().splitlines():
+        try: d=json.loads(line)
+        except Exception: continue
+        e=d.get("target_event")
+        if not isinstance(e,dict): continue
+        key=(e.get("id"),e.get("start"),e.get("end"))
+        if key in seen: continue
+        seen.add(key); events.append(e)
+out.write_text(json.dumps({"events":events},indent=2)+"\n")
+PY
+chmod 0644 "$ASSET_DIR/powerdown-events.json"
+MUTATED=1
 python3 - "$CONFIG" <<'PY'
 from pathlib import Path
 import sys,re
