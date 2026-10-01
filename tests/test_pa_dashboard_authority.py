@@ -57,6 +57,3 @@ def test_only_one_active_owner_deploys_each_lifeos_dashboard_role():
     assert (ROOT/"archive"/"superseded-dashboard-owners"/"deploy-homelab-default-view.py").is_file()
 
 
-def test_existing_task_publisher_audit_remains_a_single_writer():
-    from tests.test_pa_no_duplicate_authorities import test_only_one_active_personal_task_publisher
-    test_only_one_active_personal_task_publisher()
