@@ -6,7 +6,7 @@ DASH_TARGET="$HA/.storage/lovelace.dashboard_house_status"
 REGISTRY="$HA/.storage/lovelace_dashboards"
 ASSET_DIR="$HA/www/house-status"
 ASSET_TARGET="$ASSET_DIR/placeholder-floorplan.svg"
-CARD_TARGET="$ASSET_DIR/lifeos-house-status-v23.js"
+CARD_TARGET="$ASSET_DIR/lifeos-house-status-v24.js"
 CARD_SOURCE="$PLATFORM/homeassistant/www/house-status/lifeos-house-status-card.js"
 RESOURCES="$HA/.storage/lovelace_resources"
 CONFIG="$HA/configuration.yaml"
@@ -73,21 +73,21 @@ s=''.join(out)
 s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v[0-9]+)?\.js(?:\?[^\s]+)?\s*$\n?', '', s)
 # Install one native Home Assistant custom panel, outside Lovelace.
 panel="""panel_custom:
-  - name: lifeos-house-status-v23
+  - name: lifeos-house-status-v24
     sidebar_title: House Status
     sidebar_icon: mdi:home-heart
     url_path: house-status
-    module_url: /local/house-status/lifeos-house-status-v23.js
+    module_url: /local/house-status/lifeos-house-status-v24.js
     require_admin: false
     config:
       mode: domestic
 """
 # Replace an existing LifeOS panel block if present, otherwise append.
 pat=r'(?ms)^panel_custom:\n(?:  - .*\n(?:    .*\n)*)*'
-if 'name: lifeos-house-status-v23' in s:
+if 'name: lifeos-house-status-v24' in s:
     # Replace the existing LifeOS panel block deterministically, regardless of its prior module version.
     start=s.index('panel_custom:\n')
-    name=s.index('  - name: lifeos-house-status-v23',start)
+    name=s.index('  - name: lifeos-house-status-v24',start)
     next_item=s.find('\n  - name:',name+1)
     end=len(s) if next_item<0 else next_item+1
     s=s[:start]+panel+(s[end:] if next_item>=0 else '\n')
