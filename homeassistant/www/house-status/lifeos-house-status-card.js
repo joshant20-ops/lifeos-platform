@@ -2,7 +2,10 @@ class LifeOSHouseStatusCard extends HTMLElement {
   static getStubConfig(){ return {mode:'domestic'}; }
   static getConfigElement(){ return document.createElement('lifeos-house-status-editor'); }
   setConfig(config){ this.config=config||{}; this.render(); }
-  set hass(hass){ this._hass=hass; this.render(); }
+  set hass(hass){
+    this._hass=hass;
+    this.render();
+  }
   period(){return this._period||'today';}
   anchor(){return this._anchor||new Date();}
   periodStart(){const a=new Date(this.anchor());a.setHours(0,0,0,0);if(this.period()==='month')a.setDate(1);if(this.period()==='year'){a.setMonth(0);a.setDate(1);}return a;}
@@ -29,7 +32,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
     const tariff=this._hass.states['sensor.lifeos_energy_tariff_horizon']?.attributes?.slots||[];
     const octopusTariff=this._hass.states['sensor.lifeos_energy_tariff_horizon'];
     const powerdownEntity='event.octopus_energy_a_8b23e5b8_octoplus_power_down_events';
-    const rawPowerdownEvents=this._hass.states[powerdownEntity]?.attributes?.joined_events;
+    const powerdownState=this._hass.states[powerdownEntity];
+    const rawPowerdownEvents=powerdownState?.attributes?.joined_events;
     const powerdownEvents=Array.isArray(rawPowerdownEvents)?rawPowerdownEvents:[];
     const powerdownHistory=this._history?.[powerdownEntity]||[];
     const persistedPowerdown=this._persistedPowerdown||[];
