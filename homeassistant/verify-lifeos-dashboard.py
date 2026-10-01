@@ -5,7 +5,9 @@ from pathlib import Path
 REPO=Path(__file__).resolve().parents[1]
 HA=Path('/opt/stacks/homeassistant/config')
 DASH=HA/'.storage/lovelace.dashboard_lifeos'
+CONTROL=HA/'.storage/lovelace.lifeos_control'
 REG=HA/'.storage/lovelace_dashboards'
+SOURCE=REPO/'homeassistant/lifeos-dashboard.json'
 TOWER_CONFIG=Path('/etc/lifeos/tower.json')
 TOWER_CANONICAL=REPO/'config/tower.example.json'
 TOWER_INSTALLED=Path('/usr/local/libexec/lifeos-tower-control')
@@ -49,23 +51,28 @@ if r.returncode or 'DRIFT: none' not in r.stdout:
 try:
     reg=json.loads(REG.read_text()).get('data',{}).get('items',[])
 except Exception as e: fail('dashboard registry',repr(e))
-lifeos=[x for x in reg if x.get('url_path')=='lifeos']
-legacy=[x for x in reg if x.get('url_path')=='lifeos-control']
-if len(lifeos)!=1 or legacy:
-    fail('dashboard registration',f'lifeos={len(lifeos)} legacy={len(legacy)}')
+lifeos=[x for x in reg if isinstance(x,dict) and (x.get('id')=='dashboard_lifeos' or x.get('url_path')=='lifeos')]
+controls=[x for x in reg if isinstance(x,dict) and (x.get('id')=='lifeos_control' or x.get('url_path')=='lifeos-control')]
+if len(lifeos)!=1 or lifeos[0].get('id')!='dashboard_lifeos' or lifeos[0].get('url_path')!='lifeos' or lifeos[0].get('mode')!='storage':
+    fail('LifeOS dashboard registration')
+if len(controls)>1 or any(x.get('id')!='lifeos_control' or x.get('url_path')!='lifeos-control' or x.get('mode')!='storage' for x in controls):
+    fail('LifeOS Control dashboard registration')
+if controls and not CONTROL.is_file():
+    fail('LifeOS Control dashboard storage')
 
 try:
     d=json.loads(DASH.read_text()); views=d['data']['config']['views']; by={v.get('path'):v for v in views}
-except Exception as e: fail('dashboard JSON',repr(e))
-expected_paths=['overview','documents','lifeos-chat','important-information']
+    expected=json.loads(SOURCE.read_text())['data']['config']['views']
+except Exception as e: fail('dashboard JSON',type(e).__name__)
+expected_paths=[v.get('path') for v in expected]
 if [v.get('path') for v in views] != expected_paths:
-    fail('dashboard structure',f"expected_paths={expected_paths} actual={[v.get('path') for v in views]}")
-if any(not by[p].get('cards') for p in expected_paths):
-    fail('dashboard structure','one or more LifeOS views are empty')
+    fail('dashboard structure')
+if any(not isinstance(v.get('cards'),list) or not v['cards'] for v in views):
+    fail('dashboard structure','empty view')
 blob=json.dumps(d)
-for forbidden in ('sensor.tower_pc_tower_status','binary_sensor.tower_pc_tower_accessible','switch.tower_pc_tower_power','sensor.lifeos_control_state'):
-    if forbidden in blob: fail('dashboard role isolation','forbidden='+forbidden)
-required=[]
+for required_entity in ('sensor.tower_pc_tower_status','binary_sensor.tower_pc_tower_accessible','switch.tower_pc_tower_power'):
+    if required_entity not in blob: fail('dashboard contract')
+required=list(('sensor.tower_pc_tower_status','binary_sensor.tower_pc_tower_accessible','switch.tower_pc_tower_power'))
 
 r=subprocess.run(['docker','exec','homeassistant','python3','-c',"import json; d=json.load(open('/config/.storage/core.entity_registry')); print('\\n'.join(e.get('entity_id','') for e in d.get('data',{}).get('entities',[])))"],text=True,capture_output=True)
 if r.returncode: fail('HA entity registry',(r.stdout+r.stderr).strip())
@@ -119,8 +126,9 @@ if r.returncode or r.stdout.strip()!='online':
 
 print('LIFEOS_HA_GATE=PASS')
 print(f'homeassistant={ha_health}')
-print('dashboard=/lifeos legacy=absent drift=none')
-print('views=overview,documents,lifeos-chat,important-information role_isolation=PASS')
+print('dashboard=/lifeos drift=none')
+print('lifeos_control_registration='+('preserved' if controls else 'absent'))
+print('views='+','.join(expected_paths)+' repository_contract=PASS')
 print('tower_controller=active drift=none')
 print(f'tower_wol=CONFIGURED broadcast={cfg.get("broadcast")} port={port}')
 print('tower_switch_command_path=lifeos/tower/power/set PASS')
