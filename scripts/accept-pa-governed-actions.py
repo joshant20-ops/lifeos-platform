@@ -159,10 +159,15 @@ def main():
         raise RuntimeError("runtime_task_id_invalid")
 
     original_bytes = USER_STATE.read_bytes()
+    prior_user_state = pa_user_state.read_user_state()
+    prior_entry = (prior_user_state.get("obligations") or {}).get(task_id) or {}
+    comment_ids_before = {
+        str(item.get("id")) for item in (prior_entry.get("comments") or [])
+        if isinstance(item, dict) and item.get("id")
+    }
     before_generated = int(before.get("generated_time") or 0)
     action_changed = False
     try:
-        comment_before = int(task.get("user_comment_count") or 0)
         action_changed = True
         call_ha_action("comment", task_id, note=NOTE)
         call_ha_action("snooze", task_id, until=(dt.date.today() + dt.timedelta(days=5)).isoformat())
@@ -173,11 +178,15 @@ def main():
         projected_comments = selected.get("user_comments") or [] if selected else []
         print("GATE_H_COMMENT_PROJECTION_ITEM_PRESENT=" + ("PASS" if selected else "FAIL"))
         print("GATE_H_COMMENT_OVERLAY_PRESENT=" + ("PASS" if any(isinstance(x, dict) and x.get("source") == "user_comment" and x.get("text") == NOTE for x in overlay_comments) else "FAIL"))
-        print("GATE_H_COMMENT_PROJECTION_COUNT_ADVANCED=" + ("PASS" if selected and int(selected.get("user_comment_count") or 0) > comment_before else "FAIL"))
-        print("GATE_H_COMMENT_PROJECTION_NOTE_MATCH=" + ("PASS" if projected_comments and projected_comments[-1].get("text") == NOTE else "FAIL"))
+        latest_comment = projected_comments[-1] if projected_comments else {}
+        print("GATE_H_COMMENT_PROJECTION_COUNT_PARITY=" + ("PASS" if selected and int(selected.get("user_comment_count") or 0) == len(projected_comments) else "FAIL"))
+        print("GATE_H_COMMENT_PROJECTION_NEW_ID=" + ("PASS" if latest_comment.get("id") and str(latest_comment.get("id")) not in comment_ids_before else "FAIL"))
+        print("GATE_H_COMMENT_PROJECTION_NOTE_MATCH=" + ("PASS" if latest_comment.get("text") == NOTE and latest_comment.get("source") == "user_comment" else "FAIL"))
         print("GATE_H_SNOOZE_PROJECTION=" + ("PASS" if selected and selected.get("snoozed") is True else "FAIL"))
-        assert selected and selected.get("user_comment_count", 0) > comment_before
-        assert selected.get("user_comments", [])[-1].get("source") == "user_comment"
+        assert selected and projected_comments
+        assert int(selected.get("user_comment_count") or 0) == len(projected_comments)
+        assert str(latest_comment.get("id") or "") not in comment_ids_before
+        assert latest_comment.get("source") == "user_comment"
         assert selected.get("user_comments", [])[-1].get("text") == NOTE
         assert selected.get("snoozed") is True
         assert task_id not in {x.get("id") for x in (view.get("items") or []) if not x.get("snoozed")}
