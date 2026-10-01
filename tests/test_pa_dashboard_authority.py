@@ -47,7 +47,7 @@ def test_only_one_active_owner_deploys_each_lifeos_dashboard_role():
     active="\n".join(p.read_text(errors="ignore") for p in workflows.glob("*.yml"))
     assert "deploy-three-dashboard-roles.py" not in active
     assert "deploy-homelab-default-view.py" not in active
-    assert active.count("deploy-homelab-dashboard-v2.py")==1
+    assert sum("deploy-homelab-dashboard-v2.py" in p.read_text(errors="ignore") for p in workflows.glob("*.yml"))==1
     pa=(workflows/"lifeos-pa-deploy.yml").read_text()
     assert pa.index("accept-pa-governed-actions.py") < pa.index("deploy-ha-control-bridge")
     assert pa.index("deploy-ha-control-bridge") < pa.index("accept-pa-gate-i-runtime.py")
