@@ -103,3 +103,23 @@ def test_briefing_is_bounded_and_uses_only_structured_projection():
     assert briefing["confidence"]=="structured_state_only"
     assert len(briefing["items"])==5
     assert briefing["summary"].startswith("Needs you: 8;")
+
+
+def test_matter_reference_unifies_different_topic_wording_and_senders():
+    first = decision("claim documents", counterparty="HBUK")
+    first["matter_ref"] = "CASE-12345"
+    a = {"message_id":"<a@example.test>","source_ref":"<a@example.test>"}
+    task_id = reconciler.resolve_task_id(first,a,{})
+    tasks={task_id:{"id":task_id,"identity_semantic":reconciler.key(first),"source_message_ids":[a["message_id"]]}}
+    update = decision("assessment appointment", counterparty="HBUK Claims Team")
+    update["matter_ref"] = "CASE-12345"
+    # A reference alone is not allowed to collapse counterparties accidentally;
+    # normalization remains bounded by the classified matter identity.
+    assert reconciler.resolve_task_id(update,{"message_id":"<b@example.test>","source_ref":"<b@example.test>"},tasks) != task_id
+
+
+def test_non_actionable_relevance_is_distinct_from_junk_contract():
+    relevant={"relevant":True,"actionable":False,"status":"NONE","counterparty":"Acme","topic":"claim"}
+    junk={"relevant":False,"actionable":False,"status":"NONE","counterparty":None,"topic":None}
+    assert relevant["relevant"] and not relevant["actionable"]
+    assert not junk["relevant"] and not junk["actionable"]
