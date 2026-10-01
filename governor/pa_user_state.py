@@ -44,9 +44,14 @@ def drop_to_state_owner(path=None):
     # Home Assistant invokes this bridge as root. The assistant service runs as
     # the directory owner; drop root before the atomic replacement so the 0600
     # user-state file remains readable only by that same local service account.
-    os.setgroups([info.st_gid])
-    os.setgid(info.st_gid)
-    os.setuid(info.st_uid)
+    for name, operation, value in (
+            ("groups", os.setgroups, [info.st_gid]),
+            ("gid", os.setgid, info.st_gid),
+            ("uid", os.setuid, info.st_uid)):
+        try:
+            operation(value)
+        except OSError as exc:
+            raise PermissionError("user_state_privilege_drop_" + name + "_failed") from exc
 
 
 def _default():
