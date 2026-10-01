@@ -18,7 +18,8 @@ window.LifeOSHouseStatusModules.doorbell={
       picture.hass=hass;
       host.replaceChildren(picture);
     }catch(e){
-      host.innerHTML='<div class="floor">CAMERA CARD ERROR</div>';
+      const detail=(e?.message||String(e)||'unknown error').replace(/[<>&]/g,ch=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
+      host.innerHTML='<div class="floor"><b>CAMERA CARD ERROR</b><br><span class="small">'+detail+'</span></div>';
       console.error('House Status Doorbell native card mount failed',e);
     }
   },
