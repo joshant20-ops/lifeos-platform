@@ -28,6 +28,9 @@ jobs:
         run: |
           set -Eeuo pipefail
           target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v25.js
+          doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
+          test -s "$doorbell"
+          grep -q '/api/camera_proxy/camera.front_door_live_view' "$doorbell"
           grep -q 'band-free' "$target"
           grep -q 'band-powerdown' "$target"
           grep -q 'joined_events' "$target"
