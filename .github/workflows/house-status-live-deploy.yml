@@ -31,7 +31,7 @@ jobs:
           grep -q 'band-free' "$target"
           grep -q 'band-powerdown' "$target"
           grep -q 'joined_events' "$target"
-          grep -q 'Free / negative electricity' "$target"
+          grep -q 'Free electricity' "$target"
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v23.js | grep -q 'band-free'
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v23.js | grep -q 'band-powerdown'
           echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
