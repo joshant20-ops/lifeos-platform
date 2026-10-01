@@ -1,3 +1,12 @@
+class LifeOSEnergyModule {
+  static owns(mode){ return mode==='domestic'||mode==='flow'; }
+}
+class LifeOSHouseModule {
+  static owns(mode){ return mode==='home'; }
+}
+class LifeOSDoorbellModule {
+  static owns(mode){ return mode==='doorbell'; }
+}
 class LifeOSHouseStatusCard extends HTMLElement {
   static getStubConfig(){ return {mode:'domestic'}; }
   static getConfigElement(){ return document.createElement('lifeos-house-status-editor'); }
@@ -13,6 +22,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
   render(){
     if(!this._hass) return;
     const mode=this._mode||this.config?.mode||'domestic';
+    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':LifeOSDoorbellModule.owns(mode)?'doorbell':'energy';
+    this.dataset.module=moduleOwner;
     const css=`<style>
       :host{display:block;--bg:#061720;--panel:#081c27;--line:#163747;--text:#f4f7f9;--muted:#b8c6ce;--blue:#168cff}
       *{box-sizing:border-box}.app{background:linear-gradient(145deg,#061720,#031018);color:var(--text);border-radius:14px;padding:14px;font-family:var(--paper-font-body1_-_font-family,Arial,sans-serif)}
