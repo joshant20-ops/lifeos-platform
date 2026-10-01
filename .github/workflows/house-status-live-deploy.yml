@@ -35,3 +35,17 @@ jobs:
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v23.js | grep -q 'band-free'
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v23.js | grep -q 'band-powerdown'
           echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
+      - name: Power Down feed diagnostics
+        run: |
+          set -Eeuo pipefail
+          feed=/opt/stacks/homeassistant/config/www/house-status/powerdown-events.json
+          echo "POWERDOWN_FEED_BEGIN"
+          if [[ -f "$feed" ]]; then
+            cat "$feed"
+            python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); es=d.get("events",[]); print("POWERDOWN_FEED_COUNT="+str(len(es))); [print("POWERDOWN_EVENT="+json.dumps(e,sort_keys=True)) for e in es]' "$feed"
+          else
+            echo POWERDOWN_FEED_MISSING
+          fi
+          echo "POWERDOWN_WATCH_LOG_TAIL_BEGIN"
+          sudo -n tail -n 20 /opt/lifeos-watch/octopus-powerdown/events.jsonl 2>/dev/null || echo POWERDOWN_WATCH_LOG_UNAVAILABLE
+          echo "POWERDOWN_WATCH_LOG_TAIL_END"
