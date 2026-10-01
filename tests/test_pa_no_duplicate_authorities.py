@@ -46,7 +46,7 @@ def _task_view_writers(path):
             if fn.attr in {'write_text','write_bytes'} and isinstance(fn.value,ast.Name) and fn.value.id in bindings:
                 return True
         if isinstance(fn,ast.Attribute) and fn.attr=='replace' and isinstance(fn.value,ast.Name) and fn.value.id=='os':
-            names={x.id for x in ast.walk(node)}
+            names={x.id for x in ast.walk(node) if isinstance(x,ast.Name)}
             if len(node.args)>=2 and isinstance(node.args[1],ast.Name) and node.args[1].id in bindings:
                 return True
     return False
