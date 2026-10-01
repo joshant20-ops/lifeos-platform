@@ -118,7 +118,7 @@ def main():
     workflows=REPO/'.github/workflows'
     active='\n'.join(p.read_text(errors='ignore') for p in workflows.glob('*.yml'))
     require('SUPERSEDED_DASHBOARD_WORKFLOWS_RETIRED','three-dashboard-role-deploy.yml' not in [p.name for p in workflows.glob('*.yml')] and 'homelab-dashboard-deploy.yml' not in [p.name for p in workflows.glob('*.yml')])
-    require('ACTIVE_WORKFLOWS_USE_SINGLE_HOMELAB_OWNER','deploy-homelab-default-view.py' not in active and active.count('deploy-homelab-dashboard-v2.py')==1)
+    require('ACTIVE_WORKFLOWS_USE_SINGLE_HOMELAB_OWNER','deploy-homelab-default-view.py' not in active and sum('deploy-homelab-dashboard-v2.py' in p.read_text(errors='ignore') for p in workflows.glob('*.yml'))==1)
     require('ACTIVE_WORKFLOWS_NO_ROLE_REDEPLOYER','deploy-three-dashboard-roles.py' not in active)
 
     print('GATE_I_RUNTIME_AUDIT=PASS')
