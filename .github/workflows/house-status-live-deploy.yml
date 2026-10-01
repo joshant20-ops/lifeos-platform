@@ -35,7 +35,8 @@ jobs:
           target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v27.js
           doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
           test -s "$doorbell"
-          grep -q 'hui-picture-entity-card' "$doorbell"
+          grep -q 'loadCardHelpers' "$doorbell"
+          grep -q 'createCardElement' "$doorbell"
           grep -q 'band-free' "$target"
           grep -q 'band-powerdown' "$target"
           grep -q 'joined_events' "$target"
