@@ -104,7 +104,7 @@ def main():
     require('LIFEOS_PERSONAL_VIEWS_RENDERABLE',all(isinstance(v.get('cards'),list) and v['cards'] for v in personal))
     check=run(['python3',str(REPO/'homeassistant/deploy-lifeos-dashboard.py'),'--check'])
     require('LIFEOS_DASHBOARD_SOURCE_DRIFT_FREE',check.returncode==0 and 'DRIFT: none' in check.stdout)
-    verify=run(['python3',str(REPO/'homeassistant/verify-lifeos-dashboard.py'],timeout=90)
+    verify=run(['python3',str(REPO/'homeassistant/verify-lifeos-dashboard.py')],timeout=90)
     require('LIFEOS_DASHBOARD_FUNCTIONAL_VERIFIER',verify.returncode==0 and 'LIFEOS_HA_GATE=PASS' in verify.stdout)
 
     control_path=STORAGE/'lovelace.lifeos_control'
