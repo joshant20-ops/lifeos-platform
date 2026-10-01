@@ -15,12 +15,22 @@ def decision(topic, status="OPEN", counterparty="Acme"):
     }
 
 
-def test_same_counterparty_separate_threads_keep_separate_identity():
+def test_same_matter_across_separate_threads_reuses_identity():
     a = {"message_id": "<request-a@example.test>", "source_ref": "<request-a@example.test>"}
     b = {"message_id": "<request-b@example.test>", "source_ref": "<request-b@example.test>"}
-    first = reconciler.resolve_task_id(decision("renewal"), a, {})
-    second = reconciler.resolve_task_id(decision("renewal"), b, {})
-    assert first != second
+    item = decision("renewal")
+    first = reconciler.resolve_task_id(item, a, {})
+    tasks = {first: {"id": first, "identity_semantic": reconciler.key(item), "source_message_ids": [a["message_id"]]}}
+    assert reconciler.resolve_task_id(item, b, tasks) == first
+
+
+def test_same_counterparty_different_matters_stay_separate():
+    a = {"message_id": "<claim@example.test>", "source_ref": "<claim@example.test>"}
+    b = {"message_id": "<address@example.test>", "source_ref": "<address@example.test>"}
+    claim = decision("insurance claim")
+    first = reconciler.resolve_task_id(claim, a, {})
+    tasks = {first: {"id": first, "identity_semantic": reconciler.key(claim), "source_message_ids": [a["message_id"]]}}
+    assert reconciler.resolve_task_id(decision("address change"), b, tasks) != first
 
 
 def test_reply_reference_reuses_existing_obligation_when_topic_text_changes():
