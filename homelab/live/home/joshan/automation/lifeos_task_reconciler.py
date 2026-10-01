@@ -45,12 +45,14 @@ def text_of(msg):
 
 def classify(compact):
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
-{"actionable":true|false,"title":"short task","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
-Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
+{"relevant":true|false,"actionable":true|false,"title":"short task or event","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short matter topic","matter_ref":"case/policy/order/reference number or null","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
+Set relevant=true for a meaningful event belonging to an ongoing personal/admin matter even when it requires no action. Set relevant=false for marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
 EMAIL:
 """+json.dumps(compact,ensure_ascii=False)
     d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL))
     if not isinstance(d,dict) or not isinstance(d.get("actionable"),bool): raise ValueError("invalid schema")
+    if "relevant" not in d:d["relevant"]=bool(d.get("actionable"))
+    if not isinstance(d.get("relevant"),bool): raise ValueError("invalid relevance")
     if str(d.get("status")) not in {"OPEN","WAITING","DONE","NONE"}: raise ValueError("invalid status")
     severity=str(d.get("severity","normal")).lower()
     d["severity"]=severity if severity in {"low","normal","high"} else "normal"
@@ -66,7 +68,9 @@ def paperless_search(query):
     return [{"document_id":x.get("id"),"title":x.get("title"),"created":x.get("created")} for x in rows[:10]]
 
 def key(d):
-    return re.sub(r"[^a-z0-9]+","-",((d.get("counterparty") or "")+" "+(d.get("topic") or d.get("title") or "")).lower()).strip("-")[:120]
+    matter_ref=re.sub(r"[^a-z0-9]+","-",str(d.get("matter_ref") or "").lower()).strip("-")
+    identity=(d.get("counterparty") or "")+" "+(matter_ref or d.get("topic") or d.get("title") or "")
+    return re.sub(r"[^a-z0-9]+","-",identity.lower()).strip("-")[:120]
 
 def reference_ids(msg):
     values=[str(msg.get("in_reply_to","")),str(msg.get("references",""))]
@@ -209,7 +213,7 @@ def main():
             d=classify(compact)
             processed.add(compact["source_ref"])
             processed_order.append(compact["source_ref"])
-            if not d["actionable"] or d["status"]=="NONE":continue
+            if not d["relevant"]:continue
             k=key(d)
             if not k:continue
             observations.append((message_time(compact.get("date")),k,d,compact))
@@ -228,7 +232,13 @@ def main():
             old["source_message_ids"]=sorted(source_ids)
             tasks[task_id]=old
             continue
-        status=effective_status(old,d["status"])
+        # Relevant informational events enrich an existing matter without
+        # manufacturing an obligation. A new matter is published only when an
+        # actionable observation exists.
+        if not d.get("actionable") and not old:
+            continue
+        incoming_status=d.get("status") if d.get("actionable") else old.get("status")
+        status=effective_status(old,incoming_status)
         evidence=paperless_search(d.get("evidence_query") or d.get("topic") or d.get("title"))
         timeline=list(old.get("timeline") or [])
         event_ref=str(msg.get("message_id") or msg.get("source_ref") or "")[:300]
@@ -238,6 +248,7 @@ def main():
                 "observed_at":observed,
                 "status":str(d.get("status") or "NONE"),
                 "actionable":bool(d.get("actionable")),
+                "event_kind":"obligation" if d.get("actionable") else "information",
             })
         timeline=sorted(timeline,key=lambda x:int(x.get("observed_at") or 0))[-100:]
         tasks[task_id]={
@@ -245,7 +256,7 @@ def main():
             "title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
             "status":status,"due_date":d.get("due_date") or old.get("due_date"),
             "counterparty":d.get("counterparty") or old.get("counterparty"),
-            "topic":d.get("topic") or old.get("topic"),"severity":d.get("severity") or old.get("severity") or "normal","source":"gmail",
+            "topic":d.get("topic") or old.get("topic"),"matter_ref":d.get("matter_ref") or old.get("matter_ref"),"severity":d.get("severity") or old.get("severity") or "normal","source":"gmail",
             "email_message_id":str(msg.get("message_id",""))[:300],
             "source_message_ids":sorted(source_ids),
             "paperless_evidence":evidence or old.get("paperless_evidence",[]),
