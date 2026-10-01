@@ -1,0 +1,36 @@
+name: House Status Live Deploy
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'homeassistant/www/house-status/lifeos-house-status-card.js'
+      - 'homeassistant/house-status-dashboard.json'
+      - 'homeassistant/deploy-house-status-dashboard.py'
+      - 'homeassistant/verify-house-status-dashboard.py'
+      - 'scripts/lifeos-deploy-house-status-dashboard.sh'
+      - '.github/workflows/house-status-live-deploy.yml'
+permissions:
+  contents: read
+jobs:
+  deploy-verify:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile canonical checkout to main
+        run: |
+          git show HEAD:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
+      - name: Deploy House Status
+        run: sudo -n /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dashboard.sh
+      - name: Live asset acceptance
+        run: |
+          set -Eeuo pipefail
+          target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v23.js
+          grep -q 'band-free' "$target"
+          grep -q 'band-powerdown' "$target"
+          grep -q 'joined_events' "$target"
+          grep -q 'Free / negative electricity' "$target"
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v23.js | grep -q 'band-free'
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v23.js | grep -q 'band-powerdown'
+          echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
