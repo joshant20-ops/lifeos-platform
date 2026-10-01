@@ -7,7 +7,7 @@ REPO=pathlib.Path('/home/joshan/lifeos-platform')
 HA=pathlib.Path('/opt/stacks/homeassistant/config')
 STORAGE=HA/'.storage'
 PERSISTED=pathlib.Path('/home/joshan/automation/state/lifeos_personal_tasks.json')
-PROJECTION=HA/'www/lifeos_tasks.json'
+PROJECTION=HA/'www'/'lifeos_tasks.json'
 RECONCILER=pathlib.Path('/home/joshan/automation/lifeos_task_reconciler.py')
 SOURCE=REPO/'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
 PUBLISHER='homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
@@ -63,7 +63,7 @@ def main():
     py_sources=[]
     for path in REPO.rglob('*.py'):
         if 'archive' in path.parts: continue
-        if 'www/lifeos_tasks.json' in path.read_text(errors='ignore'):
+        if '/'.join(('www','lifeos_tasks.json')) in path.read_text(errors='ignore'):
             py_sources.append(str(path.relative_to(REPO)))
     require('SINGLE_TASK_VIEW_PUBLISHER',py_sources==[PUBLISHER])
     require('INSTALLED_RECONCILER_MATCHES_SOURCE',bool(digest(SOURCE)) and digest(SOURCE)==digest(RECONCILER))
