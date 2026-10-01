@@ -37,13 +37,31 @@ def drop_to_state_owner(path=None):
             or stat.S_IMODE(info.st_mode) != 0o700):
         raise PermissionError("user_state_directory_not_private_user_owned")
     euid = os.geteuid()
+    if euid != 0 and euid != info.st_uid:
+        raise PermissionError("user_state_owner_mismatch")
+
+    # A previous root-run action could leave either file root-owned. Repair
+    # metadata only inside the validated 0700 directory before dropping root.
+    # The content remains local and the files stay owner-only.
+    for candidate in (target, directory / ".user-state.lock"):
+        try:
+            file_info = candidate.lstat()
+        except FileNotFoundError:
+            continue
+        if not stat.S_ISREG(file_info.st_mode):
+            raise PermissionError("user_state_file_not_regular")
+        if file_info.st_uid != info.st_uid or file_info.st_gid != info.st_gid:
+            if euid != 0:
+                raise PermissionError("user_state_file_owner_mismatch")
+            os.chown(candidate, info.st_uid, info.st_gid, follow_symlinks=False)
+        if stat.S_IMODE(file_info.st_mode) != 0o600:
+            os.chmod(candidate, 0o600, follow_symlinks=False)
+
     if euid == info.st_uid:
         return
-    if euid != 0:
-        raise PermissionError("user_state_owner_mismatch")
     # Home Assistant invokes this bridge as root. The assistant service runs as
-    # the directory owner; drop root before the atomic replacement so the 0600
-    # user-state file remains readable only by that same local service account.
+    # the directory owner; drop root before the atomic replacement so both the
+    # user-state file and its persistent lock remain private to that account.
     for name, operation, value in (
             ("groups", os.setgroups, [info.st_gid]),
             ("gid", os.setgid, info.st_gid),
