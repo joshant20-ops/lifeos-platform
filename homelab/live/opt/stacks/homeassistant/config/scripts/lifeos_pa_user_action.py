@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from urllib.parse import unquote_plus
 
+import lifeos_pa_user_state
 from lifeos_pa_user_state import mutate_action
 
 STATE = Path("/config/www/lifeos_tasks.json")
@@ -30,6 +31,7 @@ def main():
     rows = (payload.get("tasks") or []) + (payload.get("resolved") or [])
     if not any(isinstance(row, dict) and row.get("id") == args.task_id for row in rows):
         raise ValueError("task_id_not_in_current_view")
+    lifeos_pa_user_state.drop_to_state_owner()
     result = mutate_action(
         args.task_id,
         args.action,
