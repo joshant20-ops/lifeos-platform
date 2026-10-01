@@ -10,6 +10,7 @@ on:
       - 'homeassistant/verify-house-status-dashboard.py'
       - 'scripts/lifeos-deploy-house-status-dashboard.sh'
       - '.github/workflows/house-status-live-deploy.yml'
+      - 'homeassistant/.house-status-redeploy'
 permissions:
   contents: read
 jobs:
