@@ -1,10 +1,20 @@
 window.LifeOSHouseStatusModules=window.LifeOSHouseStatusModules||{};
 window.LifeOSHouseStatusModules.doorbell={
-  mount(host,hass){
+  async mount(host,hass){
     if(!host||!hass) return;
     try{
-      const picture=document.createElement('hui-picture-entity-card');
-      picture.setConfig({type:'picture-entity',entity:'camera.front_door_live_view',name:'Front Door',camera_view:'live',show_name:true,show_state:true,tap_action:{action:'none'},hold_action:{action:'none'}});
+      if(typeof window.loadCardHelpers!=='function') throw new Error('Home Assistant card helpers unavailable');
+      const helpers=await window.loadCardHelpers();
+      const picture=await helpers.createCardElement({
+        type:'picture-entity',
+        entity:'camera.front_door_live_view',
+        name:'Front Door',
+        camera_view:'live',
+        show_name:true,
+        show_state:true,
+        tap_action:{action:'none'},
+        hold_action:{action:'none'}
+      });
       picture.hass=hass;
       host.replaceChildren(picture);
     }catch(e){
