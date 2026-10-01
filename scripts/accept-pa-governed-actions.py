@@ -106,12 +106,29 @@ def assistant_query(question):
 
 
 def run_reconciler():
+    started = dt.datetime.now(dt.timezone.utc)
     run(["systemctl", "start", "lifeos-task-reconciler.service"], timeout=1800)
     props = run(["systemctl", "show", "lifeos-task-reconciler.service", "-p", "Result", "-p", "ExecMainStatus"])
     values = dict(line.split("=", 1) for line in props.splitlines() if "=" in line)
     if values.get("Result") != "success" or values.get("ExecMainStatus") != "0":
         raise RuntimeError("reconciler_failed")
-    return current_view()
+    since = started.strftime("%Y-%m-%d %H:%M:%S UTC")
+    journal = run(["journalctl", "-u", "lifeos-task-reconciler.service", "--since", since, "--no-pager", "-o", "cat"])
+    safe_fields = {
+        "TASK_FETCH_ERRORS": "FETCH_ERRORS",
+        "TASK_FETCH_ERROR_TYPES": "FETCH_ERROR_TYPES",
+        "TASK_CLASSIFICATION_ERRORS": "CLASSIFICATION_ERRORS",
+        "TASK_CLASSIFICATION_ERROR_TYPES": "CLASSIFICATION_ERROR_TYPES",
+    }
+    for line in journal.splitlines():
+        key, separator, value = line.partition("=")
+        if not separator or key not in safe_fields:
+            continue
+        safe_value = "".join(ch for ch in value if ch.isalnum() or ch in "_,")
+        print("GATE_H_RECONCILER_" + safe_fields[key] + "=" + (safe_value or "UNAVAILABLE"))
+    payload = current_view()
+    print("GATE_H_FRESH_RECONCILIATION_ERRORS=" + str(int(payload.get("errors") or 0)))
+    return payload
 
 
 def restore_state(original_bytes):
