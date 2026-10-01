@@ -118,6 +118,40 @@ def test_root_ha_action_drops_to_private_overlay_owner(tmp_path, monkeypatch):
     assert calls == [("groups", [owner_gid]), ("gid", owner_gid), ("uid", owner_uid)]
 
 
+def test_root_action_repairs_legacy_root_owned_state_and_lock_files(tmp_path, monkeypatch):
+    import stat
+    from types import SimpleNamespace
+
+    state_dir = tmp_path / "lifeos-pa-state"
+    state_dir.mkdir(mode=0o700)
+    state_dir.chmod(0o700)
+    state_path = state_dir / "user_state.json"
+    lock_path = state_dir / ".user-state.lock"
+    state_path.write_text('{"schema":"lifeos_pa_user_state_v1","revision":0,"obligations":{}}')
+    lock_path.touch()
+
+    owner_uid, owner_gid = 1201, 1202
+    directory_info = SimpleNamespace(st_mode=stat.S_IFDIR | 0o700, st_uid=owner_uid, st_gid=owner_gid)
+    legacy_file_info = SimpleNamespace(st_mode=stat.S_IFREG | 0o644, st_uid=0, st_gid=0)
+    original_lstat = Path.lstat
+    monkeypatch.setattr(Path, "lstat", lambda p: directory_info if p == state_dir else legacy_file_info if p in {state_path, lock_path} else original_lstat(p))
+    monkeypatch.setattr(user_state.os, "geteuid", lambda: 0)
+    metadata_calls = []
+    monkeypatch.setattr(user_state.os, "chown", lambda path, uid, gid, **kwargs: metadata_calls.append(("chown", path, uid, gid, kwargs)))
+    monkeypatch.setattr(user_state.os, "chmod", lambda path, mode, **kwargs: metadata_calls.append(("chmod", path, mode, kwargs)))
+    monkeypatch.setattr(user_state.os, "setgroups", lambda groups: metadata_calls.append(("groups", groups)))
+    monkeypatch.setattr(user_state.os, "setgid", lambda gid: metadata_calls.append(("gid", gid)))
+    monkeypatch.setattr(user_state.os, "setuid", lambda uid: metadata_calls.append(("uid", uid)))
+
+    user_state.drop_to_state_owner(state_path)
+
+    assert ("chown", state_path, owner_uid, owner_gid, {"follow_symlinks": False}) in metadata_calls
+    assert ("chmod", state_path, 0o600, {"follow_symlinks": False}) in metadata_calls
+    assert ("chown", lock_path, owner_uid, owner_gid, {"follow_symlinks": False}) in metadata_calls
+    assert ("chmod", lock_path, 0o600, {"follow_symlinks": False}) in metadata_calls
+    assert metadata_calls[-3:] == [("groups", [owner_gid]), ("gid", owner_gid), ("uid", owner_uid)]
+
+
 def test_state_privilege_drop_rejects_group_or_world_access(tmp_path, monkeypatch):
     import stat
     from types import SimpleNamespace
