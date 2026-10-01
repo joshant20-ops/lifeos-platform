@@ -58,3 +58,20 @@ jobs:
           sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-pa-task-reconciler
           sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-lifeos-assistant
           sudo -n python3 /home/joshan/lifeos-platform/scripts/accept-pa-governed-actions.py
+      - name: Gate I — rebuild and verify the single control-dashboard authority
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge \
+            >"$RUNNER_TEMP/gate-i-control-bridge.log" 2>&1 || {
+              echo "GATE_I_CONTROL_BRIDGE=FAIL"
+              exit 1
+            }
+          echo "GATE_I_CONTROL_BRIDGE=PASS"
+      - name: Gate I — final live runtime consolidation acceptance
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n python3 scripts/accept-pa-gate-i-runtime.py
