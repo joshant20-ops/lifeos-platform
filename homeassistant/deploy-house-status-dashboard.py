@@ -45,9 +45,9 @@ def main():
         if p.exists(): shutil.copy2(p,p.with_name(p.name+'.pre-repo-deploy.'+stamp+'.bak'))
     TARGET.write_text(json.dumps(src,indent=2)+'\n')
     reg=load(REGISTRY); items=reg.setdefault('data',{}).setdefault('items',[])
-    items[:]=[x for x in items if x.get('url_path')!='house-status' and x.get('id')!='dashboard_house_status']
-    
-    # House Status is a native panel_custom page; do not register a Lovelace dashboard at the same path.
+    items[:]=[x for x in items if x.get('url_path')!='house-status-native' and x.get('id')!='dashboard_house_status']
+    items.append({'id':'dashboard_house_status','show_in_sidebar':False,'title':'House Status Native','require_admin':False,'mode':'storage','url_path':'house-status-native'})
+    # The custom shell remains at /house-status; native Lovelace owns /house-status-native.
     REGISTRY.write_text(json.dumps(reg,indent=2)+'\n')
     resources=load(RESOURCES); ritems=resources.setdefault('data',{}).setdefault('items',[])
     ritems[:]=[x for x in ritems if not str(x.get('url','')).startswith('/local/house-status/lifeos-house-status')]
