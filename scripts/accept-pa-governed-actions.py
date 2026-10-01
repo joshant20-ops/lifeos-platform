@@ -188,7 +188,7 @@ def main():
         assert selected.get("snoozed") is False
         assert view.get("source") == "lifeos_tasks_v3"
 
-        answer = assistant_query("What needs me about " + title + "?")
+        answer = assistant_query("What needs me about " + task_id + "?")
         assert answer.get("provider") == "structured_local_state"
         assert answer.get("route") == "structured_pa_state"
         assert answer.get("source_schema") == "lifeos_tasks_v3"
