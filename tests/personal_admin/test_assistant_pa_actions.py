@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -26,7 +27,7 @@ def fixture(path, task_ids=("renewal-abc123",)):
     ]
     path.write_text(json.dumps({
         "schema": "lifeos_tasks_v3",
-        "generated_time": 1790790000,
+        "generated_time": int(time.time()),
         "tasks": rows,
         "resolved": [],
         "attention": {},
@@ -48,7 +49,7 @@ def test_conversation_proposes_then_confirms_and_verifies_user_close(tmp_path, m
     assert result["action_status"] == "verified"
     state = bridge_user_state.read_user_state()
     assert state["obligations"]["renewal-abc123"]["status_override"] == "DONE"
-    replay = {"schema": "lifeos_tasks_v3", "generated_time": 1790790000, "tasks": fixture(tasks), "resolved": []}
+    replay = {"schema": "lifeos_tasks_v3", "generated_time": int(time.time()), "tasks": fixture(tasks), "resolved": []}
     assert bridge_user_state.apply_user_state(replay, state)["resolved"][0]["status"] == "DONE"
 
 
