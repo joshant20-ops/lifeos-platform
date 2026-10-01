@@ -2,10 +2,9 @@
 set -Eeuo pipefail
 PLATFORM=/home/joshan/lifeos-platform
 # Refresh the root-owned allow-listed gateway from the canonical repository before
-# executing the already-proven HA bridge deployment. First prove the canonical
-# /lifeos dashboard while /lifeos-control is absent; then build and independently
-# verify the LifeOS Control / Z97 dashboard. This keeps the existing single-/lifeos
-# verifier contract without treating the intentional control dashboard as legacy.
+# executing the already-proven HA bridge deployment. Deploy and verify the canonical /lifeos dashboard while preserving any existing
+# /lifeos-control registration and storage file; then rebuild and independently verify
+# the intentional LifeOS Control / Z97 dashboard.
 bash "$PLATFORM/scripts/lifeos-install-github-runner-gateway.sh"
 bash "$PLATFORM/scripts/lifeos-deploy-ha-control-bridge-impl.sh"
 # Resolve the live Tower IP from the already-canonical MAC and configure only the
@@ -14,8 +13,7 @@ bash "$PLATFORM/scripts/lifeos-deploy-ha-control-bridge-impl.sh"
 bash "$PLATFORM/scripts/lifeos-configure-tower-access-runtime.sh"
 python3 "$PLATFORM/homeassistant/deploy-lifeos-dashboard.py"
 
-# The canonical dashboard deploy may restart Home Assistant. Wait for health before
-# proving /lifeos and the absence of the legacy/control registration at this stage.
+# The canonical dashboard deploy may restart Home Assistant. Wait for health before proving /lifeos while its independent control dashboard remains preserved.
 for _ in $(seq 1 60); do
   health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' homeassistant 2>/dev/null || true)
   [[ "$health" == healthy || "$health" == running ]] && break
