@@ -33,6 +33,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     const powerdownEvents=Array.isArray(rawPowerdownEvents)?rawPowerdownEvents:[];
     const powerdownHistory=this._history?.[powerdownEntity]||[];
     const persistedPowerdown=this._persistedPowerdown||[];
+    const calendarPowerdown=this._calendarPowerdown||[];
     const svgChart=(flow=false)=>{
       const W=1000,H=360,padL=68,padR=68,padT=34,padB=30,iw=W-padL-padR,ih=H-padT-padB;
       const now=new Date(), day0=this.periodStart(); let day1=new Date(day0),day2=new Date(day0); if(this.period()==='month'){day1.setMonth(day1.getMonth()+1);day2=new Date(day1);}else if(this.period()==='year'){day1.setFullYear(day1.getFullYear()+1);day2=new Date(day1);}else{day1.setDate(day1.getDate()+1);day2=new Date(day1);day2.setDate(day2.getDate()+1);}
@@ -51,7 +52,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
       const bandRect=(start,end,klass,label)=>{const a=Math.max(t0,start),b=Math.min(t2,end);if(!(b>a))return '';const x1=x(a),x2=x(b);return '<rect class="'+klass+'" data-energy-band="'+label+'" x="'+x1.toFixed(1)+'" y="'+padT+'" width="'+Math.max(0,x2-x1).toFixed(1)+'" height="'+ih+'"><title>'+label+' · '+new Date(a).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'–'+new Date(b).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'</title></rect>';};
       const prices=published.map(o=>Number(o.import_p_per_kwh)).filter(Number.isFinite),bestPrice=prices.length?Math.min(...prices):NaN,greenThreshold=Number.isFinite(bestPrice)?Math.min(0,bestPrice):0;
       const freeBands=published.filter(o=>{const p=Number(o.import_p_per_kwh);return Number.isFinite(p)&&p<=greenThreshold;}).map(o=>bandRect(stamp(o),slotEnd(o),'band-free',Number(o.import_p_per_kwh)<0?'Negative-price electricity':'Free electricity')).join('');
-      const powerdownWindows=[...powerdownEvents,...powerdownHistory.flatMap(st=>Array.isArray(st?.attributes?.joined_events)?st.attributes.joined_events:[]),...persistedPowerdown];
+      const powerdownWindows=[...powerdownEvents,...powerdownHistory.flatMap(st=>Array.isArray(st?.attributes?.joined_events)?st.attributes.joined_events:[]),...persistedPowerdown,...calendarPowerdown];
       const seenPowerdown=new Set();
       const powerdownBands=powerdownWindows.map(e=>{const a=new Date(e.start).getTime(),b=new Date(e.end).getTime(),key=a+'|'+b;if(seenPowerdown.has(key))return '';seenPowerdown.add(key);return Number.isFinite(a)&&Number.isFinite(b)?bandRect(a,b,'band-powerdown','Power down'):'';}).join('');
       const bands=powerdownBands+freeBands;
@@ -82,6 +83,18 @@ class LifeOSHouseStatusCard extends HTMLElement {
     this.querySelectorAll('[data-shift]').forEach(el=>el.onclick=()=>this.shiftPeriod(Number(el.dataset.shift)));
     const picker=this.querySelector('[data-date-picker]');if(picker)picker.onchange=()=>{if(!picker.value)return;const [y,m,d]=picker.value.split('-').map(Number);const chosen=new Date(y,m-1,d);if(Number.isNaN(chosen.getTime()))return;this._anchor=chosen;if(this.period()==='today')this._period='day';this.render();};
   }
+  async _loadPowerdownCalendar(){
+    if(!this._hass)return;
+    const entity='calendar.octopus_energy_a_8b23e5b8_octoplus_power_down';
+    try{
+      const end=new Date(Date.now()+2*86400000),start=new Date(Date.now()-8*86400000);
+      const path='calendars/'+encodeURIComponent(entity)+'?start='+encodeURIComponent(start.toISOString())+'&end='+encodeURIComponent(end.toISOString());
+      const rows=await this._hass.callApi('GET',path);
+      this._calendarPowerdown=(Array.isArray(rows)?rows:[]).map(e=>({id:e.uid||e.id||e.summary,start:e.start?.dateTime||e.start?.date||e.start,end:e.end?.dateTime||e.end?.date||e.end})).filter(e=>e.start&&e.end);
+      this.requestUpdate();
+    }catch(_e){}
+  }
+
   async _loadPersistedPowerdown(){
     try{
       const r=await fetch('/local/house-status/powerdown-events.json?ts='+Date.now(),{cache:'no-store'});
