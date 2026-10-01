@@ -33,6 +33,25 @@ NOTE = "Synthetic Gate H acceptance note"
 def run(argv, timeout=60, env=None):
     result = subprocess.run(argv, text=True, capture_output=True, timeout=timeout, env=env)
     if result.returncode != 0:
+        for source in (result.stdout, result.stderr):
+            for line in source.splitlines():
+                if line.startswith("PA_USER_ACTION_ERROR="):
+                    value = line.partition("=")[2]
+                    if value in {"PermissionError", "ValueError", "OSError", "RuntimeError", "FileNotFoundError"}:
+                        print("GATE_H_PA_ACTION_ERROR_TYPE=" + value)
+                elif line.startswith("PA_USER_ACTION_STAGE="):
+                    value = line.partition("=")[2]
+                    if value in {"task_view_read", "task_view_validate", "task_identity_validate", "state_owner_privilege_drop", "overlay_mutation", "action_verify"}:
+                        print("GATE_H_PA_ACTION_STAGE=" + value)
+                elif line.startswith("PA_USER_ACTION_REASON="):
+                    value = line.partition("=")[2]
+                    if value in {
+                        "task_view_unavailable_or_stale", "task_id_not_in_current_view",
+                        "user_state_directory_not_private_user_owned", "user_state_owner_mismatch",
+                        "user_state_privilege_drop_groups_failed", "user_state_privilege_drop_gid_failed",
+                        "user_state_privilege_drop_uid_failed",
+                    }:
+                        print("GATE_H_PA_ACTION_REASON=" + value)
         raise RuntimeError("bounded_runtime_command_failed")
     return result.stdout
 
