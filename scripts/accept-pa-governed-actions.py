@@ -168,6 +168,14 @@ def main():
         call_ha_action("snooze", task_id, until=(dt.date.today() + dt.timedelta(days=5)).isoformat())
         view = hass_projection()
         selected = next((x for x in view.get("items", []) if x.get("id") == task_id), None)
+        overlay_entry = (pa_user_state.read_user_state().get("obligations") or {}).get(task_id) or {}
+        overlay_comments = overlay_entry.get("comments") or []
+        projected_comments = selected.get("user_comments") or [] if selected else []
+        print("GATE_H_COMMENT_PROJECTION_ITEM_PRESENT=" + ("PASS" if selected else "FAIL"))
+        print("GATE_H_COMMENT_OVERLAY_PRESENT=" + ("PASS" if any(isinstance(x, dict) and x.get("source") == "user_comment" and x.get("text") == NOTE for x in overlay_comments) else "FAIL"))
+        print("GATE_H_COMMENT_PROJECTION_COUNT_ADVANCED=" + ("PASS" if selected and int(selected.get("user_comment_count") or 0) > comment_before else "FAIL"))
+        print("GATE_H_COMMENT_PROJECTION_NOTE_MATCH=" + ("PASS" if projected_comments and projected_comments[-1].get("text") == NOTE else "FAIL"))
+        print("GATE_H_SNOOZE_PROJECTION=" + ("PASS" if selected and selected.get("snoozed") is True else "FAIL"))
         assert selected and selected.get("user_comment_count", 0) > comment_before
         assert selected.get("user_comments", [])[-1].get("source") == "user_comment"
         assert selected.get("user_comments", [])[-1].get("text") == NOTE
