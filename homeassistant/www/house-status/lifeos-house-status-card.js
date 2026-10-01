@@ -28,7 +28,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
     const standingChargeFor=r=>{const d=new Date(stamp(r));return .01+(d.getHours()===23&&d.getMinutes()===30?0.02:0)};
     const tariff=this._hass.states['sensor.lifeos_energy_tariff_horizon']?.attributes?.slots||[];
     const octopusTariff=this._hass.states['sensor.lifeos_energy_tariff_horizon'];
-    const powerdownEvents=this._hass.states['event.octopus_energy_a_8b23e5b8_octoplus_power_down_events']?.attributes?.joined_events||[];
+    const rawPowerdownEvents=this._hass.states['event.octopus_energy_a_8b23e5b8_octoplus_power_down_events']?.attributes?.joined_events;
+    const powerdownEvents=Array.isArray(rawPowerdownEvents)?rawPowerdownEvents:[];
     const svgChart=(flow=false)=>{
       const W=1000,H=360,padL=68,padR=68,padT=34,padB=30,iw=W-padL-padR,ih=H-padT-padB;
       const now=new Date(), day0=this.periodStart(); let day1=new Date(day0),day2=new Date(day0); if(this.period()==='month'){day1.setMonth(day1.getMonth()+1);day2=new Date(day1);}else if(this.period()==='year'){day1.setFullYear(day1.getFullYear()+1);day2=new Date(day1);}else{day1.setDate(day1.getDate()+1);day2=new Date(day1);day2.setDate(day2.getDate()+1);}
@@ -45,7 +46,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
       [t0,t0+6*3600000,t0+12*3600000,t0+18*3600000,t1,t1+6*3600000,t1+12*3600000,t1+18*3600000].forEach(t=>{axes+='<text class="axis" x="'+x(t)+'" y="'+(padT+ih+18)+'" text-anchor="middle">'+String(new Date(t).getHours()).padStart(2,'0')+':00</text>';});
       const slotEnd=o=>{const raw=o.valid_to||o.local_to||o.end;const parsed=raw?new Date(raw).getTime():NaN;return Number.isFinite(parsed)?parsed:stamp(o)+1800000;};
       const bandRect=(start,end,klass,label)=>{const a=Math.max(t0,start),b=Math.min(t2,end);if(!(b>a))return '';const x1=x(a),x2=x(b);return '<rect class="'+klass+'" data-energy-band="'+label+'" x="'+x1.toFixed(1)+'" y="'+padT+'" width="'+Math.max(0,x2-x1).toFixed(1)+'" height="'+ih+'"><title>'+label+' · '+new Date(a).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'–'+new Date(b).toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})+'</title></rect>';};
-      const freeBands=published.filter(o=>Number(o.import_p_per_kwh)<=0).map(o=>bandRect(stamp(o),slotEnd(o),'band-free','Free / negative electricity')).join('');
+      const freeBands=published.filter(o=>{const p=Number(o.import_p_per_kwh);return Number.isFinite(p)&&p<=0;}).map(o=>bandRect(stamp(o),slotEnd(o),'band-free','Free / negative electricity')).join('');
       const powerdownBands=powerdownEvents.map(e=>{const a=new Date(e.start).getTime(),b=new Date(e.end).getTime();return Number.isFinite(a)&&Number.isFinite(b)?bandRect(a,b,'band-powerdown','Power down'):'';}).join('');
       const bands=powerdownBands+freeBands;
       const tomorrowPublished=published.some(o=>stamp(o)>=t1),blank=!tomorrowPublished?'<text class="axis" x="'+((midnight+W-padR)/2)+'" y="'+(padT+ih/2)+'" text-anchor="middle">Prices not yet available</text>':'';
