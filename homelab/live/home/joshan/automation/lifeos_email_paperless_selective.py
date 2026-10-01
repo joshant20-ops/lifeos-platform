@@ -2,6 +2,8 @@
 """Selective local-only Email to Paperless adapter.
 
 AI recommends a disposition. Deterministic code alone authorizes writes.
+This adapter is acceptance-only; it must not be scheduled or used as a
+continuous production importer.
 """
 from __future__ import annotations
 
