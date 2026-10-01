@@ -22,7 +22,7 @@ jobs:
         run: |
           git show HEAD:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
       - name: Deploy House Status
-        run: sudo -n /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dashboard.sh
+        run: sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dashboard.sh
       - name: Live asset acceptance
         run: |
           set -Eeuo pipefail
