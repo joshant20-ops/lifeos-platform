@@ -49,3 +49,7 @@ jobs:
           echo "POWERDOWN_WATCH_LOG_TAIL_BEGIN"
           sudo -n tail -n 20 /opt/lifeos-watch/octopus-powerdown/events.jsonl 2>/dev/null || echo POWERDOWN_WATCH_LOG_UNAVAILABLE
           echo "POWERDOWN_WATCH_LOG_TAIL_END"
+          echo "POWERDOWN_NATIVE_CALENDAR_BEGIN"
+          sudo -n docker exec homeassistant python -c 'import json,urllib.request,os; print("calendar diagnostics delegated to HA state registry")' || true
+          sudo -n grep -R '"'"'calendar.octopus_energy_a_8b23e5b8_octoplus_power_down'"'"' /opt/stacks/homeassistant/config/.storage/core.restore_state 2>/dev/null | head -n 5 || true
+          echo "POWERDOWN_NATIVE_CALENDAR_END"
