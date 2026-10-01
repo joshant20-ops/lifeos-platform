@@ -106,8 +106,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
   }
 
 }
-if(!customElements.get('lifeos-house-status-v27')) customElements.define('lifeos-house-status-v27',LifeOSHouseStatusCard);
-window.customCards=window.customCards||[];window.customCards.push({type:'lifeos-house-status-v27',name:'LifeOS House Status',description:'Reference-locked House Status UI'});
+if(!customElements.get('lifeos-house-status-v28')) customElements.define('lifeos-house-status-v28',LifeOSHouseStatusCard);
+window.customCards=window.customCards||[];window.customCards.push({type:'lifeos-house-status-v28',name:'LifeOS House Status',description:'Reference-locked House Status UI'});
 
 class LifeOSHouseStatusEditor extends HTMLElement { setConfig(config){this.config=config;} set hass(hass){this._hass=hass;} }
 if(!customElements.get('lifeos-house-status-editor')) customElements.define('lifeos-house-status-editor',LifeOSHouseStatusEditor);
