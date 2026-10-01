@@ -114,22 +114,25 @@ def run_reconciler():
     return current_view()
 
 
-def restore_state(original_bytes, original_mode, original_uid, original_gid):
+def restore_state(original_bytes):
     if original_bytes is None:
         try:
             USER_STATE.unlink()
         except FileNotFoundError:
             pass
     else:
-        USER_STATE.parent.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(prefix=".gate-h-restore-", dir=str(USER_STATE.parent))
+        directory = USER_STATE.parent
+        directory_info = directory.lstat()
+        if not directory.is_dir() or directory_info.st_uid == 0 or directory_info.st_mode & 0o777 != 0o700:
+            raise RuntimeError("user_state_directory_not_private_user_owned")
+        fd, name = tempfile.mkstemp(prefix=".gate-h-restore-", dir=str(directory))
         try:
+            os.fchown(fd, directory_info.st_uid, directory_info.st_gid)
+            os.fchmod(fd, 0o600)
             with os.fdopen(fd, "wb") as stream:
                 stream.write(original_bytes)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.chmod(name, original_mode)
-            os.chown(name, original_uid, original_gid)
             os.replace(name, USER_STATE)
         finally:
             try:
@@ -155,9 +158,7 @@ def main():
     if not pa_user_state.ID_RE.fullmatch(task_id):
         raise RuntimeError("runtime_task_id_invalid")
 
-    old = USER_STATE.stat()
     original_bytes = USER_STATE.read_bytes()
-    original_mode, original_uid, original_gid = old.st_mode & 0o777, old.st_uid, old.st_gid
     before_generated = int(before.get("generated_time") or 0)
     action_changed = False
     try:
@@ -244,7 +245,18 @@ def main():
         assert timers == ["lifeos-task-reconciler.timer"]
         print("GATE_H_SINGLE_PUBLISHER_SERVICE_TIMER=PASS")
     finally:
-        restore_state(original_bytes, original_mode, original_uid, original_gid)
+        restore_state(original_bytes)
+        restored_dir = USER_STATE.parent.stat()
+        if USER_STATE.exists():
+            restored_file = USER_STATE.stat()
+            assert restored_file.st_uid == restored_dir.st_uid and restored_file.st_gid == restored_dir.st_gid
+            assert restored_file.st_mode & 0o777 == 0o600
+        lock_file = USER_STATE.parent / ".user-state.lock"
+        if lock_file.exists():
+            restored_lock = lock_file.stat()
+            assert restored_lock.st_uid == restored_dir.st_uid and restored_lock.st_gid == restored_dir.st_gid
+            assert restored_lock.st_mode & 0o777 == 0o600
+        print("GATE_H_USER_STATE_CLEANUP_PRIVATE=PASS")
         if action_changed:
             restored = run_reconciler()
             if read_json(PUBLISHED) != restored:
