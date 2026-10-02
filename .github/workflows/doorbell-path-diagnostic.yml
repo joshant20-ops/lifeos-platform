@@ -1,6 +1,9 @@
 name: Doorbell Path Diagnostic
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/doorbell-path-diagnostic.yml']
 permissions:
   contents: read
 jobs:
