@@ -3,7 +3,9 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
-    paths: ['.github/workflows/doorbell-path-diagnostic.yml']
+    paths:
+      - '.github/workflows/doorbell-path-diagnostic.yml'
+      - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
 permissions:
   contents: read
 jobs:
@@ -110,4 +112,32 @@ jobs:
           if "history.pushState(null,'','/house-status-native/doorbell')" not in source:
             raise SystemExit('STEP7_HOUSE_STATUS_NAVIGATION=FAIL')
           print('STEP7_HOUSE_STATUS_NAVIGATION=PASS')
+
+          # 8. Report the active panel config and installed asset versions.
+          cfg=(B/'configuration.yaml').read_text()
+          checks={
+            'v27_panel_name':'name: lifeos-house-status-v27',
+            'v28_panel_name':'name: lifeos-house-status-v28',
+            'house_status_path':'url_path: house-status',
+            'v28_module_url':'module_url: /local/house-status/lifeos-house-status-v28.js',
+          }
+          for label,marker in checks.items():
+            print('STEP8_'+label.upper()+'='+str(cfg.count(marker)))
+          v28=B/'www/house-status/lifeos-house-status-v28.js'
+          v27=B/'www/house-status/lifeos-house-status-v27.js'
+          print('STEP8_V28_FILE='+('PRESENT' if v28.is_file() else 'ABSENT'))
+          print('STEP8_V27_FILE='+('PRESENT' if v27.is_file() else 'ABSENT'))
+          if v28.is_file():
+            print('STEP8_V28_FILE_MARKER='+('PASS' if 'Doorbell v28' in v28.read_text() else 'MISMATCH'))
+          if v27.is_file():
+            print('STEP8_V27_FILE_MARKER='+('PRESENT' if 'Doorbell v27' in v27.read_text() else 'OTHER'))
+          resources=json.loads((B/'.storage/lovelace_resources').read_text()).get('data',{}).get('items',[])
+          v27_resources=[x for x in resources if 'v27' in str(x.get('url','')) and 'house-status' in str(x.get('url',''))]
+          print('STEP8_V27_LOVELACE_RESOURCE_COUNT='+str(len(v27_resources)))
+          try:
+            with urllib.request.urlopen(BASE+'/local/house-status/lifeos-house-status-v28.js',timeout=10) as response:
+              body=response.read().decode('utf-8','replace')
+              print('STEP8_SERVED_V28='+('PASS' if response.status==200 and 'Doorbell v28' in body else 'MISMATCH'))
+          except Exception as exc:
+            print('STEP8_SERVED_V28=FAIL:'+type(exc).__name__)
           PY
