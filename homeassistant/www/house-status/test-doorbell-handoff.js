@@ -60,6 +60,9 @@ const legacyCard=fs.readFileSync(legacyPath,'utf8');
 const oldDoorbellHandler="this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this._mode=el.dataset.mode;this.render();});";
 const fullNavigationHandler="this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}this._mode=el.dataset.mode;this.render();});";
 assert.ok(legacyCard.includes(fullNavigationHandler),'legacy v27 Doorbell uses a full native-page navigation');
+assert.match(legacyCard,/customElements\.define\('lifeos-house-status-v27'/,'legacy file registers the custom element requested by its panel');
+assert.match(legacyCard,/type:'lifeos-house-status-v27'/,'legacy custom card metadata uses the v27 type');
+assert.doesNotMatch(legacyCard,/lifeos-house-status-v28/,'legacy asset does not leave v28 element identifiers behind');
 const normalizedLegacy=legacyCard
   .replace('Doorbell v27','Doorbell v28')
   .replace(fullNavigationHandler,currentCard.match(/this\.querySelectorAll\('\[data-mode\]'\)[^\n]+/)[0])
