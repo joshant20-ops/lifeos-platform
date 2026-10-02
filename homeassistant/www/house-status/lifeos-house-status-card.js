@@ -1,8 +1,12 @@
+import './lifeos-house-status-doorbell.js';
 class LifeOSEnergyModule {
   static owns(mode){ return mode==='domestic'||mode==='flow'; }
 }
 class LifeOSHouseModule {
   static owns(mode){ return mode==='home'; }
+}
+class LifeOSDoorbellModule {
+  static owns(mode){ return mode==='doorbell'; }
 }
 class LifeOSHouseStatusCard extends HTMLElement {
   static getStubConfig(){ return {mode:'domestic'}; }
@@ -30,7 +34,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
       .floor{min-height:320px;display:flex;align-items:center;justify-content:center;border:1px dashed #31566a;border-radius:8px;color:var(--muted);background:#071923}.status{display:grid;grid-template-columns:1fr 1fr;gap:10px}.secure,.leave{padding:14px;border-radius:9px;font-size:18px;font-weight:750}.secure{border:1px solid #237d61;background:#0a3a31}.leave{border:1px solid #a43a4a;background:#501a25;text-align:center}.legend{display:flex;gap:22px;flex-wrap:wrap;color:var(--muted);font-size:13px}
       @media(max-width:850px){.app{padding:10px}.top{grid-template-columns:1fr auto}.controls{display:contents}.datewrap{grid-column:2;grid-row:1}.hanav{margin:-10px -10px 10px}.haitem{min-width:52px;padding:11px 12px}.top{flex-wrap:wrap}.title{font-size:22px}.period{grid-column:1 / -1;grid-row:2;width:auto;overflow:auto}.p{flex:0 0 auto;text-align:center;padding:7px 11px;font-size:12px}.datewrap{margin-left:auto}.date{width:auto;text-align:center}.cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.metric{padding:8px;min-height:0}.metric b{font-size:11px}.big{font-size:20px;margin:5px 0 2px}.small{font-size:10px;line-height:1.2}.chartslot{min-height:0}.status{grid-template-columns:1fr}.floor{min-height:240px}}
     </style>`;
-    const moduleVersion=mode==='home'?'House v1':'Energy v1';
+    const moduleVersion=mode==='doorbell'?'Doorbell v28':(mode==='home'?'House v1':'Energy v1');
     const nav=`<div class="hanav"><div class="hamb" role="button" tabindex="0" aria-label="Open Home Assistant menu">☰</div><div class="haitem ${mode==='domestic'?'active':''}" data-mode="domestic">⌂</div><div class="haitem ${mode==='flow'?'active':''}" data-mode="flow">⚡</div><div class="haitem ${mode==='home'?'active':''}" data-mode="home">▣</div><div class="haitem ${mode==='doorbell'?'active':''}" data-mode="doorbell">▥</div></div><div class="top"><div class="title">⌂ House Status <span style="font-size:10px;opacity:.55;font-weight:400;margin-left:6px">${moduleVersion}</span></div><div class="controls">${mode!=='home'&&mode!=='doorbell'?'<div class="period"><div class="p '+(this.period()==='today'?'active':'')+'" data-period="today">Today</div><div class="p '+(this.period()==='day'?'active':'')+'" data-period="day">Day</div><div class="p '+(this.period()==='month'?'active':'')+'" data-period="month">Month</div><div class="p '+(this.period()==='year'?'active':'')+'" data-period="year">Year</div><div class="p '+(this.period()==='range'?'active':'')+'" data-period="range">Date range</div></div>':''}<div class="datewrap"><div class="arrow" data-shift="-1">‹</div><label class="date">▣ ${this.anchor().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}<input class="dateinput" data-date-picker type="date" value="${this.anchor().getFullYear()}-${String(this.anchor().getMonth()+1).padStart(2,'0')}-${String(this.anchor().getDate()).padStart(2,'0')}"></label><div class="arrow" data-shift="1">›</div></div></div></div>`;
     const stamp=o=>new Date(o.valid_from||o.local_from||o.start||0).getTime();
     const report=this._hass.states['sensor.lifeos_energy_report']?.attributes?.intervals||[];
@@ -84,7 +88,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
       body=`<div class="status"><div class="secure">⚪ Security sensors not installed</div><div class="leave">⌂ Leave House<br><span class="small">Automation pending</span></div></div><div class="panel"><div class="heading">Ground Floor</div><div class="floor">Replaceable ground-floor plan · overlays dormant until mapped</div></div><div class="panel"><div class="heading">First Floor</div><div class="floor">Replaceable first-floor plan · overlays dormant until mapped</div></div><div class="panel legend">🟩 Window open　🟥 Window closed　🟩 External door open　🟥 External door closed　🟢 Light off　🔴 Light on　🟩 TV on　🟥 TV off　⚪ ! unavailable</div>`;
     }
     else { const doorbell=window.LifeOSHouseStatusModules?.doorbell; body=doorbell?.render?doorbell.render(this._hass):'<div class="panel"><div class="heading">Doorbell</div><div class="floor">DOORBELL MODULE UNAVAILABLE</div></div>'; }
-    this.innerHTML=css+`<div class="app">${nav}${body}</div>`;     const menu=this.querySelector('.hamb');if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
+    this.innerHTML=css+`<div class="app">${nav}${body}</div>`; if(mode==='doorbell'){const doorbell=window.LifeOSHouseStatusModules?.doorbell;doorbell?.mount?.(this.querySelector('[data-doorbell-card]'),this._hass);}
+    const menu=this.querySelector('.hamb');if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
     this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){history.pushState(null,'','/house-status-native/doorbell');window.dispatchEvent(new Event('location-changed'));return;}this._mode=el.dataset.mode;this.render();});
     this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this.render();});
     this.querySelectorAll('[data-shift]').forEach(el=>el.onclick=()=>this.shiftPeriod(Number(el.dataset.shift)));
