@@ -34,24 +34,35 @@ jobs:
           set -Eeuo pipefail
           target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
           doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
+          require_marker() {
+            label=$1
+            marker=$2
+            file=$3
+            if grep -Fq "$marker" "$file"; then
+              echo "$label=PASS"
+            else
+              echo "$label=FAIL"
+              exit 1
+            fi
+          }
           test -s "$doorbell"
-          grep -Fq "window.location.replace('/house-status-native/doorbell')" "$doorbell"
-          grep -Fq 'href="/house-status-native/doorbell"' "$doorbell"
+          require_marker DOORBELL_DISK_REDIRECT "window.location.replace('/house-status-native/doorbell')" "$doorbell"
+          require_marker DOORBELL_DISK_LINK 'href="/house-status-native/doorbell"' "$doorbell"
           if grep -Eq 'loadCardHelpers|createCardElement' "$doorbell"; then
             echo 'legacy_custom_camera_renderer=FAIL'
             exit 1
           fi
-          grep -q 'band-free' "$target"
-          grep -q 'band-powerdown' "$target"
-          grep -q 'joined_events' "$target"
-          grep -q 'Free electricity' "$target"
+          require_marker HOUSE_STATUS_DISK_FREE_BAND 'band-free' "$target"
+          require_marker HOUSE_STATUS_DISK_POWERDOWN_BAND 'band-powerdown' "$target"
+          require_marker HOUSE_STATUS_DISK_JOINED_EVENTS 'joined_events' "$target"
+          require_marker HOUSE_STATUS_DISK_FREE_LABEL 'Free electricity' "$target"
           served=$(mktemp)
           trap 'rm -f "$served"' EXIT
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js -o "$served"
-          grep -q 'band-free' "$served"
-          grep -q 'band-powerdown' "$served"
+          require_marker HOUSE_STATUS_LIVE_FREE_BAND 'band-free' "$served"
+          require_marker HOUSE_STATUS_LIVE_POWERDOWN_BAND 'band-powerdown' "$served"
           echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js -o "$served"
-          grep -Fq "window.location.replace('/house-status-native/doorbell')" "$served"
-          grep -Fq 'href="/house-status-native/doorbell"' "$served"
+          require_marker DOORBELL_LIVE_REDIRECT "window.location.replace('/house-status-native/doorbell')" "$served"
+          require_marker DOORBELL_LIVE_LINK 'href="/house-status-native/doorbell"' "$served"
           echo DOORBELL_HANDOFF_LIVE=PASS
