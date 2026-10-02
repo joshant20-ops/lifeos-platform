@@ -1,0 +1,53 @@
+name: Doorbell Path Diagnostic
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Probe Doorbell path read-only
+        run: |
+          set -Eeuo pipefail
+          sudo -n python3 - <<'PY'
+          import json, pathlib, sqlite3, subprocess, urllib.request
+          B=pathlib.Path('/opt/stacks/homeassistant/config')
+          reg=json.loads((B/'.storage/core.entity_registry').read_text())['data']['entities']
+          e=next((x for x in reg if x.get('entity_id')=='camera.front_door_live_view'),None)
+          print('STEP1_ENTITY_REGISTRY=' + ('PASS' if e and not e.get('disabled_by') else 'FAIL'))
+          print('STEP1_PLATFORM=' + str((e or {}).get('platform')))
+          # HA recorder gives runtime evidence without requiring REST authentication.
+          db=B/'home-assistant_v2.db'
+          try:
+            con=sqlite3.connect(f'file:{db}?mode=ro',uri=True)
+            row=con.execute("""select s.state, datetime(s.last_updated_ts,'unixepoch') from states s join states_meta m on m.metadata_id=s.metadata_id where m.entity_id=? order by s.state_id desc limit 1""",('camera.front_door_live_view',)).fetchone()
+            print('STEP2_RUNTIME_STATE=' + ('PASS' if row else 'FAIL'))
+            print('STEP2_STATE=' + str(row[0] if row else None))
+            print('STEP2_UPDATED=' + str(row[1] if row else None))
+          except Exception as ex: print('STEP2_RUNTIME_STATE=ERROR:'+type(ex).__name__+':'+str(ex))
+          dash=json.loads((B/'.storage/lovelace.dashboard_house_status').read_text())
+          cfg=dash.get('data',{}).get('config',{})
+          dv=next((v for v in cfg.get('views',[]) if v.get('path')=='doorbell'),None)
+          blob=json.dumps(dv or {})
+          print('STEP3_LOVELACE_CONFIG=' + ('PASS' if '"picture-entity"' in blob and 'camera.front_door_live_view' in blob else 'FAIL'))
+          regs=json.loads((B/'.storage/lovelace_dashboards').read_text()).get('data',{}).get('items',[])
+          native=next((x for x in regs if x.get('id')=='dashboard_house_status'),None)
+          print('STEP4_NATIVE_DASHBOARD_REGISTRY=' + ('PASS' if native else 'FAIL'))
+          print('STEP4_URL_PATH=' + str((native or {}).get('url_path')))
+          # HTTP route existence (auth redirect/401 is still proof router owns route; 404 is failure).
+          try:
+            r=urllib.request.urlopen('http://127.0.0.1:8123/house-status-native/doorbell',timeout=5)
+            print('STEP5_NATIVE_ROUTE_HTTP=PASS:'+str(r.status))
+          except urllib.error.HTTPError as ex:
+            print('STEP5_NATIVE_ROUTE_HTTP=' + ('PASS:' if ex.code in (401,403) else 'FAIL:') + str(ex.code))
+          except Exception as ex: print('STEP5_NATIVE_ROUTE_HTTP=ERROR:'+type(ex).__name__+':'+str(ex))
+          # Show whether custom shell still owns/renderers Doorbell.
+          conf=(B/'configuration.yaml').read_text()
+          print('STEP6_CUSTOM_PANEL_PRESENT=' + ('YES' if 'url_path: house-status' in conf else 'NO'))
+          p=B/'www/house-status/lifeos-house-status-card.js'
+          txt=p.read_text() if p.exists() else ''
+          print('STEP6_CUSTOM_DOORBELL_RENDERER=' + ('YES' if "mode==='doorbell'" in txt else 'NO'))
+          PY
