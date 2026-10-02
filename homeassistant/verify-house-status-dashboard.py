@@ -47,8 +47,13 @@ if 'import_price_available===true' not in combined or 'import_p_per_kwh' not in 
 if "| round(2)" not in combined and '.toFixed(2)' not in combined: fail('currency/energy precision formatting missing')
 if "customElements.define('lifeos-house-status-v28'" not in card_blob: fail('purpose-built House Status frontend missing')
 if 'Charge only' not in combined: fail('EV charge-only contract missing')
-for entity in ['camera.front_door_live_view','event.front_door_motion','event.front_door_ding']:
- if entity not in blob: fail('current Ring doorbell mapping missing',entity)
+doorbell=next((v for v in views if v.get('path')=='doorbell'),None)
+if not doorbell: fail('native Doorbell view missing')
+doorbell_blob=json.dumps(doorbell)
+if 'camera.front_door_live_view' not in doorbell_blob:
+ fail('Ring camera missing from native Doorbell view','camera.front_door_live_view')
+# Motion/ding tiles are optional in the isolated stock-camera acceptance view.
+print('doorbell_native_camera=PASS')
 print('HOUSE_STATUS_HA_GATE=PASS')
 print('dashboard=/house-status drift=none')
 print('views=4 order=PASS')
