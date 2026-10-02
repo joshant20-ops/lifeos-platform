@@ -7,6 +7,7 @@ DASH=HA/'.storage/lovelace.dashboard_house_status'
 REG=HA/'.storage/lovelace_dashboards'
 RESOURCE=HA/'.storage/lovelace_resources'
 CARD=HA/'www'/'house-status'/'lifeos-house-status-v28.js'
+LEGACY_CARD=HA/'www'/'house-status'/'lifeos-house-status-v27.js'
 DOORBELL=HA/'www'/'house-status'/'lifeos-house-status-doorbell.js'
 CONFIG=HA/'configuration.yaml'
 
@@ -31,7 +32,18 @@ if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
 if 'custom:apexcharts-card' in json.dumps(views[:3]): fail('legacy Lovelace chart composition remains')
 card_blob=CARD.read_text() if CARD.exists() else ''
+legacy_card_blob=LEGACY_CARD.read_text() if LEGACY_CARD.exists() else ''
 doorbell_blob=DOORBELL.read_text() if DOORBELL.exists() else ''
+if not legacy_card_blob: fail('legacy v27 panel asset missing')
+legacy_expected=(card_blob
+ .replace('Doorbell v28','Doorbell v27')
+ .replace("this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){history.pushState(null,'','/house-status-native/doorbell');window.dispatchEvent(new Event('location-changed'));return;}this._mode=el.dataset.mode;this.render();});",
+          "this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}this._mode=el.dataset.mode;this.render();});")
+ .replace('lifeos-house-status-v28','lifeos-house-status-v27'))
+if legacy_card_blob!=legacy_expected:
+ fail('legacy v27 panel differs outside the Doorbell-only route handoff')
+if "window.location.assign('/house-status-native/doorbell')" not in legacy_card_blob:
+ fail('legacy v27 Doorbell full-navigation handler missing')
 combined=blob+card_blob+doorbell_blob
 for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
  if entity not in combined: fail('required proven energy entity missing',entity)
