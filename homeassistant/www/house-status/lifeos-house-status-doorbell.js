@@ -1,22 +1,11 @@
 window.LifeOSHouseStatusModules=window.LifeOSHouseStatusModules||{};
 const nativeDoorbellPath='/house-status-native/doorbell';
 
-// HA's location-changed event can leave the custom card mounted after the shell
-// updates history. If that happens, force a full navigation to native Lovelace.
-function houseStatusShellMounted(){
-  const pending=[document];
-  while(pending.length){
-    const root=pending.pop();
-    if(!root||typeof root.querySelectorAll!=='function') continue;
-    for(const element of root.querySelectorAll('*')){
-      if(/^lifeos-house-status-v\d+$/.test(element.localName)) return true;
-      if(element.shadowRoot) pending.push(element.shadowRoot);
-    }
-  }
-  return false;
-}
+// This module is loaded by the custom House Status panel only. If its SPA shell
+// changes the URL to the native route, replace that history-only transition with
+// a document navigation. The native Lovelace dashboard does not load this module.
 function enforceNativeDoorbellRoute(){
-  if(window.location.pathname===nativeDoorbellPath&&houseStatusShellMounted()){
+  if(window.location.pathname===nativeDoorbellPath){
     window.location.replace(nativeDoorbellPath);
   }
 }
