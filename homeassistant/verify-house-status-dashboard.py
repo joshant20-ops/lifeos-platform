@@ -49,8 +49,8 @@ if "customElements.define('lifeos-house-status-v28'" not in card_blob: fail('pur
 if 'Charge only' not in combined: fail('EV charge-only contract missing')
 doorbell=next((v for v in views if v.get('path')=='doorbell'),None)
 if not doorbell: fail('native Doorbell view missing')
-doorbell_blob=json.dumps(doorbell)
-if 'camera.front_door_live_view' not in doorbell_blob:
+native_doorbell_json=json.dumps(doorbell)
+if 'camera.front_door_live_view' not in native_doorbell_json:
  fail('Ring camera missing from native Doorbell view','camera.front_door_live_view')
 # Motion/ding tiles are optional in the isolated stock-camera acceptance view.
 print('doorbell_native_camera=PASS')
