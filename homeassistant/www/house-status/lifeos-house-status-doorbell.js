@@ -1,29 +1,14 @@
 window.LifeOSHouseStatusModules=window.LifeOSHouseStatusModules||{};
+const nativeDoorbellPath='/house-status-native/doorbell';
 window.LifeOSHouseStatusModules.doorbell={
-  async mount(host,hass){
-    if(!host||!hass) return;
-    try{
-      if(typeof window.loadCardHelpers!=='function') throw new Error('Home Assistant card helpers unavailable');
-      const helpers=await window.loadCardHelpers();
-      const picture=await helpers.createCardElement({
-        type:'picture-entity',
-        entity:'camera.front_door_live_view',
-        name:'Front Door',
-        camera_view:'live',
-        show_name:true,
-        show_state:true,
-        tap_action:{action:'none'},
-        hold_action:{action:'none'}
-      });
-      picture.hass=hass;
-      host.replaceChildren(picture);
-    }catch(e){
-      const detail=(e?.message||String(e)||'unknown error').replace(/[<>&]/g,ch=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[ch]));
-      host.innerHTML='<div class="floor"><b>CAMERA CARD ERROR</b><br><span class="small">'+detail+'</span></div>';
-      console.error('House Status Doorbell native card mount failed',e);
+  mount(host){
+    if(!host) return;
+    host.innerHTML='<div class="floor">Opening the native Doorbell view… <a href="/house-status-native/doorbell">Open Doorbell camera</a></div>';
+    if(window.location.pathname!==nativeDoorbellPath){
+      window.location.replace('/house-status-native/doorbell');
     }
   },
   render(){
-    return '<div class="panel"><div class="heading">Doorbell</div><div class="doorcam" data-doorbell-card></div></div>';
+    return '<div class="panel"><div class="heading">Doorbell</div><div class="floor"><a href="/house-status-native/doorbell">Open Doorbell camera</a></div></div>';
   }
 };
