@@ -58,6 +58,7 @@ def main():
     RESOURCES.write_text(json.dumps(resources,indent=2)+'\n')
     print('DEPLOY: PASS')
     print('dashboard=/house-status')
+    print('native_doorbell=/house-status-native/doorbell')
     print('frontend=panel_custom url_path=house-status')
     return 0
 
