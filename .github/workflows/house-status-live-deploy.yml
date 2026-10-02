@@ -35,8 +35,12 @@ jobs:
           target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
           doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
           test -s "$doorbell"
-          grep -q 'loadCardHelpers' "$doorbell"
-          grep -q 'createCardElement' "$doorbell"
+          grep -Fq "window.location.replace('/house-status-native/doorbell')" "$doorbell"
+          grep -Fq 'href="/house-status-native/doorbell"' "$doorbell"
+          if grep -Eq 'loadCardHelpers|createCardElement' "$doorbell"; then
+            echo 'legacy_custom_camera_renderer=FAIL'
+            exit 1
+          fi
           grep -q 'band-free' "$target"
           grep -q 'band-powerdown' "$target"
           grep -q 'joined_events' "$target"
