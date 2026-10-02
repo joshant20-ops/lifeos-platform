@@ -1,10 +1,6 @@
 const assert = require('node:assert/strict');
 
 const listeners = {};
-global.document = {
-  shellCards: [],
-  querySelectorAll() { return this.shellCards; }
-};
 global.window = {
   location: {
     pathname: '/house-status',
@@ -32,36 +28,30 @@ doorbell.mount(null);
 assert.equal(
   window.location.redirectedTo,
   null,
-  'do not redirect again after reaching the native Doorbell view'
+  'mount must leave the native route alone'
 );
 
-// The shell can push the target URL without actually replacing its own view.
-// The fallback should reload only while a House Status card is still mounted.
-document.shellCards = [{
-  localName: 'hui-card',
-  shadowRoot: {
-    querySelectorAll() {
-      return [{ localName: 'lifeos-house-status-v28', shadowRoot: null }];
-    }
-  }
-}];
+// The location-changed event is dispatched by the custom panel after its
+// history.pushState transition. The panel may be hidden behind a closed shadow
+// root, so navigation must not depend on discovering its DOM element.
 listeners['location-changed']();
 assert.equal(
   window.location.redirectedTo,
   '/house-status-native/doorbell',
-  'force native navigation if the custom shell remains after route change'
+  'promote the custom panel route change to a full document navigation'
 );
 
-// A direct native Lovelace view has no mounted House Status card, so it stays put.
-document.shellCards = [];
+// The handler is inert on every route except the native Doorbell target.
+window.location.pathname = '/house-status';
 window.location.redirectedTo = null;
 listeners['location-changed']();
 assert.equal(
   window.location.redirectedTo,
   null,
-  'do not reload the native Doorbell view after successful navigation'
+  'leave non-Doorbell routes unchanged'
 );
 
 console.log('DOORBELL_NULL_HOST_HANDOFF=PASS');
 console.log('DOORBELL_NATIVE_ROUTE_IDEMPOTENT=PASS');
-console.log('DOORBELL_SHELL_ROUTE_FALLBACK=PASS');
+console.log('DOORBELL_FULL_DOCUMENT_HANDOFF=PASS');
+console.log('DOORBELL_OTHER_ROUTES_UNCHANGED=PASS');
