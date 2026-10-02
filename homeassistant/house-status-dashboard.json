@@ -49,42 +49,18 @@
           "type": "panel",
           "cards": [
             {
-              "type": "vertical-stack",
-              "cards": [
-                {
-                  "type": "picture-entity",
-                  "entity": "camera.front_door_live_view",
-                  "name": "Front Door",
-                  "camera_view": "live",
-                  "show_name": true,
-                  "show_state": true,
-                  "tap_action": {
-                    "action": "none"
-                  },
-                  "hold_action": {
-                    "action": "none"
-                  }
-                },
-                {
-                  "type": "grid",
-                  "columns": 2,
-                  "square": false,
-                  "cards": [
-                    {
-                      "type": "tile",
-                      "entity": "event.front_door_motion",
-                      "name": "Last motion",
-                      "icon": "mdi:motion-sensor"
-                    },
-                    {
-                      "type": "tile",
-                      "entity": "event.front_door_ding",
-                      "name": "Last doorbell press",
-                      "icon": "mdi:doorbell"
-                    }
-                  ]
-                }
-              ]
+              "type": "picture-entity",
+              "entity": "camera.front_door_live_view",
+              "name": "Front Door — isolated native test",
+              "camera_view": "live",
+              "show_name": true,
+              "show_state": true,
+              "tap_action": {
+                "action": "none"
+              },
+              "hold_action": {
+                "action": "none"
+              }
             }
           ]
         }
