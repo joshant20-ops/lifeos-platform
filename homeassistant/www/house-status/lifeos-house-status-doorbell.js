@@ -9,7 +9,7 @@ function houseStatusShellMounted(){
     const root=pending.pop();
     if(!root||typeof root.querySelectorAll!=='function') continue;
     for(const element of root.querySelectorAll('*')){
-      if(/^lifeos-house-status-v\\d+$/.test(element.localName)) return true;
+      if(/^lifeos-house-status-v\d+$/.test(element.localName)) return true;
       if(element.shadowRoot) pending.push(element.shadowRoot);
     }
   }
