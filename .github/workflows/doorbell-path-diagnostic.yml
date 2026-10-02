@@ -16,41 +16,75 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo -n python3 - <<'PY'
-          import json, pathlib, sqlite3, subprocess, urllib.request
+          import json, pathlib, sqlite3, urllib.request, urllib.parse
           B=pathlib.Path('/opt/stacks/homeassistant/config')
+          BASE='http://127.0.0.1:8123'
+          entity='camera.front_door_live_view'
+
+          # 1. Ring integration and enabled entity.
           reg=json.loads((B/'.storage/core.entity_registry').read_text())['data']['entities']
-          e=next((x for x in reg if x.get('entity_id')=='camera.front_door_live_view'),None)
-          print('STEP1_ENTITY_REGISTRY=' + ('PASS' if e and not e.get('disabled_by') else 'FAIL'))
-          print('STEP1_PLATFORM=' + str((e or {}).get('platform')))
-          # HA recorder gives runtime evidence without requiring REST authentication.
+          entry=next((x for x in reg if x.get('entity_id')==entity),None)
+          if not entry or entry.get('disabled_by') or entry.get('platform')!='ring':
+            raise SystemExit('STEP1_RING_ENTITY=FAIL')
+          print('STEP1_RING_ENTITY=PASS')
+
+          # 2. Recorder state plus the camera's image path, without logging URL/token data.
           db=B/'home-assistant_v2.db'
+          con=sqlite3.connect(f'file:{db}?mode=ro',uri=True)
+          row=con.execute("""select s.state,a.shared_attrs
+            from states s join states_meta m on m.metadata_id=s.metadata_id
+            left join state_attributes a on a.attributes_id=s.attributes_id
+            where m.entity_id=? order by s.state_id desc limit 1""",(entity,)).fetchone()
+          if not row:
+            raise SystemExit('STEP2_CAMERA_STATE=FAIL')
+          state,raw_attrs=row
+          attrs=json.loads(raw_attrs) if raw_attrs else {}
+          image_path=attrs.get('entity_picture')
+          print('STEP2_CAMERA_STATE=PASS:'+str(state))
+          if not image_path:
+            raise SystemExit('STEP3_CAMERA_IMAGE_PATH=FAIL')
+          print('STEP3_CAMERA_IMAGE_PATH=PASS')
+
+          # 3. Fetch and validate the actual current image. Keep URL, token, and image bytes private.
+          image_url=urllib.parse.urljoin(BASE+'/',str(image_path))
           try:
-            con=sqlite3.connect(f'file:{db}?mode=ro',uri=True)
-            row=con.execute("""select s.state, datetime(s.last_updated_ts,'unixepoch') from states s join states_meta m on m.metadata_id=s.metadata_id where m.entity_id=? order by s.state_id desc limit 1""",('camera.front_door_live_view',)).fetchone()
-            print('STEP2_RUNTIME_STATE=' + ('PASS' if row else 'FAIL'))
-            print('STEP2_STATE=' + str(row[0] if row else None))
-            print('STEP2_UPDATED=' + str(row[1] if row else None))
-          except Exception as ex: print('STEP2_RUNTIME_STATE=ERROR:'+type(ex).__name__+':'+str(ex))
+            with urllib.request.urlopen(image_url,timeout=20) as response:
+              content_type=response.headers.get('Content-Type','').split(';',1)[0].lower()
+              image=response.read()
+              status=response.status
+          except Exception as exc:
+            raise SystemExit('STEP3_CAMERA_IMAGE_FETCH=FAIL:'+type(exc).__name__)
+          if status!=200 or not content_type.startswith('image/') or len(image)<256:
+            raise SystemExit('STEP3_CAMERA_IMAGE_FETCH=FAIL:status='+str(status)+',type='+content_type+',bytes='+str(len(image)))
+          print('STEP3_CAMERA_IMAGE_FETCH=PASS:'+content_type+':'+str(len(image))+'bytes')
+
+          # 4. Confirm the live isolated native Lovelace view is exactly one stock live camera card.
           dash=json.loads((B/'.storage/lovelace.dashboard_house_status').read_text())
-          cfg=dash.get('data',{}).get('config',{})
-          dv=next((v for v in cfg.get('views',[]) if v.get('path')=='doorbell'),None)
-          blob=json.dumps(dv or {})
-          print('STEP3_LOVELACE_CONFIG=' + ('PASS' if '"picture-entity"' in blob and 'camera.front_door_live_view' in blob else 'FAIL'))
+          views=dash.get('data',{}).get('config',{}).get('views',[])
+          view=next((v for v in views if v.get('path')=='doorbell'),None)
+          cards=(view or {}).get('cards',[])
+          ok=(len(cards)==1 and cards[0].get('type')=='picture-entity'
+              and cards[0].get('entity')==entity and cards[0].get('camera_view')=='live')
+          if not ok:
+            raise SystemExit('STEP4_NATIVE_CAMERA_CARD=FAIL')
+          print('STEP4_NATIVE_CAMERA_CARD=PASS')
+
+          # 5. Confirm native dashboard ownership and its actual live route.
           regs=json.loads((B/'.storage/lovelace_dashboards').read_text()).get('data',{}).get('items',[])
           native=next((x for x in regs if x.get('id')=='dashboard_house_status'),None)
-          print('STEP4_NATIVE_DASHBOARD_REGISTRY=' + ('PASS' if native else 'FAIL'))
-          print('STEP4_URL_PATH=' + str((native or {}).get('url_path')))
-          # HTTP route existence (auth redirect/401 is still proof router owns route; 404 is failure).
+          if not native or native.get('url_path')!='house-status-native':
+            raise SystemExit('STEP5_NATIVE_DASHBOARD=FAIL')
           try:
-            r=urllib.request.urlopen('http://127.0.0.1:8123/house-status-native/doorbell',timeout=5)
-            print('STEP5_NATIVE_ROUTE_HTTP=PASS:'+str(r.status))
-          except urllib.error.HTTPError as ex:
-            print('STEP5_NATIVE_ROUTE_HTTP=' + ('PASS:' if ex.code in (401,403) else 'FAIL:') + str(ex.code))
-          except Exception as ex: print('STEP5_NATIVE_ROUTE_HTTP=ERROR:'+type(ex).__name__+':'+str(ex))
-          # Show whether custom shell still owns/renderers Doorbell.
-          conf=(B/'configuration.yaml').read_text()
-          print('STEP6_CUSTOM_PANEL_PRESENT=' + ('YES' if 'url_path: house-status' in conf else 'NO'))
-          p=B/'www/house-status/lifeos-house-status-card.js'
-          txt=p.read_text() if p.exists() else ''
-          print('STEP6_CUSTOM_DOORBELL_RENDERER=' + ('YES' if "mode==='doorbell'" in txt else 'NO'))
+            with urllib.request.urlopen(BASE+'/house-status-native/doorbell',timeout=10) as response:
+              if response.status!=200: raise SystemExit('STEP5_NATIVE_ROUTE=FAIL:'+str(response.status))
+          except Exception as exc:
+            raise SystemExit('STEP5_NATIVE_ROUTE=FAIL:'+type(exc).__name__)
+          print('STEP5_NATIVE_DASHBOARD_ROUTE=PASS:200')
+
+          # 6. Confirm House Status navigation points directly to the tested native view.
+          shell=B/'www/house-status/lifeos-house-status-v28.js'
+          source=shell.read_text()
+          if "history.pushState(null,'','/house-status-native/doorbell')" not in source:
+            raise SystemExit('STEP6_HOUSE_STATUS_NAVIGATION=FAIL')
+          print('STEP6_HOUSE_STATUS_NAVIGATION=PASS')
           PY
