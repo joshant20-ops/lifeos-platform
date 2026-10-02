@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'homeassistant/www/house-status/lifeos-house-status-card.js'
+      - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
       - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
       - 'homeassistant/house-status-dashboard.json'
       - 'homeassistant/deploy-house-status-dashboard.py'
@@ -33,6 +34,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
+          legacy=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v27.js
           doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
           require_marker() {
             label=$1
@@ -67,4 +69,10 @@ jobs:
           require_marker DOORBELL_LIVE_ROUTE "const nativeDoorbellPath='/house-status-native/doorbell';" "$served"
           require_marker DOORBELL_LIVE_REDIRECT 'window.location.replace(nativeDoorbellPath)' "$served"
           require_marker DOORBELL_LIVE_LINK 'href="/house-status-native/doorbell"' "$served"
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v27.js -o "$served"
+          require_marker DOORBELL_V27_DISK_VERSION "Doorbell v27" "$legacy"
+          require_marker DOORBELL_V27_LIVE_VERSION "Doorbell v27" "$served"
+          require_marker DOORBELL_V27_LIVE_NAV "window.location.assign('/house-status-native/doorbell')" "$served"
+          require_marker DOORBELL_V27_LIVE_TAG "lifeos-house-status-v27" "$served"
+          echo DOORBELL_V27_ASSET_LIVE=PASS
           echo DOORBELL_HANDOFF_LIVE=PASS
