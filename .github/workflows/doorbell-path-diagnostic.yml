@@ -53,4 +53,28 @@ jobs:
           p=B/'www/house-status/lifeos-house-status-card.js'
           txt=p.read_text() if p.exists() else ''
           print('STEP6_CUSTOM_DOORBELL_RENDERER=' + ('YES' if "mode==='doorbell'" in txt else 'NO'))
+          # Probe the actual camera proxy boundary from inside HA. Do not print body/token.
+          code = """
+import asyncio
+from homeassistant.core import HomeAssistant
+async def p():
+    # Running under HA's interpreter cannot access the live hass object directly;
+    # use the authenticated frontend path test below for transport and inspect recorder attrs safely.
+    pass
+"""
+          try:
+            con=sqlite3.connect(f'file:{db}?mode=ro',uri=True)
+            row=con.execute("""select sa.shared_attrs from states s join states_meta m on m.metadata_id=s.metadata_id left join state_attributes sa on sa.attributes_id=s.attributes_id where m.entity_id=? order by s.state_id desc limit 1""",('camera.front_door_live_view',)).fetchone()
+            attrs=json.loads(row[0]) if row and row[0] else {}
+            print('STEP7_ENTITY_PICTURE_ATTR=' + ('PASS' if attrs.get('entity_picture') else 'MISSING'))
+            print('STEP7_FRONTEND_STREAM_TYPE=' + str(attrs.get('frontend_stream_type')))
+            print('STEP7_SUPPORTED_FEATURES=' + str(attrs.get('supported_features')))
+          except Exception as ex: print('STEP7_CAMERA_ATTRS=ERROR:'+type(ex).__name__+':'+str(ex))
+          # Unauthenticated proxy is expected to reject; this distinguishes route existence from missing endpoint.
+          try:
+            urllib.request.urlopen('http://127.0.0.1:8123/api/camera_proxy/camera.front_door_live_view',timeout=10)
+            print('STEP8_CAMERA_PROXY_ROUTE=PASS:200')
+          except urllib.error.HTTPError as ex:
+            print('STEP8_CAMERA_PROXY_ROUTE=' + ('PASS_AUTH_REQUIRED:' if ex.code in (401,403) else 'FAIL:') + str(ex.code))
+          except Exception as ex: print('STEP8_CAMERA_PROXY_ROUTE=ERROR:'+type(ex).__name__+':'+str(ex))
           PY
