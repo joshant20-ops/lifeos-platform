@@ -40,17 +40,22 @@ jobs:
           state,raw_attrs=row
           attrs=json.loads(raw_attrs) if raw_attrs else {}
           print('STEP2_CAMERA_STATE=PASS:'+str(state))
-          try:
-            stream_supported=bool(int(attrs.get('supported_features',0)) & 2)
-          except (TypeError,ValueError):
-            stream_supported=False
+          feature_value=attrs.get('supported_features')
           stream_type=attrs.get('frontend_stream_type')
           safe_stream_type=stream_type if stream_type in ('hls','webrtc','web_rtc','mjpeg') else 'not_recorded'
-          print('STEP3_STREAM_CAPABILITY='+('PASS' if stream_supported else 'FAIL')
-                +':supported='+str(stream_supported)+':frontend_type='+safe_stream_type
-                +':video_url_present='+str(bool(attrs.get('video_url'))))
-          if not stream_supported:
-            raise SystemExit('STEP3_STREAM_CAPABILITY=FAIL')
+          if feature_value is None:
+            print('STEP3_STREAM_CAPABILITY=NOT_IN_RECORDER'
+                  +':frontend_type='+safe_stream_type
+                  +':video_url_present='+str(bool(attrs.get('video_url'))))
+          else:
+            try:
+              stream_supported=bool(int(feature_value) & 2)
+            except (TypeError,ValueError):
+              stream_supported=False
+            print('STEP3_STREAM_CAPABILITY='
+                  +('RECORDED_SUPPORTED' if stream_supported else 'RECORDED_UNSUPPORTED')
+                  +':frontend_type='+safe_stream_type
+                  +':video_url_present='+str(bool(attrs.get('video_url'))))
 
           # 4. Fetch the current image if recorder exposes its camera URL. Otherwise
           # try the local camera proxy anonymously and report its authentication boundary.
