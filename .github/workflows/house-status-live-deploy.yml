@@ -45,6 +45,13 @@ jobs:
           grep -q 'band-powerdown' "$target"
           grep -q 'joined_events' "$target"
           grep -q 'Free electricity' "$target"
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js | grep -q 'band-free'
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js | grep -q 'band-powerdown'
+          served=$(mktemp)
+          trap 'rm -f "$served"' EXIT
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js -o "$served"
+          grep -q 'band-free' "$served"
+          grep -q 'band-powerdown' "$served"
           echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js -o "$served"
+          grep -Fq "window.location.replace('/house-status-native/doorbell')" "$served"
+          grep -Fq 'href="/house-status-native/doorbell"' "$served"
+          echo DOORBELL_HANDOFF_LIVE=PASS
