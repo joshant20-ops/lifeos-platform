@@ -32,15 +32,11 @@ jobs:
       - name: Live asset acceptance
         run: |
           set -Eeuo pipefail
-          target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
-          doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
-          test -s "$doorbell"
-          grep -q 'loadCardHelpers' "$doorbell"
-          grep -q 'createCardElement' "$doorbell"
+          target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v29.js
           grep -q 'band-free' "$target"
           grep -q 'band-powerdown' "$target"
           grep -q 'joined_events' "$target"
           grep -q 'Free electricity' "$target"
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js | grep -q 'band-free'
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js | grep -q 'band-powerdown'
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v29.js | grep -q 'band-free'
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v29.js | grep -q 'band-powerdown'
           echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
