@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/doorbell-path-diagnostic.yml'
       - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
+      - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
 permissions:
   contents: read
 jobs:
@@ -18,7 +19,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo -n python3 - <<'PY'
-          import json, pathlib, sqlite3, urllib.request, urllib.parse
+          import hashlib, json, pathlib, sqlite3, urllib.request, urllib.parse
           B=pathlib.Path('/opt/stacks/homeassistant/config')
           BASE='http://127.0.0.1:8123'
           entity='camera.front_door_live_view'
@@ -131,9 +132,8 @@ jobs:
             print('STEP8_V28_FILE_MARKER='+('PASS' if 'Doorbell v28' in v28.read_text() else 'MISMATCH'))
           if v27.is_file():
             print('STEP8_V27_FILE_MARKER='+('PRESENT' if 'Doorbell v27' in v27.read_text() else 'OTHER'))
-            print('STEP9_V27_RUNTIME_SOURCE_BEGIN')
-            print(v27.read_text())
-            print('STEP9_V27_RUNTIME_SOURCE_END')
+            print('STEP9_V27_RUNTIME_SHA256='+hashlib.sha256(v27.read_bytes()).hexdigest())
+            print('STEP9_V27_DOORBELL_NAV='+('PASS' if "window.location.assign('/house-status-native/doorbell')" in v27.read_text() else 'MISSING'))
           resources=json.loads((B/'.storage/lovelace_resources').read_text()).get('data',{}).get('items',[])
           v27_resources=[x for x in resources if 'v27' in str(x.get('url','')) and 'house-status' in str(x.get('url',''))]
           print('STEP8_V27_LOVELACE_RESOURCE_COUNT='+str(len(v27_resources)))
