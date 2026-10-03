@@ -1,12 +1,8 @@
-import './lifeos-house-status-doorbell.js';
 class LifeOSEnergyModule {
   static owns(mode){ return mode==='domestic'||mode==='flow'; }
 }
 class LifeOSHouseModule {
   static owns(mode){ return mode==='home'; }
-}
-class LifeOSDoorbellModule {
-  static owns(mode){ return mode==='doorbell'; }
 }
 class LifeOSHouseStatusCard extends HTMLElement {
   static getStubConfig(){ return {mode:'domestic'}; }
@@ -23,7 +19,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
   render(){
     if(!this._hass) return;
     const mode=this._mode||this.config?.mode||'domestic';
-    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':LifeOSDoorbellModule.owns(mode)?'doorbell':'energy';
+    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':'energy';
     this.dataset.module=moduleOwner;
     const css=`<style>
       :host{display:block;--bg:#061720;--panel:#081c27;--line:#163747;--text:#f4f7f9;--muted:#b8c6ce;--blue:#168cff}
@@ -87,10 +83,10 @@ class LifeOSHouseStatusCard extends HTMLElement {
     } else if(mode==='home'){
       body=`<div class="status"><div class="secure">⚪ Security sensors not installed</div><div class="leave">⌂ Leave House<br><span class="small">Automation pending</span></div></div><div class="panel"><div class="heading">Ground Floor</div><div class="floor">Replaceable ground-floor plan · overlays dormant until mapped</div></div><div class="panel"><div class="heading">First Floor</div><div class="floor">Replaceable first-floor plan · overlays dormant until mapped</div></div><div class="panel legend">🟩 Window open　🟥 Window closed　🟩 External door open　🟥 External door closed　🟢 Light off　🔴 Light on　🟩 TV on　🟥 TV off　⚪ ! unavailable</div>`;
     }
-    else { const doorbell=window.LifeOSHouseStatusModules?.doorbell; body=doorbell?.render?doorbell.render(this._hass):'<div class="panel"><div class="heading">Doorbell</div><div class="floor">DOORBELL MODULE UNAVAILABLE</div></div>'; }
-    this.innerHTML=css+`<div class="app">${nav}${body}</div>`; if(mode==='doorbell'){const doorbell=window.LifeOSHouseStatusModules?.doorbell;doorbell?.mount?.(this.querySelector('[data-doorbell-card]'),this._hass);}
+    else { body='<div class="panel"><div class="heading">Doorbell</div><div class="floor"><a href="/house-status-native/doorbell">Open Doorbell camera</a></div></div>'; }
+    this.innerHTML=css+`<div class="app">${nav}${body}</div>`;
     const menu=this.querySelector('.hamb');if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
-    this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){history.pushState(null,'','/house-status-native/doorbell');window.dispatchEvent(new Event('location-changed'));return;}this._mode=el.dataset.mode;this.render();});
+    this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}this._mode=el.dataset.mode;this.render();});
     this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this.render();});
     this.querySelectorAll('[data-shift]').forEach(el=>el.onclick=()=>this.shiftPeriod(Number(el.dataset.shift)));
     const picker=this.querySelector('[data-date-picker]');if(picker)picker.onchange=()=>{if(!picker.value)return;const [y,m,d]=picker.value.split('-').map(Number);const chosen=new Date(y,m-1,d);if(Number.isNaN(chosen.getTime()))return;this._anchor=chosen;if(this.period()==='today')this._period='day';this.render();};

@@ -5,8 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/doorbell-path-diagnostic.yml'
-      - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
+      - 'homeassistant/www/house-status/lifeos-house-status-card.js'
 permissions:
   contents: read
 jobs:
@@ -19,7 +18,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           sudo -n python3 - <<'PY'
-          import hashlib, json, pathlib, sqlite3, urllib.request, urllib.parse
+          import json, pathlib, sqlite3, urllib.request, urllib.parse
           B=pathlib.Path('/opt/stacks/homeassistant/config')
           BASE='http://127.0.0.1:8123'
           entity='camera.front_door_live_view'
@@ -110,14 +109,13 @@ jobs:
           # 7. Confirm House Status navigation points directly to the tested native view.
           shell=B/'www/house-status/lifeos-house-status-v28.js'
           source=shell.read_text()
-          if "history.pushState(null,'','/house-status-native/doorbell')" not in source:
+          if "window.location.assign('/house-status-native/doorbell')" not in source:
             raise SystemExit('STEP7_HOUSE_STATUS_NAVIGATION=FAIL')
-          print('STEP7_HOUSE_STATUS_NAVIGATION=PASS')
+          print('STEP7_HOUSE_STATUS_DIRECT_NAVIGATION=PASS')
 
           # 8. Report the active panel config and installed asset versions.
           cfg=(B/'configuration.yaml').read_text()
           checks={
-            'v27_panel_name':'name: lifeos-house-status-v27',
             'v28_panel_name':'name: lifeos-house-status-v28',
             'house_status_path':'url_path: house-status',
             'v28_module_url':'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2',
@@ -125,44 +123,20 @@ jobs:
           for label,marker in checks.items():
             print('STEP8_'+label.upper()+'='+str(cfg.count(marker)))
           v28=B/'www/house-status/lifeos-house-status-v28.js'
-          v27=B/'www/house-status/lifeos-house-status-v27.js'
           print('STEP8_V28_FILE='+('PRESENT' if v28.is_file() else 'ABSENT'))
-          print('STEP8_V27_FILE='+('PRESENT' if v27.is_file() else 'ABSENT'))
           if v28.is_file():
             print('STEP8_V28_FILE_MARKER='+('PASS' if 'Doorbell v28' in v28.read_text() else 'MISMATCH'))
-          if v27.is_file():
-            print('STEP8_V27_FILE_MARKER='+('PRESENT' if 'Doorbell v27' in v27.read_text() else 'OTHER'))
-            print('STEP9_V27_RUNTIME_SHA256='+hashlib.sha256(v27.read_bytes()).hexdigest())
-            print('STEP9_V27_DOORBELL_NAV='+('PASS' if "window.location.assign('/house-status-native/doorbell')" in v27.read_text() else 'MISSING'))
-          resources=json.loads((B/'.storage/lovelace_resources').read_text()).get('data',{}).get('items',[])
-          v27_resources=[x for x in resources if 'v27' in str(x.get('url','')) and 'house-status' in str(x.get('url',''))]
-          print('STEP8_V27_LOVELACE_RESOURCE_COUNT='+str(len(v27_resources)))
           try:
             with urllib.request.urlopen(BASE+'/local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2',timeout=10) as response:
               body=response.read().decode('utf-8','replace')
               print('STEP8_SERVED_V28='+('PASS' if response.status==200 and 'Doorbell v28' in body else 'MISMATCH'))
           except Exception as exc:
             print('STEP8_SERVED_V28=FAIL:'+type(exc).__name__)
-          # 10. Read-only scan of Lovelace storage for any lingering v27 client refs.
-          storage=B/'.storage'
-          matches=[]
-          for path in sorted(storage.glob('lovelace*')):
-            try:
-              text=path.read_text(errors='replace')
-            except Exception:
-              continue
-            count=text.count('lifeos-house-status-v27')+text.count('Doorbell v27')
-            if count:
-              matches.append(path.name)
-          print('STEP10_V27_STORAGE_REF_COUNT='+str(len(matches)))
-          print('STEP10_V27_STORAGE_REF_FILES='+(','.join(matches) if matches else 'none'))
+          # Browser-visible image rendering must be checked in the actual frontend.
+          print('DOORBELL_BROWSER_IMAGE_ACCEPTANCE=NOT_RUN_BY_DIAGNOSTIC')
 
-          # 11. Read static-asset cache policy without exposing URL tokens or camera data.
-          for label,asset in (
-            ('V27','lifeos-house-status-v27.js'),
-            ('V28','lifeos-house-status-v28.js'),
-            ('DOORBELL','lifeos-house-status-doorbell.js'),
-          ):
+          # Report the active asset's cache policy without exposing camera data.
+          for label,asset in (('V28','lifeos-house-status-v28.js'),):
             req=urllib.request.Request(BASE+'/local/house-status/'+asset,method='HEAD')
             try:
               with urllib.request.urlopen(req,timeout=10) as response:
