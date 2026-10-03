@@ -1,4 +1,4 @@
-import './lifeos-house-status-doorbell.js?v=20261003-2';
+import './lifeos-house-status-doorbell.js?v=20261003-3';
 class LifeOSEnergyModule {
   static owns(mode){ return mode==='domestic'||mode==='flow'; }
 }
