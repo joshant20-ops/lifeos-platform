@@ -63,7 +63,12 @@ assert.ok(legacyCard.includes(fullNavigationHandler),'legacy v27 Doorbell uses a
 assert.match(legacyCard,/customElements\.define\('lifeos-house-status-v27'/,'legacy file registers the custom element requested by its panel');
 assert.match(legacyCard,/type:'lifeos-house-status-v27'/,'legacy custom card metadata uses the v27 type');
 assert.doesNotMatch(legacyCard,/lifeos-house-status-v28/,'legacy asset does not leave v28 element identifiers behind');
+assert.ok(legacyCard.startsWith("import './lifeos-house-status-doorbell.js?v=20261003-1';"),'v27 busts the cached Doorbell module URL');
+const doorbellModule=fs.readFileSync(path.join(__dirname,'lifeos-house-status-doorbell.js'),'utf8');
+assert.match(doorbellModule,/Open Doorbell camera/,'Doorbell module hands off to the native camera view');
+assert.doesNotMatch(doorbellModule,/loadCardHelpers|createCardElement|CAMERA CARD ERROR/,'Doorbell module has no embedded camera-card renderer');
 const normalizedLegacy=legacyCard
+  .replace("import './lifeos-house-status-doorbell.js?v=20261003-1';", "import './lifeos-house-status-doorbell.js';")
   .replace('Doorbell v27','Doorbell v28')
   .replace(fullNavigationHandler,currentCard.match(/this\.querySelectorAll\('\[data-mode\]'\)[^\n]+/)[0])
   .replaceAll('lifeos-house-status-v27','lifeos-house-status-v28');

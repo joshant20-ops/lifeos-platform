@@ -36,6 +36,7 @@ legacy_card_blob=LEGACY_CARD.read_text() if LEGACY_CARD.exists() else ''
 doorbell_blob=DOORBELL.read_text() if DOORBELL.exists() else ''
 if not legacy_card_blob: fail('legacy v27 panel asset missing')
 legacy_expected=(card_blob
+ .replace("import './lifeos-house-status-doorbell.js';","import './lifeos-house-status-doorbell.js?v=20261003-1';")
  .replace('Doorbell v28','Doorbell v27')
  .replace("this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){history.pushState(null,'','/house-status-native/doorbell');window.dispatchEvent(new Event('location-changed'));return;}this._mode=el.dataset.mode;this.render();});",
           "this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}this._mode=el.dataset.mode;this.render();});")
