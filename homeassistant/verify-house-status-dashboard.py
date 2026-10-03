@@ -82,7 +82,7 @@ if registered: fail('legacy House Status Lovelace resource remains',repr(registe
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
 cfg=CONFIG.read_text()
-if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v28' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v28.js' not in cfg: fail('native House Status panel_custom registration missing')
+if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v28' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2' not in cfg: fail('native House Status panel_custom registration missing')
 if cfg.count('url_path: house-status')!=1: fail('duplicate House Status panel registrations remain',str(cfg.count('url_path: house-status')))
 if 'lifeos-house-status-v4.js' in cfg or 'lifeos-house-status-v5.js' in cfg: fail('stale House Status panel remains')
 blob=card.read_text()
