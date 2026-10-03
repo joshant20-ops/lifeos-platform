@@ -7,16 +7,16 @@ REGISTRY="$HA/.storage/lovelace_dashboards"
 ASSET_DIR="$HA/www/house-status"
 ASSET_TARGET="$ASSET_DIR/placeholder-floorplan.svg"
 CARD_TARGET="$ASSET_DIR/lifeos-house-status-v28.js"
-CARD_SOURCE="$PLATFORM/homeassistant/www/house-status/lifeos-house-status-card.js"
+RELEASE_DIR="$PLATFORM/homeassistant/releases/house-status/live"
+CARD_SOURCE="$RELEASE_DIR/lifeos-house-status-v28.js"
 LEGACY_CARD_TARGET="$ASSET_DIR/lifeos-house-status-v27.js"
-LEGACY_CARD_SOURCE="$PLATFORM/homeassistant/www/house-status/lifeos-house-status-v27.js"
-DOORBELL_SOURCE="$PLATFORM/homeassistant/www/house-status/lifeos-house-status-doorbell.js"
+LEGACY_CARD_SOURCE="$RELEASE_DIR/lifeos-house-status-v27.js"
+DOORBELL_SOURCE="$RELEASE_DIR/lifeos-house-status-doorbell.js"
 DOORBELL_TARGET="$ASSET_DIR/lifeos-house-status-doorbell.js"
 RESOURCES="$HA/.storage/lovelace_resources"
 CONFIG="$HA/configuration.yaml"
 HA_CONFIG="$HA/configuration.yaml"
-MODULE_INSTALLER="$PLATFORM/homeassistant/ensure-house-status-extra-module.py"
-SOURCE_ASSET="$PLATFORM/homeassistant/www/house-status/placeholder-floorplan.svg"
+SOURCE_ASSET="$RELEASE_DIR/placeholder-floorplan.svg"
 DEPLOYER="$PLATFORM/homeassistant/deploy-house-status-dashboard.py"
 VERIFIER="$PLATFORM/homeassistant/verify-house-status-dashboard.py"
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
@@ -26,9 +26,9 @@ fail(){ echo "HOUSE_STATUS_DEPLOY=FAIL"; echo "ERROR=$*"; exit 1; }
 rollback(){ rc=$?; if [[ "$MUTATED" -eq 1 && "$rc" -ne 0 ]]; then echo "HOUSE_STATUS_ROLLBACK=START"; if [[ "$HAD_DASH" -eq 1 ]]; then cp -a "$BACKUP_DIR/dashboard" "$DASH_TARGET"; else rm -f "$DASH_TARGET"; fi; cp -a "$BACKUP_DIR/registry" "$REGISTRY"; cp -a "$BACKUP_DIR/resources" "$RESOURCES"; cp -a "$BACKUP_DIR/configuration.yaml" "$CONFIG"; cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"; if [[ "$HAD_ASSET" -eq 1 ]]; then cp -a "$BACKUP_DIR/asset" "$ASSET_TARGET"; else rm -f "$ASSET_TARGET"; fi; if [[ "$HAD_CARD" -eq 1 ]]; then cp -a "$BACKUP_DIR/card" "$CARD_TARGET"; else rm -f "$CARD_TARGET"; fi; if [[ "$HAD_LEGACY_CARD" -eq 1 ]]; then cp -a "$BACKUP_DIR/legacy-v27" "$LEGACY_CARD_TARGET"; else rm -f "$LEGACY_CARD_TARGET"; fi; if [[ "$HAD_DOORBELL" -eq 1 ]]; then cp -a "$BACKUP_DIR/doorbell" "$DOORBELL_TARGET"; else rm -f "$DOORBELL_TARGET"; fi; docker restart homeassistant >/dev/null || true; echo "HOUSE_STATUS_ROLLBACK=COMPLETE"; fi; exit "$rc"; }
 trap rollback EXIT
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "must_run_as_root"
-[[ -f "$DEPLOYER" && -f "$VERIFIER" && -f "$SOURCE_ASSET" && -f "$CARD_SOURCE" && -f "$LEGACY_CARD_SOURCE" && -f "$DOORBELL_SOURCE" && -f "$MODULE_INSTALLER" ]] || fail "repository_sources_missing"
+[[ -f "$DEPLOYER" && -f "$VERIFIER" && -f "$SOURCE_ASSET" && -f "$CARD_SOURCE" && -f "$LEGACY_CARD_SOURCE" && -f "$DOORBELL_SOURCE" ]] || fail "repository_sources_missing"
 [[ -d "$HA/.storage" && -f "$REGISTRY" && -f "$RESOURCES" ]] || fail "ha_storage_missing"
-python3 -m py_compile "$DEPLOYER" "$VERIFIER" "$MODULE_INSTALLER"
+python3 -m py_compile "$DEPLOYER" "$VERIFIER"
 NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/externals -maxdepth 3 -type f -name node -perm -111 2>/dev/null | head -n1)
 [[ -n "$NODE_BIN" ]] || fail "node_missing_for_frontend_syntax_gate"
 "$NODE_BIN" --check "$CARD_SOURCE" || fail "house_status_frontend_js_syntax_invalid"
@@ -48,25 +48,21 @@ install -o root -g root -m 0644 "$DOORBELL_SOURCE" "$DOORBELL_TARGET"
 MUTATED=1
 python3 - "$CONFIG" <<'PY'
 from pathlib import Path
-import sys,re
+import re, sys
 p=Path(sys.argv[1]); s=p.read_text()
-# Remove all prior LifeOS House Status panel registrations. Duplicate url_path entries make
-# Home Assistant retain/resolve the stale panel even when a newer panel is added first.
-lines=s.splitlines(True)
-out=[]; i=0
-while i < len(lines):
-    if lines[i].startswith('  - name: lifeos-house-status') or lines[i].startswith('  - name: lifeos-house-status-v'):
+# Replace only the production House Status panel; leave development and other panels intact.
+lines=s.splitlines(True); out=[]; i=0
+live_name=re.compile(r'^  - name: lifeos-house-status(?:-v[0-9]+)?\s*$')
+while i<len(lines):
+    if live_name.match(lines[i].rstrip('\n')):
         i+=1
-        while i < len(lines) and not lines[i].startswith('  - name:') and not (lines[i] and not lines[i][0].isspace()):
+        while i<len(lines) and not lines[i].startswith('  - name:') and not (lines[i] and not lines[i][0].isspace()):
             i+=1
         continue
     out.append(lines[i]); i+=1
 s=''.join(out)
-# Remove the former global extra-module hook; panel_custom owns module loading now.
-s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v[0-9]+)?\.js(?:\?[^\s]+)?\s*$\n?', '', s)
-# Install one native Home Assistant custom panel, outside Lovelace.
-panel="""panel_custom:
-  - name: lifeos-house-status-v28
+s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v[0-9]+)?\.js(?:\?[^\s]+)?\s*\n?', '', s)
+panel="""  - name: lifeos-house-status-v28
     sidebar_title: House Status
     sidebar_icon: mdi:home-heart
     url_path: house-status
@@ -75,20 +71,11 @@ panel="""panel_custom:
     config:
       mode: domestic
 """
-# Replace an existing LifeOS panel block if present, otherwise append.
-pat=r'(?ms)^panel_custom:\n(?:  - .*\n(?:    .*\n)*)*'
-if 'name: lifeos-house-status-v28' in s:
-    # Replace the existing LifeOS panel block deterministically, regardless of its prior module version.
-    start=s.index('panel_custom:\n')
-    name=s.index('  - name: lifeos-house-status-v28',start)
-    next_item=s.find('\n  - name:',name+1)
-    end=len(s) if next_item<0 else next_item+1
-    s=s[:start]+panel+(s[end:] if next_item>=0 else '\n')
-elif 'panel_custom:\n' in s:
-    insert=panel.split('\n',1)[1]
-    s=s.replace('panel_custom:\n','panel_custom:\n'+insert,1)
+match=re.search(r'(?m)^panel_custom:\s*\n',s)
+if match:
+    s=s[:match.end()]+panel+s[match.end():]
 else:
-    s=s.rstrip()+'\n\n'+panel
+    s=s.rstrip()+'\n\npanel_custom:\n'+panel
 p.write_text(s)
 PY
 docker exec homeassistant python -m homeassistant --script check_config -c /config >/dev/null

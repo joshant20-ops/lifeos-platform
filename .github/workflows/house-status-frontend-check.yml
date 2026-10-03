@@ -6,6 +6,13 @@ on:
       - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
       - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
       - 'homeassistant/www/house-status/test-doorbell-handoff.js'
+      - 'homeassistant/releases/house-status/live/**'
+      - 'homeassistant/www/house-status-dev/**'
+      - 'scripts/lifeos-deploy-house-status-dashboard.sh'
+      - 'scripts/lifeos-deploy-house-status-dev-dashboard.sh'
+      - 'homeassistant/deploy-house-status-dashboard.py'
+      - '.github/workflows/house-status-live-deploy.yml'
+      - '.github/workflows/house-status-dev-deploy.yml'
       - '.github/workflows/house-status-frontend-check.yml'
   pull_request:
     paths:
@@ -13,6 +20,13 @@ on:
       - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
       - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
       - 'homeassistant/www/house-status/test-doorbell-handoff.js'
+      - 'homeassistant/releases/house-status/live/**'
+      - 'homeassistant/www/house-status-dev/**'
+      - 'scripts/lifeos-deploy-house-status-dashboard.sh'
+      - 'scripts/lifeos-deploy-house-status-dev-dashboard.sh'
+      - 'homeassistant/deploy-house-status-dashboard.py'
+      - '.github/workflows/house-status-live-deploy.yml'
+      - '.github/workflows/house-status-dev-deploy.yml'
       - '.github/workflows/house-status-frontend-check.yml'
 jobs:
   javascript:
@@ -22,6 +36,13 @@ jobs:
       - run: node --check homeassistant/www/house-status/lifeos-house-status-card.js
       - run: node --check homeassistant/www/house-status/lifeos-house-status-v27.js
       - run: node --check homeassistant/www/house-status/lifeos-house-status-doorbell.js
+      - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v28.js
+      - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v27.js
+      - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-doorbell.js
+      - run: node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
+      - run: node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
+      - name: House Status development isolation
+        run: node homeassistant/www/house-status-dev/test-isolation.js
       - name: Doorbell handoff behaviour
         run: node homeassistant/www/house-status/test-doorbell-handoff.js
       - name: Execute registration
