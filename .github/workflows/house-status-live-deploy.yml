@@ -83,4 +83,7 @@ jobs:
           fi
           echo DOORBELL_V27_MODULE_LIVE_CUSTOM_RENDERER=ABSENT
           echo DOORBELL_V27_ASSET_LIVE=PASS
+          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2' -o "$served"
+          require_marker HOUSE_STATUS_V28_CACHE_BUSTED_LIVE "Doorbell v28" "$served"
+          echo HOUSE_STATUS_V28_ENTRYPOINT_CACHE_BUST=PASS
           echo DOORBELL_HANDOFF_LIVE=PASS
