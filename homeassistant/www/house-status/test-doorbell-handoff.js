@@ -2,81 +2,26 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const listeners = {};
-global.window = {
-  location: {
-    pathname: '/house-status',
-    redirectedTo: null,
-    replace(path) { this.redirectedTo = path; }
-  },
-  addEventListener(name, callback) { listeners[name] = callback; }
-};
+const card = fs.readFileSync(path.join(__dirname, 'lifeos-house-status-card.js'), 'utf8');
+const dashboard = JSON.parse(fs.readFileSync(path.join(__dirname, '../../house-status-dashboard.json'), 'utf8'));
 
-require('./lifeos-house-status-doorbell.js');
-const doorbell = window.LifeOSHouseStatusModules.doorbell;
+assert.ok(
+  card.includes("if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}"),
+  'the Doorbell tab must navigate directly to the native Lovelace route'
+);
+assert.doesNotMatch(card, /lifeos-house-status-doorbell|LifeOSHouseStatusModules|history\.pushState/,
+  'the custom panel must not load a separate Doorbell renderer or SPA redirect shim');
 
-doorbell.mount(null);
-assert.equal(
-  window.location.redirectedTo,
-  '/house-status-native/doorbell',
-  'redirect must run even when the custom shell passes a null host'
+const views = dashboard.data.config.views;
+const doorbell = views.find(view => view.path === 'doorbell');
+assert.ok(doorbell, 'the native Doorbell view must remain in the dashboard');
+assert.equal(doorbell.type, 'panel');
+assert.equal(doorbell.cards.length, 1, 'the native view must remain a single stock camera card');
+assert.deepEqual(
+  (({ type, entity, camera_view }) => ({ type, entity, camera_view }))(doorbell.cards[0]),
+  { type: 'picture-entity', entity: 'camera.front_door_live_view', camera_view: 'live' }
 );
 
-assert.match(doorbell.render(), /href="\/house-status-native\/doorbell"/);
-
-window.location.pathname = '/house-status-native/doorbell';
-window.location.redirectedTo = null;
-doorbell.mount(null);
-assert.equal(
-  window.location.redirectedTo,
-  null,
-  'mount must leave the native route alone'
-);
-
-// The location-changed event is dispatched by the custom panel after its
-// history.pushState transition. The panel may be hidden behind a closed shadow
-// root, so navigation must not depend on discovering its DOM element.
-listeners['location-changed']();
-assert.equal(
-  window.location.redirectedTo,
-  '/house-status-native/doorbell',
-  'promote the custom panel route change to a full document navigation'
-);
-
-// The handler is inert on every route except the native Doorbell target.
-window.location.pathname = '/house-status';
-window.location.redirectedTo = null;
-listeners['location-changed']();
-assert.equal(
-  window.location.redirectedTo,
-  null,
-  'leave non-Doorbell routes unchanged'
-);
-
-const cardPath=path.join(__dirname,'lifeos-house-status-card.js');
-const legacyPath=path.join(__dirname,'lifeos-house-status-v27.js');
-const currentCard=fs.readFileSync(cardPath,'utf8');
-const legacyCard=fs.readFileSync(legacyPath,'utf8');
-const oldDoorbellHandler="this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this._mode=el.dataset.mode;this.render();});";
-const fullNavigationHandler="this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}this._mode=el.dataset.mode;this.render();});";
-assert.ok(legacyCard.includes(fullNavigationHandler),'legacy v27 Doorbell uses a full native-page navigation');
-assert.match(legacyCard,/customElements\.define\('lifeos-house-status-v27'/,'legacy file registers the custom element requested by its panel');
-assert.match(legacyCard,/type:'lifeos-house-status-v27'/,'legacy custom card metadata uses the v27 type');
-assert.doesNotMatch(legacyCard,/lifeos-house-status-v28/,'legacy asset does not leave v28 element identifiers behind');
-assert.ok(legacyCard.startsWith("import './lifeos-house-status-doorbell.js?v=20261003-1';"),'v27 busts the cached Doorbell module URL');
-const doorbellModule=fs.readFileSync(path.join(__dirname,'lifeos-house-status-doorbell.js'),'utf8');
-assert.match(doorbellModule,/Open Doorbell camera/,'Doorbell module hands off to the native camera view');
-assert.doesNotMatch(doorbellModule,/loadCardHelpers|createCardElement|CAMERA CARD ERROR/,'Doorbell module has no embedded camera-card renderer');
-const normalizedLegacy=legacyCard
-  .replace("import './lifeos-house-status-doorbell.js?v=20261003-1';", "import './lifeos-house-status-doorbell.js';")
-  .replace('Doorbell v27','Doorbell v28')
-  .replace(fullNavigationHandler,currentCard.match(/this\.querySelectorAll\('\[data-mode\]'\)[^\n]+/)[0])
-  .replaceAll('lifeos-house-status-v27','lifeos-house-status-v28');
-assert.equal(normalizedLegacy,currentCard,'v27 compatibility keeps the current Energy and House shell code');
-console.log('DOORBELL_V27_FULL_NAVIGATION=PASS');
-console.log('DOORBELL_V27_ENERGY_HOUSE_PRESERVED=PASS');
-
-console.log('DOORBELL_NULL_HOST_HANDOFF=PASS');
-console.log('DOORBELL_NATIVE_ROUTE_IDEMPOTENT=PASS');
-console.log('DOORBELL_FULL_DOCUMENT_HANDOFF=PASS');
-console.log('DOORBELL_OTHER_ROUTES_UNCHANGED=PASS');
+console.log('DOORBELL_DIRECT_NATIVE_NAVIGATION=PASS');
+console.log('DOORBELL_NATIVE_VIEW_CONFIG=PASS');
+console.log('NOTE=Static routing/config checks only; browser image acceptance is not covered.');

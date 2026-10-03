@@ -3,15 +3,11 @@ on:
   push:
     paths:
       - 'homeassistant/www/house-status/lifeos-house-status-card.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
       - 'homeassistant/www/house-status/test-doorbell-handoff.js'
       - '.github/workflows/house-status-frontend-check.yml'
   pull_request:
     paths:
       - 'homeassistant/www/house-status/lifeos-house-status-card.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
       - 'homeassistant/www/house-status/test-doorbell-handoff.js'
       - '.github/workflows/house-status-frontend-check.yml'
 jobs:
@@ -20,8 +16,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: node --check homeassistant/www/house-status/lifeos-house-status-card.js
-      - run: node --check homeassistant/www/house-status/lifeos-house-status-v27.js
-      - run: node --check homeassistant/www/house-status/lifeos-house-status-doorbell.js
       - name: Doorbell handoff behaviour
         run: node homeassistant/www/house-status/test-doorbell-handoff.js
       - name: Execute registration

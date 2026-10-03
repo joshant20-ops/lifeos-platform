@@ -5,8 +5,6 @@ on:
     branches: [main]
     paths:
       - 'homeassistant/www/house-status/lifeos-house-status-card.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
       - 'homeassistant/house-status-dashboard.json'
       - 'homeassistant/deploy-house-status-dashboard.py'
       - 'homeassistant/verify-house-status-dashboard.py'
@@ -34,8 +32,6 @@ jobs:
         run: |
           set -Eeuo pipefail
           target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
-          legacy=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v27.js
-          doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
           require_marker() {
             label=$1
             marker=$2
@@ -47,14 +43,6 @@ jobs:
               exit 1
             fi
           }
-          test -s "$doorbell"
-          require_marker DOORBELL_DISK_ROUTE "const nativeDoorbellPath='/house-status-native/doorbell';" "$doorbell"
-          require_marker DOORBELL_DISK_REDIRECT 'window.location.replace(nativeDoorbellPath)' "$doorbell"
-          require_marker DOORBELL_DISK_LINK 'href="/house-status-native/doorbell"' "$doorbell"
-          if grep -Eq 'loadCardHelpers|createCardElement' "$doorbell"; then
-            echo 'legacy_custom_camera_renderer=FAIL'
-            exit 1
-          fi
           require_marker HOUSE_STATUS_DISK_FREE_BAND 'band-free' "$target"
           require_marker HOUSE_STATUS_DISK_POWERDOWN_BAND 'band-powerdown' "$target"
           require_marker HOUSE_STATUS_DISK_JOINED_EVENTS 'joined_events' "$target"
@@ -65,25 +53,7 @@ jobs:
           require_marker HOUSE_STATUS_LIVE_FREE_BAND 'band-free' "$served"
           require_marker HOUSE_STATUS_LIVE_POWERDOWN_BAND 'band-powerdown' "$served"
           echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js -o "$served"
-          require_marker DOORBELL_LIVE_ROUTE "const nativeDoorbellPath='/house-status-native/doorbell';" "$served"
-          require_marker DOORBELL_LIVE_REDIRECT 'window.location.replace(nativeDoorbellPath)' "$served"
-          require_marker DOORBELL_LIVE_LINK 'href="/house-status-native/doorbell"' "$served"
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v27.js -o "$served"
-          require_marker DOORBELL_V27_DISK_VERSION "Doorbell v27" "$legacy"
-          require_marker DOORBELL_V27_LIVE_VERSION "Doorbell v27" "$served"
-          require_marker DOORBELL_V27_LIVE_NAV "window.location.assign('/house-status-native/doorbell')" "$served"
-          require_marker DOORBELL_V27_LIVE_TAG "lifeos-house-status-v27" "$served"
-          require_marker DOORBELL_V27_CACHE_BUST_IMPORT "import './lifeos-house-status-doorbell.js?v=20261003-1';" "$legacy"
-          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js?v=20261003-1' -o "$served"
-          require_marker DOORBELL_V27_MODULE_LIVE_RENDER 'Open Doorbell camera' "$served"
-          if grep -Eq 'loadCardHelpers|createCardElement|CAMERA CARD ERROR' "$served"; then
-            echo 'DOORBELL_V27_MODULE_LIVE_CUSTOM_RENDERER=FAIL'
-            exit 1
-          fi
-          echo DOORBELL_V27_MODULE_LIVE_CUSTOM_RENDERER=ABSENT
-          echo DOORBELL_V27_ASSET_LIVE=PASS
           curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2' -o "$served"
-          require_marker HOUSE_STATUS_V28_CACHE_BUSTED_LIVE "Doorbell v28" "$served"
-          echo HOUSE_STATUS_V28_ENTRYPOINT_CACHE_BUST=PASS
-          echo DOORBELL_HANDOFF_LIVE=PASS
+          require_marker HOUSE_STATUS_V28_CACHE_BUSTED_LIVE "customElements.define('lifeos-house-status-v28'" "$served"
+          require_marker DOORBELL_DIRECT_ROUTE_LIVE "window.location.assign('/house-status-native/doorbell')" "$served"
+          echo HOUSE_STATUS_V28_ENTRYPOINT_AND_DOORBELL_ROUTE=PASS
