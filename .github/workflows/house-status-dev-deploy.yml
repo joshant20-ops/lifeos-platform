@@ -1,0 +1,54 @@
+name: House Status Development Deploy
+on:
+  pull_request:
+    paths:
+      - 'homeassistant/www/house-status-dev/**'
+      - 'homeassistant/verify-house-status-dev-dashboard.py'
+      - 'scripts/lifeos-deploy-house-status-dev-dashboard.sh'
+      - '.github/workflows/house-status-dev-deploy.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'homeassistant/www/house-status-dev/**'
+      - 'homeassistant/verify-house-status-dev-dashboard.py'
+      - 'scripts/lifeos-deploy-house-status-dev-dashboard.sh'
+      - '.github/workflows/house-status-dev-deploy.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: house-status-panel-deploy
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate development dashboard bundle
+        run: |
+          set -Eeuo pipefail
+          node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
+          node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
+          node --check homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js
+          node homeassistant/www/house-status-dev/test-isolation.js
+          bash -n scripts/lifeos-deploy-house-status-dev-dashboard.sh
+          python3 -m py_compile homeassistant/verify-house-status-dev-dashboard.py
+          python3 homeassistant/verify-house-status-dev-dashboard.py --source-only
+  deploy:
+    needs: validate
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconcile canonical checkout to main
+        run: git show HEAD:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
+      - name: Deploy development panel only
+        run: sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dev-dashboard.sh
+      - name: Verify live dashboard isolation
+        run: |
+          set -Eeuo pipefail
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status-dev/lifeos-house-status-dev-loader.js -o /tmp/house-status-dev-served.js
+          grep -Fq 'House Status development panel' /tmp/house-status-dev-served.js
+          sudo -n python3 /home/joshan/lifeos-platform/homeassistant/verify-house-status-dev-dashboard.py
+          echo HOUSE_STATUS_DEV_LIVE_ACCEPTANCE=PASS

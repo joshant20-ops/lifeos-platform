@@ -1,22 +1,14 @@
 name: House Status Live Deploy
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'homeassistant/www/house-status/lifeos-house-status-card.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
-      - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
-      - 'homeassistant/house-status-dashboard.json'
-      - 'homeassistant/deploy-house-status-dashboard.py'
-      - 'homeassistant/verify-house-status-dashboard.py'
-      - 'scripts/lifeos-deploy-house-status-dashboard.sh'
-      - '.github/workflows/house-status-live-deploy.yml'
-      - 'homeassistant/.house-status-redeploy'
+concurrency:
+  group: house-status-panel-deploy
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
   deploy-verify:
+    if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 10
     steps:
