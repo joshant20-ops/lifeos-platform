@@ -1,28 +1,51 @@
 window.LifeOSHouseStatusModules=window.LifeOSHouseStatusModules||{};
-const nativeDoorbellPath='/house-status-native/doorbell';
 
-// This module is loaded by the custom House Status panel only. If its SPA shell
-// changes the URL to the native route, replace that history-only transition with
-// a document navigation. The native Lovelace dashboard does not load this module.
-function enforceNativeDoorbellRoute(){
-  if(window.location.pathname===nativeDoorbellPath){
-    window.location.replace(nativeDoorbellPath);
+const cameraConfig={
+  type:'picture-entity',
+  entity:'camera.front_door_live_view',
+  name:'Front Door',
+  camera_view:'live',
+  show_name:true,
+  show_state:true,
+  tap_action:{action:'none'},
+  hold_action:{action:'none'}
+};
+
+async function mountCamera(host,hass){
+  if(!host)return;
+  host.__lifeosDoorbellHass=hass;
+  if(host.__lifeosCameraCard){
+    host.__lifeosCameraCard.hass=hass;
+    return;
   }
+  if(host.__lifeosCameraMount)return host.__lifeosCameraMount;
+  host.innerHTML='<div class="floor">Loading live camera…</div>';
+  host.__lifeosCameraMount=(async()=>{
+    try{
+      if(typeof window.loadCardHelpers!=='function')throw new Error('card_helpers_unavailable');
+      const helpers=await window.loadCardHelpers();
+      const card=helpers?.createCardElement?.(cameraConfig);
+      if(!card)throw new Error('picture_entity_card_unavailable');
+      card.hass=host.__lifeosDoorbellHass||hass;
+      host.replaceChildren(card);
+      host.__lifeosCameraCard=card;
+    }catch(error){
+      host.__lifeosCameraCard=null;
+      const fallback=document.createElement('div');
+      fallback.className='floor';
+      fallback.textContent='Camera view could not load';
+      host.replaceChildren(fallback);
+      console.error('LifeOS Doorbell camera card failed to mount',error?.name||'Error');
+    }finally{
+      host.__lifeosCameraMount=null;
+    }
+  })();
+  return host.__lifeosCameraMount;
 }
-window.addEventListener?.('location-changed',enforceNativeDoorbellRoute);
 
 window.LifeOSHouseStatusModules.doorbell={
-  mount(host){
-    // Redirect before checking host: the custom shell currently calls mount with
-    // [data-doorbell-card], which is absent from this native-view handoff.
-    if(window.location.pathname!==nativeDoorbellPath){
-      window.location.replace(nativeDoorbellPath);
-      return;
-    }
-    if(!host) return;
-    host.innerHTML='<div class="floor">Opening the native Doorbell view… <a href="/house-status-native/doorbell">Open Doorbell camera</a></div>';
-  },
+  mount:mountCamera,
   render(){
-    return '<div class="panel"><div class="heading">Doorbell</div><div class="floor"><a href="/house-status-native/doorbell">Open Doorbell camera</a></div></div>';
+    return '<div class="panel"><div class="heading">Doorbell</div><div class="doorcam" data-doorbell-card><div class="floor">Loading live camera…</div></div></div>';
   }
 };
