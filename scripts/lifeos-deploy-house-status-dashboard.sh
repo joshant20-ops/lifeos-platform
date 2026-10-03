@@ -70,7 +70,7 @@ panel="""panel_custom:
     sidebar_title: House Status
     sidebar_icon: mdi:home-heart
     url_path: house-status
-    module_url: /local/house-status/lifeos-house-status-v28.js
+    module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2
     require_admin: false
     config:
       mode: domestic
