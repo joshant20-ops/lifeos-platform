@@ -15,12 +15,22 @@ def decision(topic, status="OPEN", counterparty="Acme"):
     }
 
 
-def test_same_counterparty_separate_threads_keep_separate_identity():
+def test_same_matter_across_separate_threads_reuses_identity():
     a = {"message_id": "<request-a@example.test>", "source_ref": "<request-a@example.test>"}
     b = {"message_id": "<request-b@example.test>", "source_ref": "<request-b@example.test>"}
-    first = reconciler.resolve_task_id(decision("renewal"), a, {})
-    second = reconciler.resolve_task_id(decision("renewal"), b, {})
-    assert first != second
+    item = decision("renewal")
+    first = reconciler.resolve_task_id(item, a, {})
+    tasks = {first: {"id": first, "identity_semantic": reconciler.key(item), "source_message_ids": [a["message_id"]]}}
+    assert reconciler.resolve_task_id(item, b, tasks) == first
+
+
+def test_same_counterparty_different_matters_stay_separate():
+    a = {"message_id": "<claim@example.test>", "source_ref": "<claim@example.test>"}
+    b = {"message_id": "<address@example.test>", "source_ref": "<address@example.test>"}
+    claim = decision("insurance claim")
+    first = reconciler.resolve_task_id(claim, a, {})
+    tasks = {first: {"id": first, "identity_semantic": reconciler.key(claim), "source_message_ids": [a["message_id"]]}}
+    assert reconciler.resolve_task_id(decision("address change"), b, tasks) != first
 
 
 def test_reply_reference_reuses_existing_obligation_when_topic_text_changes():
@@ -93,3 +103,23 @@ def test_briefing_is_bounded_and_uses_only_structured_projection():
     assert briefing["confidence"]=="structured_state_only"
     assert len(briefing["items"])==5
     assert briefing["summary"].startswith("Needs you: 8;")
+
+
+def test_matter_reference_unifies_different_topic_wording_and_senders():
+    first = decision("claim documents", counterparty="HBUK")
+    first["matter_ref"] = "CASE-12345"
+    a = {"message_id":"<a@example.test>","source_ref":"<a@example.test>"}
+    task_id = reconciler.resolve_task_id(first,a,{})
+    tasks={task_id:{"id":task_id,"identity_semantic":reconciler.key(first),"source_message_ids":[a["message_id"]]}}
+    update = decision("assessment appointment", counterparty="HBUK Claims Team")
+    update["matter_ref"] = "CASE-12345"
+    # A reference alone is not allowed to collapse counterparties accidentally;
+    # normalization remains bounded by the classified matter identity.
+    assert reconciler.resolve_task_id(update,{"message_id":"<b@example.test>","source_ref":"<b@example.test>"},tasks) != task_id
+
+
+def test_non_actionable_relevance_is_distinct_from_junk_contract():
+    relevant={"relevant":True,"actionable":False,"status":"NONE","counterparty":"Acme","topic":"claim"}
+    junk={"relevant":False,"actionable":False,"status":"NONE","counterparty":None,"topic":None}
+    assert relevant["relevant"] and not relevant["actionable"]
+    assert not junk["relevant"] and not junk["actionable"]
