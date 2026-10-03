@@ -7,8 +7,6 @@ DASH=HA/'.storage/lovelace.dashboard_house_status'
 REG=HA/'.storage/lovelace_dashboards'
 RESOURCE=HA/'.storage/lovelace_resources'
 CARD=HA/'www'/'house-status'/'lifeos-house-status-v28.js'
-LEGACY_CARD=HA/'www'/'house-status'/'lifeos-house-status-v27.js'
-DOORBELL=HA/'www'/'house-status'/'lifeos-house-status-doorbell.js'
 CONFIG=HA/'configuration.yaml'
 
 def fail(name,detail=''):
@@ -32,20 +30,9 @@ if got!=expected: fail('view order',repr(got))
 blob=json.dumps(views)
 if 'custom:apexcharts-card' in json.dumps(views[:3]): fail('legacy Lovelace chart composition remains')
 card_blob=CARD.read_text() if CARD.exists() else ''
-legacy_card_blob=LEGACY_CARD.read_text() if LEGACY_CARD.exists() else ''
-doorbell_blob=DOORBELL.read_text() if DOORBELL.exists() else ''
-if not legacy_card_blob: fail('legacy v27 panel asset missing')
-legacy_expected=(card_blob
- .replace("import './lifeos-house-status-doorbell.js';","import './lifeos-house-status-doorbell.js?v=20261003-1';")
- .replace('Doorbell v28','Doorbell v27')
- .replace("this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){history.pushState(null,'','/house-status-native/doorbell');window.dispatchEvent(new Event('location-changed'));return;}this._mode=el.dataset.mode;this.render();});",
-          "this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}this._mode=el.dataset.mode;this.render();});")
- .replace('lifeos-house-status-v28','lifeos-house-status-v27'))
-if legacy_card_blob!=legacy_expected:
- fail('legacy v27 panel differs outside the Doorbell-only route handoff')
-if "window.location.assign('/house-status-native/doorbell')" not in legacy_card_blob:
- fail('legacy v27 Doorbell full-navigation handler missing')
-combined=blob+card_blob+doorbell_blob
+for obsolete in [HA/'www'/'house-status'/'lifeos-house-status-v27.js', HA/'www'/'house-status'/'lifeos-house-status-doorbell.js']:
+ if obsolete.exists(): fail('obsolete Doorbell compatibility asset remains',obsolete.name)
+combined=blob+card_blob
 for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
  if entity not in combined: fail('required proven energy entity missing',entity)
 if 'placeholder-floorplan.svg' not in combined and 'Replaceable ground-floor plan' not in combined: fail('replaceable floorplan contract missing')
@@ -62,10 +49,9 @@ if "customElements.define('lifeos-house-status-v28'" not in card_blob: fail('pur
 if 'Charge only' not in combined: fail('EV charge-only contract missing')
 doorbell=next((v for v in views if v.get('path')=='doorbell'),None)
 if not doorbell: fail('native Doorbell view missing')
-native_doorbell_json=json.dumps(doorbell)
-if 'camera.front_door_live_view' not in native_doorbell_json:
- fail('Ring camera missing from native Doorbell view','camera.front_door_live_view')
-# Motion/ding tiles are optional in the isolated stock-camera acceptance view.
+cards=doorbell.get('cards',[])
+if len(cards)!=1 or cards[0].get('type')!='picture-entity' or cards[0].get('entity')!='camera.front_door_live_view' or cards[0].get('camera_view')!='live':
+ fail('native Doorbell view is not the isolated stock live-camera card')
 print('doorbell_native_camera=PASS')
 print('HOUSE_STATUS_HA_GATE=PASS')
 print('dashboard=/house-status drift=none')
@@ -86,10 +72,10 @@ if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v28' not in cfg or '
 if cfg.count('url_path: house-status')!=1: fail('duplicate House Status panel registrations remain',str(cfg.count('url_path: house-status')))
 if 'lifeos-house-status-v4.js' in cfg or 'lifeos-house-status-v5.js' in cfg: fail('stale House Status panel remains')
 blob=card.read_text()
-module_blob=blob+doorbell_blob
-if 'loadCardHelpers' in doorbell_blob or 'createCardElement' in doorbell_blob: fail('legacy custom camera-card renderer remains')
-for marker in ['hass-toggle-menu','aria-label="Open Home Assistant menu"','standingChargeFor=r=>','Standing charge','1p / half-hour','flowPositive=todayReport.map','flowNegative=todayReport.map','data-zero-line','window.location.replace','/house-status-native/doorbell','href="/house-status-native/doorbell"','Today','Tomorrow','Octopus price (p/kWh)','Cost (£)','Gas cost','axis-cost','axis-price','data-period="day"','data-period="month"','data-period="year"','data-period="range"','data-shift="-1"','data-date-picker','type="date"','rawHi=vals.length?Math.max(...vals):0','rawPlo=pvals.length?Math.min(...pvals):0','Electricity used (excluding battery and car charging) and gas. Costs shown in £.','data-mode="doorbell"','band-free','band-powerdown','data-energy-band','Free electricity','Power down','joined_events']:
- if marker not in module_blob: fail('reference UI marker missing',marker)
+if "if(el.dataset.mode==='doorbell'){window.location.assign('/house-status-native/doorbell');return;}" not in blob: fail('Doorbell tab does not navigate directly to native Lovelace')
+if 'lifeos-house-status-doorbell.js' in blob or 'LifeOSHouseStatusModules' in blob: fail('separate Doorbell renderer remains in custom panel')
+for marker in ['hass-toggle-menu','aria-label="Open Home Assistant menu"','standingChargeFor=r=>','Standing charge','1p / half-hour','flowPositive=todayReport.map','flowNegative=todayReport.map','data-zero-line','/house-status-native/doorbell','href="/house-status-native/doorbell"','Today','Tomorrow','Octopus price (p/kWh)','Cost (£)','Gas cost','axis-cost','axis-price','data-period="day"','data-period="month"','data-period="year"','data-period="range"','data-shift="-1"','data-date-picker','type="date"','rawHi=vals.length?Math.max(...vals):0','rawPlo=pvals.length?Math.min(...pvals):0','Electricity used (excluding battery and car charging) and gas. Costs shown in £.','data-mode="doorbell"','band-free','band-powerdown','data-energy-band','Free electricity','Power down','joined_events']:
+ if marker not in blob: fail('reference UI marker missing',marker)
 if '<div class="tabs">' in blob: fail('duplicate in-page mode strip returned')
 # Domestic view must not expose export line/card; export remains available to Full Energy Flow and total-cost calculation.
 dom=blob[blob.find("if(mode==='domestic')"):blob.find("} else if(mode==='flow')")]
