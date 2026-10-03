@@ -107,12 +107,14 @@ jobs:
             raise SystemExit('STEP6_NATIVE_ROUTE=FAIL:'+type(exc).__name__)
           print('STEP6_NATIVE_DASHBOARD_ROUTE=PASS:200')
 
-          # 7. Confirm House Status navigation points directly to the tested native view.
+          # 7. Confirm Doorbell switches within the existing House Status shell.
           shell=B/'www/house-status/lifeos-house-status-v28.js'
           source=shell.read_text()
-          if "history.pushState(null,'','/house-status-native/doorbell')" not in source:
-            raise SystemExit('STEP7_HOUSE_STATUS_NAVIGATION=FAIL')
-          print('STEP7_HOUSE_STATUS_NAVIGATION=PASS')
+          if 'this._mode=el.dataset.mode;this.render();' not in source or 'data-doorbell-card' not in source:
+            raise SystemExit('STEP7_HOUSE_STATUS_SHELL_NAVIGATION=FAIL')
+          if "window.location.assign('/house-status-native/doorbell')" in source:
+            raise SystemExit('STEP7_HOUSE_STATUS_SHELL_NAVIGATION=FAIL:external_handoff')
+          print('STEP7_HOUSE_STATUS_SHELL_NAVIGATION=PASS')
 
           # 8. Report the active panel config and installed asset versions.
           cfg=(B/'configuration.yaml').read_text()
@@ -120,7 +122,7 @@ jobs:
             'v27_panel_name':'name: lifeos-house-status-v27',
             'v28_panel_name':'name: lifeos-house-status-v28',
             'house_status_path':'url_path: house-status',
-            'v28_module_url':'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2',
+            'v28_module_url':'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261003-1',
           }
           for label,marker in checks.items():
             print('STEP8_'+label.upper()+'='+str(cfg.count(marker)))
@@ -133,12 +135,12 @@ jobs:
           if v27.is_file():
             print('STEP8_V27_FILE_MARKER='+('PRESENT' if 'Doorbell v27' in v27.read_text() else 'OTHER'))
             print('STEP9_V27_RUNTIME_SHA256='+hashlib.sha256(v27.read_bytes()).hexdigest())
-            print('STEP9_V27_DOORBELL_NAV='+('PASS' if "window.location.assign('/house-status-native/doorbell')" in v27.read_text() else 'MISSING'))
+            print('STEP9_V27_IN_PANEL_NAV='+('PASS' if "this._mode=el.dataset.mode;this.render()" in v27.read_text() else 'MISSING'))
           resources=json.loads((B/'.storage/lovelace_resources').read_text()).get('data',{}).get('items',[])
           v27_resources=[x for x in resources if 'v27' in str(x.get('url','')) and 'house-status' in str(x.get('url',''))]
           print('STEP8_V27_LOVELACE_RESOURCE_COUNT='+str(len(v27_resources)))
           try:
-            with urllib.request.urlopen(BASE+'/local/house-status/lifeos-house-status-v28.js?v=doorbell-fix-20261003-2',timeout=10) as response:
+            with urllib.request.urlopen(BASE+'/local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261003-1',timeout=10) as response:
               body=response.read().decode('utf-8','replace')
               print('STEP8_SERVED_V28='+('PASS' if response.status==200 and 'Doorbell v28' in body else 'MISMATCH'))
           except Exception as exc:
