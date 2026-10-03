@@ -143,4 +143,32 @@ jobs:
               print('STEP8_SERVED_V28='+('PASS' if response.status==200 and 'Doorbell v28' in body else 'MISMATCH'))
           except Exception as exc:
             print('STEP8_SERVED_V28=FAIL:'+type(exc).__name__)
+          # 10. Read-only scan of Lovelace storage for any lingering v27 client refs.
+          storage=B/'.storage'
+          matches=[]
+          for path in sorted(storage.glob('lovelace*')):
+            try:
+              text=path.read_text(errors='replace')
+            except Exception:
+              continue
+            count=text.count('lifeos-house-status-v27')+text.count('Doorbell v27')
+            if count:
+              matches.append(path.name)
+          print('STEP10_V27_STORAGE_REF_COUNT='+str(len(matches)))
+          print('STEP10_V27_STORAGE_REF_FILES='+(','.join(matches) if matches else 'none'))
+
+          # 11. Read static-asset cache policy without exposing URL tokens or camera data.
+          for label,asset in (
+            ('V27','lifeos-house-status-v27.js'),
+            ('V28','lifeos-house-status-v28.js'),
+            ('DOORBELL','lifeos-house-status-doorbell.js'),
+          ):
+            req=urllib.request.Request(BASE+'/local/house-status/'+asset,method='HEAD')
+            try:
+              with urllib.request.urlopen(req,timeout=10) as response:
+                cache=response.headers.get('Cache-Control','unset')
+                etag='present' if response.headers.get('ETag') else 'absent'
+                print('STEP11_'+label+'_CACHE='+cache.replace('\\n',' ')+';etag='+etag)
+            except Exception as exc:
+              print('STEP11_'+label+'_CACHE=FAIL:'+type(exc).__name__)
           PY
