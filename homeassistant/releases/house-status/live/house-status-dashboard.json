@@ -1,0 +1,70 @@
+{
+  "version": 1,
+  "minor_version": 1,
+  "key": "lovelace.dashboard_house_status",
+  "data": {
+    "config": {
+      "title": "House Status",
+      "views": [
+        {
+          "title": "Domestic Energy Consumption",
+          "path": "domestic-energy-consumption",
+          "icon": "mdi:home-lightning-bolt",
+          "type": "panel",
+          "cards": [
+            {
+              "type": "custom:lifeos-house-status",
+              "mode": "domestic"
+            }
+          ]
+        },
+        {
+          "title": "Full Energy Flow",
+          "path": "full-energy-flow",
+          "icon": "mdi:transmission-tower",
+          "type": "panel",
+          "cards": [
+            {
+              "type": "custom:lifeos-house-status",
+              "mode": "flow"
+            }
+          ]
+        },
+        {
+          "title": "Home Status",
+          "path": "home-status",
+          "icon": "mdi:home-eye",
+          "type": "panel",
+          "cards": [
+            {
+              "type": "custom:lifeos-house-status",
+              "mode": "home"
+            }
+          ]
+        },
+        {
+          "title": "Doorbell",
+          "path": "doorbell",
+          "icon": "mdi:doorbell-video",
+          "type": "masonry",
+          "cards": [
+            {
+              "type": "picture-entity",
+              "entity": "camera.front_door_live_view",
+              "name": "Front Door",
+              "camera_view": "live",
+              "show_name": true,
+              "show_state": true,
+              "tap_action": {
+                "action": "none"
+              },
+              "hold_action": {
+                "action": "none"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 700">
+<rect width="1600" height="700" fill="#07131d"/>
+<g fill="#0d2230" stroke="#557080" stroke-width="5">
+<rect x="50" y="80" width="700" height="240" rx="8"/><rect x="850" y="80" width="700" height="240" rx="8"/>
+<rect x="50" y="390" width="700" height="240" rx="8"/><rect x="850" y="390" width="700" height="240" rx="8"/>
+</g>
+<g fill="#d7e5ee" font-family="sans-serif" text-anchor="middle">
+<text x="400" y="55" font-size="28">Ground Floor — simulated placeholder</text>
+<text x="1200" y="55" font-size="28">Ground Floor — simulated placeholder</text>
+<text x="400" y="365" font-size="28">First Floor — simulated placeholder</text>
+<text x="1200" y="365" font-size="28">First Floor — simulated placeholder</text>
+<text x="800" y="675" font-size="20">Replace with user-supplied floorplan drawings; overlays remain separately mapped.</text>
+</g></svg>

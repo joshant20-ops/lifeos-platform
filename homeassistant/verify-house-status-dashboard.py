@@ -78,8 +78,15 @@ card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
 cfg=CONFIG.read_text()
 if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v28' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261003-1' not in cfg: fail('native House Status panel_custom registration missing')
-if cfg.count('url_path: house-status')!=1: fail('duplicate House Status panel registrations remain',str(cfg.count('url_path: house-status')))
+if sum(1 for line in cfg.splitlines() if line.strip()=="url_path: house-status")!=1: fail('duplicate live House Status panel registrations remain')
 if 'lifeos-house-status-v4.js' in cfg or 'lifeos-house-status-v5.js' in cfg: fail('stale House Status panel remains')
+release_dir=REPO/'homeassistant'/'releases'/'house-status'/'live'
+for runtime,release in ((CARD,release_dir/'lifeos-house-status-v28.js'),
+                        (LEGACY_CARD,release_dir/'lifeos-house-status-v27.js'),
+                        (DOORBELL,release_dir/'lifeos-house-status-doorbell.js')):
+ if not release.exists(): fail('frozen live release file missing',str(release))
+ if not runtime.exists() or runtime.read_bytes()!=release.read_bytes():
+  fail('live runtime asset differs from frozen release',str(runtime.name))
 blob=card.read_text()
 module_blob=blob+doorbell_blob
 if 'loadCardHelpers' not in doorbell_blob or 'createCardElement' not in doorbell_blob: fail('embedded Home Assistant camera-card renderer missing')
