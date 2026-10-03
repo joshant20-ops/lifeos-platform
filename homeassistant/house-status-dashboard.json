@@ -46,12 +46,12 @@
           "title": "Doorbell",
           "path": "doorbell",
           "icon": "mdi:doorbell-video",
-          "type": "panel",
+          "type": "masonry",
           "cards": [
             {
               "type": "picture-entity",
               "entity": "camera.front_door_live_view",
-              "name": "Front Door — isolated native test",
+              "name": "Front Door",
               "camera_view": "live",
               "show_name": true,
               "show_state": true,
