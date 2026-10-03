@@ -36,11 +36,10 @@ legacy_card_blob=LEGACY_CARD.read_text() if LEGACY_CARD.exists() else ''
 doorbell_blob=DOORBELL.read_text() if DOORBELL.exists() else ''
 if not legacy_card_blob: fail('legacy v27 panel asset missing')
 legacy_expected=(card_blob
- .replace("import './lifeos-house-status-doorbell.js?v=20261003-3';","import './lifeos-house-status-doorbell.js?v=20261003-3';")
  .replace('Doorbell v28','Doorbell v27')
  .replace('lifeos-house-status-v28','lifeos-house-status-v27'))
 if legacy_card_blob!=legacy_expected:
- fail('legacy v27 panel differs outside the Doorbell-only route handoff')
+ fail('legacy v27 panel differs outside version identifiers')
 combined=blob+card_blob+doorbell_blob
 for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
  if entity not in combined: fail('required proven energy entity missing',entity)
