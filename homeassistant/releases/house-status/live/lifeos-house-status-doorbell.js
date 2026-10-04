@@ -11,6 +11,25 @@ const cameraConfig={
   hold_action:{action:'none'}
 };
 
+async function loadCardHelpersWithRetry(){
+  let lastError;
+  for(let attempt=0;attempt<8;attempt++){
+    if(typeof window.loadCardHelpers==='function'){
+      try{
+        const helpers=await window.loadCardHelpers();
+        if(helpers?.createCardElement)return helpers;
+        lastError=new Error('card_helpers_incomplete');
+      }catch(error){
+        lastError=error;
+      }
+    }else{
+      lastError=new Error('card_helpers_unavailable');
+    }
+    if(attempt<7)await new Promise(resolve=>setTimeout(resolve,250));
+  }
+  throw lastError||new Error('card_helpers_unavailable');
+}
+
 async function mountCamera(host,hass){
   if(!host)return;
   host.__lifeosDoorbellHass=hass;
@@ -22,15 +41,16 @@ async function mountCamera(host,hass){
   host.innerHTML='<div class="floor">Loading live camera…</div>';
   host.__lifeosCameraMount=(async()=>{
     try{
-      if(typeof window.loadCardHelpers!=='function')throw new Error('card_helpers_unavailable');
-      const helpers=await window.loadCardHelpers();
-      const card=helpers?.createCardElement?.(cameraConfig);
+      const helpers=await loadCardHelpersWithRetry();
+      const card=helpers.createCardElement(cameraConfig);
       if(!card)throw new Error('picture_entity_card_unavailable');
       card.hass=host.__lifeosDoorbellHass||hass;
+      if(!host.isConnected)return;
       host.replaceChildren(card);
       host.__lifeosCameraCard=card;
     }catch(error){
       host.__lifeosCameraCard=null;
+      if(!host.isConnected)return;
       const fallback=document.createElement('div');
       fallback.className='floor';
       fallback.textContent='Camera view could not load';
