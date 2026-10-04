@@ -122,7 +122,7 @@ jobs:
             'v27_panel_name':'name: lifeos-house-status-v27',
             'v28_panel_name':'name: lifeos-house-status-v28',
             'house_status_path':'url_path: house-status',
-            'v28_module_url':'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261003-1',
+            'v28_module_url':'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1',
           }
           for label,marker in checks.items():
             print('STEP8_'+label.upper()+'='+str(cfg.count(marker)))
@@ -140,7 +140,7 @@ jobs:
           v27_resources=[x for x in resources if 'v27' in str(x.get('url','')) and 'house-status' in str(x.get('url',''))]
           print('STEP8_V27_LOVELACE_RESOURCE_COUNT='+str(len(v27_resources)))
           try:
-            with urllib.request.urlopen(BASE+'/local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261003-1',timeout=10) as response:
+            with urllib.request.urlopen(BASE+'/local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1',timeout=10) as response:
               body=response.read().decode('utf-8','replace')
               print('STEP8_SERVED_V28='+('PASS' if response.status==200 and 'Doorbell v28' in body else 'MISMATCH'))
           except Exception as exc:

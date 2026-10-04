@@ -39,6 +39,22 @@ const hass2={states:{'camera.front_door_live_view':{state:'streaming'}}};
   assert.equal(cards.length,1,'state updates reuse the mounted camera card');
   assert.equal(cards[0].hass,hass2,'latest Home Assistant state reaches the mounted card');
 
+  let retryCalls=0;
+  window.loadCardHelpers=async()=>{
+    retryCalls++;
+    if(retryCalls<3)throw new Error('temporary_helper_load_failure');
+    return {createCardElement(config){return {config,hass:null};}};
+  };
+  const retryHost={
+    isConnected:true,
+    innerHTML:'',
+    children:[],
+    replaceChildren(...children){this.children=children;}
+  };
+  await doorbell.mount(retryHost,hass1);
+  assert.equal(retryCalls,3,'camera helper loading retries transient failures');
+  assert.equal(retryHost.children[0].config.entity,'camera.front_door_live_view','camera mounts after helper recovery');
+
   const cardPath=path.join(__dirname,'lifeos-house-status-card.js');
   const legacyPath=path.join(__dirname,'lifeos-house-status-v27.js');
   const currentCard=fs.readFileSync(cardPath,'utf8');
@@ -49,9 +65,9 @@ const hass2={states:{'camera.front_door_live_view':{state:'streaming'}}};
   assert.match(legacyCard,/customElements\.define\('lifeos-house-status-v27'/,'legacy panel registers its v27 element');
   assert.match(legacyCard,/type:'lifeos-house-status-v27'/,'legacy custom card metadata uses the v27 type');
   assert.doesNotMatch(legacyCard,/lifeos-house-status-v28/,'legacy asset does not leave v28 identifiers behind');
-  assert.ok(legacyCard.startsWith("import './lifeos-house-status-doorbell.js?v=20261003-3';"),'v27 imports the current Doorbell module version');
+  assert.ok(legacyCard.startsWith("import './lifeos-house-status-doorbell.js?v=20261004-1';"),'v27 imports the current Doorbell module version');
   const normalizedLegacy=legacyCard
-    .replace("import './lifeos-house-status-doorbell.js?v=20261003-3';", "import './lifeos-house-status-doorbell.js?v=20261003-3';")
+    .replace("import './lifeos-house-status-doorbell.js?v=20261004-1';", "import './lifeos-house-status-doorbell.js?v=20261004-1';")
     .replace('Doorbell v27','Doorbell v28')
     .replaceAll('lifeos-house-status-v27','lifeos-house-status-v28');
   assert.equal(normalizedLegacy,currentCard,'v27 remains a version-only mirror of the current shell');

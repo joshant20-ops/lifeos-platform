@@ -66,7 +66,7 @@ panel="""  - name: lifeos-house-status-v28
     sidebar_title: House Status
     sidebar_icon: mdi:home-heart
     url_path: house-status
-    module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261003-1
+    module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1
     require_admin: false
     config:
       mode: domestic
