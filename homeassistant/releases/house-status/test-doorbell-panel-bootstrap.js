@@ -44,6 +44,7 @@ const hass={states:{'camera.front_door_live_view':{state:'idle'}}};
   assert.equal(cardConfig.entity,'camera.front_door_live_view');
   assert.equal(cardConfig.camera_view,'live');
   assert.equal(host.children.length,1);
+  assert.equal(typeof host.children[0].then,'undefined','the resolved camera card element is mounted, not its Promise');
   assert.equal(host.children[0].hass,hass);
   const nextHass={states:{'camera.front_door_live_view':{state:'streaming'}}};
   await doorbell.mount(host,nextHass);
