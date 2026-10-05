@@ -114,7 +114,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     // LifeOS Energy is the source adapter: Enphase supplies physical telemetry and
     // Octopus supplies tariff data. Ask it for the requested horizon directly;
     // do not use Home Assistant Recorder as a second long-term energy database.
-    const hours=Math.max(1,Math.min(840,Math.ceil((effectiveEnd-start.getTime())/3600000)+2)),useRollups=['month','year'].includes(period);
+    const hours=Math.max(1,Math.min(840,Math.ceil((effectiveEnd-start.getTime())/3600000)+2)),useRollups=['week','month','year'].includes(period);
     const key=period+'|'+start.toISOString()+'|'+effectiveEnd;
     if(this._energyHistoryKey===key)return;
     this._energyHistoryLoading=true;
