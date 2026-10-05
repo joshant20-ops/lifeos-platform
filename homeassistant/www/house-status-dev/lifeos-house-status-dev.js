@@ -119,7 +119,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     if(this._energyHistoryKey===key)return;
     this._energyHistoryLoading=true;
     try{
-      const data=await this._hass.callApi('GET','lifeos_energy_proxy/report?hours='+hours);
+      const data=await fetch('/lifeos-energy-api/api/energy/report?hours='+hours,{credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('energy report HTTP '+r.status);return r.json();});
       const intervals=Array.isArray(data?.intervals)?data.intervals:[];
       this._energyHistory=intervals.filter(o=>{const t=new Date(o.valid_from||o.local_from||o.start||0).getTime();return Number.isFinite(t)&&t>=start.getTime()&&t<end.getTime();});
       this._energyHistoryKey=key;
