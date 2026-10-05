@@ -150,7 +150,7 @@ jobs:
           # 12. Check the v28-only helper bootstrap without failing pre-deploy source pushes.
           v28_module=B/'www/house-status/lifeos-house-status-doorbell-v28.js'
           v28_entry=B/'www/house-status/lifeos-house-status-v28.js'
-          expected_import="import './lifeos-house-status-doorbell-v28.js?v=20261005-1';"
+          expected_import="import './lifeos-house-status-doorbell-v28.js?v=20261005-2';"
           if not v28_module.is_file():
             print('STEP12_V28_PANEL_BOOTSTRAP=NOT_DEPLOYED')
           else:
@@ -161,7 +161,7 @@ jobs:
               print('STEP12_V28_PANEL_BOOTSTRAP=MISMATCH')
             else:
               try:
-                url=BASE+'/local/house-status/lifeos-house-status-doorbell-v28.js?v=20261005-1'
+                url=BASE+'/local/house-status/lifeos-house-status-doorbell-v28.js?v=20261005-2'
                 with urllib.request.urlopen(url,timeout=10) as response:
                   body=response.read().decode('utf-8','replace')
                 print('STEP12_V28_PANEL_BOOTSTRAP='+('PASS' if response.status==200 and all(marker in body for marker in markers) else 'MISMATCH'))
