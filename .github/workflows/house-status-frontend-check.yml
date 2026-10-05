@@ -39,12 +39,16 @@ jobs:
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v28.js
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v27.js
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-doorbell.js
+      - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-doorbell-v28.js
+      - run: bash -n scripts/lifeos-deploy-house-status-dashboard.sh
       - run: node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
       - run: node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
       - name: House Status development isolation
         run: node homeassistant/www/house-status-dev/test-isolation.js
       - name: Doorbell handoff behaviour
         run: node homeassistant/www/house-status/test-doorbell-handoff.js
+      - name: V28 panel Lovelace card helper bootstrap
+        run: node homeassistant/releases/house-status/test-doorbell-panel-bootstrap.js
       - name: Execute registration
         run: |
           node <<'NODE'
