@@ -6,8 +6,10 @@ const vm=require('node:vm');
 const base=__dirname;
 const moduleSource=fs.readFileSync(path.join(base,'live','lifeos-house-status-doorbell-v28.js'),'utf8');
 const legacyEntry=fs.readFileSync(path.join(base,'live','lifeos-house-status-v27.js'),'utf8');
+const v28Entry=fs.readFileSync(path.join(base,'live','lifeos-house-status-v28.js'),'utf8');
 assert.ok(legacyEntry.startsWith("import './lifeos-house-status-doorbell.js?v=20261004-1';"),'v27 stays on its existing shared module');
 assert.doesNotMatch(legacyEntry,/doorbell-v28\.js|doorbellV28/,'v27 does not import the v28-only fix');
+assert.ok(v28Entry.startsWith("import './lifeos-house-status-doorbell-v28.js?v=20261005-2';"),'v28 cache-busts the camera module fix');
 
 let routeLoads=0,panelFetches=0,helperCalls=0,cardConfig=null;
 const window={};
@@ -23,7 +25,7 @@ const document={createElement(tag){
     panelFetches++;
     window.loadCardHelpers=async()=>{
       helperCalls++;
-      return {createCardElement(config){cardConfig=config;return {hass:null};}};
+      return {async createCardElement(config){cardConfig=config;await Promise.resolve();return {hass:null};}};
     };
   }};
   return {className:'',textContent:'',dataset:{},};
@@ -42,6 +44,7 @@ const hass={states:{'camera.front_door_live_view':{state:'idle'}}};
   assert.equal(cardConfig.entity,'camera.front_door_live_view');
   assert.equal(cardConfig.camera_view,'live');
   assert.equal(host.children.length,1);
+  assert.equal(typeof host.children[0].then,'undefined','the resolved camera card element is mounted, not its Promise');
   assert.equal(host.children[0].hass,hass);
   const nextHass={states:{'camera.front_door_live_view':{state:'streaming'}}};
   await doorbell.mount(host,nextHass);

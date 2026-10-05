@@ -45,7 +45,7 @@ async function mountCamera(host,hass){
   host.__lifeosCameraMount=(async()=>{
     try{
       const helpers=await loadCardHelpersWithRetry(host.__lifeosDoorbellHass||hass);
-      const card=helpers.createCardElement(cameraConfig);
+      const card=await helpers.createCardElement(cameraConfig);
       if(!card)throw new Error('picture_entity_card_unavailable');
       card.hass=host.__lifeosDoorbellHass||hass;
       if(!host.isConnected)return;
