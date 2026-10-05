@@ -35,11 +35,15 @@ card_blob=CARD.read_text() if CARD.exists() else ''
 legacy_card_blob=LEGACY_CARD.read_text() if LEGACY_CARD.exists() else ''
 doorbell_blob=DOORBELL.read_text() if DOORBELL.exists() else ''
 if not legacy_card_blob: fail('legacy v27 panel asset missing')
-legacy_expected=(card_blob
- .replace('Doorbell v28','Doorbell v27')
- .replace('lifeos-house-status-v28','lifeos-house-status-v27'))
-if legacy_card_blob!=legacy_expected:
- fail('legacy v27 panel differs outside version identifiers')
+# v27 and v28 are now intentionally separate panel modules. Keep v27 on
+# its original shared camera renderer; verify its identity here and its exact
+# frozen-release bytes in the runtime parity check below.
+if "customElements.define('lifeos-house-status-v27'" not in legacy_card_blob:
+ fail('legacy v27 panel identity missing')
+if "import './lifeos-house-status-doorbell.js?v=20261004-1';" not in legacy_card_blob:
+ fail('legacy v27 camera module changed')
+if 'lifeos-house-status-doorbell-v28.js' in legacy_card_blob:
+ fail('v28 camera bootstrap leaked into legacy v27 panel')
 combined=blob+card_blob+doorbell_blob
 for entity in ['sensor.lifeos_energy_tariff_horizon','sensor.lifeos_energy_report','sensor.lifeos_domestic_import_cost','sensor.lifeos_domestic_import_energy','sensor.lifeos_export_earnings','sensor.lifeos_export_energy','sensor.lifeos_energy_battery_soc']:
  if entity not in combined: fail('required proven energy entity missing',entity)
