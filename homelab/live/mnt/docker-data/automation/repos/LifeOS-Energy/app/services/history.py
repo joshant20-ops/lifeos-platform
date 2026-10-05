@@ -219,6 +219,36 @@ def read_history(hours: int) -> list[dict[str, Any]]:
     return [dict(row) for row in rows]
 
 
+
+def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, Any]:
+    """Return compact energy history for an arbitrary epoch range."""
+    if end <= start:
+        return {"granularity": granularity, "points": []}
+    span = end - start
+    if granularity == "auto":
+        granularity = "30m" if span <= HALF_HOUR_RETENTION_DAYS * 86400 else "day"
+    table = "energy_rollup_30m" if granularity == "30m" else "energy_rollup_daily"
+    stamp = "bucket_start" if granularity == "30m" else "day_start"
+    with closing(connect()) as connection:
+        rows = connection.execute(
+            f"""SELECT * FROM {table} WHERE {stamp} >= ? AND {stamp} < ? ORDER BY {stamp}""",
+            (start, end),
+        ).fetchall()
+    points = []
+    for row in rows:
+        points.append({
+            "timestamp": int(row[stamp]),
+            "sample_count": int(row["sample_count"]),
+            "production_kwh": round(float(row["production_wh"]) / 1000.0, 6),
+            "consumption_kwh": round(float(row["consumption_wh"]) / 1000.0, 6),
+            "grid_import_kwh": round(float(row["grid_import_wh"]) / 1000.0, 6),
+            "grid_export_kwh": round(float(row["grid_export_wh"]) / 1000.0, 6),
+            "battery_charge_kwh": round(float(row["battery_charge_wh"]) / 1000.0, 6),
+            "battery_discharge_kwh": round(float(row["battery_discharge_wh"]) / 1000.0, 6),
+        })
+    return {"granularity": granularity, "start": start, "end": end, "points": points}
+
+
 def history_summary(hours: int) -> dict[str, Any]:
     points = read_history(hours)
 
