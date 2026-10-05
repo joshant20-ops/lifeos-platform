@@ -10,6 +10,10 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from app.config import load_config
+from app.services.octopus import OctopusError, account_tariffs, tariff_prices
+from zoneinfo import ZoneInfo
+
 from app.services.enphase import (
     EnphaseAuthenticationError,
     EnphaseClient,
@@ -246,6 +250,31 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
             "battery_charge_kwh": round(float(row["battery_charge_wh"]) / 1000.0, 6),
             "battery_discharge_kwh": round(float(row["battery_discharge_wh"]) / 1000.0, 6),
         })
+    # Prices are authoritative Octopus data and are joined on read rather than
+    # duplicated in the local history database.
+    try:
+        config = load_config()
+        zone = str(config["site"]["timezone"])
+        tariffs = account_tariffs()
+        rates = {}
+        local_day = datetime.fromtimestamp(start, ZoneInfo(zone)).date()
+        final_day = datetime.fromtimestamp(end, ZoneInfo(zone)).date()
+        while local_day <= final_day:
+            try:
+                day_prices = tariff_prices(tariffs["import"]["tariff_code"], local_day, zone)
+                for slot in day_prices["slots"]:
+                    rates[int(datetime.fromisoformat(slot["valid_from"]).timestamp())] = slot.get("rate_p_per_kwh")
+            except OctopusError:
+                pass
+            local_day = local_day.fromordinal(local_day.toordinal() + 1)
+        if granularity == "30m":
+            for point in points:
+                rate = rates.get(int(point["timestamp"]))
+                point["import_p_per_kwh"] = rate
+                point["import_price_available"] = rate is not None
+                point["domestic_import_cost_gbp"] = None if rate is None else round(point["grid_import_kwh"] * float(rate) / 100.0, 6)
+    except OctopusError:
+        pass
     return {"granularity": granularity, "start": start, "end": end, "points": points}
 
 
