@@ -51,7 +51,7 @@ def main():
     dev_panel=stanza(cfg,'lifeos-house-status-dev')
     if not live_panel or 'url_path: house-status' not in live_panel: fail('live_panel_missing')
     if not dev_panel: fail('development_panel_missing')
-    for marker in ('sidebar_title: House Status Dev','url_path: house-status-dev','module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-1','require_admin: true'):
+    for marker in ('sidebar_title: House Status Dev','url_path: house-status-dev','module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2','require_admin: true'):
         if marker not in dev_panel: fail('development_panel_config_missing:'+marker)
     for filename in FILES:
         source=SOURCE/filename
