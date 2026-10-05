@@ -99,11 +99,23 @@ def stanza(name):
 live,_,_=stanza('lifeos-house-status-v28')
 if not live or 'url_path: house-status\n' not in live:
     raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:live_panel_not_found')
-existing,_,_=stanza('lifeos-house-status-dev')
+existing,i,j=stanza('lifeos-house-status-dev')
 if existing:
-    if 'url_path: house-status-dev\n' not in existing or 'module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2\n' not in existing:
+    if 'url_path: house-status-dev\n' not in existing:
         raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:dev_panel_conflict')
-    print('HOUSE_STATUS_DEV_CONFIG=UNCHANGED')
+    old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-1'
+    new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2'
+    if new_url in existing:
+        print('HOUSE_STATUS_DEV_CONFIG=UNCHANGED')
+    elif old_url in existing:
+        for n in range(i,j):
+            if old_url in lines[n]:
+                lines[n]=lines[n].replace(old_url,new_url)
+                break
+        p.write_text(''.join(lines))
+        print('HOUSE_STATUS_DEV_CONFIG=UPGRADED')
+    else:
+        raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:dev_panel_conflict')
 else:
     if any(line.strip()=='url_path: house-status-dev' for line in lines):
         raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:route_owned_by_other_panel')
