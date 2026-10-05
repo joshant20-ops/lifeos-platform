@@ -28,6 +28,7 @@ jobs:
           target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
           legacy=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v27.js
           doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
+          doorbell_v28=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell-v28.js
           require_marker() {
             label=$1
             marker=$2
@@ -44,6 +45,11 @@ jobs:
           require_marker DOORBELL_DISK_CAMERA 'camera.front_door_live_view' "$doorbell"
           require_marker DOORBELL_DISK_LIVE_VIEW "camera_view:'live'" "$doorbell"
           require_marker DOORBELL_DISK_HELPERS 'window.loadCardHelpers()' "$doorbell"
+          require_marker DOORBELL_V28_DISK_PANEL_BOOTSTRAP 'partial-panel-resolver' "$doorbell_v28"
+          require_marker DOORBELL_V28_DISK_LOVELACE_BOOTSTRAP 'ha-panel-lovelace' "$doorbell_v28"
+          require_marker DOORBELL_V28_DISK_CAMERA 'camera.front_door_live_view' "$doorbell_v28"
+          require_marker DOORBELL_V28_DISK_LIVE_VIEW "camera_view:'live'" "$doorbell_v28"
+          require_marker DOORBELL_V28_ENTRY_IMPORT "lifeos-house-status-doorbell-v28.js?v=20261005-1" "$target"
           require_marker DOORBELL_DISK_HEADER 'class="hanav"' "$target"
           require_marker HOUSE_STATUS_DISK_FREE_BAND 'band-free' "$target"
           require_marker HOUSE_STATUS_DISK_POWERDOWN_BAND 'band-powerdown' "$target"
@@ -60,12 +66,18 @@ jobs:
           require_marker DOORBELL_LIVE_CAMERA 'camera.front_door_live_view' "$served"
           require_marker DOORBELL_LIVE_LIVE_VIEW "camera_view:'live'" "$served"
           require_marker DOORBELL_LIVE_HELPERS 'createCardElement' "$served"
+          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell-v28.js?v=20261005-1' -o "$served"
+          require_marker DOORBELL_V28_LIVE_PANEL_BOOTSTRAP 'partial-panel-resolver' "$served"
+          require_marker DOORBELL_V28_LIVE_CARD_HELPERS 'loadCardHelpers' "$served"
+          require_marker DOORBELL_V28_LIVE_CAMERA 'camera.front_door_live_view' "$served"
+          require_marker DOORBELL_V28_LIVE_VIEW "camera_view:'live'" "$served"
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v27.js -o "$served"
           require_marker DOORBELL_V27_DISK_VERSION "Doorbell v27" "$legacy"
           require_marker DOORBELL_V27_LIVE_VERSION "Doorbell v27" "$served"
           require_marker DOORBELL_V27_LIVE_NAV 'this._mode=el.dataset.mode;this.render();' "$served"
           require_marker DOORBELL_V27_LIVE_TAG "lifeos-house-status-v27" "$served"
           require_marker DOORBELL_V27_CACHE_BUST_IMPORT "import './lifeos-house-status-doorbell.js?v=20261004-1';" "$legacy"
+          require_marker DOORBELL_V28_CACHE_BUST_IMPORT "import './lifeos-house-status-doorbell-v28.js?v=20261005-1';" "$target"
           curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js?v=20261004-1' -o "$served"
           require_marker DOORBELL_V27_MODULE_LIVE_RENDER 'data-doorbell-card' "$served"
           require_marker DOORBELL_V27_MODULE_LIVE_CAMERA "camera_view:'live'" "$served"
