@@ -12,7 +12,7 @@ from app.services.enphase import (
     EnphaseClient,
     EnphaseUnavailableError,
 )
-from app.services.history import history_summary
+from app.services.history import history_summary, read_rollups
 from app.services.interval_ledger import interval_report
 from app.services.forecast_history import forecast_error_report
 from app.services.planner import generate_plan, read_latest_plan
@@ -72,6 +72,15 @@ async def energy_history(
         history_summary,
         hours,
     )
+
+
+@router.get("/api/energy/rollups")
+async def energy_rollups(start: int, end: int, granularity: str = "auto") -> dict:
+    if end <= start:
+        raise HTTPException(status_code=400, detail="end must be after start")
+    if granularity not in {"auto", "30m", "day"}:
+        raise HTTPException(status_code=400, detail="invalid granularity")
+    return await asyncio.to_thread(read_rollups, start, end, granularity)
 
 
 @router.get("/api/energy/tariffs")
