@@ -101,7 +101,7 @@ if not live or 'url_path: house-status\n' not in live:
     raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:live_panel_not_found')
 existing,_,_=stanza('lifeos-house-status-dev')
 if existing:
-    if 'url_path: house-status-dev\n' not in existing or 'module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-1\n' not in existing:
+    if 'url_path: house-status-dev\n' not in existing or 'module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2\n' not in existing:
         raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:dev_panel_conflict')
     print('HOUSE_STATUS_DEV_CONFIG=UNCHANGED')
 else:
@@ -121,7 +121,7 @@ else:
       '    sidebar_title: House Status Dev\n',
       '    sidebar_icon: mdi:flask-outline\n',
       '    url_path: house-status-dev\n',
-      '    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-1\n',
+      '    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2\n',
       '    require_admin: true\n',
       '    config:\n',
       '      mode: domestic\n',
