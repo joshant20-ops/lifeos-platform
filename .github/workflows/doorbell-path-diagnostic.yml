@@ -7,6 +7,8 @@ on:
       - '.github/workflows/doorbell-path-diagnostic.yml'
       - 'homeassistant/www/house-status/lifeos-house-status-doorbell.js'
       - 'homeassistant/www/house-status/lifeos-house-status-v27.js'
+      - 'homeassistant/releases/house-status/live/lifeos-house-status-v28.js'
+      - 'homeassistant/releases/house-status/live/lifeos-house-status-doorbell-v28.js'
 permissions:
   contents: read
 jobs:
@@ -145,6 +147,27 @@ jobs:
               print('STEP8_SERVED_V28='+('PASS' if response.status==200 and 'Doorbell v28' in body else 'MISMATCH'))
           except Exception as exc:
             print('STEP8_SERVED_V28=FAIL:'+type(exc).__name__)
+          # 12. Check the v28-only helper bootstrap without failing pre-deploy source pushes.
+          v28_module=B/'www/house-status/lifeos-house-status-doorbell-v28.js'
+          v28_entry=B/'www/house-status/lifeos-house-status-v28.js'
+          expected_import="import './lifeos-house-status-doorbell-v28.js?v=20261005-1';"
+          if not v28_module.is_file():
+            print('STEP12_V28_PANEL_BOOTSTRAP=NOT_DEPLOYED')
+          else:
+            module_text=v28_module.read_text(errors='replace')
+            entry_text=v28_entry.read_text(errors='replace') if v28_entry.is_file() else ''
+            markers=('partial-panel-resolver','ha-panel-lovelace','camera.front_door_live_view')
+            if expected_import not in entry_text or any(marker not in module_text for marker in markers):
+              print('STEP12_V28_PANEL_BOOTSTRAP=MISMATCH')
+            else:
+              try:
+                url=BASE+'/local/house-status/lifeos-house-status-doorbell-v28.js?v=20261005-1'
+                with urllib.request.urlopen(url,timeout=10) as response:
+                  body=response.read().decode('utf-8','replace')
+                print('STEP12_V28_PANEL_BOOTSTRAP='+('PASS' if response.status==200 and all(marker in body for marker in markers) else 'MISMATCH'))
+              except Exception as exc:
+                print('STEP12_V28_PANEL_BOOTSTRAP=FAIL:'+type(exc).__name__)
+
           # 10. Read-only scan of Lovelace storage for any lingering v27 client refs.
           storage=B/'.storage'
           matches=[]
