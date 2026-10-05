@@ -104,30 +104,29 @@ class LifeOSHouseStatusCard extends HTMLElement {
   }
   async _loadEnergyHistory(){
     if(!this._hass||this._energyHistoryLoading)return;
-    const period=this.period(),anchor=this.anchor(),start=this.periodStart(),end=new Date(start);
+    const period=this.period(),start=this.periodStart(),end=new Date(start);
     if(period==='week')end.setDate(end.getDate()+7);
     else if(period==='month')end.setMonth(end.getMonth()+1);
     else if(period==='year')end.setFullYear(end.getFullYear()+1);
     else end.setDate(end.getDate()+2);
-    const key=start.toISOString()+'|'+end.toISOString();
+    const now=Date.now(),effectiveEnd=Math.min(end.getTime(),now);
+    if(effectiveEnd<=start.getTime()){this._energyHistory=[];return;}
+    // LifeOS Energy is the source adapter: Enphase supplies physical telemetry and
+    // Octopus supplies tariff data. Ask it for the requested horizon directly;
+    // do not use Home Assistant Recorder as a second long-term energy database.
+    const hours=Math.max(1,Math.min(840,Math.ceil((effectiveEnd-start.getTime())/3600000)+2));
+    const key=period+'|'+start.toISOString()+'|'+hours;
     if(this._energyHistoryKey===key)return;
     this._energyHistoryLoading=true;
     try{
-      // lifeos_energy_report carries interval attributes. Recorder history preserves those
-      // attributes, giving long-range views the historical intervals instead of only the
-      // sensor's current rolling window.
-      const entity='sensor.lifeos_energy_report';
-      const rows=await this._hass.callApi('GET','history/period/'+start.toISOString()+'?filter_entity_id='+encodeURIComponent(entity)+'&end_time='+encodeURIComponent(end.toISOString())+'&minimal_response=0&no_attributes=0');
-      const states=Array.isArray(rows?.[0])?rows[0]:[];
-      const byStamp=new Map();
-      states.forEach(st=>{
-        const intervals=Array.isArray(st?.attributes?.intervals)?st.attributes.intervals:[];
-        intervals.forEach(o=>{const t=new Date(o.valid_from||o.local_from||o.start||0).getTime();if(Number.isFinite(t)&&t>=start.getTime()&&t<end.getTime())byStamp.set(t,o);});
-      });
-      this._energyHistory=[...byStamp.values()].sort((a,b)=>new Date(a.valid_from||a.local_from||a.start)-new Date(b.valid_from||b.local_from||b.start));
+      const data=await this._hass.callApi('GET','lifeos_energy_proxy/report?hours='+hours);
+      const intervals=Array.isArray(data?.intervals)?data.intervals:[];
+      this._energyHistory=intervals.filter(o=>{const t=new Date(o.valid_from||o.local_from||o.start||0).getTime();return Number.isFinite(t)&&t>=start.getTime()&&t<end.getTime();});
       this._energyHistoryKey=key;
-    }catch(e){console.warn('House Status DEV energy history load failed',e);}
-    finally{this._energyHistoryLoading=false;this.render();}
+    }catch(e){
+      console.warn('House Status DEV source-backed energy history load failed',e);
+      this._energyHistory=[];
+    }finally{this._energyHistoryLoading=false;this.render();}
   }
 
   async _loadPowerdownHistory(){
