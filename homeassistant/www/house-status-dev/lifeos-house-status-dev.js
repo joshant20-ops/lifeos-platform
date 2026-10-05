@@ -114,13 +114,14 @@ class LifeOSHouseStatusCard extends HTMLElement {
     // LifeOS Energy is the source adapter: Enphase supplies physical telemetry and
     // Octopus supplies tariff data. Ask it for the requested horizon directly;
     // do not use Home Assistant Recorder as a second long-term energy database.
-    const hours=Math.max(1,Math.min(840,Math.ceil((effectiveEnd-start.getTime())/3600000)+2));
-    const key=period+'|'+start.toISOString()+'|'+hours;
+    const hours=Math.max(1,Math.min(840,Math.ceil((effectiveEnd-start.getTime())/3600000)+2)),useRollups=['month','year'].includes(period);
+    const key=period+'|'+start.toISOString()+'|'+effectiveEnd;
     if(this._energyHistoryKey===key)return;
     this._energyHistoryLoading=true;
     try{
-      const data=await fetch('/lifeos-energy-api/api/energy/report?hours='+hours,{credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('energy report HTTP '+r.status);return r.json();});
-      const intervals=Array.isArray(data?.intervals)?data.intervals:[];
+      const url=useRollups?'/lifeos-energy-api/api/energy/rollups?start='+Math.floor(start.getTime()/1000)+'&end='+Math.ceil(effectiveEnd/1000)+'&granularity='+(period==='year'?'day':'30m'):'/lifeos-energy-api/api/energy/report?hours='+hours;
+      const data=await fetch(url,{credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('energy history HTTP '+r.status);return r.json();});
+      const intervals=useRollups?(Array.isArray(data?.points)?data.points:[]).map(o=>({valid_from:new Date(Number(o.timestamp)*1000).toISOString(),domestic_import_kwh:Number(o.grid_import_kwh)||0,import_kwh:Number(o.grid_import_kwh)||0,export_kwh:Number(o.grid_export_kwh)||0,production_kwh:Number(o.production_kwh)||0,consumption_kwh:Number(o.consumption_kwh)||0})):Array.isArray(data?.intervals)?data.intervals:[];
       this._energyHistory=intervals.filter(o=>{const t=new Date(o.valid_from||o.local_from||o.start||0).getTime();return Number.isFinite(t)&&t>=start.getTime()&&t<end.getTime();});
       this._energyHistoryKey=key;
     }catch(e){
