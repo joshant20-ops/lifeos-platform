@@ -5,7 +5,7 @@ const vm=require('node:vm');
 
 const base=__dirname;
 const moduleSource=fs.readFileSync(path.join(base,'live','lifeos-house-status-doorbell-v28.js'),'utf8');
-const legacyEntry=fs.readFileSync(path.join(base,'lifeos-house-status-v27.js'),'utf8');
+const legacyEntry=fs.readFileSync(path.join(base,'live','lifeos-house-status-v27.js'),'utf8');
 assert.ok(legacyEntry.startsWith("import './lifeos-house-status-doorbell.js?v=20261004-1';"),'v27 stays on its existing shared module');
 assert.doesNotMatch(legacyEntry,/doorbell-v28\.js|doorbellV28/,'v27 does not import the v28-only fix');
 
