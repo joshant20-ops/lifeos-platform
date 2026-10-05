@@ -121,7 +121,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     try{
       const url=useRollups?'/lifeos-energy-api/api/energy/rollups?start='+Math.floor(start.getTime()/1000)+'&end='+Math.ceil(effectiveEnd/1000)+'&granularity='+(period==='year'?'day':'30m'):'/lifeos-energy-api/api/energy/report?hours='+hours;
       const data=await fetch(url,{credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('energy history HTTP '+r.status);return r.json();});
-      const intervals=useRollups?(Array.isArray(data?.points)?data.points:[]).map(o=>({valid_from:new Date(Number(o.timestamp)*1000).toISOString(),domestic_import_kwh:Number(o.grid_import_kwh)||0,import_kwh:Number(o.grid_import_kwh)||0,export_kwh:Number(o.grid_export_kwh)||0,production_kwh:Number(o.production_kwh)||0,consumption_kwh:Number(o.consumption_kwh)||0})):Array.isArray(data?.intervals)?data.intervals:[];
+      const intervals=useRollups?(Array.isArray(data?.points)?data.points:[]).map(o=>({valid_from:new Date(Number(o.timestamp)*1000).toISOString(),domestic_import_kwh:Number(o.grid_import_kwh)||0,import_kwh:Number(o.grid_import_kwh)||0,export_kwh:Number(o.grid_export_kwh)||0,production_kwh:Number(o.production_kwh)||0,consumption_kwh:Number(o.consumption_kwh)||0,import_p_per_kwh:o.import_p_per_kwh,import_price_available:o.import_price_available,domestic_import_cost_gbp:o.domestic_import_cost_gbp})):Array.isArray(data?.intervals)?data.intervals:[];
       this._energyHistory=intervals.filter(o=>{const t=new Date(o.valid_from||o.local_from||o.start||0).getTime();return Number.isFinite(t)&&t>=start.getTime()&&t<end.getTime();});
       this._energyHistoryKey=key;
     }catch(e){
