@@ -68,7 +68,8 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core'
         || github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' ||
-        github.event.issue.title == 'LifeOS Deploy: audit-p0-platform-recovery'
+        github.event.issue.title == 'LifeOS Deploy: audit-p0-platform-recovery' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-p0-resilience'
       ))
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
