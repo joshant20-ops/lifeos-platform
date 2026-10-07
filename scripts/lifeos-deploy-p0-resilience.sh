@@ -11,13 +11,11 @@ readonly BRIDGE_UNIT_DEST=/etc/systemd/system/lifeos-ha-issue-queue-bridge.servi
 readonly CLOCK_DROPIN_DEST=/etc/systemd/system/chrony.service.d/10-lifeos-boot-clock.conf
 readonly POWERDOWN_DEST=/usr/local/sbin/lifeos-powerdown-assurance-active
 readonly BACKUP_ROOT=/var/backups/lifeos-p0-resilience
-readonly BROKER=/run/lifeos-root-broker.sock
 readonly GIT=/usr/bin/git
 
 fail() { printf 'P0_DEPLOY=FAIL\nREASON=%s\n' "$*" >&2; exit 1; }
 
 [[ $(id -u) -eq 0 ]] || fail must_run_as_root
-[[ -S "$BROKER" ]] || fail root_broker_socket_missing
 [[ -d "$PLATFORM/.git" ]] || fail platform_checkout_missing
 [[ -f "$BRIDGE_SOURCE" && ! -L "$BRIDGE_SOURCE" ]] || fail bridge_source_missing
 [[ -f "$BRIDGE_UNIT_SOURCE" && ! -L "$BRIDGE_UNIT_SOURCE" ]] || fail bridge_unit_source_missing
