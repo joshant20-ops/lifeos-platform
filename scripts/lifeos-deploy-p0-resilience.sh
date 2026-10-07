@@ -93,6 +93,81 @@ cmp -s "$BRIDGE_UNIT_SOURCE" "$BRIDGE_UNIT_DEST" || fail bridge_unit_mismatch
 cmp -s "$CLOCK_DROPIN_SOURCE" "$CLOCK_DROPIN_DEST" || fail clock_dropin_mismatch
 cmp -s "$POWERDOWN_SOURCE" "$POWERDOWN_DEST" || fail powerdown_source_mismatch
 
+local_operation_probe() {
+  local predbat_http
+  predbat_http=$(curl --silent --max-time 5 --output /dev/null --write-out '%{http_code}' http://127.0.0.1:5052/ 2>/dev/null || true)
+  [[ "$predbat_http" == 302 ]] || fail "predbat_http_$predbat_http"
+  python3 - <<'PY'
+import json, urllib.request
+with urllib.request.urlopen("http://127.0.0.1:8110/api/energy/current", timeout=10) as response:
+    assert response.status == 200
+    data = json.load(response)
+assert "grid_import_w" in data and ("retrieved_at" in data or "reading_time" in data)
+print("P0_LOCAL_ENERGY=PASS")
+PY
+  lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN python3 -c '
+import json, os, urllib.request
+root="http://127.0.0.1:8123/api/states/"
+headers={"Authorization":"Bearer "+os.environ["HA_TOKEN"],"Accept":"application/json"}
+for entity in ("predbat.status","sensor.lifeos_grid_import_power","sensor.predbat_enphase_5731818_pv_power"):
+    req=urllib.request.Request(root+entity,headers=headers)
+    with urllib.request.urlopen(req,timeout=8) as response:
+        row=json.load(response)
+    assert row.get("state") not in ("unknown","unavailable"), entity
+print("P0_LOCAL_HA_ENPHASE=PASS")
+'
+  echo "P0_PREDBAT_HTTP=$predbat_http"
+}
+
+local_operation_probe
+
+readonly WAN_TEST_DIR=/run/systemd/system/lifeos-ha-issue-queue-bridge.service.d
+readonly WAN_TEST_DROPIN="$WAN_TEST_DIR/95-p0-wan-acceptance.conf"
+remove_wan_test() {
+  rm -f "$WAN_TEST_DROPIN"
+  rmdir "$WAN_TEST_DIR" 2>/dev/null || true
+  systemctl daemon-reload
+}
+trap 'remove_wan_test; rollback' EXIT
+install -d -o root -g root -m 0755 "$WAN_TEST_DIR"
+cat >"$WAN_TEST_DROPIN" <<'EOF'
+[Service]
+IPAddressDeny=any
+EOF
+systemctl daemon-reload
+systemctl restart lifeos-ha-issue-queue-bridge.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service || fail bridge_not_running_during_wan_test
+restarts_after_start=$(systemctl show lifeos-ha-issue-queue-bridge.service -p NRestarts --value)
+degraded_seen=0
+for _ in $(seq 1 24); do
+  if journalctl -u lifeos-ha-issue-queue-bridge.service --since '-2 minutes' -o cat --no-pager 2>/dev/null | grep -q 'QUEUE_REFRESH=DEGRADED'; then
+    degraded_seen=1
+    break
+  fi
+  sleep 5
+done
+[[ "$degraded_seen" == 1 ]] || fail bridge_degraded_state_not_observed
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service || fail bridge_stopped_during_wan_loss
+restarts_during_loss=$(systemctl show lifeos-ha-issue-queue-bridge.service -p NRestarts --value)
+[[ "$restarts_during_loss" == "$restarts_after_start" ]] || fail bridge_restart_during_wan_loss
+local_operation_probe
+remove_wan_test
+systemctl restart lifeos-ha-issue-queue-bridge.service
+recovered=0
+for _ in $(seq 1 24); do
+  if journalctl -u lifeos-ha-issue-queue-bridge.service --since '-2 minutes' -o cat --no-pager 2>/dev/null | grep -q 'QUEUE_REFRESH=PASS'; then
+    recovered=1
+    break
+  fi
+  sleep 5
+done
+[[ "$recovered" == 1 ]] || fail bridge_did_not_recover_with_github
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service || fail bridge_stopped_after_recovery
+python3 -m unittest -v tests.test_p0_cloud_degradation
+echo 'P0_WAN_DEGRADATION=PASS'
+echo 'P0_WAN_RECOVERY=PASS'
+echo 'P0_LOCAL_OPERATION_DURING_WAN_LOSS=PASS'
+
 SUCCESS=1
 trap - EXIT
 echo 'P0_DEPLOY=PASS'
