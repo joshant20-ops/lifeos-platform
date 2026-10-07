@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+import sys, json, time, subprocess
+from pathlib import Path
+
+HA = Path("/config")
+QFILE = HA / "lifeos_ask_question.json"
+AFILE = HA / "lifeos_ask_answer.json"
+
+q = " ".join(sys.argv[1:]).strip()
+now = int(time.time())
+
+thinking = {
+  "ok": None,
+  "status": "thinking",
+  "question": q,
+  "question_time": now,
+  "answer": "Thinking...",
+  "answer_time": 0,
+  "route": "local_only"
+}
+
+QFILE.write_text(json.dumps({"question": q, "question_time": now}, indent=2))
+AFILE.write_text(json.dumps(thinking, indent=2))
+print(json.dumps(thinking))
+
+host_q = "/opt/stacks/homeassistant/config/lifeos_ask_question.json"
+host_a = "/opt/stacks/homeassistant/config/lifeos_ask_answer.json"
+
+subprocess.Popen([
+  "python3",
+  "/home/joshan/automation/lifeos_ask/lifeos_simple_answer_worker.py",
+  host_q,
+  host_a
+])

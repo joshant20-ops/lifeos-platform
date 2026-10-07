@@ -1,9 +1,11 @@
 services:
   predbat:
-    image: nipar44/predbat_addon:latest
+    image: nipar44/predbat_addon@sha256:31413752bb3eec502d069d4635fd086c09549d3d3d82b25b78782ab1f0fe90f9
     container_name: predbat
     restart: unless-stopped
     labels:
+      # Managed by the LifeOS component-update workflow. Generic image
+      # updaters must never bypass its review/regression/rollback gates.
       - "com.centurylinklabs.watchtower.enable=false"
 
     extra_hosts:
