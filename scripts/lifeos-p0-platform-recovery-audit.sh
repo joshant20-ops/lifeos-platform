@@ -8,12 +8,32 @@ echo "HOST_TIME=$(date --iso-8601=seconds 2>/dev/null || echo unavailable)"
 echo "TIMEZONE=$(timedatectl show -p Timezone --value 2>/dev/null || echo unavailable)"
 echo "NTP_ENABLED=$(timedatectl show -p NTP --value 2>/dev/null || echo unavailable)"
 echo "NTP_SYNCHRONIZED=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo unavailable)"
-echo "TIMESYNCD_ACTIVE=$(systemctl is-active systemd-timesyncd.service 2>/dev/null || echo unknown)"
+timesyncd_active="$(systemctl is-active systemd-timesyncd.service 2>/dev/null || true)"
+[[ -n "$timesyncd_active" ]] || timesyncd_active=unknown
+echo "TIMESYNCD_ACTIVE=$timesyncd_active"
 for unit in systemd-timesyncd.service chrony.service chronyd.service ntp.service ntpsec.service openntpd.service systemd-networkd.service; do
   values="$(systemctl show "$unit" -p LoadState -p UnitFileState -p ActiveState -p SubState --value 2>/dev/null | paste -sd, -)"
   [[ -n "$values" ]] || values=unavailable
   echo "TIME_PROVIDER_$unit=$values"
 done
+echo "CHRONY_EXECSTART=$(systemctl show chrony.service -p ExecStart --value 2>/dev/null || echo unavailable)"
+for config in /etc/chrony/chrony.conf /etc/chrony/conf.d/*.conf; do
+  [[ -r "$config" ]] || continue
+  awk '
+    /^[[:space:]]*(driftfile|makestep|rtcsync|rtcfile|initstepslew|dumponexit|dumpdir)([[:space:]]|$)/ {
+      sub(/^[[:space:]]+/, "")
+      print "CHRONY_CONFIG=" $0
+    }
+  ' "$config"
+done
+for driftfile in /var/lib/chrony/drift /var/lib/chrony/chrony.drift; do
+  if [[ -e "$driftfile" ]]; then
+    echo "CHRONY_DRIFTFILE=$driftfile $(stat -c '%y' "$driftfile" 2>/dev/null || echo unreadable)"
+  fi
+done
+if command -v chronyc >/dev/null 2>&1; then
+  chronyc tracking 2>/dev/null | sed -n -E '/^(Reference time|Stratum|System time|Last offset|Leap status):/p' | sed 's/^/CHRONY_TRACKING=/'
+fi
 if command -v timedatectl >/dev/null 2>&1; then
   timedatectl timesync-status --no-pager 2>/dev/null | sed -n -E '/(Server|Packet count|Frequency|Offset|Delay):/p' | sed 's/^/TIMESYNC_STATUS=/'
 fi
