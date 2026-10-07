@@ -2,6 +2,8 @@
 Description=LifeOS Home Assistant issue queue bridge
 After=network-online.target lifeos-autonomous-agent.service
 Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -15,8 +17,8 @@ Environment=LIFEOS_MQTT_HOST=127.0.0.1
 Environment=LIFEOS_ISSUE_QUEUE_REFRESH=30
 Environment=LIFEOS_ISSUE_QUEUE_STATE=/var/lib/lifeos-ha-issue-queue/state.json
 ExecStart=/usr/local/libexec/lifeos-ha-issue-queue-bridge
-Restart=always
-RestartSec=5
+Restart=on-failure
+RestartSec=60
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
