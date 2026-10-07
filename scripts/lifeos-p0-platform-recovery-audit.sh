@@ -9,6 +9,14 @@ echo "TIMEZONE=$(timedatectl show -p Timezone --value 2>/dev/null || echo unavai
 echo "NTP_ENABLED=$(timedatectl show -p NTP --value 2>/dev/null || echo unavailable)"
 echo "NTP_SYNCHRONIZED=$(timedatectl show -p NTPSynchronized --value 2>/dev/null || echo unavailable)"
 echo "TIMESYNCD_ACTIVE=$(systemctl is-active systemd-timesyncd.service 2>/dev/null || echo unknown)"
+for unit in systemd-timesyncd.service chrony.service chronyd.service ntp.service ntpsec.service openntpd.service systemd-networkd.service; do
+  values="$(systemctl show "$unit" -p LoadState -p UnitFileState -p ActiveState -p SubState --value 2>/dev/null | paste -sd, -)"
+  [[ -n "$values" ]] || values=unavailable
+  echo "TIME_PROVIDER_$unit=$values"
+done
+if command -v timedatectl >/dev/null 2>&1; then
+  timedatectl timesync-status --no-pager 2>/dev/null | sed -n -E '/(Server|Packet count|Frequency|Offset|Delay):/p' | sed 's/^/TIMESYNC_STATUS=/'
+fi
 if [[ -e /var/lib/systemd/timesync/clock ]]; then
   echo "TIMESYNCD_SAVED_CLOCK=$(stat -c '%y' /var/lib/systemd/timesync/clock 2>/dev/null || echo unreadable)"
 else
