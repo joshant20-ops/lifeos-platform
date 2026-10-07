@@ -1,3 +1,9 @@
+# Roadmap — RETIRED
+
+> **Retired 2026-10-07.** The sole active LifeOS programme roadmap is [UNIFIED_ROADMAP.md](UNIFIED_ROADMAP.md).
+>
+> The former Foundation/Capability/Wave roadmap below is retained only for historical traceability. It must not be used to set current priority, create a parallel programme, or reopen completed stages. Current work is governed by the unified roadmap and subordinate issue acceptance criteria.
+
 # Roadmap
 
 ## Current priorities
