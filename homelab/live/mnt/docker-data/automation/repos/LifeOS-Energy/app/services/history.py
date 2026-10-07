@@ -137,7 +137,18 @@ def compact_history(now: int | None = None) -> None:
             b["consumption"]+=float(row["consumption_w"] or 0)*dt;b["import"]+=float(row["grid_import_w"] or 0)*dt
             b["export"]+=float(row["grid_export_w"] or 0)*dt;b["charge"]+=max(0.0,-bp)*dt;b["discharge"]+=max(0.0,bp)*dt
         for bucket,b in buckets.items():
-            connection.execute("""INSERT OR REPLACE INTO energy_rollup_30m VALUES (?,?,?,?,?,?,?,?)""",
+            connection.execute(
+                """INSERT INTO energy_rollup_30m
+                   (bucket_start,sample_count,production_wh,consumption_wh,grid_import_wh,grid_export_wh,battery_charge_wh,battery_discharge_wh)
+                   VALUES (?,?,?,?,?,?,?,?)
+                   ON CONFLICT(bucket_start) DO UPDATE SET
+                     sample_count=energy_rollup_30m.sample_count+excluded.sample_count,
+                     production_wh=energy_rollup_30m.production_wh+excluded.production_wh,
+                     consumption_wh=energy_rollup_30m.consumption_wh+excluded.consumption_wh,
+                     grid_import_wh=energy_rollup_30m.grid_import_wh+excluded.grid_import_wh,
+                     grid_export_wh=energy_rollup_30m.grid_export_wh+excluded.grid_export_wh,
+                     battery_charge_wh=energy_rollup_30m.battery_charge_wh+excluded.battery_charge_wh,
+                     battery_discharge_wh=energy_rollup_30m.battery_discharge_wh+excluded.battery_discharge_wh""",
                 (bucket,int(b["n"]),b["production"],b["consumption"],b["import"],b["export"],b["charge"],b["discharge"]))
         connection.execute("DELETE FROM telemetry WHERE reading_time < ?",(raw_cutoff,))
 
@@ -150,7 +161,18 @@ def compact_history(now: int | None = None) -> None:
             b["n"]+=int(row["sample_count"])
             for src,dst in (("production_wh","production"),("consumption_wh","consumption"),("grid_import_wh","import"),("grid_export_wh","export"),("battery_charge_wh","charge"),("battery_discharge_wh","discharge")): b[dst]+=float(row[src])
         for day,b in days.items():
-            connection.execute("""INSERT OR REPLACE INTO energy_rollup_daily VALUES (?,?,?,?,?,?,?,?)""",
+            connection.execute(
+                """INSERT INTO energy_rollup_daily
+                   (day_start,sample_count,production_wh,consumption_wh,grid_import_wh,grid_export_wh,battery_charge_wh,battery_discharge_wh)
+                   VALUES (?,?,?,?,?,?,?,?)
+                   ON CONFLICT(day_start) DO UPDATE SET
+                     sample_count=energy_rollup_daily.sample_count+excluded.sample_count,
+                     production_wh=energy_rollup_daily.production_wh+excluded.production_wh,
+                     consumption_wh=energy_rollup_daily.consumption_wh+excluded.consumption_wh,
+                     grid_import_wh=energy_rollup_daily.grid_import_wh+excluded.grid_import_wh,
+                     grid_export_wh=energy_rollup_daily.grid_export_wh+excluded.grid_export_wh,
+                     battery_charge_wh=energy_rollup_daily.battery_charge_wh+excluded.battery_charge_wh,
+                     battery_discharge_wh=energy_rollup_daily.battery_discharge_wh+excluded.battery_discharge_wh""",
                 (day,int(b["n"]),b["production"],b["consumption"],b["import"],b["export"],b["charge"],b["discharge"]))
         connection.execute("DELETE FROM energy_rollup_30m WHERE bucket_start < ?",(half_hour_cutoff,))
         connection.commit()
