@@ -6,6 +6,7 @@ import os
 import sqlite3
 import statistics
 import time
+import urllib.error
 import urllib.request
 
 from datetime import datetime, timedelta
@@ -16,7 +17,7 @@ TZ = ZoneInfo("Europe/London")
 HA = "http://127.0.0.1:8123"
 LIFEOS_ENERGY = "http://127.0.0.1:8110/api/energy/current"
 
-ROOT = Path("/opt/lifeos-watch/octopus-powerdown-assurance")
+ROOT = Path(os.environ.get("LIFEOS_POWERDOWN_ROOT", "/opt/lifeos-watch/octopus-powerdown-assurance"))
 STATUS = ROOT / "active-status.json"
 STATE = ROOT / "active-state-v48.json"
 SAMPLES = ROOT / "grid-samples-v48.json"
@@ -157,7 +158,50 @@ def set_number(entity, value):
     )
 
 
-event_obj = get(EVENT)
+def degrade_unavailable_event(reason):
+    status = {
+        "schema": "lifeos.powerdown_assurance.v51",
+        "generated_at": now.isoformat(),
+        "state": "DEGRADED",
+        "mode": "ARMED_ACTIVE_EVENT_ONLY",
+        "degradation": {
+            "code": "WAN_UNAVAILABLE",
+            "dependency": EVENT,
+            "reason": reason,
+        },
+        "event": {
+            "active": False,
+            "id": None,
+            "start": None,
+            "end": None,
+            "next_event": None,
+        },
+        "readiness": {"state": "DEGRADED"},
+        "control": {
+            "action": "NO_CHANGE",
+            "write_performed": False,
+            "blocked_reason": "WAN_UNAVAILABLE",
+        },
+        "anomaly_flags": ["octopus_power_down_event_unavailable"],
+    }
+    atomic(STATUS, status, 0o644)
+    print("CONTROLLER_STATUS=DEGRADED")
+    print("DEGRADED_REASON=WAN_UNAVAILABLE")
+    print("ACTION=NO_CHANGE")
+    print("WRITE_PERFORMED=no")
+    print("STATUS=" + str(STATUS))
+    raise SystemExit(0)
+
+
+try:
+    event_obj = get(EVENT)
+except urllib.error.HTTPError as exc:
+    if exc.code != 404:
+        raise
+    degrade_unavailable_event("entity_not_found")
+
+if str(event_obj.get("state", "")).lower() in {"unknown", "unavailable"}:
+    degrade_unavailable_event("cloud_entity_unavailable")
 
 baseline, baseline_obj = numeric(BASELINE)
 
