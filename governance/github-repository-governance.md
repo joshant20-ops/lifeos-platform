@@ -80,7 +80,7 @@ default branch appear permanently unhealthy.
 
 ## Issues, projects and the task ledger
 
-GitHub Issues and a small Project view are the human-facing roadmap:
+`docs/UNIFIED_ROADMAP.md` is the sole programme roadmap. GitHub Issues and a small Project view are the human-facing execution/portfolio surface:
 
 - Now
 - Blocked
@@ -88,9 +88,7 @@ GitHub Issues and a small Project view are the human-facing roadmap:
 - Later
 - Done
 
-`TASK_LEDGER.md` remains machine-readable historical acceptance state. It must
-not be duplicated wholesale into the Project. Project items should represent
-current outcomes or blockers and link to detailed ledger evidence when needed.
+`TASK_LEDGER.md` and `[Ledger #NNN]` issues are historical acceptance/evidence state, not parallel roadmap items. They must not be duplicated wholesale into the Project or treated as independent current requirements. Project items should represent current outcomes or blockers and link to historical evidence when needed.
 
 ## Stable checkpoints
 
