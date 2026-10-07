@@ -8,8 +8,8 @@ dusk_to_dawn_w_helper:
     data: {}
     target:
       entity_id:
-      - input_boolean.rear_lights
       - input_boolean.front_light_flag
+      - input_boolean.rear_light_flag
   - wait_for_trigger:
     - trigger: time
       at: '22:00:00'
@@ -18,8 +18,8 @@ dusk_to_dawn_w_helper:
     data: {}
     target:
       entity_id:
-      - input_boolean.rear_lights
       - input_boolean.front_light_flag
+      - input_boolean.rear_light_flag
   alias: Dusk to dawn w helper
   description: ''
 close_joshan_room_blinds:

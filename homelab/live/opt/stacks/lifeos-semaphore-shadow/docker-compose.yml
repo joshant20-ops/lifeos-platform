@@ -1,0 +1,44 @@
+services:
+
+  semaphore:
+
+    image: semaphoreui/semaphore:v2.18.29
+
+    restart: unless-stopped
+
+    ports:
+      - "127.0.0.1:3003:3000"
+
+    env_file:
+      - /etc/lifeos/semaphore.env
+
+    environment:
+      SEMAPHORE_DB_DIALECT: sqlite
+      SEMAPHORE_DB_PATH: /var/lib/semaphore
+      TZ: Europe/London
+
+    volumes:
+      - semaphore_config:/etc/semaphore
+      - semaphore_data:/var/lib/semaphore
+      - /home/joshan/lifeos-platform:/workspace/lifeos-platform:ro
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    networks:
+      - lifeos-semaphore-shadow
+
+volumes:
+
+  semaphore_config:
+
+  semaphore_data:
+
+networks:
+
+  lifeos-semaphore-shadow:
+
+    driver: bridge

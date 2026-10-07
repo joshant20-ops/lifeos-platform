@@ -3,7 +3,7 @@ services:
     labels:
       - "com.centurylinklabs.watchtower.enable=false"
     container_name: homeassistant
-    image: ghcr.io/home-assistant/home-assistant:stable
+    image: ghcr.io/home-assistant/home-assistant@sha256:372d991e58882a1d8c68c07e9aa3f3b509276e695355f73ccdb03baa70407293
     restart: unless-stopped
     network_mode: host
     volumes:

@@ -5,8 +5,6 @@ default_config:
 frontend:
   themes: !include_dir_merge_named themes
   extra_module_url:
-    - /local/house-status/lifeos-house-status-v3.js
-
 http:
   use_x_forwarded_for: true
   trusted_proxies:
@@ -63,3 +61,40 @@ recorder:
       - predheat.heating_energy
       - predheat.internal_temperature
       - predheat.target_temperature
+command_line:
+  - switch:
+      name: Z97 Power
+      unique_id: z97_power
+      command_on: >-
+        sh -c 'LOCK=/config/.z97_power_lock;
+        if [ ! -e "$LOCK" ] || [ $(( $(date +%s) - $(cat "$LOCK" 2>/dev/null || echo 0) )) -ge 60 ];
+        then date +%s > "$LOCK";
+        /usr/local/bin/wakeonlan 40:8d:5c:84:41:64;
+        fi'
+      command_off: >-
+        sh -c 'LOCK=/config/.z97_power_lock;
+        if [ ! -e "$LOCK" ] || [ $(( $(date +%s) - $(cat "$LOCK" 2>/dev/null || echo 0) )) -ge 60 ];
+        then date +%s > "$LOCK";
+        /usr/bin/ssh -o BatchMode=yes -i /config/.ssh/z97_ed25519
+        joshan@192.168.0.201 "sudo -n poweroff";
+        fi'
+      command_state: '/bin/ping -c 1 -W 1 192.168.0.201 >/dev/null 2>&1'
+      scan_interval: 10
+
+panel_custom:
+  - name: lifeos-house-status-v28
+    sidebar_title: House Status
+    sidebar_icon: mdi:home-heart
+    url_path: house-status
+    module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1
+    require_admin: false
+    config:
+      mode: domestic
+  - name: lifeos-house-status-dev
+    sidebar_title: House Status Dev
+    sidebar_icon: mdi:flask-outline
+    url_path: house-status-dev
+    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2
+    require_admin: true
+    config:
+      mode: domestic
