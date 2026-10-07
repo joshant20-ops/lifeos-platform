@@ -17,6 +17,11 @@ for unit in systemd-timesyncd.service chrony.service chronyd.service ntp.service
   echo "TIME_PROVIDER_$unit=$values"
 done
 echo "CHRONY_EXECSTART=$(systemctl show chrony.service -p ExecStart --value 2>/dev/null || echo unavailable)"
+if [[ -r /etc/default/chrony ]]; then
+  grep -E '^[[:space:]]*DAEMON_OPTS=' /etc/default/chrony | sed 's/^/CHRONY_DEFAULTS=/'
+else
+  echo 'CHRONY_DEFAULTS=absent'
+fi
 for config in /etc/chrony/chrony.conf /etc/chrony/conf.d/*.conf; do
   [[ -r "$config" ]] || continue
   awk '
