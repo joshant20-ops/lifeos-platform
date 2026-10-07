@@ -268,6 +268,7 @@ def ensure_label():
 
 def set_high_priority(number, enabled):
     if enabled:
+        ensure_label()
         gh("issue", "edit", str(number), "--repo", REPO, "--add-label", HIGH_LABEL)
     else:
         cp = gh("issue", "edit", str(number), "--repo", REPO, "--remove-label", HIGH_LABEL, check=False)
@@ -383,17 +384,31 @@ def command_loop():
 def shutdown(*_): STOP.set()
 
 
+def retry_delay(failures):
+    """Return a capped exponential retry delay for unavailable dependencies."""
+    exponent = min(max(int(failures) - 1, 0), 10)
+    return min(REFRESH * (2 ** exponent), 900)
+
+
 def main():
     signal.signal(signal.SIGTERM, shutdown); signal.signal(signal.SIGINT, shutdown)
-    ensure_label(); publish_discovery()
+    try:
+        publish_discovery()
+    except Exception as exc:
+        print(f"QUEUE_DISCOVERY=DEGRADED TYPE={type(exc).__name__} REASON={exc}", flush=True)
     threading.Thread(target=command_loop, name="mqtt-command-listener", daemon=True).start()
+    failures = 0
     while not STOP.is_set():
         try:
             payload, control = refresh()
+            failures = 0
             print(f"QUEUE_REFRESH=PASS COUNT={payload['count']} HIGH={payload['high_priority_count']} CONTROL_STATE={control['state']} BLOCKED={control['blocked_count']} ELIGIBLE={control['eligible_count']}", flush=True)
+            delay = REFRESH
         except Exception as exc:
-            print(f"QUEUE_REFRESH=FAIL TYPE={type(exc).__name__} REASON={exc}", flush=True)
-        STOP.wait(REFRESH)
+            failures += 1
+            delay = retry_delay(failures)
+            print(f"QUEUE_REFRESH=DEGRADED TYPE={type(exc).__name__} REASON={exc} RETRY_IN={delay}", flush=True)
+        STOP.wait(delay)
     try: mqtt_pub(f"{BASE}/availability", "offline")
     except Exception: pass
     return 0
