@@ -6,7 +6,7 @@
 
 This document defines what LifeOS is trying to become and the engineering rules that govern it. It is intentionally more stable than GitHub issues, runtime evidence, or work logs.
 
-For current implementation state, use GitHub issues plus live runtime evidence. **Current reality outranks stale issue text.**
+For current programme priority and sequencing, use [`UNIFIED_ROADMAP.md`](UNIFIED_ROADMAP.md). For implementation state, use current GitHub issues plus live runtime evidence. **Current reality outranks stale issue text.**
 
 ---
 
@@ -58,11 +58,11 @@ Ordinary engineering problems should be diagnosed and repaired autonomously thro
 
 Escalate only genuine human boundaries such as credentials/consent, account authorisation, physical access, irreversible/destructive operations, safety-critical validation, or explicit policy/preference decisions.
 
-### No roadmap inflation
+### One-roadmap rule
 
-The original **12-stage foundation roadmap is complete: 12/12**.
+The original **12-stage foundation roadmap is complete: 12/12**. All former stage, wave, P0-P10 and M0-M7 programme roadmaps are historical traceability only.
 
-Do not invent Stage 13 or reopen completed foundation stages. New work belongs in the governed capability backlog and portfolio index.
+Do not invent new parallel roadmap hierarchies or reopen completed stages. `docs/UNIFIED_ROADMAP.md` is the sole active programme roadmap; issues may contain subordinate implementation/acceptance plans only.
 
 ---
 
