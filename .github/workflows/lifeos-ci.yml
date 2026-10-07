@@ -66,6 +66,15 @@ jobs:
           python3 -m py_compile governor/ha_issue_queue_bridge.py homelab/live/usr/local/sbin/lifeos-powerdown-assurance-active
           python3 -m unittest -v tests.test_p0_cloud_degradation
 
+      - name: Validate P0 recovery deployment boundary
+        run: |
+          bash -n scripts/lifeos-deploy-p0-resilience.sh
+          python3 -m py_compile homelab/live/usr/local/sbin/lifeos-deploy-gateway
+          grep -F "'deploy-p0-resilience'" homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
+          grep -F "scripts/lifeos-deploy-p0-resilience.sh" homelab/live/usr/local/sbin/lifeos-deploy-gateway >/dev/null
+          grep -F "Deploy: deploy-p0-resilience" .github/workflows/lifeos-pi-deploy.yml >/dev/null
+          grep -F "chronyd -s \$DAEMON_OPTS" governor/systemd/chrony.service.d/10-lifeos-boot-clock.conf >/dev/null
+
       - name: Validate stable-base broker contracts
         run: |
           python3 -m pytest -q \
