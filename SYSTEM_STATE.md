@@ -18,33 +18,32 @@
 
 - Hostname: `Docker`
 - Architecture: `aarch64`
-- Kernel: `6.18.29+rpt-rpi-2712`
+- Kernel: `6.18.39+rpt-rpi-2712`
 - OS: `Debian GNU/Linux 13 (trixie)`
 
 ## Active Docker Services
 
 - `adguardhome` — `adguard/adguardhome:latest`
-- `autoheal` — `willfarrell/autoheal:latest`
-- `cadvisor` — `gcr.io/cadvisor/cadvisor:latest`
-- `grafana` — `grafana/grafana:latest`
 - `homeassistant` — `ghcr.io/home-assistant/home-assistant:stable`
-- `lifeos-energy` — `lifeos-energy:0.1.0-dev`
+- `lifeos-agent-canvas` — `ghcr.io/openhands/agent-canvas:1.23.0`
+- `lifeos-agent-canvas-tls` — `nginx:1.29-alpine`
+- `lifeos-energy` — `b106885679a2`
 - `lifeos-engineer-ui` — `ghcr.io/open-webui/open-webui:v0.11.1`
+- `lifeos-pa-radicale` — `tomsquest/docker-radicale:latest`
+- `lifeos-pa-vikunja-db` — `postgres:17-alpine`
+- `lifeos-pa-vikunja` — `vikunja/vikunja:latest`
+- `lifeos-semaphore-shadow-semaphore-1` — `semaphoreui/semaphore:v2.18.29`
+- `lifeos-semaphore-shadow-semaphore-db-1` — `postgres:17.6-bookworm`
 - `matter-server` — `ghcr.io/home-assistant-libs/python-matter-server:stable`
 - `mosquitto` — `eclipse-mosquitto:latest`
 - `nginx-proxy-manager` — `jc21/nginx-proxy-manager:latest`
-- `node-exporter` — `quay.io/prometheus/node-exporter:latest`
 - `paperless-db-1` — `postgres:15`
-- `paperless-paperless-1` — `73a1d0bcc5b5`
+- `paperless-paperless-1` — `ghcr.io/paperless-ngx/paperless-ngx:latest`
 - `paperless-redis-1` — `redis:7`
-- `portainer` — `portainer/portainer-ce:latest`
-- `predbat` — `nipar44/predbat_addon:latest`
-- `privacy-guardian` — `privacy-guardian-privacy-guardian`
-- `prometheus` — `prom/prometheus:latest`
+- `predbat` — `31413752bb3e`
 - `qbittorrent` — `lscr.io/linuxserver/qbittorrent:latest`
 - `uptime-kuma` — `louislam/uptime-kuma:latest`
-- `vaultwarden` — `vaultwarden/server:latest`
-- `watchtower` — `containrrr/watchtower:latest`
+- `vaultwarden` — `094b5689ed81`
 - `zwave-js-ui` — `zwavejs/zwave-js-ui:latest`
 
 ## Key Source Locations
@@ -55,20 +54,17 @@
 ## Source Stacks Present
 
 - `adguard`
-- `autoheal`
-- `grafana`
 - `homeassistant`
 - `lifeos-energy`
+- `lifeos-engineer-ui`
+- `lifeos-semaphore-shadow`
 - `mosquitto`
 - `npm`
-- `portainer`
 - `predbat`
-- `privacy-guardian`
-- `prometheus`
 - `qbittorrent`
+- `qbittorrent_backup_2026-07-01_171445`
 - `uptime-kuma`
 - `vaultwarden`
-- `watchtower`
 - `zwave`
 - `zwave-js-ui`
 
