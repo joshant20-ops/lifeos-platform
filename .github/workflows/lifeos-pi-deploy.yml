@@ -20,6 +20,7 @@ on:
           - capability-stage3-systemd-cleanup
           - verify-transaction-core
           - audit-p0-platform-recovery
+          - deploy-p0-resilience
   push:
     branches: [main]
     paths:
@@ -87,6 +88,7 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core' && 'verify-transaction-core' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' && 'deploy-pa-task-reconciler' ||
         github.event.issue.title == 'LifeOS Deploy: audit-p0-platform-recovery' && 'audit-p0-platform-recovery' ||
+        github.event.issue.title == 'LifeOS Deploy: deploy-p0-resilience' && 'deploy-p0-resilience' ||
         'deploy-ha-control-bridge') || inputs.operation }}
     steps:
       - name: Checkout exact main commit
