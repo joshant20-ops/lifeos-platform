@@ -137,10 +137,11 @@ EOF
 systemctl daemon-reload
 systemctl restart lifeos-ha-issue-queue-bridge.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service || fail bridge_not_running_during_wan_test
+wan_started=$(date --iso-8601=seconds)
 restarts_after_start=$(systemctl show lifeos-ha-issue-queue-bridge.service -p NRestarts --value)
 degraded_seen=0
 for _ in $(seq 1 24); do
-  if journalctl -u lifeos-ha-issue-queue-bridge.service --since '-2 minutes' -o cat --no-pager 2>/dev/null | grep -q 'QUEUE_REFRESH=DEGRADED'; then
+  if journalctl -u lifeos-ha-issue-queue-bridge.service --since "$wan_started" -o cat --no-pager 2>/dev/null | grep -q 'QUEUE_REFRESH=DEGRADED'; then
     degraded_seen=1
     break
   fi
@@ -153,9 +154,10 @@ restarts_during_loss=$(systemctl show lifeos-ha-issue-queue-bridge.service -p NR
 local_operation_probe
 remove_wan_test
 systemctl restart lifeos-ha-issue-queue-bridge.service
+recovery_started=$(date --iso-8601=seconds)
 recovered=0
 for _ in $(seq 1 24); do
-  if journalctl -u lifeos-ha-issue-queue-bridge.service --since '-2 minutes' -o cat --no-pager 2>/dev/null | grep -q 'QUEUE_REFRESH=PASS'; then
+  if journalctl -u lifeos-ha-issue-queue-bridge.service --since "$recovery_started" -o cat --no-pager 2>/dev/null | grep -q 'QUEUE_REFRESH=PASS'; then
     recovered=1
     break
   fi
