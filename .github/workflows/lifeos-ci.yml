@@ -61,6 +61,11 @@ jobs:
       - name: Install focused Python contract dependency
         run: python3 -m pip install pytest
 
+      - name: Validate P0 outage degradation
+        run: |
+          python3 -m py_compile governor/ha_issue_queue_bridge.py homelab/live/usr/local/sbin/lifeos-powerdown-assurance-active
+          python3 -m unittest -v tests.test_p0_cloud_degradation
+
       - name: Validate stable-base broker contracts
         run: |
           python3 -m pytest -q \
