@@ -140,8 +140,11 @@ jobs:
       - name: Validate specialist Energy Opportunity integration
         run: |
           python3 tests/test_energy_opportunity_service.py
+          cd homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy
+          python3 -m py_compile app/main.py app/routers/energy.py app/services/history.py
+          python3 -m pytest -q tests/test_history.py
+          cd "$GITHUB_WORKSPACE"
           python3 -m py_compile \
-            homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py \
             homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py \
             homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py \
             archive/closed-gates/scripts/audit-wave-a-live-acceptance.py \
