@@ -19,7 +19,7 @@ probe_unit() {
   local name="$1" unit="$2" values
   values="$(systemctl show "$unit" -p LoadState -p ActiveState -p SubState -p NRestarts --value 2>/dev/null | paste -sd, -)"
   [[ -n "$values" ]] || values=unavailable
-  echo "UNIT_\${name}=$values"
+  echo "UNIT_${name}=$values"
 }
 probe_unit PREDBAT predbat.service
 probe_unit ENERGY_FORECAST lifeos-energy-forecast.service
