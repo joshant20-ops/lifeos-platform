@@ -17,6 +17,33 @@ for unit in systemd-timesyncd.service chrony.service chronyd.service ntp.service
   echo "TIME_PROVIDER_$unit=$values"
 done
 echo "CHRONY_EXECSTART=$(systemctl show chrony.service -p ExecStart --value 2>/dev/null || echo unavailable)"
+# Capture the failed restart diagnostics and prove whether the deploy backup was restored.
+echo 'CHRONY_STATUS_BEGIN'
+systemctl status chrony.service --no-pager -l 2>&1 | sed -n '1,24p'
+echo 'CHRONY_STATUS_END'
+echo 'CHRONY_JOURNAL_BEGIN'
+journalctl -u chrony.service --since '2026-10-07 23:35:00 UTC' --no-pager -o short-iso 2>&1 | tail -80
+echo 'CHRONY_JOURNAL_END'
+echo "CHRONY_RESULT=$(systemctl show chrony.service -p Result -p ExecMainCode -p ExecMainStatus -p ExecMainStartTimestamp -p ExecMainExitTimestamp --value 2>/dev/null | paste -sd, -)"
+if command -v dpkg-query >/dev/null 2>&1; then
+  echo "CHRONY_PACKAGE=$(dpkg-query -W -f='${Status},${Version},${Architecture}' chrony 2>/dev/null || echo absent)"
+  dpkg-query -S /usr/sbin/chronyd 2>/dev/null | sed 's/^/CHRONY_BINARY_PACKAGE=/' || true
+fi
+systemctl cat chrony.service --no-pager 2>&1 | sed -n '1,100p' | sed 's/^/CHRONY_UNIT=/'
+backup=/var/backups/lifeos-p0-resilience/20261007T234046Z
+for pair in 'bridge:/usr/local/libexec/lifeos-ha-issue-queue-bridge' 'bridge-unit:/etc/systemd/system/lifeos-ha-issue-queue-bridge.service' 'clock-dropin:/etc/systemd/system/chrony.service.d/10-lifeos-boot-clock.conf' 'powerdown:/usr/local/sbin/lifeos-powerdown-assurance-active'; do
+  name=${pair%%:*}; path=${pair#*:}
+  if [[ -e "$backup/$name" ]]; then
+    if [[ -e "$path" ]] && cmp -s "$backup/$name" "$path"; then state=MATCH
+    elif [[ ! -e "$path" ]]; then state=MISSING
+    else state=DIFFERENT; fi
+    echo "P0_ROLLBACK_CHECK_$name=$state"
+  elif [[ -e "$path" ]]; then
+    echo "P0_ROLLBACK_CHECK_$name=NO_BACKUP_DEST_PRESENT"
+  else
+    echo "P0_ROLLBACK_CHECK_$name=NO_BACKUP_DEST_ABSENT"
+  fi
+done
 if [[ -r /etc/default/chrony ]]; then
   grep -E '^[[:space:]]*DAEMON_OPTS=' /etc/default/chrony | sed 's/^/CHRONY_DEFAULTS=/'
 else
