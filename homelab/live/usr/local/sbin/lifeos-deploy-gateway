@@ -63,6 +63,10 @@ OPS = {
         'script': 'scripts/lifeos-managed-update-observe-predbat.sh',
         'privileged': True,
     },
+    'audit-p0-platform-recovery': {
+        'script': 'scripts/lifeos-p0-platform-recovery-audit.sh',
+        'privileged': True,
+    },
     'managed-update-apply-predbat': {
         'script': 'scripts/lifeos-managed-update-apply-predbat.sh',
         'privileged': True,

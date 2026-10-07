@@ -19,6 +19,7 @@ on:
           - deploy-energy-opportunity-api
           - capability-stage3-systemd-cleanup
           - verify-transaction-core
+          - audit-p0-platform-recovery
   push:
     branches: [main]
     paths:
@@ -65,7 +66,8 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: capability-stage3-systemd-cleanup' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core'
-        || github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler'
+        || github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' ||
+        github.event.issue.title == 'LifeOS Deploy: audit-p0-platform-recovery'
       ))
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
@@ -84,6 +86,7 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: deploy-energy-opportunity-api' && 'deploy-energy-opportunity-api' ||
         github.event.issue.title == 'LifeOS Deploy: verify-transaction-core' && 'verify-transaction-core' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' && 'deploy-pa-task-reconciler' ||
+        github.event.issue.title == 'LifeOS Deploy: audit-p0-platform-recovery' && 'audit-p0-platform-recovery' ||
         'deploy-ha-control-bridge') || inputs.operation }}
     steps:
       - name: Checkout exact main commit
@@ -194,7 +197,7 @@ jobs:
             const ok = gatewayOk && jobOk;
             const fs = require('fs');
             let evidence = '';
-            if (process.env.LIFEOS_OPERATION === 'discover-house-status') {
+            if (['discover-house-status', 'audit-p0-platform-recovery'].includes(process.env.LIFEOS_OPERATION)) {
               const p = process.env.RUNNER_TEMP + '/lifeos-evidence/gateway.log';
               if (fs.existsSync(p)) evidence = fs.readFileSync(p, 'utf8').slice(0, 60000);
             }
