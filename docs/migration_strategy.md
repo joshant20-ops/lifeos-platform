@@ -1,4 +1,4 @@
-# Migration strategy
+# Migration strategy — historical/subordinate plan
 
 Migration is evidence-led and fail-closed. Pi5 remains the control plane during
 every phase, and no migration step may bypass the root broker and protected
@@ -36,3 +36,6 @@ remain normative.
 - Migration evidence and rollback artifacts follow
   `operations/records-retention.md`; a capability-specific policy may retain them
   longer but never silently shorten the stated recovery window.
+
+
+> **Roadmap status:** This is not an active programme roadmap. Migration work is subordinate to [`UNIFIED_ROADMAP.md`](UNIFIED_ROADMAP.md); this file retains only the detailed fail-closed migration procedure for work explicitly selected by that roadmap.
