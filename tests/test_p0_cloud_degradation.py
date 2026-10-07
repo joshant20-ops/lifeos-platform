@@ -35,9 +35,15 @@ class PowerDownDegradationTests(unittest.TestCase):
             }
             output = io.StringIO()
             with mock.patch.dict(os.environ, env, clear=False):
-                with mock.patch.object(
-                    urllib.request, "urlopen", side_effect=response_or_error
-                ):
+                if isinstance(response_or_error, BaseException):
+                    urlopen_patch = mock.patch.object(
+                        urllib.request, "urlopen", side_effect=response_or_error
+                    )
+                else:
+                    urlopen_patch = mock.patch.object(
+                        urllib.request, "urlopen", return_value=response_or_error
+                    )
+                with urlopen_patch:
                     with contextlib.redirect_stdout(output):
                         with self.assertRaises(SystemExit) as result:
                             runpy.run_path(SCRIPT, run_name="p0_powerdown_test")
