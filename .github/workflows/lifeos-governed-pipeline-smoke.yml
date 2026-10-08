@@ -10,7 +10,6 @@ on:
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-local-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
-      - 'governor/ai_broker.py'
       - 'engineer/provider_router.py'
       - 'scripts/test-direct-openhands.sh'
       - 'scripts/test-engineer-governor-broker.sh'
