@@ -5,26 +5,70 @@ on:
     branches: [main]
     paths:
       - 'governor/openhands_local_ai_gateway.py'
+      - 'governor/ai_broker.py'
+      - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
+      - 'scripts/lifeos-wake-aware-ai-acceptance.sh'
+      - '.github/workflows/lifeos-governor-broker-deploy.yml'
       - '.github/workflows/openhands-local-ai-gateway-deploy.yml'
 permissions:
   contents: read
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
 jobs:
-  deploy:
+  deploy-and-accept:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 10
+    timeout-minutes: 60
     steps:
-      - name: Deploy gateway on Pi5
+      - name: Reconcile canonical checkout
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          git fetch origin main
-          git checkout main
+          git fetch --prune origin main
+          if [[ -n "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo 'CANONICAL_CHECKOUT_NOT_READY=dirty'
+            git status --short
+            exit 20
+          fi
           git reset --hard origin/main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          echo 'CANONICAL_CHECKOUT_READY=PASS'
+
+      - name: Acquire bounded Engineer lease through the Tower controller
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          expires=$(( $(date +%s) + 1200 ))
+          python3 -c 'import json,sys; print(json.dumps({"owner":"github-1588-deploy","state":"active","expires_at":int(sys.argv[1])}))' "$expires" | mosquitto_pub -h 127.0.0.1 -t lifeos/tower/lease/lifeos-1588-deploy -r -l
+          ready=0
+          for _ in $(seq 1 96); do
+            if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then ready=1; break; fi
+            sleep 5
+          done
+          test "$ready" -eq 1
+          echo 'ENGINEER_READY_BY_CONTROLLER_LEASE=PASS'
+
+      - name: Deploy Governor broker through the fixed gateway
+        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
+
+      - name: Release deployment lease
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          printf '%s' '{"owner":"github-1588-deploy","state":"released","expires_at":0}' | mosquitto_pub -h 127.0.0.1 -t lifeos/tower/lease/lifeos-1588-deploy -r -l
+
+      - name: Deploy stable Pi inference endpoint
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
           mkdir -p "$HOME/.config/systemd/user"
           cat >"$HOME/.config/systemd/user/lifeos-openhands-local-ai.service" <<'UNIT'
           [Unit]
-          Description=LifeOS OpenHands local AI lifecycle gateway
+          Description=LifeOS wake-aware stable AI endpoint
           After=network-online.target
           Wants=network-online.target
           [Service]
@@ -41,10 +85,26 @@ jobs:
           systemctl --user daemon-reload
           systemctl --user enable lifeos-openhands-local-ai.service
           systemctl --user restart lifeos-openhands-local-ai.service
-          for _ in $(seq 1 20); do curl -fsS http://127.0.0.1:18114/health && break; sleep 1; done
-          curl -fsS http://127.0.0.1:18114/health | grep -q 'gpt-oss:20b'
-          curl -fsS http://127.0.0.1:18114/v1/models | grep -q 'gpt-oss:20b'
-          curl -fsS http://127.0.0.1:18114/v1/models | grep -q 'qwen2.5-coder:7b-instruct'
-          echo OPENHANDS_LOCAL_GATEWAY_GPT_OSS_DEFAULT=PASS
-          echo OPENHANDS_LOCAL_GATEWAY_QWEN_ROLLBACK=PASS
-          echo OPENHANDS_LOCAL_AI_GATEWAY_DEPLOY=PASS
+          for _ in $(seq 1 20); do curl -fsS --max-time 3 http://127.0.0.1:18114/health && break; sleep 1; done
+          curl -fsS --max-time 5 http://127.0.0.1:18114/v1/models | grep -q 'gpt-oss:20b'
+          curl -fsS --max-time 5 http://127.0.0.1:18114/v1/models | grep -q 'qwen2.5-coder:7b-instruct'
+          echo 'STABLE_AI_ENDPOINT_DEPLOY=PASS'
+
+      - name: Run controlled Tower-off acceptance
+        shell: bash
+        timeout-minutes: 30
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          bash scripts/lifeos-wake-aware-ai-acceptance.sh
+
+      - name: Capture endpoint diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          systemctl --user status lifeos-openhands-local-ai.service --no-pager --full
+          journalctl --user -u lifeos-openhands-local-ai.service -n 160 --no-pager -o short-iso
+          timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state
+          systemctl status lifeos-tower-control.service lifeos-autonomous-agent.service lifeos-ha-issue-queue-bridge.service --no-pager --full
+          journalctl -u lifeos-tower-control.service -n 120 --no-pager -o short-iso
