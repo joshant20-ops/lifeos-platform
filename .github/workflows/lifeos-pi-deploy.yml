@@ -125,7 +125,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/lifeos-evidence"
           if [[ "$GITHUB_EVENT_NAME" == "issues" && ( "$LIFEOS_OPERATION" == "inspect-tower-wol" || "$LIFEOS_OPERATION" == "capture-tower-wol" ) ]]; then
             # Invoke the canonical gateway source for these two new operations.
-            GATEWAY_CMD=(sudo -n python3 homelab/live/usr/local/sbin/lifeos-deploy-gateway "$LIFEOS_OPERATION")
+            GATEWAY_CMD=(sudo -n python3 /home/joshan/lifeos-platform/homelab/live/usr/local/sbin/lifeos-deploy-gateway "$LIFEOS_OPERATION")
             if [[ "$LIFEOS_OPERATION" == "capture-tower-wol" ]]; then
               if ! fingerprint="$(python3 - "$GITHUB_EVENT_PATH" <<'PY'
 import json, re, sys
