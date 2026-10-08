@@ -45,12 +45,14 @@ def text_of(msg):
 
 def classify(compact):
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
-{"actionable":true|false,"title":"short task","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
-Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
+{"relevant":true|false,"actionable":true|false,"title":"short task or event","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short matter topic","matter_ref":"case/policy/order/reference number or null","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
+Set relevant=true for a meaningful event belonging to an ongoing personal/admin matter even when it requires no action. Set relevant=false for marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
 EMAIL:
 """+json.dumps(compact,ensure_ascii=False)
     d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL))
     if not isinstance(d,dict) or not isinstance(d.get("actionable"),bool): raise ValueError("invalid schema")
+    if "relevant" not in d:d["relevant"]=bool(d.get("actionable"))
+    if not isinstance(d.get("relevant"),bool): raise ValueError("invalid relevance")
     if str(d.get("status")) not in {"OPEN","WAITING","DONE","NONE"}: raise ValueError("invalid status")
     severity=str(d.get("severity","normal")).lower()
     d["severity"]=severity if severity in {"low","normal","high"} else "normal"
@@ -66,7 +68,9 @@ def paperless_search(query):
     return [{"document_id":x.get("id"),"title":x.get("title"),"created":x.get("created")} for x in rows[:10]]
 
 def key(d):
-    return re.sub(r"[^a-z0-9]+","-",((d.get("counterparty") or "")+" "+(d.get("topic") or d.get("title") or "")).lower()).strip("-")[:120]
+    matter_ref=re.sub(r"[^a-z0-9]+","-",str(d.get("matter_ref") or "").lower()).strip("-")
+    identity=(d.get("counterparty") or "")+" "+(matter_ref or d.get("topic") or d.get("title") or "")
+    return re.sub(r"[^a-z0-9]+","-",identity.lower()).strip("-")[:120]
 
 def reference_ids(msg):
     values=[str(msg.get("in_reply_to","")),str(msg.get("references",""))]
@@ -95,6 +99,15 @@ def resolve_task_id(d,msg,tasks):
     if len(semantic_matches)==1:return semantic_matches[0][0]
     if len(ref_matches)==1:return ref_matches[0][0]
     if len(legacy_matches)==1:return legacy_matches[0][0]
+    # A mail thread is evidence, not the identity of a real-world matter.
+    # Reuse a unique existing semantic matter across separate threads.  The
+    # semantic key includes both counterparty and topic, so unrelated matters
+    # from the same sender remain distinct.
+    matter_matches=[
+        (task_id,task) for task_id,task in tasks.items()
+        if semantic and task.get("identity_semantic")==semantic
+    ]
+    if len(matter_matches)==1:return matter_matches[0][0]
     root=thread_root(msg)
     if not semantic or not root:return ""
     digest=hashlib.sha256(root.encode("utf-8","replace")).hexdigest()[:12]
@@ -200,7 +213,7 @@ def main():
             d=classify(compact)
             processed.add(compact["source_ref"])
             processed_order.append(compact["source_ref"])
-            if not d["actionable"] or d["status"]=="NONE":continue
+            if not d["relevant"]:continue
             k=key(d)
             if not k:continue
             observations.append((message_time(compact.get("date")),k,d,compact))
@@ -219,19 +232,37 @@ def main():
             old["source_message_ids"]=sorted(source_ids)
             tasks[task_id]=old
             continue
-        status=effective_status(old,d["status"])
+        # Relevant informational events enrich an existing matter without
+        # manufacturing an obligation. A new matter is published only when an
+        # actionable observation exists.
+        if not d.get("actionable") and not old:
+            continue
+        incoming_status=d.get("status") if d.get("actionable") else old.get("status")
+        status=effective_status(old,incoming_status)
         evidence=paperless_search(d.get("evidence_query") or d.get("topic") or d.get("title"))
+        timeline=list(old.get("timeline") or [])
+        event_ref=str(msg.get("message_id") or msg.get("source_ref") or "")[:300]
+        if event_ref and not any(str(x.get("source_ref") or "")==event_ref for x in timeline if isinstance(x,dict)):
+            timeline.append({
+                "source_ref":event_ref,
+                "observed_at":observed,
+                "status":str(d.get("status") or "NONE"),
+                "actionable":bool(d.get("actionable")),
+                "event_kind":"obligation" if d.get("actionable") else "information",
+            })
+        timeline=sorted(timeline,key=lambda x:int(x.get("observed_at") or 0))[-100:]
         tasks[task_id]={
-            "id":task_id,"identity_semantic":key(d),"thread_root_id":thread_root(msg),
+            "id":task_id,"identity_semantic":key(d),"matter_id":task_id,"thread_root_id":old.get("thread_root_id") or thread_root(msg),
             "title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
             "status":status,"due_date":d.get("due_date") or old.get("due_date"),
             "counterparty":d.get("counterparty") or old.get("counterparty"),
-            "topic":d.get("topic") or old.get("topic"),"severity":d.get("severity") or old.get("severity") or "normal","source":"gmail",
+            "topic":d.get("topic") or old.get("topic"),"matter_ref":d.get("matter_ref") or old.get("matter_ref"),"severity":d.get("severity") or old.get("severity") or "normal","source":"gmail",
             "email_message_id":str(msg.get("message_id",""))[:300],
             "source_message_ids":sorted(source_ids),
             "paperless_evidence":evidence or old.get("paperless_evidence",[]),
             "updated_from_email":str(msg.get("date",""))[:100],"observed_at":observed,
-            "reason":str(d.get("reason") or "")[:300]
+            "reason":str(d.get("reason") or "")[:300],
+            "timeline":timeline,
         }
     cutoff=int(time.time())-STALE_DAYS*86400
     tasks={k:v for k,v in tasks.items() if int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE"}
