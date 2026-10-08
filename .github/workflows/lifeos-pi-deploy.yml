@@ -128,15 +128,15 @@ jobs:
             GATEWAY_CMD=(sudo -n python3 /home/joshan/lifeos-platform/homelab/live/usr/local/sbin/lifeos-deploy-gateway "$LIFEOS_OPERATION")
             if [[ "$LIFEOS_OPERATION" == "capture-tower-wol" ]]; then
               if ! fingerprint="$(python3 - "$GITHUB_EVENT_PATH" <<'PY'
-import json, re, sys
-with open(sys.argv[1], encoding="utf-8") as f:
-    event = json.load(f)
-body = (event.get("issue") or {}).get("body") or ""
-matches = re.findall(r"(?m)^CONFIG_FINGERPRINT: ([0-9a-f]{64})$", body)
-if len(matches) != 1:
-    raise SystemExit("capture issue must contain exactly one CONFIG_FINGERPRINT line")
-print(matches[0])
-PY
+          import json, re, sys
+          with open(sys.argv[1], encoding="utf-8") as f:
+              event = json.load(f)
+          body = (event.get("issue") or {}).get("body") or ""
+          matches = re.findall(r"(?m)^CONFIG_FINGERPRINT: ([0-9a-f]{64})$", body)
+          if len(matches) != 1:
+              raise SystemExit("capture issue must contain exactly one CONFIG_FINGERPRINT line")
+          print(matches[0])
+          PY
               )"; then
                 echo "CAPTURE_REQUEST_REJECTED=INVALID_FINGERPRINT"
                 exit 64
