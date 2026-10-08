@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import pathlib
 import pwd
+import re
 import subprocess  # nosec B404
 import sys
 
@@ -61,6 +62,14 @@ OPS = {
     },
     'managed-update-observe-predbat': {
         'script': 'scripts/lifeos-managed-update-observe-predbat.sh',
+        'privileged': True,
+    },
+    'inspect-tower-wol': {
+        'script': 'scripts/lifeos-inspect-tower-wol.sh',
+        'privileged': True,
+    },
+    'capture-tower-wol': {
+        'script': 'scripts/lifeos-capture-tower-wol.sh',
         'privileged': True,
     },
     'audit-p0-platform-recovery': {
@@ -136,12 +145,27 @@ def preflight():
     return head
 
 
+def parse_request(argv: list[str]) -> tuple[str, list[str]]:
+    if len(argv) == 1 and argv[0] in OPS and argv[0] != 'capture-tower-wol':
+        return argv[0], []
+    if (
+        len(argv) == 3
+        and argv[0] == 'capture-tower-wol'
+        and re.fullmatch(r'[0-9a-f]{64}', argv[1])
+        and re.fullmatch(r'[0-9]{1,20}', argv[2])
+    ):
+        return argv[0], argv[1:]
+    print('USAGE=lifeos-deploy-gateway <allow-listed-operation> [capture-fingerprint run-id]')
+    print('ALLOWLIST=' + ','.join(sorted(OPS)))
+    raise SystemExit(64)
+
+
 def main():
-    if len(sys.argv) != 2 or sys.argv[1] not in OPS:
+    if sys.argv[1:] and sys.argv[1] not in OPS:
         print('USAGE=lifeos-deploy-gateway <operation>')
         print('ALLOWLIST=' + ','.join(sorted(OPS)))
         return 64
-    operation = sys.argv[1]
+    operation, operation_args = parse_request(sys.argv[1:])
     spec = OPS[operation]
     head = preflight()
     script = REPO / str(spec['script'])
@@ -151,7 +175,7 @@ def main():
     print(f'GATEWAY_OPERATION={operation}')
     print(f'GATEWAY_PLATFORM_HEAD={head}')
     if spec['privileged']:
-        cp = subprocess.run([BASH, str(script)], cwd=REPO, text=True)  # nosec B603
+        cp = subprocess.run([BASH, str(script), *operation_args], cwd=REPO, text=True)  # nosec B603
     else:
         cp = as_joshan(BASH, str(script))
     print(f'GATEWAY_CHILD_RC={cp.returncode}')
