@@ -33,9 +33,9 @@ jobs:
           echo "PI_DIAGNOSTIC_CHECKOUT=$(git rev-parse HEAD)"
       - name: Inspect or capture existing Tower wake path
         env:
-          DIAGNOSTIC_MODE: \${{ inputs.mode }}
-          EXPECTED_FINGERPRINT: \${{ inputs.config_fingerprint }}
-          RUN_ID: \${{ github.run_id }}
+          DIAGNOSTIC_MODE: ${{ inputs.mode }}
+          EXPECTED_FINGERPRINT: ${{ inputs.config_fingerprint }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
