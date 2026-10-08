@@ -47,14 +47,25 @@ PY
 sleep 3; assert_off
 echo 'ENDPOINT_REACHABLE_TOWER_OFF=PASS'
 python3 - "$BASE_URL" <<'PY'
-import concurrent.futures,json,sys,urllib.request
+import concurrent.futures,json,pathlib,sys,urllib.request
+base=sys.argv[1]
 def infer(label):
     p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request "+label,"stream":False}
-    q=urllib.request.Request(sys.argv[1]+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
-    with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
+    q=urllib.request.Request(base+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
     assert isinstance(v.get("response"),str) and v["response"].strip(),v
-with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex: list(ex.map(infer,("cold-A","cold-B")))
-print("CONCURRENT_ORIGINAL_REQUESTS=PASS")
+    return v["response"]
+def broker_infer():
+    token=pathlib.Path.home().joinpath(".config/lifeos/ai-broker.token").read_text().strip()
+    p={"model":"lifeos-local-only-normal","messages":[{"role":"user","content":"Call report_test_value with value ENDPOINT_BROKER_WAKE_OK. Do not answer normally."}],"stream":False,"tools":[{"type":"function","function":{"name":"report_test_value","description":"Report a harmless endpoint acceptance value.","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}}],"tool_choice":"required"}
+    q=urllib.request.Request("http://127.0.0.1:8790/v1/chat/completions",data=json.dumps(p).encode(),headers={"Content-Type":"application/json","Authorization":"Bearer "+token},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    calls=v["choices"][0]["message"].get("tool_calls") or []
+    assert any(c.get("function",{}).get("name")=="report_test_value" for c in calls),v
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+    futures=[ex.submit(infer,"cold-A"),ex.submit(infer,"cold-B"),ex.submit(broker_infer)]
+    [f.result(timeout=1600) for f in futures]
+print("CONCURRENT_DIRECT_AND_BROKER_REQUESTS=PASS")
 PY
 ready=0
 for _ in $(seq 1 120); do
