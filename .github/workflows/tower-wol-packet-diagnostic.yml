@@ -1,0 +1,45 @@
+name: Tower WoL packet diagnostic
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Inspect only first; use capture with the returned fingerprint second
+        required: true
+        type: choice
+        options: [inspect, capture]
+      config_fingerprint:
+        description: Required for capture; copy CONFIG_FINGERPRINT from an inspect run
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-pi5-control
+  cancel-in-progress: false
+jobs:
+  packet-diagnostic:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 12
+    steps:
+      - name: Verify canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch --prune origin main
+          git reset --hard origin/main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          echo "PI_DIAGNOSTIC_CHECKOUT=$(git rev-parse HEAD)"
+      - name: Inspect or capture existing Tower wake path
+        env:
+          DIAGNOSTIC_MODE: ${{ inputs.mode }}
+          EXPECTED_FINGERPRINT: ${{ inputs.config_fingerprint }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/lifeos-tower-wol-packet-diagnostic.py \
+            --mode "$DIAGNOSTIC_MODE" \
+            --expected-fingerprint "$EXPECTED_FINGERPRINT" \
+            --run-id "$RUN_ID"
