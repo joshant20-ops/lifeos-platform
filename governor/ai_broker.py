@@ -10,9 +10,8 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import pathlib
-import socket
 import subprocess
+import pathlib
 import time
 import urllib.error
 import urllib.parse
@@ -26,7 +25,7 @@ SECRETS_PATH = pathlib.Path(
 CONFIG_PATH = pathlib.Path(
     os.environ.get("LIFEOS_AI_BROKER_CONFIG", pathlib.Path.home() / ".config/lifeos/ai-broker.env")
 )
-OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://192.168.0.201:11434/api/generate")
+OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://127.0.0.1:18114/api/generate")
 OLLAMA_MODEL = os.environ.get("LIFEOS_LOCAL_AI_MODEL", "gpt-oss:20b")
 OLLAMA_CONTEXT_LENGTH = int(os.environ.get("LIFEOS_LOCAL_AI_CONTEXT_LENGTH", "8192"))
 HTTP_TIMEOUT = int(os.environ.get("LIFEOS_AI_HTTP_TIMEOUT", "120"))
@@ -39,19 +38,20 @@ class BrokerError(RuntimeError):
     pass
 
 
-def _lease_topic() -> str:
-    return f"lifeos/tower/lease/{os.getpid()}"
+def _lease_topic(lease_id: str | None = None) -> str:
+    return f"lifeos/tower/lease/{lease_id or os.getpid()}"
 
 
-def _publish_lease(state: str, *, required: bool = True) -> None:
+def _publish_lease(state: str, *, required: bool = True, lease_id: str | None = None) -> None:
+    owner = str(lease_id or os.getpid())
     payload = json.dumps({
-        "owner": f"ai-broker:{os.getpid()}",
+        "owner": f"ai-broker:{owner}",
         "state": state,
         "expires_at": int(time.time()) + (LEASE_TTL if state == "active" else 0),
     }, separators=(",", ":"))
     try:
         subprocess.run(
-            ["mosquitto_pub", "-h", MQTT_HOST, "-t", _lease_topic(), "-m", payload, "-r"],
+            ["mosquitto_pub", "-h", MQTT_HOST, "-t", _lease_topic(lease_id), "-m", payload, "-r"],
             check=True, capture_output=True, text=True, timeout=5,
         )
     except Exception as exc:
@@ -124,29 +124,13 @@ def _provider_model(provider: dict) -> str:
 
 
 def _wake_local_ai() -> bool:
-    cfg = _broker_config()
-    mac = os.environ.get("LIFEOS_LOCAL_AI_MAC") or cfg.get("LIFEOS_LOCAL_AI_MAC")
-    if not mac:
-        raise BrokerError(
-            "TOWER_WAKE_CONFIGURATION_ERROR: "
-            "LIFEOS_LOCAL_AI_MAC is not configured"
-        )
-    compact = mac.replace(":", "").replace("-", "")
-    if len(compact) != 12:
-        raise BrokerError("invalid local AI MAC")
-    try:
-        mac_bytes = bytes.fromhex(compact)
-    except ValueError as exc:
-        raise BrokerError("invalid local AI MAC") from exc
-    packet = b"\xff" * 6 + mac_bytes * 16
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(packet, ("255.255.255.255", 9))
+    """Compatibility shim; only the Pi controller sends Wake-on-LAN."""
+    _publish_lease("active")
     return True
 
 
 def _ollama_once(prompt: str, model: str) -> str:
-    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}, timeout=HTTP_TIMEOUT)
+    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
     text = str(result.get("response", "")).strip()
     if not text:
         raise BrokerError("ollama returned empty response")
@@ -154,28 +138,8 @@ def _ollama_once(prompt: str, model: str) -> str:
 
 
 def _ollama(prompt: str, model: str) -> str:
-    _publish_lease("active")
-    try:
-        try:
-            return _ollama_once(prompt, model)
-        except BrokerError as first:
-            # The Tower controller consumes the active lease and owns WoL. Keep
-            # the direct packet as a compatibility fallback during deployment.
-            _wake_local_ai()
-            deadline = time.monotonic() + WAKE_TIMEOUT
-            last: Exception = first
-            while time.monotonic() < deadline:
-                time.sleep(3)
-                _publish_lease("active")
-                try:
-                    return _ollama_once(prompt, model)
-                except BrokerError as exc:
-                    last = exc
-            raise BrokerError("local AI did not become ready after Wake-on-LAN") from last
-    finally:
-        # A retained TTL still releases the lease if MQTT disappears after the
-        # request; never replace a useful model result with a cleanup error.
-        _publish_lease("released", required=False)
+    # The stable endpoint owns the Tower lease, wake, readiness, and retry bound.
+    return _ollama_once(prompt, model)
 
 
 def _ollama_tool_call_from_content(content, tools: list[dict]) -> dict | None:
@@ -328,26 +292,8 @@ def _ollama_chat_once(messages: list[dict], tools: list[dict], model: str) -> di
 
 
 def _ollama_chat(messages: list[dict], tools: list[dict], provider: dict, tool_choice=None) -> dict:
-    del tool_choice  # Ollama receives the declared tools; model decides the call.
-    model = _provider_model(provider)
-    _publish_lease("active")
-    try:
-        try:
-            return _ollama_chat_once(messages, tools, model)
-        except BrokerError as first:
-            _wake_local_ai()
-            deadline = time.monotonic() + WAKE_TIMEOUT
-            last: Exception = first
-            while time.monotonic() < deadline:
-                time.sleep(3)
-                _publish_lease("active")
-                try:
-                    return _ollama_chat_once(messages, tools, model)
-                except BrokerError as exc:
-                    last = exc
-            raise BrokerError("local AI did not become ready after Wake-on-LAN") from last
-    finally:
-        _publish_lease("released", required=False)
+    del tool_choice
+    return _ollama_chat_once(messages, tools or [], _provider_model(provider))
 
 
 def _gemini_url(provider: dict, secrets: dict[str, str]) -> str:

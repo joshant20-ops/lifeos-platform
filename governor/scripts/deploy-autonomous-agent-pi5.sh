@@ -105,7 +105,8 @@ Environment=LIFEOS_PRIVACY_DOMAIN_POLICY=/usr/local/libexec/privacy-domain-polic
 Environment=LIFEOS_AI_POLICY=/usr/local/libexec/lifeos-ai-policy.json
 Environment=LIFEOS_AI_BROKER=/usr/local/libexec/lifeos-ai-broker.py
 Environment=LIFEOS_PROVIDER_ROUTER=/usr/local/libexec/lifeos-provider-router.py
-Environment=LIFEOS_LOCAL_VERIFIER_URL=http://192.168.0.201:11434/api/generate
+Environment=LIFEOS_LOCAL_AI_URL=http://127.0.0.1:18114/api/generate
+Environment=LIFEOS_LOCAL_VERIFIER_URL=http://127.0.0.1:18114/api/generate
 Environment=LIFEOS_LOCAL_VERIFIER_MODEL=qwen2.5-coder:7b-instruct
 Environment=LIFEOS_PLATFORM_REPO=/home/joshan/lifeos-platform
 Environment=LIFEOS_AI_BROKER_TOKEN_FILE=/home/joshan/.config/lifeos/ai-broker.token
