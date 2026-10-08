@@ -76,7 +76,7 @@ class H(BaseHTTPRequestHandler):
             try: ensure_tower(lease_id)
             finally: REQUEST_LOCK.release()
             request=Request(UPSTREAM+path,data=data,headers={"Content-Type":"application/json"},method="POST")
-                with urlopen(request,timeout=max(600,WAKE_TIMEOUT+600)) as r:
+            with urlopen(request,timeout=max(600,WAKE_TIMEOUT+600)) as r:
                     body=r.read(); self.send_response(r.status)
                     self.send_header("Content-Type",r.headers.get("Content-Type","application/json"))
                     self.send_header("Content-Length",str(len(body))); self.end_headers(); self.wfile.write(body)
