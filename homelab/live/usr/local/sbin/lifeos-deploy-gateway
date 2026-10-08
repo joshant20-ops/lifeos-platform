@@ -161,6 +161,10 @@ def parse_request(argv: list[str]) -> tuple[str, list[str]]:
 
 
 def main():
+    if sys.argv[1:] and sys.argv[1] not in OPS:
+        print('USAGE=lifeos-deploy-gateway <operation>')
+        print('ALLOWLIST=' + ','.join(sorted(OPS)))
+        return 64
     operation, operation_args = parse_request(sys.argv[1:])
     spec = OPS[operation]
     head = preflight()
