@@ -5,16 +5,13 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/lifeos-governor-broker-deploy.yml'
       - 'governor/autonomous_agent_server.py'
       - 'governor/autonomous_agent.py'
-      - 'governor/ai_broker.py'
       - 'governor/openai_compat.py'
       - 'governor/job_records.py'
       - 'governor/policy.json'
       - 'governor/privacy-domain-policy.json'
       - 'engineer/provider_router.py'
-      - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'governor/scripts/lifeos-cloud-builder'
       - 'governor/scripts/lifeos-local-builder'
       - 'governor/scripts/lifeos-remote-agent-builder'
