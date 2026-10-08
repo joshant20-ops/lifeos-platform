@@ -36,7 +36,7 @@ def test_cold_concurrent_requests_coalesce_to_one_wake(monkeypatch, capsys):
 
     def request():
         with GATEWAY.REQUEST_LOCK:
-            GATEWAY.ensure_tower()
+            GATEWAY.ensure_tower(f"test-{threading.get_ident()}")
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(request) for _ in range(2)]
         for future in futures:
@@ -54,7 +54,7 @@ def test_cold_request_has_bounded_failure(monkeypatch):
     monkeypatch.setattr(GATEWAY.time, "sleep", lambda _: None)
     started = time.monotonic()
     try:
-        GATEWAY.ensure_tower()
+        GATEWAY.ensure_tower("test-timeout")
     except RuntimeError as error:
         assert "bounded wake timeout" in str(error)
     else:
