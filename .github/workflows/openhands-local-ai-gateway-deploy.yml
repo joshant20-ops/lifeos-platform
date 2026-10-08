@@ -50,16 +50,6 @@ jobs:
           test "$ready" -eq 1
           echo 'ENGINEER_READY_BY_CONTROLLER_LEASE=PASS'
 
-      - name: Deploy Governor broker through the fixed gateway
-        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
-
-      - name: Release deployment lease
-        if: always()
-        shell: bash
-        run: |
-          set +e
-          printf '%s' '{"owner":"github-1588-deploy","state":"released","expires_at":0}' | mosquitto_pub -h 127.0.0.1 -t lifeos/tower/lease/lifeos-1588-deploy -r -l
-
       - name: Deploy stable Pi inference endpoint
         shell: bash
         run: |
@@ -89,6 +79,17 @@ jobs:
           curl -fsS --max-time 5 http://127.0.0.1:18114/v1/models | grep -q 'gpt-oss:20b'
           curl -fsS --max-time 5 http://127.0.0.1:18114/v1/models | grep -q 'qwen2.5-coder:7b-instruct'
           echo 'STABLE_AI_ENDPOINT_DEPLOY=PASS'
+
+
+      - name: Deploy Governor broker through the fixed gateway
+        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
+
+      - name: Release deployment lease
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          printf '%s' '{"owner":"github-1588-deploy","state":"released","expires_at":0}' | mosquitto_pub -h 127.0.0.1 -t lifeos/tower/lease/lifeos-1588-deploy -r -l
 
       - name: Run controlled Tower-off acceptance
         shell: bash
