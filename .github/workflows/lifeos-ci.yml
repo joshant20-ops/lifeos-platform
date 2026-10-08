@@ -84,6 +84,7 @@ jobs:
 
       - name: Validate Governor AI routing contracts
         run: |
+          bash -n scripts/lifeos-wake-aware-ai-acceptance.sh
           python3 -m py_compile \
             engineer/provider_router.py \
             governor/ai_broker.py \
