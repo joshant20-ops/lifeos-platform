@@ -130,7 +130,7 @@ def _wake_local_ai() -> bool:
 
 
 def _ollama_once(prompt: str, model: str) -> str:
-    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}, timeout=max(600, WAKE_TIMEOUT + 600))
+    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
     text = str(result.get("response", "")).strip()
     if not text:
         raise BrokerError("ollama returned empty response")
