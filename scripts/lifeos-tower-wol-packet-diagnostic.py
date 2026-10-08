@@ -423,7 +423,7 @@ def main() -> int:
     if mode == "inspect":
         print("DIAGNOSTIC_MODE=READ_ONLY_INSPECT")
         print("DIAGNOSTIC_RESULT=" + ("INSPECTION_READY" if ready else "INSPECTION_CAPTURE_UNAVAILABLE"))
-        return 0 if ready else 3
+        return 0
     if not expected or not run_id:
         fail("CAPTURE_REQUIRES_INSPECTION_FINGERPRINT_AND_RUN_ID")
     if not ready:
