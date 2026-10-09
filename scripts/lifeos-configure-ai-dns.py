@@ -7,6 +7,7 @@ import pathlib
 import re
 import shutil
 import socket
+import stat
 import struct
 import subprocess
 import tempfile
@@ -101,6 +102,10 @@ def main() -> int:
         raise RuntimeError("AdGuard DNS configuration requires the allow-listed root gateway")
     if not CONFIG.is_file() or CONFIG.is_symlink():
         raise RuntimeError("AdGuard Home config is missing or not a regular file")
+    for directory in (CONFIG.parent, CONFIG.parent.parent, CONFIG.parent.parent.parent):
+        parent_stat = directory.lstat()
+        if not directory.is_dir() or directory.is_symlink() or parent_stat.st_uid != 0 or parent_stat.st_mode & 0o022:
+            raise RuntimeError(f"AdGuard config parent is not a protected root directory: {directory}")
     original = CONFIG.stat()
     if original.st_uid != 0:
         raise RuntimeError("AdGuard Home config is not root-owned")
@@ -111,7 +116,12 @@ def main() -> int:
     if container.stdout.strip().lower() != "true":
         raise RuntimeError("AdGuard Home container is not running")
     lock_path = pathlib.Path("/run/lock/lifeos-ai-dns.lock")
-    with lock_path.open("w", encoding="ascii") as lock:
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    lock_stat = os.fstat(fd)
+    if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_uid != 0 or lock_stat.st_mode & 0o022:
+        os.close(fd)
+        raise RuntimeError("AdGuard DNS lock file is not a protected root-owned regular file")
+    with os.fdopen(fd, "r+", encoding="ascii") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         return configure_locked(original)
 
