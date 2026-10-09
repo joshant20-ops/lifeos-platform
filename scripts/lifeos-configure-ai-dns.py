@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import pwd
 import pathlib
 import re
 import shutil
@@ -104,8 +105,14 @@ def main() -> int:
         raise RuntimeError("AdGuard Home config is missing or not a regular file")
     for directory in (CONFIG.parent, CONFIG.parent.parent, CONFIG.parent.parent.parent):
         parent_stat = directory.lstat()
-        if not directory.is_dir() or directory.is_symlink() or parent_stat.st_uid != 0 or parent_stat.st_mode & 0o022:
-            raise RuntimeError(f"AdGuard config parent is not a protected root directory: {directory} uid={parent_stat.st_uid} mode={stat.S_IMODE(parent_stat.st_mode):04o} symlink={directory.is_symlink()}")
+        root_protected = parent_stat.st_uid == 0 and not parent_stat.st_mode & 0o022
+        trusted_adguard_dir = (
+            directory == CONFIG.parent
+            and parent_stat.st_uid == pwd.getpwnam("joshan").pw_uid
+            and not parent_stat.st_mode & 0o002
+        )
+        if not directory.is_dir() or directory.is_symlink() or not (root_protected or trusted_adguard_dir):
+            raise RuntimeError(f"AdGuard config parent is not protected: {directory} uid={parent_stat.st_uid} mode={stat.S_IMODE(parent_stat.st_mode):04o} symlink={directory.is_symlink()}")
     original = CONFIG.stat()
     if original.st_uid != 0:
         raise RuntimeError("AdGuard Home config is not root-owned")
