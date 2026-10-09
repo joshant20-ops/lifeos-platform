@@ -44,20 +44,6 @@ jobs:
           set -Eeuo pipefail
           sudo -n /usr/local/sbin/lifeos-deploy-gateway configure-ai-dns
 
-      - name: Acquire bounded Engineer lease through the Tower controller
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          expires=$(( $(date +%s) + 1200 ))
-          python3 -c 'import json,sys; print(json.dumps({"owner":"github-1588-deploy","state":"active","expires_at":int(sys.argv[1])}))' "$expires" | mosquitto_pub -h 127.0.0.1 -t lifeos/tower/lease/lifeos-1588-deploy -r -l
-          ready=0
-          for _ in $(seq 1 96); do
-            if ssh -o BatchMode=yes -o ConnectTimeout=4 Engineer true 2>/dev/null; then ready=1; break; fi
-            sleep 5
-          done
-          test "$ready" -eq 1
-          echo 'ENGINEER_READY_BY_CONTROLLER_LEASE=PASS'
-
       - name: Deploy stable Pi inference endpoint
         shell: bash
         run: |
