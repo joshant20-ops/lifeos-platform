@@ -6,6 +6,7 @@ on:
     paths:
       - 'governor/openhands_local_ai_gateway.py'
       - 'governor/ai_broker.py'
+      - 'scripts/lifeos-configure-ai-dns.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'scripts/lifeos-wake-aware-ai-acceptance.sh'
       - 'governor/tower_control.py'
@@ -36,6 +37,13 @@ jobs:
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           test -z "$(git status --porcelain --untracked-files=all)"
           echo 'CANONICAL_CHECKOUT_READY=PASS'
+
+      - name: Configure AdGuard stable AI hostname
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          python3 scripts/lifeos-configure-ai-dns.py
 
       - name: Acquire bounded Engineer lease through the Tower controller
         shell: bash
@@ -79,6 +87,7 @@ jobs:
           for _ in $(seq 1 20); do curl -fsS --max-time 3 http://127.0.0.1:18114/health && break; sleep 1; done
           curl -fsS --max-time 5 http://127.0.0.1:18114/v1/models | grep -q 'gpt-oss:20b'
           curl -fsS --max-time 5 http://127.0.0.1:18114/v1/models | grep -q 'qwen2.5-coder:7b-instruct'
+          curl -fsS --max-time 5 http://ai.lan:18114/v1/models | grep -q 'gpt-oss:20b'
           echo 'STABLE_AI_ENDPOINT_DEPLOY=PASS'
 
 

@@ -58,6 +58,15 @@ def test_local_failure_never_falls_back_to_cloud(monkeypatch):
     assert called == ["ollama"]
 
 
+def test_ai_lease_marks_home_assistant_as_the_wake_owner(monkeypatch):
+    published = []
+    monkeypatch.setattr(BROKER.subprocess, "run", lambda args, **kwargs: published.append(args))
+    BROKER._publish_lease("active", lease_id="ha-test", wake_via_ha=True)
+    payload = json.loads(published[0][published[0].index("-m") + 1])
+    assert payload["wake_via_ha"] is True
+    assert payload["owner"] == "ai-broker:ha-test"
+
+
 def test_forced_cloud_provider_must_still_be_policy_eligible(monkeypatch, tmp_path):
     monkeypatch.setattr(BROKER, "SECRETS_PATH", secret_file(tmp_path, {"GEMINI_API_KEY"}))
     with pytest.raises(BROKER.BrokerError, match="no eligible inference provider"):
@@ -66,10 +75,10 @@ def test_forced_cloud_provider_must_still_be_policy_eligible(monkeypatch, tmp_pa
 
 def test_local_inference_uses_stable_gateway_without_caller_wake(monkeypatch):
     calls = []
-    monkeypatch.setattr(BROKER, "OLLAMA_URL", "http://127.0.0.1:18114/api/generate")
+    monkeypatch.setattr(BROKER, "OLLAMA_URL", "http://ai.lan:18114/api/generate")
     monkeypatch.setattr(BROKER, "_post_json", lambda url, payload, **kwargs: calls.append(url) or {"response": "ok"})
     assert BROKER._ollama_once("hello", "model") == "ok"
-    assert calls == ["http://127.0.0.1:18114/api/generate"]
+    assert calls == ["http://ai.lan:18114/api/generate"]
     assert BROKER._ollama("hello", "model") == "ok"
 
 

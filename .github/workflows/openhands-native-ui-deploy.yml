@@ -148,7 +148,7 @@ jobs:
           else:
               o={}
           o["model"]="openai/gpt-oss:20b"
-          o["base_url"]="http://127.0.0.1:18114/v1"
+          o["base_url"]="http://ai.lan:18114/v1"
           o["api_key"]=o.get("api_key") or "local-lifeos-gateway"
           o["native_tool_calling"]=True
           if "name" in o:
@@ -160,7 +160,7 @@ jobs:
           api_key="$(docker exec lifeos-agent-canvas sh -c 'cat /home/openhands/.openhands/agent-canvas/api-key.txt')"
           test -n "$api_key"
           curl -fsS -X PATCH -H "X-Session-API-Key: $api_key" -H 'Content-Type: application/json' \
-            --data '{"agent_settings_diff":{"llm":{"model":"openai/gpt-oss:20b","base_url":"http://127.0.0.1:18114/v1","native_tool_calling":true},"enable_switch_llm_tool":false}}' \
+            --data '{"agent_settings_diff":{"llm":{"model":"openai/gpt-oss:20b","base_url":"http://ai.lan:18114/v1","native_tool_calling":true},"enable_switch_llm_tool":false}}' \
             http://127.0.0.1:18000/api/settings >/tmp/openhands-deploy-gptoss.json
           python3 - <<'PY'
           import json
