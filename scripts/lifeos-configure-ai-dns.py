@@ -63,7 +63,7 @@ def adguard_dns_config_summary(text: str) -> str:
                 if match:
                     hosts.append(match.group(1).strip("'\\\""))
     details = [f"port:{port}", f"bind_hosts:{','.join(hosts) if hosts else 'all-or-empty'}"]
-    for key in ("enabled", "protection_enabled", "upstream_mode"):
+    for key in ("enabled", "serve_plain_dns", "protection_enabled", "upstream_mode"):
         match = next((line for line in lines[start + 1:end] if re.match(rf"^  {key}:", line)), None)
         if match:
             details.append(f"{key}:{match.split(':', 1)[1].split('#', 1)[0].strip()}")
