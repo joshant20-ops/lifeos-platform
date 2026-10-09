@@ -99,8 +99,12 @@ jobs:
         shell: bash
         run: |
           set +e
+          export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           systemctl --user status lifeos-openhands-local-ai.service --no-pager --full
           journalctl --user -u lifeos-openhands-local-ai.service -n 160 --no-pager -o short-iso
+          curl -fsS --max-time 5 http://127.0.0.1:18114/health || true
+          timeout 5 getent ahostsv4 ai.lan || true
           timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state
           systemctl status lifeos-tower-control.service lifeos-autonomous-agent.service lifeos-ha-issue-queue-bridge.service --no-pager --full
           journalctl -u lifeos-tower-control.service -n 120 --no-pager -o short-iso
