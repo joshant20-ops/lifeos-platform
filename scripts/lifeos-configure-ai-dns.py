@@ -144,23 +144,25 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     if new != old:
         backup = CONFIG.with_name(f"AdGuardHome.yaml.ai-dns-backup-{time.time_ns()}")
         shutil.copy2(CONFIG, backup)
-        fd, temp_name = tempfile.mkstemp(prefix=".AdGuardHome.ai-dns.", dir=CONFIG.parent)
+        subprocess.run(["docker", "stop", "adguardhome"], check=True, capture_output=True, text=True, timeout=30)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as stream:
-                stream.write(new)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.chmod(temp_name, CONFIG.stat().st_mode & 0o777)
-            os.chown(temp_name, original.st_uid, original.st_gid)
-            os.replace(temp_name, CONFIG)
-        finally:
-            if os.path.exists(temp_name):
-                os.unlink(temp_name)
-        try:
-            subprocess.run(["docker", "restart", "adguardhome"], check=True, capture_output=True, text=True, timeout=30)
+            fd, temp_name = tempfile.mkstemp(prefix=".AdGuardHome.ai-dns.", dir=CONFIG.parent)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                    stream.write(new)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.chmod(temp_name, CONFIG.stat().st_mode & 0o777)
+                os.chown(temp_name, original.st_uid, original.st_gid)
+                os.replace(temp_name, CONFIG)
+            finally:
+                if os.path.exists(temp_name):
+                    os.unlink(temp_name)
+            subprocess.run(["docker", "start", "adguardhome"], check=True, capture_output=True, text=True, timeout=30)
         except Exception:
+            subprocess.run(["docker", "stop", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
             shutil.copy2(backup, CONFIG)
-            subprocess.run(["docker", "restart", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
+            subprocess.run(["docker", "start", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
             raise
 
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
@@ -178,8 +180,9 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         time.sleep(1)
     print("ADGUARD_DNS_DIAGNOSTICS=" + ";".join(f"{resolver}:{diagnostics.get(resolver, 'no_response')}" for resolver in resolvers))
     if new != old:
+        subprocess.run(["docker", "stop", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
         shutil.copy2(backup, CONFIG)
-        subprocess.run(["docker", "restart", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
+        subprocess.run(["docker", "start", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
     raise RuntimeError(f"AdGuard did not resolve {HOSTNAME} to the Pi address {expected}")
 
 
