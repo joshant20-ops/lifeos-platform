@@ -287,7 +287,7 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     api_results = {}
     runtime_status = {}
     for api_base in api_bases:
-        for api_path in ("/control/status", "/control/rewrite/list", "/control/rewrite/settings"):
+        for api_path in ("/control/status", "/control/rewrite/list", "/control/rewrite/settings", "/control/filtering/check_host?name=ai.lan"):
             key = f"{api_base.rsplit(':', 1)[0].removeprefix('http://')}:{api_path}"
             try:
                 with urllib.request.urlopen(f"{api_base}{api_path}", timeout=3) as response:
@@ -295,6 +295,13 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
                     payload = json.loads(response.read().decode("utf-8"))
                     if api_path.endswith("/status") and not runtime_status:
                         runtime_status = payload
+                    if "/check_host?" in api_path:
+                        result = {
+                            "reason": payload.get("reason"),
+                            "ip_addrs": payload.get("ip_addrs"),
+                            "cname": payload.get("cname"),
+                        }
+                        api_results[key] += f";check_host={json.dumps(result, separators=(',', ':'))}"
                     if api_path.endswith("/list"):
                         api_results[key] += f";exact_entry={any(item.get('domain') == HOSTNAME and item.get('answer') == expected for item in payload if isinstance(item, dict))}"
             except urllib.error.HTTPError as error:
