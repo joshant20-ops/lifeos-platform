@@ -105,7 +105,7 @@ def main() -> int:
     for directory in (CONFIG.parent, CONFIG.parent.parent, CONFIG.parent.parent.parent):
         parent_stat = directory.lstat()
         if not directory.is_dir() or directory.is_symlink() or parent_stat.st_uid != 0 or parent_stat.st_mode & 0o022:
-            raise RuntimeError(f"AdGuard config parent is not a protected root directory: {directory}")
+            raise RuntimeError(f"AdGuard config parent is not a protected root directory: {directory} uid={parent_stat.st_uid} mode={stat.S_IMODE(parent_stat.st_mode):04o} symlink={directory.is_symlink()}")
     original = CONFIG.stat()
     if original.st_uid != 0:
         raise RuntimeError("AdGuard Home config is not root-owned")
