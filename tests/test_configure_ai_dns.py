@@ -40,3 +40,30 @@ def test_updates_existing_ai_rewrite_without_duplication():
 def test_adds_rewrite_when_rewrites_key_is_absent():
     result = configure_ai_dns.rewrite_config("dns:\n  upstream_dns: []\n", "192.168.0.10")
     assert "  rewrites:\n    - domain: ai.lan\n      answer: 192.168.0.10" in result
+
+
+def test_enables_existing_disabled_dns_rewrites_without_changing_filtering():
+    source = """filtering:
+  filtering_enabled: true
+  rewrites_enabled: false
+  rewrites: []
+dns:
+  upstream_dns:
+    - 1.1.1.1
+"""
+    result = configure_ai_dns.rewrite_config(source, "192.168.0.10")
+    assert "  filtering_enabled: true" in result
+    assert "  rewrites_enabled: true" in result
+    assert result.count("rewrites_enabled:") == 1
+    assert "  rewrites:\n    - domain: ai.lan\n      answer: 192.168.0.10" in result
+    assert "  upstream_dns:\n    - 1.1.1.1" in result
+
+
+def test_adds_rewrite_enable_flag_when_missing_from_filtering_section():
+    source = """filtering:
+  filtering_enabled: true
+  rewrites: []
+"""
+    result = configure_ai_dns.rewrite_config(source, "192.168.0.10")
+    assert "  rewrites_enabled: true" in result
+    assert result.count("rewrites_enabled:") == 1
