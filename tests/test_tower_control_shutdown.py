@@ -12,6 +12,26 @@ spec.loader.exec_module(tower_control)
 
 
 class TowerShutdownTests(unittest.TestCase):
+    def test_wake_uses_existing_host_wakeonlan_with_configured_route(self):
+        cfg = {
+            "mac": "40-8d-5c-84-41-64",
+            "broadcast": "255.255.255.255",
+            "wol_port": 9,
+        }
+        with mock.patch.object(tower_control, "run") as run:
+            tower_control.send_wol(cfg)
+        self.assertEqual(
+            run.call_args.args,
+            ("wakeonlan", "-i", "255.255.255.255", "-p", "9", "40:8d:5c:84:41:64"),
+        )
+        self.assertEqual(run.call_args.kwargs, {"check": True, "timeout": 10})
+
+    def test_wake_rejects_invalid_mac_without_sending(self):
+        with mock.patch.object(tower_control, "run") as run:
+            with self.assertRaisesRegex(RuntimeError, "tower MAC is not configured"):
+                tower_control.send_wol({"mac": "invalid"})
+        run.assert_not_called()
+
     def test_graceful_shutdown_reuses_service_account_identity(self):
         cfg = {
             "host": "tower.invalid",

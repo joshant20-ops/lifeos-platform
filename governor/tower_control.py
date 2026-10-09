@@ -145,10 +145,8 @@ def send_wol(cfg: dict) -> None:
         raise RuntimeError("tower MAC is not configured")
     broadcast = str(cfg.get("broadcast") or "255.255.255.255")
     port = int(cfg.get("wol_port") or 9)
-    packet = bytes.fromhex("ff" * 6 + mac * 16)
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        sock.sendto(packet, (broadcast, port))
+    formatted_mac = ":".join(mac[i:i + 2] for i in range(0, 12, 2))
+    run("wakeonlan", "-i", broadcast, "-p", str(port), formatted_mac, check=True, timeout=10)
 
 
 def graceful_shutdown(cfg: dict) -> None:
