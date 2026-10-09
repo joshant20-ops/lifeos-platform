@@ -218,8 +218,15 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ["docker", "inspect", "--format={{.HostConfig.NetworkMode}}|{{json .NetworkSettings.Ports}}|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", "adguardhome"],
         check=True, capture_output=True, text=True, timeout=5,
     ).stdout.strip()
+    listener_output = ""
+    if shutil.which("ss"):
+        listeners = subprocess.run(
+            ["ss", "-H", "-lntup"], check=False, capture_output=True, text=True, timeout=5,
+        ).stdout
+        listener_output = ";".join(line.strip() for line in listeners.splitlines() if re.search(r":(?:53|3001)\\b", line))
     print(f"ADGUARD_HTTP_CONFIG_ADDRESS={configured_address or 'unavailable'} API_PORT={configured_port or 'unavailable'}")
     print(f"ADGUARD_DOCKER_NETWORK_PORTS={network_runtime}")
+    print(f"ADGUARD_HOST_LISTENERS={listener_output or 'unavailable'}")
     api_results = {}
     for api_base in api_bases:
         for api_path in ("/control/status", "/control/rewrite/list", "/control/rewrite/settings"):
@@ -241,6 +248,7 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print(f"ADGUARD_FILTERING_FLAGS_AFTER={filtering_rewrite_flags(persisted)}")
     print(f"ADGUARD_CONFIG_SECTION={rewrite_section_name} ENTRY_AFTER_START={'PASS' if rewrite_entry else 'FAIL'}")
     print(f"ADGUARD_REWRITE_API=list:{api_results.get('list')} settings:{api_results.get('settings')}")
+    print("ADGUARD_HTTP_PROBES=" + ";".join(f"{key}={value}" for key, value in sorted(api_results.items())))
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
     diagnostics: dict[str, str] = {}
     for _ in range(20):
