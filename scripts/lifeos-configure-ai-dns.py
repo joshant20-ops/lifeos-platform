@@ -106,7 +106,7 @@ def main() -> int:
         parent_stat = directory.lstat()
         root_protected = parent_stat.st_uid == 0 and not parent_stat.st_mode & 0o022
         trusted_adguard_dir = (
-            directory == CONFIG.parent.parent
+            directory in (CONFIG.parent.parent, CONFIG.parent.parent.parent)
             and parent_stat.st_uid == 1000
             and not parent_stat.st_mode & 0o002
         )
