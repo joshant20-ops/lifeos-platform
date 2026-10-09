@@ -218,29 +218,45 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ["docker", "inspect", "--format={{.HostConfig.NetworkMode}}|{{json .NetworkSettings.Ports}}|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", "adguardhome"],
         check=True, capture_output=True, text=True, timeout=5,
     ).stdout.strip()
-    listener_output = ""
-    if shutil.which("ss"):
-        listeners = subprocess.run(
-            ["ss", "-H", "-lntup"], check=False, capture_output=True, text=True, timeout=5,
-        ).stdout
-        listener_output = ";".join(line.strip() for line in listeners.splitlines() if re.search(r":(?:53|3001)\b", line))
-    print(f"ADGUARD_HTTP_CONFIG_ADDRESS={configured_address or 'unavailable'} API_PORT={configured_port or 'unavailable'}")
-    print(f"ADGUARD_DOCKER_NETWORK_PORTS={network_runtime}")
-    print(f"ADGUARD_HOST_LISTENERS={listener_output or 'unavailable'}")
     api_results = {}
+    runtime_status = {}
     for api_base in api_bases:
         for api_path in ("/control/status", "/control/rewrite/list", "/control/rewrite/settings"):
             key = f"{api_base.rsplit(':', 1)[0].removeprefix('http://')}:{api_path}"
             try:
                 with urllib.request.urlopen(f"{api_base}{api_path}", timeout=3) as response:
                     api_results[key] = f"{response.status};server={response.headers.get('Server', 'none')};type={response.headers.get('Content-Type', 'none')}"
+                    payload = json.loads(response.read().decode("utf-8"))
+                    if api_path.endswith("/status") and not runtime_status:
+                        runtime_status = payload
                     if api_path.endswith("/list"):
-                        payload = json.loads(response.read().decode("utf-8"))
                         api_results[key] += f";exact_entry={any(item.get('domain') == HOSTNAME and item.get('answer') == expected for item in payload if isinstance(item, dict))}"
             except urllib.error.HTTPError as error:
                 api_results[key] = f"{error.code};server={error.headers.get('Server', 'none')};type={error.headers.get('Content-Type', 'none')}"
             except Exception as error:
                 api_results[key] = type(error).__name__
+    dns_port = runtime_status.get("dns_port")
+    dns_addresses = runtime_status.get("dns_addresses")
+    print(f"ADGUARD_HTTP_CONFIG_ADDRESS={configured_address or 'unavailable'} API_PORT={configured_port or 'unavailable'}")
+    print(f"ADGUARD_DOCKER_NETWORK_PORTS={network_runtime}")
+    print(
+        "ADGUARD_RUNTIME_STATUS="
+        f"running:{runtime_status.get('running', 'unavailable')};"
+        f"dns_addresses:{','.join(dns_addresses) if isinstance(dns_addresses, list) else 'unavailable'};"
+        f"dns_port:{dns_port or 'unavailable'};http_port:{runtime_status.get('http_port', 'unavailable')};"
+        f"version:{runtime_status.get('version', 'unavailable')}"
+    )
+    listener_output = ""
+    if shutil.which("ss"):
+        listeners = subprocess.run(
+            ["ss", "-H", "-lntup"], check=False, capture_output=True, text=True, timeout=5,
+        ).stdout
+        ports = {"53", "3001"}
+        if isinstance(dns_port, int):
+            ports.add(str(dns_port))
+        port_pattern = r":(?:" + "|".join(re.escape(port) for port in sorted(ports)) + r")\\b"
+        listener_output = ";".join(line.strip() for line in listeners.splitlines() if re.search(port_pattern, line))
+    print(f"ADGUARD_HOST_LISTENERS={listener_output or 'unavailable'}")
     print(f"ADGUARD_IMAGE={image}")
     print(f"ADGUARD_MOUNTS={mount_info}")
     print(f"ADGUARD_VERSION={(binary_version.stdout or binary_version.stderr).strip()[:200] or 'unavailable'}")
