@@ -41,10 +41,32 @@ def rewrite_section(lines: list[str]) -> tuple[int, int]:
     return start, end
 
 
+def filtering_rewrite_flags(text: str) -> str:
+    lines = text.splitlines()
+    start, end = rewrite_section(lines)
+    if not re.match(r"^filtering:\\s*(?:#.*)?$", lines[start]):
+        return "legacy_dns_section"
+    values = {}
+    for key in ("filtering_enabled", "rewrites_enabled"):
+        found = next((line for line in lines[start + 1:end] if re.match(rf"^  {key}:", line)), None)
+        value = re.sub(r"^  [^:]+:\\s*", "", found).split("#", 1)[0].strip().lower() if found else "unset"
+        values[key] = value
+    return ",".join(f"{key}:{values[key]}" for key in ("filtering_enabled", "rewrites_enabled"))
+
+
 def rewrite_config(text: str, address: str) -> str:
     lines = text.splitlines()
     start, end = rewrite_section(lines)
-    rewrite = next((i for i in range(start + 1, end) if re.match(r"^  rewrites:\s*(?:\[\])?\s*(?:#.*)?$", lines[i])), None)
+    if re.match(r"^filtering:\\s*(?:#.*)?$", lines[start]):
+        enabled = next((i for i in range(start + 1, end) if re.match(r"^  rewrites_enabled:", lines[i])), None)
+        if enabled is None:
+            lines.insert(start + 1, "  rewrites_enabled: true")
+        else:
+            current = re.sub(r"^  rewrites_enabled:\\s*", "", lines[enabled]).split("#", 1)[0].strip().lower()
+            if current != "true":
+                lines[enabled] = "  rewrites_enabled: true"
+        start, end = rewrite_section(lines)
+    rewrite = next((i for i in range(start + 1, end) if re.match(r"^  rewrites:\\s*(?:\\[\\])?\\s*(?:#.*)?$", lines[i])), None)
     entry = [f"    - domain: {HOSTNAME}", f"      answer: {address}"]
     if rewrite is None:
         lines[start + 1:start + 1] = ["  rewrites:", *entry]
@@ -215,6 +237,8 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print(f"ADGUARD_IMAGE={image}")
     print(f"ADGUARD_MOUNTS={mount_info}")
     print(f"ADGUARD_VERSION={(binary_version.stdout or binary_version.stderr).strip()[:200] or 'unavailable'}")
+    print(f"ADGUARD_FILTERING_FLAGS_BEFORE={filtering_rewrite_flags(old)}")
+    print(f"ADGUARD_FILTERING_FLAGS_AFTER={filtering_rewrite_flags(persisted)}")
     print(f"ADGUARD_CONFIG_SECTION={rewrite_section_name} ENTRY_AFTER_START={'PASS' if rewrite_entry else 'FAIL'}")
     print(f"ADGUARD_REWRITE_API=list:{api_results.get('list')} settings:{api_results.get('settings')}")
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
