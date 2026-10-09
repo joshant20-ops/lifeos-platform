@@ -26,8 +26,10 @@ CONFIG = pathlib.Path("/etc/lifeos/tower.json")
 STATE_TOPIC = "lifeos/tower/state"
 LEASE_PREFIX = "lifeos/tower/lease/"
 CONTROLLER_UNIT = "lifeos-tower-control.service"
-CAPTURE_WAIT = 42
-OBSERVE_SECONDS = 300
+LEASE_WINDOW_SECONDS = 120
+LEASE_TTL_SECONDS = LEASE_WINDOW_SECONDS + 10
+NETWORK_POLL_SECONDS = 4
+ICMP_POLL_SECONDS = 20
 
 
 def fail(message: str, code: int = 2) -> None:
@@ -256,31 +258,85 @@ def tcp_open(host: str, port: int) -> bool:
         return False
 
 
-def monitor(cfg: dict) -> dict:
-    start = time.monotonic()
-    next_ping = start
+def wake_window_complete(started_at: float, now: float, readiness_observed: bool) -> bool:
+    return readiness_observed or now - started_at >= LEASE_WINDOW_SECONDS
+
+
+def monitor(
+    cfg: dict,
+    started_at: float,
+    on_tick=None,
+) -> dict:
+    deadline = started_at + LEASE_WINDOW_SECONDS
+    next_ping = started_at
+    next_observation = started_at
+    last_icmp = None
     last_result = None
+    first_tcp22_ready = None
+    first_ollama_ready = None
     first_ready = None
-    while time.monotonic() - start < OBSERVE_SECONDS:
+
+    while not wake_window_complete(started_at, time.monotonic(), first_ready is not None):
+        if on_tick:
+            on_tick()
         now = time.monotonic()
-        if now >= next_ping:
-            ping = command(["ping", "-c", "1", "-W", "1", cfg["host"]], timeout=3)
-            next_ping = now + 20
-            icmp = ping.returncode == 0
-        else:
-            icmp = None
-        neigh = command(["ip", "neigh", "show", cfg["host"]]).stdout.strip()
-        ssh = tcp_open(cfg["host"], cfg["access_port"])
-        ollama = tcp_open(cfg["host"], 11434)
-        current = {"neigh": neigh or "absent", "icmp": icmp, "tcp_ssh": ssh, "tcp_ollama": ollama}
-        if current != last_result:
-            print("NETWORK_OBSERVATION=" + json.dumps({"at_utc": dt.datetime.now(dt.timezone.utc).isoformat(), **current}, sort_keys=True), flush=True)
-            last_result = current
-        if ssh or ollama:
-            first_ready = current
-            break
-        time.sleep(4)
-    return {"first_ready": first_ready, "seconds": round(time.monotonic() - start, 1), "last": last_result}
+        if now >= next_observation and deadline - now >= 5:
+            if now >= next_ping:
+                ping = command(["ping", "-c", "1", "-W", "1", cfg["host"]], timeout=3)
+                last_icmp = ping.returncode == 0
+                next_ping = now + ICMP_POLL_SECONDS
+            neigh = command(["ip", "neigh", "show", cfg["host"]], timeout=1).stdout.strip()
+            ssh = tcp_open(cfg["host"], cfg["access_port"])
+            ollama = tcp_open(cfg["host"], 11434)
+            observed_at = dt.datetime.now(dt.timezone.utc).isoformat()
+            current = {
+                "neigh": neigh or "absent",
+                "icmp": last_icmp,
+                "tcp_ssh": ssh,
+                "tcp_ollama": ollama,
+            }
+            elapsed = round(time.monotonic() - started_at, 3)
+            if ssh and first_tcp22_ready is None:
+                first_tcp22_ready = {"at_utc": observed_at, "elapsed_seconds": elapsed}
+                print(f"TOWER_TCP22_READY_UTC={observed_at}", flush=True)
+                print(f"LEASE_TO_TCP22_SECONDS={elapsed:.3f}", flush=True)
+            if ollama and first_ollama_ready is None:
+                first_ollama_ready = {"at_utc": observed_at, "elapsed_seconds": elapsed}
+                print(f"TOWER_OLLAMA_READY_UTC={observed_at}", flush=True)
+                print(f"LEASE_TO_OLLAMA_SECONDS={elapsed:.3f}", flush=True)
+            if ssh and ollama and first_ready is None:
+                first_ready = {
+                    "at_utc": observed_at,
+                    "elapsed_seconds": elapsed,
+                    "tcp_ssh": True,
+                    "tcp_ollama": True,
+                }
+                print(f"TOWER_FULL_READINESS_UTC={observed_at}", flush=True)
+                print(f"LEASE_TO_FIRST_READINESS_SECONDS={elapsed:.3f}", flush=True)
+            if current != last_result:
+                print(
+                    "NETWORK_OBSERVATION="
+                    + json.dumps({"at_utc": observed_at, **current}, sort_keys=True),
+                    flush=True,
+                )
+                last_result = current
+            next_observation = time.monotonic() + NETWORK_POLL_SECONDS
+        if on_tick:
+            on_tick()
+        remaining = deadline - time.monotonic()
+        if remaining > 0 and first_ready is None:
+            time.sleep(min(0.25, remaining))
+
+    if on_tick:
+        on_tick()
+    return {
+        "first_tcp22_ready": first_tcp22_ready,
+        "first_ollama_ready": first_ollama_ready,
+        "first_ready": first_ready,
+        "seconds": round(time.monotonic() - started_at, 3),
+        "window_seconds": LEASE_WINDOW_SECONDS,
+        "last": last_result,
+    }
 
 
 def capture(cfg: dict, iface: str, source: str, fingerprint: str, expected: str, run_id: str) -> int:
@@ -322,23 +378,29 @@ def capture(cfg: dict, iface: str, source: str, fingerprint: str, expected: str,
         print(f"CAPTURE_STARTED_UTC={started}")
         print(f"CAPTURE_INTERFACE={iface}")
         print(f"CAPTURE_FILTER={filter_expr}")
-        publish_lease(lease_id, "active", int(time.time()) + 90)
-        lease_published = True
         selector = selectors.DefaultSelector()
         selector.register(journal.stdout, selectors.EVENT_READ)
-        deadline = time.monotonic() + CAPTURE_WAIT
-        first_marker_at = None
-        while time.monotonic() < deadline:
-            for key, _ in selector.select(timeout=0.5):
+
+        def drain_markers() -> None:
+            while True:
+                events = selector.select(timeout=0)
+                if not events:
+                    return
+                key, _ = events[0]
                 line = key.fileobj.readline()
                 if "TOWER_COMPUTE_WAKE=REQUESTED" in line:
                     marker = {"line": " ".join(line.split()), "at_utc": parse_marker_timestamp(line)}
                     markers.append(marker)
                     print("CONTROLLER_WAKE_MARKER=" + json.dumps(marker, sort_keys=True), flush=True)
-                    if first_marker_at is None:
-                        first_marker_at = time.monotonic()
-            if first_marker_at is not None and time.monotonic() - first_marker_at >= 2:
-                break
+
+        publish_lease(lease_id, "active", int(time.time()) + LEASE_TTL_SECONDS)
+        lease_published = True
+        lease_started_at = time.monotonic()
+        lease_published_utc = dt.datetime.now(dt.timezone.utc).isoformat()
+        print(f"LEASE_PUBLISHED_UTC={lease_published_utc}")
+        print(f"LEASE_WINDOW_SECONDS={LEASE_WINDOW_SECONDS}")
+        outcome = monitor(cfg, lease_started_at, on_tick=drain_markers)
+        drain_markers()
         publish_lease(lease_id, "released", 0)
         lease_published = False
         if proc and proc.poll() is None:
@@ -351,29 +413,33 @@ def capture(cfg: dict, iface: str, source: str, fingerprint: str, expected: str,
         frames = parse_pcap(pcap_path, cfg["mac_bytes"], cfg["wol_port"], cfg["broadcast"])
         print(f"CONTROLLER_WAKE_MARKER_COUNT={len(markers)}")
         print(f"WOL_PACKET_COUNT={len(frames)}")
+        previous_packet_time = None
+        marker_times = [
+            dt.datetime.fromisoformat(marker["at_utc"])
+            for marker in markers
+            if marker.get("at_utc") != "unparsed"
+        ]
         for i, frame in enumerate(frames, 1):
             print(f"WOL_PACKET_{i}=" + json.dumps({k: v for k, v in frame.items() if k != "payload_hex"}, sort_keys=True))
             print(f"WOL_PACKET_{i}_PAYLOAD_HEX={frame['payload_hex']}")
-            if frame["payload_valid"] and markers:
-                try:
-                    packet_time = dt.datetime.fromisoformat(frame["timestamp"])
-                    marker_time = dt.datetime.fromisoformat(markers[0]["at_utc"])
-                    print(f"WOL_PACKET_{i}_MARKER_DELTA_SECONDS={(packet_time-marker_time).total_seconds():.3f}")
-                except Exception:
-                    pass
+            packet_time = dt.datetime.fromisoformat(frame["timestamp"])
+            if previous_packet_time is not None:
+                print(f"WOL_PACKET_INTERVAL_{i}_SECONDS={(packet_time-previous_packet_time).total_seconds():.3f}")
+            previous_packet_time = packet_time
+            if marker_times:
+                nearest_marker = min(marker_times, key=lambda stamp: abs((packet_time-stamp).total_seconds()))
+                print(f"WOL_PACKET_{i}_NEAREST_MARKER_DELTA_SECONDS={(packet_time-nearest_marker).total_seconds():.3f}")
         if not markers:
             print("WAKE_PATH_RESULT=NO_CONTROLLER_WAKE_MARKER")
         elif not frames:
             print("WAKE_PATH_RESULT=MARKER_WITHOUT_CAPTURED_PACKET")
-        elif len(frames) == 1 and frames[0]["payload_valid"]:
-            print("WAKE_PATH_RESULT=ONE_CORRECT_MAGIC_PACKET_CAPTURED_ON_PI_EGRESS")
+        elif all(frame["payload_valid"] for frame in frames):
+            print(f"WAKE_PATH_RESULT=ALL_{len(frames)}_CAPTURED_MAGIC_PACKETS_VALID_ON_PI_EGRESS")
         else:
             print("WAKE_PATH_RESULT=PACKET_COUNT_OR_PAYLOAD_REQUIRES_REVIEW")
-        print("NETWORK_MONITOR_BEGIN=YES", flush=True)
-        outcome = monitor(cfg)
         print("NETWORK_MONITOR_RESULT=" + json.dumps(outcome, sort_keys=True), flush=True)
         if outcome["first_ready"] is None:
-            print("TOWER_NETWORK_READINESS=NOT_OBSERVED_WITHIN_300S")
+            print(f"TOWER_NETWORK_READINESS=NOT_OBSERVED_WITHIN_{LEASE_WINDOW_SECONDS}S")
         else:
             print("TOWER_NETWORK_READINESS=OBSERVED")
         print("DIAGNOSTIC_RESULT=COMPLETE", flush=True)
@@ -428,7 +494,7 @@ def main() -> int:
         fail("CAPTURE_REQUIRES_INSPECTION_FINGERPRINT_AND_RUN_ID")
     if not ready:
         fail("CAPTURE_PRIVILEGE_NOT_AVAILABLE")
-    print("DIAGNOSTIC_MODE=ONE_CONTROLLER_LEASE")
+    print("DIAGNOSTIC_MODE=BOUNDED_CONTROLLER_LEASE_WINDOW")
     return capture(cfg, iface, source, identity(cfg, iface, source), expected, run_id)
 
 
