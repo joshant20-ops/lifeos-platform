@@ -60,13 +60,13 @@ def rewrite_config(text: str, address: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def adguard_ipv4_answers(name: str) -> set[str]:
+def adguard_ipv4_answers(name: str, resolver: str) -> set[str]:
     request_id = int.from_bytes(os.urandom(2), "big")
     labels = b"".join(bytes([len(label)]) + label.encode("ascii") for label in name.split(".")) + b"\0"
     query = struct.pack("!HHHHHH", request_id, 0x0100, 1, 0, 0, 0) + labels + struct.pack("!HH", 1, 1)
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
         client.settimeout(3)
-        client.sendto(query, ("127.0.0.1", 53))
+        client.sendto(query, (resolver, 53))
         response, _ = client.recvfrom(4096)
     ident, flags, _questions, answers, _authority, _additional = struct.unpack("!HHHHHH", response[:12])
     if ident != request_id or flags & 0x000F:
@@ -160,9 +160,10 @@ def configure_locked(original) -> int:
     expected = pi_ipv4()
     for _ in range(20):
         try:
-            if expected in adguard_ipv4_answers(HOSTNAME):
-                print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} PASS")
-                return 0
+            for resolver in (expected, "127.0.0.1"):
+                if expected in adguard_ipv4_answers(HOSTNAME, resolver):
+                    print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
+                    return 0
         except OSError:
             pass
         time.sleep(1)
