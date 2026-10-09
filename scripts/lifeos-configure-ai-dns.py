@@ -60,7 +60,7 @@ def rewrite_config(text: str, address: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def adguard_ipv4_answers(name: str, resolver: str) -> set[str]:
+def adguard_ipv4_answers(name: str, resolver: str) -> tuple[set[str], str]:
     request_id = int.from_bytes(os.urandom(2), "big")
     labels = b"".join(bytes([len(label)]) + label.encode("ascii") for label in name.split(".")) + b"\0"
     query = struct.pack("!HHHHHH", request_id, 0x0100, 1, 0, 0, 0) + labels + struct.pack("!HH", 1, 1)
@@ -69,8 +69,8 @@ def adguard_ipv4_answers(name: str, resolver: str) -> set[str]:
         client.sendto(query, (resolver, 53))
         response, _ = client.recvfrom(4096)
     ident, flags, _questions, answers, _authority, _additional = struct.unpack("!HHHHHH", response[:12])
-    if ident != request_id or flags & 0x000F:
-        return set()
+    if ident != request_id:
+        return set(), "id_mismatch"
 
     def skip_name(offset: int) -> int:
         while offset < len(response):
@@ -94,7 +94,7 @@ def adguard_ipv4_answers(name: str, resolver: str) -> set[str]:
         if rtype == 1 and rclass == 1 and length == 4:
             found.add(socket.inet_ntoa(value))
         offset += length
-    return found
+    return found, f"rcode={flags & 0x000F} answers={answers} A={','.join(sorted(found)) or 'none'}"
 
 
 def main() -> int:
@@ -164,15 +164,19 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
             raise
 
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
+    diagnostics: dict[str, str] = {}
     for _ in range(20):
         for resolver in resolvers:
             try:
-                if expected in adguard_ipv4_answers(HOSTNAME, resolver):
+                answers, response = adguard_ipv4_answers(HOSTNAME, resolver)
+                diagnostics[resolver] = response
+                if expected in answers:
                     print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
                     return 0
-            except OSError:
-                pass
+            except OSError as error:
+                diagnostics[resolver] = type(error).__name__
         time.sleep(1)
+    print("ADGUARD_DNS_DIAGNOSTICS=" + ";".join(f"{resolver}:{diagnostics.get(resolver, 'no_response')}" for resolver in resolvers))
     if new != old:
         shutil.copy2(backup, CONFIG)
         subprocess.run(["docker", "restart", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
