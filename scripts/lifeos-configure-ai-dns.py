@@ -41,6 +41,30 @@ def rewrite_section(lines: list[str]) -> tuple[int, int]:
     return start, end
 
 
+def adguard_dns_config_summary(text: str) -> str:
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if re.match(r"^dns:\s*(?:#.*)?$", line)), None)
+    if start is None:
+        return "dns_section:missing"
+    end = next((i for i in range(start + 1, len(lines)) if lines[i] and not lines[i][0].isspace() and not lines[i].startswith("#")), len(lines))
+    port_line = next((line for line in lines[start + 1:end] if re.match(r"^  port:", line)), None)
+    bind_line = next((i for i in range(start + 1, end) if re.match(r"^  bind_hosts:", lines[i])), None)
+    port = re.sub(r"^  port:\s*", "", port_line).split("#", 1)[0].strip() if port_line else "default"
+    hosts = []
+    if bind_line is not None:
+        inline = lines[bind_line].split(":", 1)[1].split("#", 1)[0].strip()
+        if inline:
+            hosts = [inline]
+        else:
+            for line in lines[bind_line + 1:end]:
+                if line and len(line) - len(line.lstrip()) <= 2:
+                    break
+                match = re.match(r"^    -\s*(.*?)\s*$", line)
+                if match:
+                    hosts.append(match.group(1).strip("'\\\""))
+    return f"port:{port};bind_hosts:{','.join(hosts) if hosts else 'all-or-empty'}"
+
+
 def filtering_rewrite_flags(text: str) -> str:
     lines = text.splitlines()
     start, end = rewrite_section(lines)
@@ -209,6 +233,15 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ["docker", "exec", "adguardhome", "/opt/adguardhome/AdGuardHome", "--version"],
         check=False, capture_output=True, text=True, timeout=5,
     )
+    startup_logs = subprocess.run(
+        ["docker", "logs", "--since", "30m", "--tail", "200", "adguardhome"],
+        check=False, capture_output=True, text=True, timeout=5,
+    )
+    log_lines = (startup_logs.stdout + startup_logs.stderr).splitlines()
+    startup_errors = [
+        line.strip()[:240] for line in log_lines
+        if re.search(r"(?:dns.{0,80}(?:error|fail|listen|bind|start)|(?:error|fail|fatal).{0,80}(?:dns|listen|bind|port)|address already in use|bind:)", line, re.IGNORECASE)
+    ][-8:]
     http_match = re.search(r'(?ms)^http:\s*\n(?:(?:^  [^\n]*\n)|(?:^\n))*?^  address:\s*([^\s#]+)', persisted)
     bind_match = re.search(r'(?m)^bind_port:\s*(\d+)', persisted)
     configured_address = http_match.group(1).strip("'\"") if http_match else ""
@@ -260,6 +293,9 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print(f"ADGUARD_IMAGE={image}")
     print(f"ADGUARD_MOUNTS={mount_info}")
     print(f"ADGUARD_VERSION={(binary_version.stdout or binary_version.stderr).strip()[:200] or 'unavailable'}")
+    print("ADGUARD_DNS_STARTUP_ERRORS=" + " || ".join(startup_errors if startup_errors else ["none"]))
+    print(f"ADGUARD_DNS_CONFIG_BEFORE={adguard_dns_config_summary(old)}")
+    print(f"ADGUARD_DNS_CONFIG_AFTER={adguard_dns_config_summary(persisted)}")
     print(f"ADGUARD_FILTERING_FLAGS_BEFORE={filtering_rewrite_flags(old)}")
     print(f"ADGUARD_FILTERING_FLAGS_AFTER={filtering_rewrite_flags(persisted)}")
     print(f"ADGUARD_CONFIG_SECTION={rewrite_section_name} ENTRY_AFTER_START={'PASS' if rewrite_entry else 'FAIL'}")
