@@ -92,6 +92,7 @@ jobs:
             governor/tower_control.py \
             governor/openhands_local_ai_gateway.py \
             scripts/lifeos-configure-ai-dns.py \
+            homelab/live/usr/local/sbin/lifeos-deploy-gateway \
             governor/assistant_bridge.py \
             governor/autonomous_agent.py \
             governor/autonomous_agent_server.py
@@ -101,10 +102,12 @@ jobs:
             tests/test_ai_broker.py \
             tests/test_tower_control_shutdown.py \
             tests/test_configure_ai_dns.py \
+            tests/test_lifeos_deploy_gateway.py \
             tests/test_openhands_local_ai_gateway.py \
             tests/test_openhands_integration.py \
             tests/test_privacy_classifier.py \
             tests/test_private_domain_policy.py
+          bash -n scripts/lifeos-configure-ai-dns.sh
 
       - name: Validate Wave C read-only contracts
         run: |
