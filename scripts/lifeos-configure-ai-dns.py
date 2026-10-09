@@ -92,7 +92,7 @@ def filtering_rewrite_flags(text: str) -> str:
     if not re.match(r"^filtering:\s*(?:#.*)?$", lines[start]):
         return "legacy_dns_section"
     values = {}
-    for key in ("filtering_enabled", "rewrites_enabled"):
+    for key in ("filtering_enabled", "rewrites_enabled", "protection_enabled", "protection_disabled_until"):
         found = next((line for line in lines[start + 1:end] if re.match(rf"^  {key}:", line)), None)
         value = re.sub(r"^  [^:]+:\s*", "", found).split("#", 1)[0].strip().lower() if found else "unset"
         values[key] = value
@@ -272,6 +272,10 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ["docker", "inspect", "--format={{.Path}}|{{json .Args}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}", "adguardhome"],
         check=False, capture_output=True, text=True, timeout=5,
     ).stdout.strip()
+    adguard_health = subprocess.run(
+        ["docker", "inspect", "--format={{if .State.Health}}{{json .State.Health}}{{else}}no-healthcheck{{end}}", "adguardhome"],
+        check=False, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
     resolved_state = subprocess.run(
         ["systemctl", "is-active", "systemd-resolved"],
         check=False, capture_output=True, text=True, timeout=5,
@@ -303,6 +307,13 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print(f"ADGUARD_DOCKER_NETWORK_PORTS={network_runtime}")
     print(f"ADGUARD_PROCESS_PATH_ARGS_HEALTH={adguard_runtime or 'unavailable'}")
     print(f"ADGUARD_SYSTEMD_RESOLVED={resolved_state}")
+    print(f"ADGUARD_CONTAINER_HEALTH={adguard_health or 'unavailable'}")
+    print(
+        "ADGUARD_RUNTIME_PROTECTION="
+        f"enabled:{runtime_status.get('protection_enabled', 'unavailable')};"
+        f"disabled_duration:{runtime_status.get('protection_disabled_duration', 'unavailable')};"
+        f"start_time:{runtime_status.get('start_time', 'unavailable')}"
+    )
     print(
         "ADGUARD_RUNTIME_STATUS="
         f"running:{runtime_status.get('running', 'unavailable')};"
