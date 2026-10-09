@@ -165,13 +165,13 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
 
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
     for _ in range(20):
-        try:
-            for resolver in resolvers:
+        for resolver in resolvers:
+            try:
                 if expected in adguard_ipv4_answers(HOSTNAME, resolver):
                     print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
                     return 0
-        except OSError:
-            pass
+            except OSError:
+                pass
         time.sleep(1)
     if new != old:
         shutil.copy2(backup, CONFIG)
