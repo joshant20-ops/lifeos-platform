@@ -238,6 +238,30 @@ def adguard_ai_querylog_summary() -> str:
     return "querylog_file:not_found_or_disabled"
 
 
+
+def adguard_client_override_summary(text: str, addresses: set[str]) -> str:
+    lines = text.splitlines()
+    clients_start = next((i for i, line in enumerate(lines) if re.match(r"^clients:\s*(?:#.*)?$", line)), None)
+    if clients_start is None:
+        return "clients_section:missing"
+    clients_end = next((i for i in range(clients_start + 1, len(lines)) if lines[i] and not lines[i][0].isspace() and not lines[i].startswith("#")), len(lines))
+    persistent = next((i for i in range(clients_start + 1, clients_end) if re.match(r"^  persistent:\s*(?:#.*)?$", lines[i])), None)
+    if persistent is None:
+        return "persistent_clients:missing"
+    entries = []
+    starts = [i for i in range(persistent + 1, clients_end) if re.match(r"^\s+-\s+name:", lines[i])]
+    for index, start in enumerate(starts):
+        indent = len(lines[start]) - len(lines[start].lstrip())
+        end = next((i for i in range(start + 1, clients_end) if re.match(r"^\s+-\s+name:", lines[i]) and len(lines[i]) - len(lines[i].lstrip()) == indent), clients_end)
+        stanza = lines[start:end]
+        if not any(address in line for address in addresses for line in stanza):
+            continue
+        filtering = next((re.sub(r"^.*filtering_enabled:\s*", "", line).split("#", 1)[0].strip().lower() for line in stanza if re.match(r"^\s+filtering_enabled:", line)), "unset")
+        global_settings = next((re.sub(r"^.*use_global_settings:\s*", "", line).split("#", 1)[0].strip().lower() for line in stanza if re.match(r"^\s+use_global_settings:", line)), "unset")
+        entries.append(f"filtering_enabled:{filtering},use_global_settings:{global_settings}")
+    return f"matched_local_clients:{len(entries)};overrides:{'|'.join(entries) if entries else 'none'}"
+
+
 def main() -> int:
     if os.geteuid() != 0:
         raise RuntimeError("AdGuard DNS configuration requires the allow-listed root gateway")
@@ -415,6 +439,7 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print("ADGUARD_DNS_STARTUP_ERRORS=" + " || ".join(startup_errors if startup_errors else ["none"]))
     print(f"ADGUARD_DNS_CONFIG_BEFORE={adguard_dns_config_summary(old)}")
     print(f"ADGUARD_DNS_CONFIG_AFTER={adguard_dns_config_summary(persisted)}")
+    print(f"ADGUARD_PI_CLIENT_OVERRIDES={adguard_client_override_summary(persisted, {expected, '127.0.0.1'})}")
     print(f"ADGUARD_REWRITE_CONFIG_STRUCTURE={adguard_rewrite_structure_summary(persisted)}")
     print(f"ADGUARD_FILTERING_FLAGS_BEFORE={filtering_rewrite_flags(old)}")
     print(f"ADGUARD_FILTERING_FLAGS_AFTER={filtering_rewrite_flags(persisted)}")
