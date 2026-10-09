@@ -54,7 +54,7 @@ jobs:
 
           profile = json.loads(accepted.read_text())
           assert profile["model"] == "openai/gpt-oss:20b"
-          assert profile["base_url"] == "http://127.0.0.1:18114/v1"
+          assert profile["base_url"] == "http://ai.lan:18114/v1"
           assert profile["native_tool_calling"] is True
 
           settings = json.loads(
@@ -63,7 +63,7 @@ jobs:
           agent = settings["agent_settings"]
           llm = agent["llm"]
           assert llm["model"] == "openai/gpt-oss:20b"
-          assert llm["base_url"] == "http://127.0.0.1:18114/v1"
+          assert llm["base_url"] == "http://ai.lan:18114/v1"
           assert llm["native_tool_calling"] is True
           assert agent["enable_switch_llm_tool"] is False
           assert settings["conversation_settings"]["security_analyzer"] is None
