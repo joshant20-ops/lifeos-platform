@@ -96,16 +96,17 @@ def adguard_rewrite_structure_summary(text: str) -> str:
     for rewrite in rewrite_keys:
         key_end = next((i for i in range(rewrite + 1, end) if lines[i] and len(lines[i]) - len(lines[i].lstrip()) <= 2), end)
         for i in range(rewrite + 1, key_end):
-            domain = re.match(r"^\s+-\s+domain:\s*['""]?([^'""]+)['""]?\s*$", lines[i])
-            if domain and domain.group(1) == HOSTNAME:
-                answer = next((re.match(r"^\s+answer:\s*['""]?([^'""]+)['""]?\s*$", lines[j]) for j in range(i + 1, min(i + 3, key_end)) if re.match(r"^\s+answer:", lines[j])), None)
-                matches.append(answer.group(1) if answer else "answer_missing")
+            domain = re.match(r"^\s+-\s+domain:\s*([^\s#]+)", lines[i])
+            if domain and domain.group(1).strip("'") == HOSTNAME:
+                answer = next((re.match(r"^\s+answer:\s*([^\s#]+)", lines[j]) for j in range(i + 1, min(i + 3, key_end)) if re.match(r"^\s+answer:", lines[j])), None)
+                matches.append(answer.group(1).strip("'") if answer else "answer_missing")
     return (
         f"top_level_filtering_sections:{len(filtering_sections)};"
         f"selected_rewrites_keys:{len(rewrite_keys)};"
         f"ai_lan_entries:{len(matches)};"
         f"ai_lan_answers:{','.join(matches) if matches else 'none'}"
     )
+
 
 def filtering_rewrite_flags(text: str) -> str:
     lines = text.splitlines()
