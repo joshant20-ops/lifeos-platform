@@ -7,6 +7,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATEWAY = ROOT / "homelab/live/usr/local/sbin/lifeos-deploy-gateway"
 WORKFLOW = ROOT / ".github/workflows/lifeos-pi-deploy.yml"
+DIAGNOSTIC = ROOT / "scripts/lifeos-tower-wol-packet-diagnostic.py"
 
 
 def load_gateway():
@@ -18,6 +19,19 @@ def load_gateway():
 
 
 class TowerWolIssueTriggerTests(unittest.TestCase):
+    def test_diagnostic_holds_one_lease_through_bounded_retry_window(self):
+        loader = importlib.machinery.SourceFileLoader("tower_wol_diagnostic", str(DIAGNOSTIC))
+        spec = importlib.util.spec_from_loader(loader.name, loader)
+        diagnostic = importlib.util.module_from_spec(spec)
+        loader.exec_module(diagnostic)
+
+        self.assertEqual(diagnostic.LEASE_WINDOW_SECONDS, 120)
+        self.assertGreater(diagnostic.LEASE_TTL_SECONDS, diagnostic.LEASE_WINDOW_SECONDS)
+        self.assertFalse(diagnostic.wake_window_complete(0.0, 2.0, False))
+        self.assertFalse(diagnostic.wake_window_complete(0.0, 119.9, False))
+        self.assertTrue(diagnostic.wake_window_complete(0.0, 120.0, False))
+        self.assertTrue(diagnostic.wake_window_complete(0.0, 8.0, True))
+
     def test_tower_wol_operations_are_fixed_gateway_entries(self):
         gateway = load_gateway()
         self.assertEqual(gateway.OPS["inspect-tower-wol"], {
