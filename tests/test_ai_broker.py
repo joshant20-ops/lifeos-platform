@@ -66,10 +66,10 @@ def test_forced_cloud_provider_must_still_be_policy_eligible(monkeypatch, tmp_pa
 
 def test_local_inference_uses_stable_gateway_without_caller_wake(monkeypatch):
     calls = []
-    monkeypatch.setattr(BROKER, "OLLAMA_URL", "http://127.0.0.1:18114/api/generate")
+    monkeypatch.setattr(BROKER, "OLLAMA_URL", "http://ai.lan:18114/api/generate")
     monkeypatch.setattr(BROKER, "_post_json", lambda url, payload, **kwargs: calls.append(url) or {"response": "ok"})
     assert BROKER._ollama_once("hello", "model") == "ok"
-    assert calls == ["http://127.0.0.1:18114/api/generate"]
+    assert calls == ["http://ai.lan:18114/api/generate"]
     assert BROKER._ollama("hello", "model") == "ok"
 
 
