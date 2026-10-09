@@ -11,13 +11,13 @@ from pathlib import Path
 
 config = Path('/config/configuration.yaml')
 raw = config.read_text() if config.is_file() else ''
-match = re.search(r'(?ms)^command_line:\\s*\\n(.*?)(?=^[A-Za-z0-9_]+:|\\Z)', raw)
+match = re.search(r'(?ms)^command_line:\s*\n(.*?)(?=^[A-Za-z0-9_]+:|\Z)', raw)
 block = match.group(1) if match else ''
-z97 = re.search(r'(?ms)^\\s*- switch:\\s*\\n(?:(?!^\\s*- switch:).)*?^\\s*name:\\s*Z97 Power\\s*\\n(?:(?!^\\s*- switch:).)*', block)
+z97 = re.search(r'(?ms)^\s*- switch:\s*\n(?:(?!^\s*- switch:).)*?^\s*name:\s*Z97 Power\s*\n(?:(?!^\s*- switch:).)*', block)
 entry = z97.group(0) if z97 else ''
-uid = re.search(r'(?m)^\\s*unique_id:\\s*([^\\s]+)', entry)
-wake = re.search(r'/usr/local/bin/wakeonlan\\s+([0-9a-fA-F:.-]+)', entry)
-lock = re.search(r'LOCK=([^;\\s]+)', entry)
+uid = re.search(r'(?m)^\s*unique_id:\s*([^\s]+)', entry)
+wake = re.search(r'/usr/local/bin/wakeonlan\s+([0-9a-fA-F:.-]+)', entry)
+lock = re.search(r'LOCK=([^;\s]+)', entry)
 print('HA_WAKE_INTEGRATION=' + ('command_line.switch' if entry else 'not-found'))
 print('HA_WAKE_NAME=' + ('Z97 Power' if entry else 'not-found'))
 print('HA_WAKE_UNIQUE_ID=' + (uid.group(1) if uid else 'not-found'))
@@ -58,9 +58,9 @@ for root in (Path('/config/.storage'), Path('/config')):
         except OSError:
             continue
         if entity != 'not-found' and entity in text:
-            for service in re.findall(r'(?m)^\\s*(?:service|action):\\s*([^\\s]+)', text):
+            for service in re.findall(r'(?m)^\s*(?:service|action):\s*([^\s]+)', text):
                 print(f'HA_WAKE_UI_OR_AUTOMATION_ACTION_FILE={path.name} ACTION={service}')
-            if not re.search(r'(?m)^\\s*(?:service|action):\\s*', text):
+            if not re.search(r'(?m)^\s*(?:service|action):\s*', text):
                 print(f'HA_WAKE_UI_OR_AUTOMATION_REFERENCE_FILE={path.name}')
 PY
 echo 'LIVE_HA_WAKE_INSPECTION=COMPLETE'
