@@ -167,9 +167,9 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
             raise
 
     persisted = CONFIG.read_text(encoding="utf-8")
-    rewrite_section_name = "filtering" if re.search(r"^filtering:\\s*(?:#.*)?$", persisted, re.MULTILINE) else "dns"
+    rewrite_section_name = "filtering" if re.search(r"^filtering:\s*(?:#.*)?$", persisted, re.MULTILINE) else "dns"
     rewrite_entry = re.search(
-        rf"(?m)^\\s+- domain:\\s*['\\\"]?{re.escape(HOSTNAME)}['\\\"]?\\s*$\\n^\\s+answer:\\s*['\\\"]?{re.escape(expected)}['\\\"]?\\s*$",
+        rf"(?m)^\s+- domain:\s*{re.escape(HOSTNAME)}\s*$\n^\s+answer:\s*{re.escape(expected)}\s*$",
         persisted,
     )
     image = subprocess.run(
