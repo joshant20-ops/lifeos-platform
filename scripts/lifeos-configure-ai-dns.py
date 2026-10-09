@@ -408,7 +408,7 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     api_results = {}
     runtime_status = {}
     for api_base in api_bases:
-        for api_path in ("/control/status", "/control/rewrite/list", "/control/rewrite/settings", "/control/filtering/check_host?name=ai.lan&client=127.0.0.1&qtype=A"):
+        for api_path in ("/control/status", "/control/rewrite/list", "/control/rewrite/settings", "/control/check_host?name=ai.lan&client=127.0.0.1&qtype=A"):
             key = f"{api_base.rsplit(':', 1)[0].removeprefix('http://')}:{api_path}"
             try:
                 with urllib.request.urlopen(f"{api_base}{api_path}", timeout=3) as response:
