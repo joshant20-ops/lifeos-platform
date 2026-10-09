@@ -190,6 +190,24 @@ def adguard_ipv4_answers(name: str, resolver: str) -> tuple[set[str], str]:
     return found, f"rcode={flags & 0x000F} answers={answers} A={','.join(sorted(found)) or 'none'}"
 
 
+
+def dns_transport_state_summary() -> str:
+    parts = []
+    if shutil.which("ss"):
+        result = subprocess.run(["ss", "-H", "-lntuap"], check=False, capture_output=True, text=True, timeout=5)
+        sockets = [line.strip() for line in result.stdout.splitlines() if re.search(r":53\b", line)]
+        parts.append("sockets=" + (" || ".join(sockets[:8]) if sockets else "none"))
+    for command in (["iptables", "-t", "nat", "-S"], ["nft", "list", "ruleset"]):
+        if shutil.which(command[0]):
+            result = subprocess.run(command, check=False, capture_output=True, text=True, timeout=5)
+            rules = [
+                line.strip() for line in result.stdout.splitlines()
+                if "53" in line and re.search(r"(?:dport|--dport|redirect|dnat)", line, re.IGNORECASE)
+            ]
+            parts.append(command[0] + "=" + (" || ".join(rules[:8]) if rules else "no-port-53-rule"))
+    return ";".join(parts) if parts else "unavailable"
+
+
 def main() -> int:
     if os.geteuid() != 0:
         raise RuntimeError("AdGuard DNS configuration requires the allow-listed root gateway")
@@ -381,11 +399,13 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
                 answers, response = adguard_ipv4_answers(HOSTNAME, resolver)
                 diagnostics[resolver] = response
                 if expected in answers:
+                    print("ADGUARD_DNS_TRANSPORT_AT_ACCEPTANCE=" + dns_transport_state_summary())
                     print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
                     return 0
             except OSError as error:
                 diagnostics[resolver] = type(error).__name__
         time.sleep(1)
+    print("ADGUARD_DNS_TRANSPORT_AFTER_PROBES=" + dns_transport_state_summary())
     print("ADGUARD_DNS_DIAGNOSTICS=" + ";".join(f"{resolver}:{diagnostics.get(resolver, 'no_response')}" for resolver in resolvers))
     if new != old:
         subprocess.run(["docker", "stop", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
