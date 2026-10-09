@@ -8,6 +8,7 @@ on:
       - 'governor/ai_broker.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'scripts/lifeos-wake-aware-ai-acceptance.sh'
+      - 'governor/tower_control.py'
       - '.github/workflows/lifeos-governor-broker-deploy.yml'
       - '.github/workflows/openhands-local-ai-gateway-deploy.yml'
 permissions:
