@@ -7,10 +7,12 @@ import pathlib
 import re
 import shutil
 import socket
+import stat
 import struct
 import subprocess
 import tempfile
 import time
+import fcntl
 
 CONFIG = pathlib.Path("/opt/stacks/adguard/conf/AdGuardHome.yaml")
 HOSTNAME = "ai.lan"
@@ -96,14 +98,38 @@ def adguard_ipv4_answers(name: str) -> set[str]:
 
 
 def main() -> int:
+    if os.geteuid() != 0:
+        raise RuntimeError("AdGuard DNS configuration requires the allow-listed root gateway")
     if not CONFIG.is_file() or CONFIG.is_symlink():
         raise RuntimeError("AdGuard Home config is missing or not a regular file")
+    for directory in (CONFIG.parent, CONFIG.parent.parent, CONFIG.parent.parent.parent):
+        parent_stat = directory.lstat()
+        if not directory.is_dir() or directory.is_symlink() or parent_stat.st_uid != 0 or parent_stat.st_mode & 0o022:
+            raise RuntimeError(f"AdGuard config parent is not a protected root directory: {directory}")
+    original = CONFIG.stat()
+    if original.st_uid != 0:
+        raise RuntimeError("AdGuard Home config is not root-owned")
+    container = subprocess.run(
+        ["docker", "inspect", "--format={{.State.Running}}", "adguardhome"],
+        check=True, capture_output=True, text=True, timeout=5,
+    )
+    if container.stdout.strip().lower() != "true":
+        raise RuntimeError("AdGuard Home container is not running")
+    lock_path = pathlib.Path("/run/lock/lifeos-ai-dns.lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    lock_stat = os.fstat(fd)
+    if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_uid != 0 or lock_stat.st_mode & 0o022:
+        os.close(fd)
+        raise RuntimeError("AdGuard DNS lock file is not a protected root-owned regular file")
+    with os.fdopen(fd, "r+", encoding="ascii") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return configure_locked(original)
+
+
+def configure_locked(original) -> int:
     old = CONFIG.read_text(encoding="utf-8")
     new = rewrite_config(old, pi_ipv4())
     if new != old:
-        original = CONFIG.stat()
-        if original.st_uid not in (os.geteuid(), 0):
-            raise RuntimeError("AdGuard config owner cannot be preserved by this deploy user")
         backup = CONFIG.with_name(f"AdGuardHome.yaml.ai-dns-backup-{time.time_ns()}")
         shutil.copy2(CONFIG, backup)
         fd, temp_name = tempfile.mkstemp(prefix=".AdGuardHome.ai-dns.", dir=CONFIG.parent)
@@ -113,12 +139,7 @@ def main() -> int:
                 stream.flush()
                 os.fsync(stream.fileno())
             os.chmod(temp_name, CONFIG.stat().st_mode & 0o777)
-            if os.geteuid() == 0:
-                os.chown(temp_name, original.st_uid, original.st_gid)
-            elif original.st_gid != os.getegid():
-                if original.st_gid not in os.getgroups():
-                    raise RuntimeError("AdGuard config group cannot be preserved by this deploy user")
-                os.chown(temp_name, -1, original.st_gid)
+            os.chown(temp_name, original.st_uid, original.st_gid)
             os.replace(temp_name, CONFIG)
         finally:
             if os.path.exists(temp_name):
