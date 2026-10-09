@@ -457,6 +457,18 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print(f"ADGUARD_REWRITE_API=list:{api_results.get('list')} settings:{api_results.get('settings')}")
     print("ADGUARD_HTTP_PROBES=" + ";".join(f"{key}={value}" for key, value in sorted(api_results.items())))
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
+    known_rewrite_diagnostics: dict[str, str] = {}
+    for resolver in resolvers:
+        try:
+            answers, response = adguard_ipv4_answers("ha.lan", resolver)
+            known_rewrite_diagnostics[resolver] = (
+                f"{response};expected_answer:{'PASS' if expected in answers else 'FAIL'}"
+            )
+        except OSError as error:
+            known_rewrite_diagnostics[resolver] = type(error).__name__
+    print("ADGUARD_KNOWN_REWRITE_CONTROL=" + ";".join(
+        f"{resolver}:{known_rewrite_diagnostics[resolver]}" for resolver in resolvers
+    ))
     diagnostics: dict[str, str] = {}
     for _ in range(20):
         for resolver in resolvers:
