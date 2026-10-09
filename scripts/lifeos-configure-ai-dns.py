@@ -29,17 +29,18 @@ def pi_ipv4() -> str:
     return match.group(1)
 
 
-def dns_section(lines: list[str]) -> tuple[int, int]:
-    start = next((i for i, line in enumerate(lines) if re.match(r"^dns:\s*(?:#.*)?$", line)), None)
+def rewrite_section(lines: list[str]) -> tuple[int, int]:
+    section = "filtering" if any(re.match(r"^filtering:\s*(?:#.*)?$", line) for line in lines) else "dns"
+    start = next((i for i, line in enumerate(lines) if re.match(rf"^{section}:\s*(?:#.*)?$", line)), None)
     if start is None:
-        raise RuntimeError("AdGuard config has no top-level dns section")
+        raise RuntimeError("AdGuard config has no top-level filtering or dns section")
     end = next((i for i in range(start + 1, len(lines)) if lines[i] and not lines[i][0].isspace() and not lines[i].startswith("#")), len(lines))
     return start, end
 
 
 def rewrite_config(text: str, address: str) -> str:
     lines = text.splitlines()
-    start, end = dns_section(lines)
+    start, end = rewrite_section(lines)
     rewrite = next((i for i in range(start + 1, end) if re.match(r"^  rewrites:\s*(?:\[\])?\s*(?:#.*)?$", lines[i])), None)
     entry = [f"    - domain: {HOSTNAME}", f"      answer: {address}"]
     if rewrite is None:
