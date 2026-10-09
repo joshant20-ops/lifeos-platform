@@ -208,6 +208,36 @@ def dns_transport_state_summary() -> str:
     return ";".join(parts) if parts else "unavailable"
 
 
+
+def adguard_ai_querylog_summary() -> str:
+    candidates = (
+        pathlib.Path("/opt/stacks/adguard/work/data/querylog.json"),
+        pathlib.Path("/opt/stacks/adguard/work/querylog.json"),
+        pathlib.Path("/opt/adguardhome/work/data/querylog.json"),
+    )
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            raw_lines = path.read_bytes()[-4_000_000:].splitlines()
+            matches = []
+            for raw in raw_lines:
+                try:
+                    item = json.loads(raw.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    continue
+                host = str(item.get("QH", item.get("question", {}).get("host", ""))).rstrip(".").lower()
+                if host != HOSTNAME:
+                    continue
+                result = item.get("Result") or item.get("result") or {}
+                answers = item.get("Answer") or item.get("answer") or []
+                matches.append(f"reason:{result.get('Reason', result.get('reason', 'unknown'))};answer_items:{len(answers) if isinstance(answers, list) else 'present'}")
+            return f"path:{path};matches:{len(matches)};latest:{matches[-1] if matches else 'none'}"
+        except OSError as error:
+            return f"path:{path};error:{type(error).__name__}"
+    return "querylog_file:not_found_or_disabled"
+
+
 def main() -> int:
     if os.geteuid() != 0:
         raise RuntimeError("AdGuard DNS configuration requires the allow-listed root gateway")
@@ -400,12 +430,14 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
                 diagnostics[resolver] = response
                 if expected in answers:
                     print("ADGUARD_DNS_TRANSPORT_AT_ACCEPTANCE=" + dns_transport_state_summary())
+                    print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
                     print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
                     return 0
             except OSError as error:
                 diagnostics[resolver] = type(error).__name__
         time.sleep(1)
     print("ADGUARD_DNS_TRANSPORT_AFTER_PROBES=" + dns_transport_state_summary())
+    print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
     print("ADGUARD_DNS_DIAGNOSTICS=" + ";".join(f"{resolver}:{diagnostics.get(resolver, 'no_response')}" for resolver in resolvers))
     if new != old:
         subprocess.run(["docker", "stop", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
