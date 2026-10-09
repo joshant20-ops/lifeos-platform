@@ -12,6 +12,13 @@ spec.loader.exec_module(tower_control)
 
 
 class TowerShutdownTests(unittest.TestCase):
+    def test_ai_ha_lease_suppresses_controller_wol_only_when_all_leases_delegate(self):
+        self.assertTrue(tower_control.leases_delegate_wake_to_ha([{"wake_via_ha": True}]))
+        self.assertFalse(tower_control.leases_delegate_wake_to_ha([]))
+        self.assertFalse(tower_control.leases_delegate_wake_to_ha([
+            {"wake_via_ha": True}, {"wake_via_ha": False},
+        ]))
+
     def test_wake_uses_existing_host_wakeonlan_with_configured_route(self):
         cfg = {
             "mac": "40-8d-5c-84-41-64",

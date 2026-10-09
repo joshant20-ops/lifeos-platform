@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-BASE_URL=http://127.0.0.1:18114
+BASE_URL=http://ai.lan:18114
 STARTED_AT=$(date --iso-8601=seconds)
 CLEANUP_NEEDED=0
 tower_state() { timeout 6 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state; }
@@ -16,6 +16,10 @@ trap cleanup EXIT
 systemctl is-active --quiet lifeos-autonomous-agent.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
 curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+pi_ip=$(ip -4 route get 1.1.1.1 | awk '{for (i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')
+dns_ip=$(getent ahostsv4 ai.lan | awk 'NR==1 {print $1}')
+test -n "$pi_ip" && test "$dns_ip" = "$pi_ip"
+echo "STABLE_AI_DNS=ai.lan->$pi_ip PASS"
 lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN python3 -c '
 import os,urllib.request
 h={"Authorization":"Bearer "+os.environ["HA_TOKEN"],"Accept":"application/json"}
@@ -44,8 +48,13 @@ v=json.loads(sys.argv[1]); assert v["status"]=="degraded" and v["compute"]=="asl
 assert v["degraded_reason"]=="COMPUTE_ASLEEP" and v["tower_accessible"] is False,v
 print("HEALTH_NO_WAKE=PASS")
 PY
+curl -fsS --max-time 5 "$BASE_URL/v1/models" >/dev/null
+curl -fsS --max-time 5 "$BASE_URL/api/tags" >/dev/null
+curl -fsS --max-time 5 "$BASE_URL/api/ps" >/dev/null
 sleep 3; assert_off
-echo 'ENDPOINT_REACHABLE_TOWER_OFF=PASS'
+passive_wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=HA_SWITCH$' || true)
+test "$passive_wakes" -eq 0
+echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
 python3 - "$BASE_URL" <<'PY'
 import concurrent.futures,json,pathlib,sys,urllib.request
 base=sys.argv[1]
@@ -77,7 +86,7 @@ PY
   sleep 2
 done
 test "$ready" -eq 1; echo 'TOWER_ACCESSIBLE_AND_OLLAMA_READY=PASS'
-wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=LEASE$' || true)
+wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=HA_SWITCH$' || true)
 test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
 python3 - "$BASE_URL" <<'PY'
 import json,sys,urllib.request
@@ -87,7 +96,7 @@ with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
 assert isinstance(v.get("response"),str) and v["response"].strip(),v
 print("WARM_INFERENCE=PASS")
 PY
-wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=LEASE$' || true)
+wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=HA_SWITCH$' || true)
 test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
 systemctl is-active --quiet lifeos-autonomous-agent.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
