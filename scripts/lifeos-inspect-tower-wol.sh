@@ -63,4 +63,16 @@ for root in (Path('/config/.storage'), Path('/config')):
             if not re.search(r'(?m)^\s*(?:service|action):\s*', text):
                 print(f'HA_WAKE_UI_OR_AUTOMATION_REFERENCE_FILE={path.name}')
 PY
+
+echo '==> READ-ONLY PI HOST WAKE EXECUTABLE'
+if host_wake="$(command -v wakeonlan 2>/dev/null)"; then
+  echo "PI_WAKE_EXECUTABLE=$host_wake"
+  resolved_wake="$(readlink -f "$host_wake")"
+  echo "PI_WAKE_EXECUTABLE_RESOLVED=$resolved_wake"
+  sha256sum "$resolved_wake" | awk '{print "PI_WAKE_EXECUTABLE_SHA256=" $1}'
+  "$host_wake" --help 2>&1 | sed -n '1,24p' | sed 's/^/PI_WAKE_HELP=/'
+else
+  echo 'PI_WAKE_EXECUTABLE=missing'
+fi
+systemctl show lifeos-tower-control.service --property=LoadState,ActiveState,ExecStart --no-pager 2>/dev/null || true
 echo 'LIVE_HA_WAKE_INSPECTION=COMPLETE'
