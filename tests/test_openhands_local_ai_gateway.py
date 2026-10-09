@@ -76,3 +76,22 @@ def test_warm_inference_does_not_call_home_assistant(monkeypatch):
     monkeypatch.setattr(GATEWAY, "invoke_ha_wake", lambda: (_ for _ in ()).throw(AssertionError("warm request woke Tower")))
     GATEWAY.ensure_tower("warm-test")
     assert leases == [(('active',), {'lease_id': 'warm-test', 'wake_via_ha': False})]
+
+
+def test_ha_wake_invokes_existing_switch_service_action(monkeypatch):
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+
+    monkeypatch.setattr(GATEWAY.subprocess, "run", run)
+    GATEWAY.invoke_ha_wake()
+    args, kwargs = calls[0]
+    assert args[:4] == [
+        "/usr/local/sbin/lifeos-secret", "exec",
+        "homeassistant.long_lived_access_token", "HA_TOKEN",
+    ]
+    assert args[5] == "-c"
+    assert "http://127.0.0.1:8123/api/services/switch/turn_on" in args[6]
+    assert "switch.z97_power" in args[6]
+    assert kwargs["check"] is True
