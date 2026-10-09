@@ -62,7 +62,28 @@ def adguard_dns_config_summary(text: str) -> str:
                 match = re.match(r"^    -\s*(.*?)\s*$", line)
                 if match:
                     hosts.append(match.group(1).strip("'\\\""))
-    return f"port:{port};bind_hosts:{','.join(hosts) if hosts else 'all-or-empty'}"
+    details = [f"port:{port}", f"bind_hosts:{','.join(hosts) if hosts else 'all-or-empty'}"]
+    for key in ("enabled", "protection_enabled", "upstream_mode"):
+        match = next((line for line in lines[start + 1:end] if re.match(rf"^  {key}:", line)), None)
+        if match:
+            details.append(f"{key}:{match.split(':', 1)[1].split('#', 1)[0].strip()}")
+    for key in ("upstream_dns", "bootstrap_dns", "fallback_dns"):
+        match_index = next((i for i in range(start + 1, end) if re.match(rf"^  {key}:", lines[i])), None)
+        if match_index is None:
+            details.append(f"{key}:unset")
+        else:
+            value = lines[match_index].split(":", 1)[1].split("#", 1)[0].strip()
+            if value:
+                details.append(f"{key}:inline")
+            else:
+                count = 0
+                for line in lines[match_index + 1:end]:
+                    if line and len(line) - len(line.lstrip()) <= 2:
+                        break
+                    if re.match(r"^    -\s*", line):
+                        count += 1
+                details.append(f"{key}:count={count}")
+    return ";".join(details)
 
 
 def filtering_rewrite_flags(text: str) -> str:
@@ -234,19 +255,27 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         check=False, capture_output=True, text=True, timeout=5,
     )
     startup_logs = subprocess.run(
-        ["docker", "logs", "--since", "30m", "--tail", "200", "adguardhome"],
+        ["docker", "logs", "--since", "10m", "--tail", "1000", "adguardhome"],
         check=False, capture_output=True, text=True, timeout=5,
     )
     log_lines = (startup_logs.stdout + startup_logs.stderr).splitlines()
     startup_errors = [
         line.strip()[:240] for line in log_lines
-        if re.search(r"(?:dns.{0,80}(?:error|fail|listen|bind|start)|(?:error|fail|fatal).{0,80}(?:dns|listen|bind|port)|address already in use|bind:)", line, re.IGNORECASE)
+        if re.search(r"(?:dns.{0,100}(?:error|fail|listen|bind|start|stop|server|disabled)|(?:error|fail|fatal|starting|stopping|listening).{0,100}(?:dns|listen|bind|port|server)|address already in use|bind:|port 53)", line, re.IGNORECASE)
     ][-8:]
     http_match = re.search(r'(?ms)^http:\s*\n(?:(?:^  [^\n]*\n)|(?:^\n))*?^  address:\s*([^\s#]+)', persisted)
     bind_match = re.search(r'(?m)^bind_port:\s*(\d+)', persisted)
     configured_address = http_match.group(1).strip("'\"") if http_match else ""
     configured_port = configured_address.rsplit(":", 1)[-1] if ":" in configured_address else (bind_match.group(1) if bind_match else "")
     api_bases = [f"http://{host}:{configured_port}" for host in (expected, "127.0.0.1")] if configured_port.isdigit() else []
+    adguard_runtime = subprocess.run(
+        ["docker", "inspect", "--format={{.Path}}|{{json .Args}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}", "adguardhome"],
+        check=False, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
+    resolved_state = subprocess.run(
+        ["systemctl", "is-active", "systemd-resolved"],
+        check=False, capture_output=True, text=True, timeout=5,
+    ).stdout.strip() or "unknown"
     network_runtime = subprocess.run(
         ["docker", "inspect", "--format={{.HostConfig.NetworkMode}}|{{json .NetworkSettings.Ports}}|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", "adguardhome"],
         check=True, capture_output=True, text=True, timeout=5,
@@ -272,6 +301,8 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     dns_addresses = runtime_status.get("dns_addresses")
     print(f"ADGUARD_HTTP_CONFIG_ADDRESS={configured_address or 'unavailable'} API_PORT={configured_port or 'unavailable'}")
     print(f"ADGUARD_DOCKER_NETWORK_PORTS={network_runtime}")
+    print(f"ADGUARD_PROCESS_PATH_ARGS_HEALTH={adguard_runtime or 'unavailable'}")
+    print(f"ADGUARD_SYSTEMD_RESOLVED={resolved_state}")
     print(
         "ADGUARD_RUNTIME_STATUS="
         f"running:{runtime_status.get('running', 'unavailable')};"
