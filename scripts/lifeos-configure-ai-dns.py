@@ -439,7 +439,7 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print("ADGUARD_DNS_STARTUP_ERRORS=" + " || ".join(startup_errors if startup_errors else ["none"]))
     print(f"ADGUARD_DNS_CONFIG_BEFORE={adguard_dns_config_summary(old)}")
     print(f"ADGUARD_DNS_CONFIG_AFTER={adguard_dns_config_summary(persisted)}")
-    print(f"ADGUARD_PI_CLIENT_OVERRIDES={adguard_client_override_summary(persisted, {expected, \"127.0.0.1\"})}")
+    print(f"ADGUARD_PI_CLIENT_OVERRIDES={adguard_client_override_summary(persisted, {expected, '127.0.0.1'})}")
     print(f"ADGUARD_REWRITE_CONFIG_STRUCTURE={adguard_rewrite_structure_summary(persisted)}")
     print(f"ADGUARD_FILTERING_FLAGS_BEFORE={filtering_rewrite_flags(old)}")
     print(f"ADGUARD_FILTERING_FLAGS_AFTER={filtering_rewrite_flags(persisted)}")
