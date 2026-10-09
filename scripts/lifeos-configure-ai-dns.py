@@ -166,6 +166,18 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
             subprocess.run(["docker", "start", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
             raise
 
+    persisted = CONFIG.read_text(encoding="utf-8")
+    rewrite_section_name = "filtering" if re.search(r"^filtering:\s*(?:#.*)?$", persisted, re.MULTILINE) else "dns"
+    rewrite_entry = re.search(
+        rf"(?m)^\s+- domain:\s*{re.escape(HOSTNAME)}\s*$\n^\s+answer:\s*{re.escape(expected)}\s*$",
+        persisted,
+    )
+    image = subprocess.run(
+        ["docker", "inspect", "--format={{.Config.Image}}", "adguardhome"],
+        check=True, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
+    print(f"ADGUARD_IMAGE={image}")
+    print(f"ADGUARD_CONFIG_SECTION={rewrite_section_name} ENTRY_AFTER_START={'PASS' if rewrite_entry else 'FAIL'}")
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
     diagnostics: dict[str, str] = {}
     for _ in range(20):
