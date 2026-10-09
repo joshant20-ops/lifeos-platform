@@ -121,6 +121,11 @@ def main() -> int:
     )
     if container.stdout.strip().lower() != "true":
         raise RuntimeError("AdGuard Home container is not running")
+    network = subprocess.run(
+        ["docker", "inspect", "--format={{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", "adguardhome"],
+        check=True, capture_output=True, text=True, timeout=5,
+    )
+    container_resolvers = [value for value in network.stdout.split() if re.fullmatch(r"(?:\d{1,3}\.){3}\d{1,3}", value)]
     lock_path = pathlib.Path("/run/lock/lifeos-ai-dns.lock")
     fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
     lock_stat = os.fstat(fd)
@@ -129,12 +134,13 @@ def main() -> int:
         raise RuntimeError("AdGuard DNS lock file is not a protected root-owned regular file")
     with os.fdopen(fd, "r+", encoding="ascii") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return configure_locked(original)
+        return configure_locked(original, container_resolvers)
 
 
-def configure_locked(original) -> int:
+def configure_locked(original, container_resolvers: list[str]) -> int:
     old = CONFIG.read_text(encoding="utf-8")
-    new = rewrite_config(old, pi_ipv4())
+    expected = pi_ipv4()
+    new = rewrite_config(old, expected)
     if new != old:
         backup = CONFIG.with_name(f"AdGuardHome.yaml.ai-dns-backup-{time.time_ns()}")
         shutil.copy2(CONFIG, backup)
@@ -157,15 +163,15 @@ def configure_locked(original) -> int:
             subprocess.run(["docker", "restart", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
             raise
 
-    expected = pi_ipv4()
+    resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
     for _ in range(20):
-        try:
-            for resolver in (expected, "127.0.0.1"):
+        for resolver in resolvers:
+            try:
                 if expected in adguard_ipv4_answers(HOSTNAME, resolver):
                     print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
                     return 0
-        except OSError:
-            pass
+            except OSError:
+                pass
         time.sleep(1)
     if new != old:
         shutil.copy2(backup, CONFIG)
