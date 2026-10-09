@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import pwd
 import pathlib
 import re
 import shutil
@@ -108,7 +107,7 @@ def main() -> int:
         root_protected = parent_stat.st_uid == 0 and not parent_stat.st_mode & 0o022
         trusted_adguard_dir = (
             directory == CONFIG.parent
-            and parent_stat.st_uid == pwd.getpwnam("joshan").pw_uid
+            and parent_stat.st_uid == 1000
             and not parent_stat.st_mode & 0o002
         )
         if not directory.is_dir() or directory.is_symlink() or not (root_protected or trusted_adguard_dir):
