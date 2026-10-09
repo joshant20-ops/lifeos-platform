@@ -12,11 +12,11 @@ class LifeOSHouseStatusCard extends HTMLElement {
   static getStubConfig(){ return {mode:'domestic'}; }
   static getConfigElement(){ return document.createElement('lifeos-house-status-dev-editor-v2'); }
   setConfig(config){ this.config=config||{}; this.render(); }
-  set hass(hass){ this._hass=hass; const host=this._doorbellHost; if(this._mode==='doorbell'&&host?.isConnected){host.__lifeosDoorbellHass=hass;if(host.__lifeosCameraCard)host.__lifeosCameraCard.hass=hass;return;} this.render(); }
+  set hass(hass){ this._hass=hass; const host=this._doorbellHost; if(this._mode==='doorbell'&&host?.isConnected){host.__lifeosDoorbellHass=hass;if(host.__lifeosCameraCard)host.__lifeosCameraCard.hass=hass;return;} this.render(); if(this._mode!=='doorbell')this._loadEnergyHistory(); }
   period(){return this._period||'today';}
   anchor(){return this._anchor||new Date();}
   periodStart(){const a=new Date(this.anchor());a.setHours(0,0,0,0);if(this.period()==='week'){const dow=(a.getDay()+6)%7;a.setDate(a.getDate()-dow);}if(this.period()==='month')a.setDate(1);if(this.period()==='year'){a.setMonth(0);a.setDate(1);}return a;}
-  shiftPeriod(dir){const a=new Date(this.anchor());if(this.period()==='week')a.setDate(a.getDate()+7*dir);else if(this.period()==='month')a.setMonth(a.getMonth()+dir);else if(this.period()==='year')a.setFullYear(a.getFullYear()+dir);else a.setDate(a.getDate()+dir);this._anchor=a;this.render();}
+  shiftPeriod(dir){this._energyHistoryKey=null;const a=new Date(this.anchor());if(this.period()==='week')a.setDate(a.getDate()+7*dir);else if(this.period()==='month')a.setMonth(a.getMonth()+dir);else if(this.period()==='year')a.setFullYear(a.getFullYear()+dir);else a.setDate(a.getDate()+dir);this._anchor=a;this.render();}
   getCardSize(){ return 10; }
   val(id,def=0){ const s=this._hass?.states?.[id]; const n=Number(s?.state); return Number.isFinite(n)?n:def; }
   money(id){ return '£'+this.val(id).toFixed(2); }
@@ -37,7 +37,10 @@ class LifeOSHouseStatusCard extends HTMLElement {
     const moduleVersion=mode==='doorbell'?'Doorbell DEV':(mode==='home'?'House DEV':'Energy DEV');
     const nav=`<div class="hanav"><div class="hamb" role="button" tabindex="0" aria-label="Open Home Assistant menu">☰</div><div class="haitem ${mode==='domestic'?'active':''}" data-mode="domestic">⌂</div><div class="haitem ${mode==='flow'?'active':''}" data-mode="flow">⚡</div><div class="haitem ${mode==='home'?'active':''}" data-mode="home">▣</div><div class="haitem ${mode==='doorbell'?'active':''}" data-mode="doorbell">▥</div></div><div class="top"><div class="title">⌂ House Status DEV <span style="font-size:10px;opacity:.55;font-weight:400;margin-left:6px">${moduleVersion}</span></div><div class="controls">${mode!=='home'&&mode!=='doorbell'?'<div class="period"><div class="p '+(this.period()==='today'?'active':'')+'" data-period="today">Today</div><div class="p '+(this.period()==='day'?'active':'')+'" data-period="day">Day</div><div class="p '+(this.period()==='week'?'active':'')+'" data-period="week">Week</div><div class="p '+(this.period()==='month'?'active':'')+'" data-period="month">Month</div><div class="p '+(this.period()==='year'?'active':'')+'" data-period="year">Year</div><div class="p '+(this.period()==='range'?'active':'')+'" data-period="range">Date range</div></div>':''}<div class="datewrap"><div class="arrow" data-shift="-1">‹</div><label class="date">▣ ${this.anchor().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric'})}<input class="dateinput" data-date-picker type="date" value="${this.anchor().getFullYear()}-${String(this.anchor().getMonth()+1).padStart(2,'0')}-${String(this.anchor().getDate()).padStart(2,'0')}"></label><div class="arrow" data-shift="1">›</div></div></div></div>`;
     const stamp=o=>new Date(o.valid_from||o.local_from||o.start||0).getTime();
-    const report=this._hass.states['sensor.lifeos_energy_report']?.attributes?.intervals||[];
+    const liveReport=this._hass.states['sensor.lifeos_energy_report']?.attributes?.intervals||[];
+    const historicalReport=this._energyHistory||[];
+    const report=[...historicalReport,...liveReport].reduce((m,o)=>{const k=stamp(o);if(Number.isFinite(k))m.set(k,o);return m;},new Map()).values();
+    const reportRows=[...report].sort((a,b)=>stamp(a)-stamp(b));
     const standingChargeFor=r=>{const d=new Date(stamp(r));return .01+(d.getHours()===23&&d.getMinutes()===30?0.02:0)};
     const tariff=this._hass.states['sensor.lifeos_energy_tariff_horizon']?.attributes?.slots||[];
     const octopusTariff=this._hass.states['sensor.lifeos_energy_tariff_horizon'];
@@ -49,8 +52,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
       const W=1000,H=360,padL=68,padR=68,padT=34,padB=30,iw=W-padL-padR,ih=H-padT-padB;
       const now=new Date(); let day0=this.periodStart(); if(this.period()==='today')day0.setDate(day0.getDate()-1); let day1=new Date(day0),day2=new Date(day0); if(this.period()==='week'){day1.setDate(day1.getDate()+7);day2=new Date(day1);day2.setDate(day2.getDate()+7);}else if(this.period()==='month'){day1.setMonth(day1.getMonth()+1);day2=new Date(day1);}else if(this.period()==='year'){day1.setFullYear(day1.getFullYear()+1);day2=new Date(day1);}else{day1.setDate(day1.getDate()+1);day2=new Date(day1);day2.setDate(day2.getDate()+1);}
       const longRange=['week','month','year'].includes(this.period()),t0=day0.getTime(),t1=day1.getTime(),t2=longRange?t1:day2.getTime(),tomorrowHasPrice=!longRange&&tariff.some(o=>o.import_price_available===true&&o.import_p_per_kwh!==null&&stamp(o)>=t1&&stamp(o)<t2),tomorrowShare=longRange?0:(tomorrowHasPrice?.50:.22),todayShare=longRange?1:1-tomorrowShare,x=t=>longRange?padL+((t-t0)/(t1-t0))*iw:(t<t1?padL+((t-t0)/(t1-t0))*iw*todayShare:padL+iw*todayShare+((t-t1)/(t2-t1))*iw*tomorrowShare);
-      const todayReport=report.filter(o=>{const t=stamp(o);return t>=t0&&t<t2;});
-      const historicalPrice=report.filter(o=>{const t=stamp(o);return t>=t0&&t<t2&&Number.isFinite(Number(o.import_p_per_kwh));}).map(o=>({...o,import_price_available:true})); const tariffPrice=tariff.filter(o=>o.import_price_available===true&&o.import_p_per_kwh!==null).filter(o=>{const t=stamp(o);return t>=t0&&t<t2;}); const priceByStamp=new Map(historicalPrice.map(o=>[stamp(o),o])); tariffPrice.forEach(o=>priceByStamp.set(stamp(o),o)); const published=[...priceByStamp.values()].sort((a,b)=>stamp(a)-stamp(b));
+      const todayReport=reportRows.filter(o=>{const t=stamp(o);return t>=t0&&t<t2;});
+      const historicalPrice=reportRows.filter(o=>{const t=stamp(o);return t>=t0&&t<t2&&Number.isFinite(Number(o.import_p_per_kwh));}).map(o=>({...o,import_price_available:true})); const tariffPrice=tariff.filter(o=>o.import_price_available===true&&o.import_p_per_kwh!==null).filter(o=>{const t=stamp(o);return t>=t0&&t<t2;}); const priceByStamp=new Map(historicalPrice.map(o=>[stamp(o),o])); tariffPrice.forEach(o=>priceByStamp.set(stamp(o),o)); const published=[...priceByStamp.values()].sort((a,b)=>stamp(a)-stamp(b));
       const aggregate=(arr,key,kind='avg')=>{
         if(!['week','month','year'].includes(this.period()))return arr.map(o=>{const t=stamp(o),v=Number(o[key]);return Number.isFinite(t)&&Number.isFinite(v)?[x(t),v]:null;}).filter(Boolean);
         const buckets=new Map(),period=this.period();
@@ -95,10 +98,38 @@ class LifeOSHouseStatusCard extends HTMLElement {
     this.innerHTML=css+`<div class="app">${nav}${body}</div>`; this._doorbellHost=null; if(mode==='doorbell'){const host=this.querySelector('[data-doorbell-card]');this._doorbellHost=host;if(host)host.__lifeosDoorbellHass=this._hass;const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;doorbell?.mount?.(host,this._hass);}
     const menu=this.querySelector('.hamb');if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
     this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this._mode=el.dataset.mode;this.render();});
-    this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this.render();});
+    this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;this._energyHistoryKey=null;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this.render();});
     this.querySelectorAll('[data-shift]').forEach(el=>el.onclick=()=>this.shiftPeriod(Number(el.dataset.shift)));
-    const picker=this.querySelector('[data-date-picker]');if(picker)picker.onchange=()=>{if(!picker.value)return;const [y,m,d]=picker.value.split('-').map(Number);const chosen=new Date(y,m-1,d);if(Number.isNaN(chosen.getTime()))return;this._anchor=chosen;if(this.period()==='today')this._period='day';this.render();};
+    const picker=this.querySelector('[data-date-picker]');if(picker)picker.onchange=()=>{if(!picker.value)return;const [y,m,d]=picker.value.split('-').map(Number);const chosen=new Date(y,m-1,d);if(Number.isNaN(chosen.getTime()))return;this._anchor=chosen;this._energyHistoryKey=null;if(this.period()==='today')this._period='day';this.render();this._loadEnergyHistory();};
   }
+  async _loadEnergyHistory(){
+    if(!this._hass||this._energyHistoryLoading)return;
+    const period=this.period(),start=this.periodStart(),end=new Date(start);
+    if(period==='week')end.setDate(end.getDate()+7);
+    else if(period==='month')end.setMonth(end.getMonth()+1);
+    else if(period==='year')end.setFullYear(end.getFullYear()+1);
+    else end.setDate(end.getDate()+2);
+    const now=Date.now(),effectiveEnd=Math.min(end.getTime(),now);
+    if(effectiveEnd<=start.getTime()){this._energyHistory=[];return;}
+    // LifeOS Energy is the source adapter: Enphase supplies physical telemetry and
+    // Octopus supplies tariff data. Ask it for the requested horizon directly;
+    // do not use Home Assistant Recorder as a second long-term energy database.
+    const hours=Math.max(1,Math.min(840,Math.ceil((effectiveEnd-start.getTime())/3600000)+2)),useRollups=['week','month','year'].includes(period);
+    const key=period+'|'+start.toISOString()+'|'+effectiveEnd;
+    if(this._energyHistoryKey===key)return;
+    this._energyHistoryLoading=true;
+    try{
+      const url=useRollups?'/lifeos-energy-api/api/energy/rollups?start='+Math.floor(start.getTime()/1000)+'&end='+Math.ceil(effectiveEnd/1000)+'&granularity='+(period==='year'?'day':'30m'):'/lifeos-energy-api/api/energy/report?hours='+hours;
+      const data=await fetch(url,{credentials:'same-origin'}).then(r=>{if(!r.ok)throw new Error('energy history HTTP '+r.status);return r.json();});
+      const intervals=useRollups?(Array.isArray(data?.points)?data.points:[]).map(o=>({valid_from:new Date(Number(o.timestamp)*1000).toISOString(),domestic_import_kwh:Number(o.grid_import_kwh)||0,import_kwh:Number(o.grid_import_kwh)||0,export_kwh:Number(o.grid_export_kwh)||0,production_kwh:Number(o.production_kwh)||0,consumption_kwh:Number(o.consumption_kwh)||0,import_p_per_kwh:o.import_p_per_kwh,import_price_available:o.import_price_available,domestic_import_cost_gbp:o.domestic_import_cost_gbp})):Array.isArray(data?.intervals)?data.intervals:[];
+      this._energyHistory=intervals.filter(o=>{const t=new Date(o.valid_from||o.local_from||o.start||0).getTime();return Number.isFinite(t)&&t>=start.getTime()&&t<end.getTime();});
+      this._energyHistoryKey=key;
+    }catch(e){
+      console.warn('House Status DEV source-backed energy history load failed',e);
+      this._energyHistory=[];
+    }finally{this._energyHistoryLoading=false;this.render();}
+  }
+
   async _loadPowerdownHistory(){
     if(!this._hass)return;
     const entity='event.octopus_energy_a_8b23e5b8_octoplus_power_down_events';
