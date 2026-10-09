@@ -187,19 +187,27 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ["docker", "exec", "adguardhome", "/opt/adguardhome/AdGuardHome", "--version"],
         check=False, capture_output=True, text=True, timeout=5,
     )
+    http_match = re.search(r"(?ms)^http:\\s*\\n(?:(?:^  [^\\n]*\\n)|(?:^\\n))*?^    address:\\s*['\\\"]?([^'\\\"]+)", persisted)
+    bind_match = re.search(r"(?m)^bind_port:\\s*(\\d+)", persisted)
+    configured_address = http_match.group(1) if http_match else ""
+    configured_port = configured_address.rsplit(":", 1)[-1] if ":" in configured_address else (bind_match.group(1) if bind_match else "")
+    api_bases = [f"http://{host}:{configured_port}" for host in (expected, "127.0.0.1")] if configured_port.isdigit() else []
     api_results = {}
     for api_path in ("/control/rewrite/list", "/control/rewrite/settings"):
-        try:
-            with urllib.request.urlopen(f"http://127.0.0.1:3000{api_path}", timeout=3) as response:
-                payload = json.loads(response.read().decode("utf-8"))
-                if api_path.endswith("/list"):
-                    api_results["list"] = f"{response.status}:exact_entry={any(item.get('domain') == HOSTNAME and item.get('answer') == expected for item in payload if isinstance(item, dict))}"
-                else:
-                    api_results["settings"] = f"{response.status}:enabled={payload.get('enabled')}"
-        except urllib.error.HTTPError as error:
-            api_results["list" if api_path.endswith("/list") else "settings"] = str(error.code)
-        except Exception as error:
-            api_results["list" if api_path.endswith("/list") else "settings"] = type(error).__name__
+        for api_base in api_bases:
+            try:
+                with urllib.request.urlopen(f"{api_base}{api_path}", timeout=3) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                    if api_path.endswith("/list"):
+                        api_results["list"] = f"{response.status}:exact_entry={any(item.get('domain') == HOSTNAME and item.get('answer') == expected for item in payload if isinstance(item, dict))}"
+                    else:
+                        api_results["settings"] = f"{response.status}:enabled={payload.get('enabled')}"
+                    break
+            except urllib.error.HTTPError as error:
+                api_results["list" if api_path.endswith("/list") else "settings"] = str(error.code)
+                break
+            except Exception as error:
+                api_results["list" if api_path.endswith("/list") else "settings"] = type(error).__name__
     print(f"ADGUARD_IMAGE={image}")
     print(f"ADGUARD_MOUNTS={mount_info}")
     print(f"ADGUARD_VERSION={(binary_version.stdout or binary_version.stderr).strip()[:200] or 'unavailable'}")
