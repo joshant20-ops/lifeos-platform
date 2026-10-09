@@ -176,7 +176,17 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ["docker", "inspect", "--format={{.Config.Image}}", "adguardhome"],
         check=True, capture_output=True, text=True, timeout=5,
     ).stdout.strip()
+    mount_info = subprocess.run(
+        ["docker", "inspect", "--format={{range .Mounts}}{{.Source}}=>{{.Destination}};{{end}}", "adguardhome"],
+        check=True, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
+    binary_version = subprocess.run(
+        ["docker", "exec", "adguardhome", "/opt/adguardhome/AdGuardHome", "--version"],
+        check=False, capture_output=True, text=True, timeout=5,
+    )
     print(f"ADGUARD_IMAGE={image}")
+    print(f"ADGUARD_MOUNTS={mount_info}")
+    print(f"ADGUARD_VERSION={(binary_version.stdout or binary_version.stderr).strip()[:200] or 'unavailable'}")
     print(f"ADGUARD_CONFIG_SECTION={rewrite_section_name} ENTRY_AFTER_START={'PASS' if rewrite_entry else 'FAIL'}")
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
     diagnostics: dict[str, str] = {}
