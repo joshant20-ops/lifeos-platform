@@ -254,7 +254,7 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ports = {"53", "3001"}
         if isinstance(dns_port, int):
             ports.add(str(dns_port))
-        port_pattern = r":(?:" + "|".join(re.escape(port) for port in sorted(ports)) + r")\\b"
+        port_pattern = r":(?:" + "|".join(re.escape(port) for port in sorted(ports)) + r")\b"
         listener_output = ";".join(line.strip() for line in listeners.splitlines() if re.search(port_pattern, line))
     print(f"ADGUARD_HOST_LISTENERS={listener_output or 'unavailable'}")
     print(f"ADGUARD_IMAGE={image}")
