@@ -192,22 +192,26 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     configured_address = http_match.group(1).strip("'\"") if http_match else ""
     configured_port = configured_address.rsplit(":", 1)[-1] if ":" in configured_address else (bind_match.group(1) if bind_match else "")
     api_bases = [f"http://{host}:{configured_port}" for host in (expected, "127.0.0.1")] if configured_port.isdigit() else []
+    network_runtime = subprocess.run(
+        ["docker", "inspect", "--format={{.HostConfig.NetworkMode}}|{{json .NetworkSettings.Ports}}|{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}", "adguardhome"],
+        check=True, capture_output=True, text=True, timeout=5,
+    ).stdout.strip()
+    print(f"ADGUARD_HTTP_CONFIG_ADDRESS={configured_address or 'unavailable'} API_PORT={configured_port or 'unavailable'}")
+    print(f"ADGUARD_DOCKER_NETWORK_PORTS={network_runtime}")
     api_results = {}
-    for api_path in ("/control/rewrite/list", "/control/rewrite/settings"):
-        for api_base in api_bases:
+    for api_base in api_bases:
+        for api_path in ("/control/status", "/control/rewrite/list", "/control/rewrite/settings"):
+            key = f"{api_base.rsplit(':', 1)[0].removeprefix('http://')}:{api_path}"
             try:
                 with urllib.request.urlopen(f"{api_base}{api_path}", timeout=3) as response:
-                    payload = json.loads(response.read().decode("utf-8"))
+                    api_results[key] = f"{response.status};server={response.headers.get('Server', 'none')};type={response.headers.get('Content-Type', 'none')}"
                     if api_path.endswith("/list"):
-                        api_results["list"] = f"{response.status}:exact_entry={any(item.get('domain') == HOSTNAME and item.get('answer') == expected for item in payload if isinstance(item, dict))}"
-                    else:
-                        api_results["settings"] = f"{response.status}:enabled={payload.get('enabled')}"
-                    break
+                        payload = json.loads(response.read().decode("utf-8"))
+                        api_results[key] += f";exact_entry={any(item.get('domain') == HOSTNAME and item.get('answer') == expected for item in payload if isinstance(item, dict))}"
             except urllib.error.HTTPError as error:
-                api_results["list" if api_path.endswith("/list") else "settings"] = str(error.code)
-                break
+                api_results[key] = f"{error.code};server={error.headers.get('Server', 'none')};type={error.headers.get('Content-Type', 'none')}"
             except Exception as error:
-                api_results["list" if api_path.endswith("/list") else "settings"] = type(error).__name__
+                api_results[key] = type(error).__name__
     print(f"ADGUARD_IMAGE={image}")
     print(f"ADGUARD_MOUNTS={mount_info}")
     print(f"ADGUARD_VERSION={(binary_version.stdout or binary_version.stderr).strip()[:200] or 'unavailable'}")
