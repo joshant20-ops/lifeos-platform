@@ -505,10 +505,6 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
                 if expected in answers:
                     print("ADGUARD_DNS_TRANSPORT_AT_ACCEPTANCE=" + dns_transport_state_summary())
                     print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
-    print("ADGUARD_QUERYLOG_API=" + ";".join(
-        f"{base.rsplit(':', 1)[0].removeprefix('http://')}:{adguard_querylog_api_summary(base)}"
-        for base in api_bases
-    ))
                     print("ADGUARD_QUERYLOG_API=" + ";".join(
                         f"{base.rsplit(':', 1)[0].removeprefix('http://')}:{adguard_querylog_api_summary(base)}"
                         for base in api_bases
@@ -520,6 +516,10 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         time.sleep(1)
     print("ADGUARD_DNS_TRANSPORT_AFTER_PROBES=" + dns_transport_state_summary())
     print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
+    print("ADGUARD_QUERYLOG_API=" + ";".join(
+        f"{base.rsplit(':', 1)[0].removeprefix('http://')}:{adguard_querylog_api_summary(base)}"
+        for base in api_bases
+    ))
     print("ADGUARD_DNS_DIAGNOSTICS=" + ";".join(f"{resolver}:{diagnostics.get(resolver, 'no_response')}" for resolver in resolvers))
     if new != old:
         subprocess.run(["docker", "stop", "adguardhome"], check=False, capture_output=True, text=True, timeout=30)
