@@ -86,6 +86,27 @@ def adguard_dns_config_summary(text: str) -> str:
     return ";".join(details)
 
 
+
+def adguard_rewrite_structure_summary(text: str) -> str:
+    lines = text.splitlines()
+    filtering_sections = [i for i, line in enumerate(lines) if re.match(r"^filtering:\s*(?:#.*)?$", line)]
+    start, end = rewrite_section(lines)
+    rewrite_keys = [i for i in range(start + 1, end) if re.match(r"^  rewrites:\s*(?:\[\])?\s*(?:#.*)?$", lines[i])]
+    matches = []
+    for rewrite in rewrite_keys:
+        key_end = next((i for i in range(rewrite + 1, end) if lines[i] and len(lines[i]) - len(lines[i].lstrip()) <= 2), end)
+        for i in range(rewrite + 1, key_end):
+            domain = re.match(r"^\s+-\s+domain:\s*['""]?([^'""]+)['""]?\s*$", lines[i])
+            if domain and domain.group(1) == HOSTNAME:
+                answer = next((re.match(r"^\s+answer:\s*['""]?([^'""]+)['""]?\s*$", lines[j]) for j in range(i + 1, min(i + 3, key_end)) if re.match(r"^\s+answer:", lines[j])), None)
+                matches.append(answer.group(1) if answer else "answer_missing")
+    return (
+        f"top_level_filtering_sections:{len(filtering_sections)};"
+        f"selected_rewrites_keys:{len(rewrite_keys)};"
+        f"ai_lan_entries:{len(matches)};"
+        f"ai_lan_answers:{','.join(matches) if matches else 'none'}"
+    )
+
 def filtering_rewrite_flags(text: str) -> str:
     lines = text.splitlines()
     start, end = rewrite_section(lines)
@@ -345,6 +366,7 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print("ADGUARD_DNS_STARTUP_ERRORS=" + " || ".join(startup_errors if startup_errors else ["none"]))
     print(f"ADGUARD_DNS_CONFIG_BEFORE={adguard_dns_config_summary(old)}")
     print(f"ADGUARD_DNS_CONFIG_AFTER={adguard_dns_config_summary(persisted)}")
+    print(f"ADGUARD_REWRITE_CONFIG_STRUCTURE={adguard_rewrite_structure_summary(persisted)}")
     print(f"ADGUARD_FILTERING_FLAGS_BEFORE={filtering_rewrite_flags(old)}")
     print(f"ADGUARD_FILTERING_FLAGS_AFTER={filtering_rewrite_flags(persisted)}")
     print(f"ADGUARD_CONFIG_SECTION={rewrite_section_name} ENTRY_AFTER_START={'PASS' if rewrite_entry else 'FAIL'}")
