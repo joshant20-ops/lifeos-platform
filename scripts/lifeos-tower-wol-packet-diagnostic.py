@@ -280,12 +280,12 @@ def monitor(
         if on_tick:
             on_tick()
         now = time.monotonic()
-        if now >= next_observation:
+        if now >= next_observation and deadline - now >= 5:
             if now >= next_ping:
                 ping = command(["ping", "-c", "1", "-W", "1", cfg["host"]], timeout=3)
                 last_icmp = ping.returncode == 0
                 next_ping = now + ICMP_POLL_SECONDS
-            neigh = command(["ip", "neigh", "show", cfg["host"]]).stdout.strip()
+            neigh = command(["ip", "neigh", "show", cfg["host"]], timeout=1).stdout.strip()
             ssh = tcp_open(cfg["host"], cfg["access_port"])
             ollama = tcp_open(cfg["host"], 11434)
             observed_at = dt.datetime.now(dt.timezone.utc).isoformat()
