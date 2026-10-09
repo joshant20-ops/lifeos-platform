@@ -239,6 +239,33 @@ def adguard_ai_querylog_summary() -> str:
 
 
 
+def adguard_querylog_api_summary(api_base: str) -> str:
+    """Summarize AdGuard's live query-log API without exposing unrelated client history."""
+    url = f"{api_base}/control/querylog?search={HOSTNAME}&response_status=all&limit=20"
+    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+            records = payload if isinstance(payload, list) else payload.get("data", [])
+            matches = []
+            for item in records if isinstance(records, list) else []:
+                question = item.get("question") or {}
+                host = str(item.get("QH", question.get("host", ""))).rstrip(".").lower()
+                if host != HOSTNAME:
+                    continue
+                result = item.get("Result") or item.get("result") or {}
+                answers = item.get("Answer") or item.get("answer") or []
+                matches.append(
+                    f"reason:{result.get('Reason', result.get('reason', 'unknown'))};"
+                    f"answer_items:{len(answers) if isinstance(answers, list) else 'present'}"
+                )
+            return f"http:{response.status};records:{len(records) if isinstance(records, list) else 'invalid'};ai_matches:{len(matches)};latest:{matches[-1] if matches else 'none'}"
+    except urllib.error.HTTPError as error:
+        return f"http:{error.code}"
+    except Exception as error:
+        return type(error).__name__
+
+
 def adguard_client_override_summary(text: str, addresses: set[str]) -> str:
     lines = text.splitlines()
     clients_start = next((i for i, line in enumerate(lines) if re.match(r"^clients:\s*(?:#.*)?$", line)), None)
@@ -478,6 +505,14 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
                 if expected in answers:
                     print("ADGUARD_DNS_TRANSPORT_AT_ACCEPTANCE=" + dns_transport_state_summary())
                     print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
+    print("ADGUARD_QUERYLOG_API=" + ";".join(
+        f"{base.rsplit(':', 1)[0].removeprefix('http://')}:{adguard_querylog_api_summary(base)}"
+        for base in api_bases
+    ))
+                    print("ADGUARD_QUERYLOG_API=" + ";".join(
+                        f"{base.rsplit(':', 1)[0].removeprefix('http://')}:{adguard_querylog_api_summary(base)}"
+                        for base in api_bases
+                    ))
                     print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
                     return 0
             except OSError as error:
