@@ -44,12 +44,12 @@ def rewrite_section(lines: list[str]) -> tuple[int, int]:
 def filtering_rewrite_flags(text: str) -> str:
     lines = text.splitlines()
     start, end = rewrite_section(lines)
-    if not re.match(r"^filtering:\\s*(?:#.*)?$", lines[start]):
+    if not re.match(r"^filtering:\s*(?:#.*)?$", lines[start]):
         return "legacy_dns_section"
     values = {}
     for key in ("filtering_enabled", "rewrites_enabled"):
         found = next((line for line in lines[start + 1:end] if re.match(rf"^  {key}:", line)), None)
-        value = re.sub(r"^  [^:]+:\\s*", "", found).split("#", 1)[0].strip().lower() if found else "unset"
+        value = re.sub(r"^  [^:]+:\s*", "", found).split("#", 1)[0].strip().lower() if found else "unset"
         values[key] = value
     return ",".join(f"{key}:{values[key]}" for key in ("filtering_enabled", "rewrites_enabled"))
 
@@ -57,16 +57,16 @@ def filtering_rewrite_flags(text: str) -> str:
 def rewrite_config(text: str, address: str) -> str:
     lines = text.splitlines()
     start, end = rewrite_section(lines)
-    if re.match(r"^filtering:\\s*(?:#.*)?$", lines[start]):
+    if re.match(r"^filtering:\s*(?:#.*)?$", lines[start]):
         enabled = next((i for i in range(start + 1, end) if re.match(r"^  rewrites_enabled:", lines[i])), None)
         if enabled is None:
             lines.insert(start + 1, "  rewrites_enabled: true")
         else:
-            current = re.sub(r"^  rewrites_enabled:\\s*", "", lines[enabled]).split("#", 1)[0].strip().lower()
+            current = re.sub(r"^  rewrites_enabled:\s*", "", lines[enabled]).split("#", 1)[0].strip().lower()
             if current != "true":
                 lines[enabled] = "  rewrites_enabled: true"
         start, end = rewrite_section(lines)
-    rewrite = next((i for i in range(start + 1, end) if re.match(r"^  rewrites:\\s*(?:\\[\\])?\\s*(?:#.*)?$", lines[i])), None)
+    rewrite = next((i for i in range(start + 1, end) if re.match(r"^  rewrites:\s*(?:\[\])?\s*(?:#.*)?$", lines[i])), None)
     entry = [f"    - domain: {HOSTNAME}", f"      answer: {address}"]
     if rewrite is None:
         lines[start + 1:start + 1] = ["  rewrites:", *entry]
