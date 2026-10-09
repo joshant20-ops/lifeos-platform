@@ -13,6 +13,9 @@ import subprocess
 import tempfile
 import time
 import fcntl
+import json
+import urllib.error
+import urllib.request
 
 CONFIG = pathlib.Path("/opt/stacks/adguard/conf/AdGuardHome.yaml")
 HOSTNAME = "ai.lan"
@@ -184,10 +187,24 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
         ["docker", "exec", "adguardhome", "/opt/adguardhome/AdGuardHome", "--version"],
         check=False, capture_output=True, text=True, timeout=5,
     )
+    api_results = {}
+    for api_path in ("/control/rewrite/list", "/control/rewrite/settings"):
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:3000{api_path}", timeout=3) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+                if api_path.endswith("/list"):
+                    api_results["list"] = f"{response.status}:exact_entry={any(item.get('domain') == HOSTNAME and item.get('answer') == expected for item in payload if isinstance(item, dict))}"
+                else:
+                    api_results["settings"] = f"{response.status}:enabled={payload.get('enabled')}"
+        except urllib.error.HTTPError as error:
+            api_results["list" if api_path.endswith("/list") else "settings"] = str(error.code)
+        except Exception as error:
+            api_results["list" if api_path.endswith("/list") else "settings"] = type(error).__name__
     print(f"ADGUARD_IMAGE={image}")
     print(f"ADGUARD_MOUNTS={mount_info}")
     print(f"ADGUARD_VERSION={(binary_version.stdout or binary_version.stderr).strip()[:200] or 'unavailable'}")
     print(f"ADGUARD_CONFIG_SECTION={rewrite_section_name} ENTRY_AFTER_START={'PASS' if rewrite_entry else 'FAIL'}")
+    print(f"ADGUARD_REWRITE_API=list:{api_results.get('list')} settings:{api_results.get('settings')}")
     resolvers = list(dict.fromkeys([*container_resolvers, expected, "127.0.0.1"]))
     diagnostics: dict[str, str] = {}
     for _ in range(20):
