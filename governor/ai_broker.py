@@ -25,7 +25,7 @@ SECRETS_PATH = pathlib.Path(
 CONFIG_PATH = pathlib.Path(
     os.environ.get("LIFEOS_AI_BROKER_CONFIG", pathlib.Path.home() / ".config/lifeos/ai-broker.env")
 )
-OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://127.0.0.1:18114/api/generate")
+OLLAMA_URL = os.environ.get("LIFEOS_LOCAL_AI_URL", "http://ai.lan:18114/api/generate")
 OLLAMA_MODEL = os.environ.get("LIFEOS_LOCAL_AI_MODEL", "gpt-oss:20b")
 OLLAMA_CONTEXT_LENGTH = int(os.environ.get("LIFEOS_LOCAL_AI_CONTEXT_LENGTH", "8192"))
 HTTP_TIMEOUT = int(os.environ.get("LIFEOS_AI_HTTP_TIMEOUT", "120"))
@@ -42,13 +42,19 @@ def _lease_topic(lease_id: str | None = None) -> str:
     return f"lifeos/tower/lease/{lease_id or os.getpid()}"
 
 
-def _publish_lease(state: str, *, required: bool = True, lease_id: str | None = None) -> None:
+def _publish_lease(
+    state: str, *, required: bool = True, lease_id: str | None = None,
+    wake_via_ha: bool = False,
+) -> None:
     owner = str(lease_id or os.getpid())
-    payload = json.dumps({
+    lease = {
         "owner": f"ai-broker:{owner}",
         "state": state,
         "expires_at": int(time.time()) + (LEASE_TTL if state == "active" else 0),
-    }, separators=(",", ":"))
+    }
+    if state == "active" and wake_via_ha:
+        lease["wake_via_ha"] = True
+    payload = json.dumps(lease, separators=(",", ":"))
     try:
         subprocess.run(
             ["mosquitto_pub", "-h", MQTT_HOST, "-t", _lease_topic(lease_id), "-m", payload, "-r"],
