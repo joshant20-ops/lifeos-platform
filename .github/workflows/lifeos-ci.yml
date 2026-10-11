@@ -110,6 +110,7 @@ jobs:
             tests/test_openhands_integration.py \
             tests/test_privacy_classifier.py \
             tests/test_private_domain_policy.py
+            tests/test_lifeos_wake_aware_ai_acceptance.py
           bash -n scripts/lifeos-configure-ai-dns.sh
 
       - name: Validate Wave C read-only contracts
