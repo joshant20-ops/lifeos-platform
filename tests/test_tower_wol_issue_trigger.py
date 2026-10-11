@@ -82,9 +82,12 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
         workflow = WORKFLOW.read_text()
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: inspect-tower-wol'", workflow)
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: capture-tower-wol'", workflow)
+        self.assertIn("github.event.issue.title == 'LifeOS Deploy: controlled-tower-shutdown-proof'", workflow)
+        self.assertIn("mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF", workflow)
+        self.assertIn("active Tower leases must be zero", workflow)
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: inspect-tower-network'", workflow)
         self.assertIn(
-            "inspect-tower-wol', 'inspect-tower-network', 'capture-tower-wol'].includes(process.env.LIFEOS_OPERATION)",
+            "inspect-tower-wol', 'inspect-tower-network', 'capture-tower-wol', 'controlled-tower-shutdown-proof'].includes(process.env.LIFEOS_OPERATION)",
             workflow,
         )
         self.assertNotIn("github.event.issue.title }} ", workflow)
