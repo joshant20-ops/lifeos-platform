@@ -10,12 +10,10 @@ SECRET = "/usr/local/sbin/lifeos-secret"
 SECRET_NAME = "homeassistant.long_lived_access_token"
 CHECK_SCRIPT = """import os,urllib.request
 headers={\"Authorization\":\"Bearer \"+os.environ[\"HA_TOKEN\"],\"Accept\":\"application/json\"}
-base=\"http://127.0.0.1:8123/api/states/\"
-for entity in (\"switch.z97_power\",\"predbat.status\",\"sensor.lifeos_grid_import_power\",\"sensor.predbat_enphase_5731818_pv_power\"):
-    request=urllib.request.Request(base+entity,headers=headers)
-    with urllib.request.urlopen(request,timeout=10) as response:
-        assert response.status==200
-print(\"LOCAL_HA_LIFEOS=PASS\")
+request=urllib.request.Request(\"http://127.0.0.1:8123/api/states/switch.z97_power\",headers=headers)
+with urllib.request.urlopen(request,timeout=10) as response:
+    assert response.status==200
+print(\"HA_SWITCH_ENTITY=PASS\")
 """
 WAKE_SCRIPT = """import json,os,urllib.request
 request=urllib.request.Request(\"http://127.0.0.1:8123/api/services/switch/turn_on\",data=json.dumps({\"entity_id\":\"switch.z97_power\"}).encode(),headers={\"Authorization\":\"Bearer \"+os.environ[\"HA_TOKEN\"],\"Content-Type\":\"application/json\",\"Accept\":\"application/json\"},method=\"POST\")
