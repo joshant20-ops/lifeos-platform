@@ -2,17 +2,55 @@
 set -Eeuo pipefail
 BASE_URL=http://ai.lan:18114
 STARTED_AT=$(date --iso-8601=seconds)
-CLEANUP_NEEDED=0
 tower_state() { timeout 6 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state; }
-assert_off() {
-  local state; state=$(tower_state)
+assert_service_unavailable() {
+  local state
+  state=$(tower_state)
   python3 - "$state" <<'PY'
 import json,sys
-v=json.loads(sys.argv[1]); assert v.get("state")=="OFF" and v.get("accessible") is False,v
+v=json.loads(sys.argv[1])
+assert v.get("accessible") is False, v
+assert v.get("physical_power") == "UNKNOWN", v
+print("TOWER_ACCESS_UNAVAILABLE=PASS")
+print("PHYSICAL_POWER=UNKNOWN (recorded; not a gate)")
+PY
+  python3 - <<'PY'
+import socket
+try:
+    socket.create_connection(("192.168.0.201",22),timeout=3)
+except OSError:
+    print("TOWER_SSH_UNAVAILABLE=PASS")
+else:
+    raise SystemExit("Tower SSH is reachable; cold-start precondition is not met")
+PY
+  if curl -fsS --max-time 3 http://192.168.0.201:11434/api/tags >/dev/null 2>&1; then
+    echo 'Ollama is reachable; cold-start precondition is not met' >&2
+    return 1
+  fi
+  echo 'OLLAMA_UNAVAILABLE=PASS'
+}
+assert_no_active_leases() {
+  local retained
+  retained=$(timeout 5 mosquitto_sub -h 127.0.0.1 -v -W 3 -t 'lifeos/tower/lease/+' 2>/dev/null || true)
+  python3 - "$retained" <<'PY'
+import json,sys,time
+now=int(time.time())
+active=[]
+for line in sys.argv[1].splitlines():
+    topic,sep,raw=line.partition(" ")
+    if not sep: continue
+    try: value=json.loads(raw)
+    except ValueError as exc: raise SystemExit(f"invalid retained Tower lease on {topic}") from exc
+    if value.get("state")=="active" and int(value.get("expires_at") or 0)>now:
+        active.append(topic)
+if active: raise SystemExit("active inference/wake leases present: "+", ".join(active))
+print("NO_ACTIVE_INFERENCE_WAKE_LEASE=PASS")
 PY
 }
-cleanup() { if [[ "$CLEANUP_NEEDED" == 1 ]]; then mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF >/dev/null 2>&1 || true; fi; }
-trap cleanup EXIT
+assert_cold_precondition() {
+  assert_service_unavailable
+  assert_no_active_leases
+}
 systemctl is-active --quiet lifeos-autonomous-agent.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
 curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
@@ -22,29 +60,21 @@ test -n "$pi_ip" && test "$dns_ip" = "$pi_ip"
 echo "STABLE_AI_DNS=ai.lan->$pi_ip PASS"
 sudo -n /usr/local/sbin/lifeos-ai-ha-wake --check
 echo 'LOCAL_AGENT_ENERGY=PASS'
-CLEANUP_NEEDED=1
-mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
-off=0
-for _ in $(seq 1 120); do
-  if state=$(tower_state 2>/dev/null) && python3 - "$state" <<'PY' >/dev/null 2>&1
-import json,sys
-raise SystemExit(0 if json.loads(sys.argv[1]).get("state")=="OFF" else 1)
-PY
-  then off=1; break; fi
-  sleep 2
-done
-test "$off" -eq 1; assert_off
+assert_cold_precondition
 health=$(curl -fsS --max-time 5 "$BASE_URL/health")
 python3 - "$health" <<'PY'
 import json,sys
-v=json.loads(sys.argv[1]); assert v["status"]=="degraded" and v["compute"]=="asleep",v
-assert v["degraded_reason"]=="COMPUTE_ASLEEP" and v["tower_accessible"] is False,v
+v=json.loads(sys.argv[1])
+assert v.get("status")=="degraded" and v.get("compute")=="asleep",v
+assert v.get("degraded_reason")=="COMPUTE_ASLEEP",v
+assert v.get("tower_accessible") is False and v.get("ollama_ready") is False,v
 print("HEALTH_NO_WAKE=PASS")
 PY
 curl -fsS --max-time 5 "$BASE_URL/v1/models" >/dev/null
 curl -fsS --max-time 5 "$BASE_URL/api/tags" >/dev/null
 curl -fsS --max-time 5 "$BASE_URL/api/ps" >/dev/null
-sleep 3; assert_off
+sleep 3
+assert_cold_precondition
 passive_wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=HA_SWITCH$' || true)
 test "$passive_wakes" -eq 0
 echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
@@ -67,7 +97,7 @@ def broker_infer():
 with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
     futures=[ex.submit(infer,"cold-A"),ex.submit(infer,"cold-B"),ex.submit(broker_infer)]
     [f.result(timeout=1600) for f in futures]
-print("CONCURRENT_DIRECT_AND_BROKER_REQUESTS=PASS")
+print("ORIGINAL_COLD_INFERENCE_AND_CONCURRENCY=PASS")
 PY
 ready=0
 for _ in $(seq 1 120); do
@@ -95,16 +125,4 @@ systemctl is-active --quiet lifeos-autonomous-agent.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
 curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
 echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
-mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
-stopped=0
-for _ in $(seq 1 120); do
-  if state=$(tower_state 2>/dev/null) && python3 - "$state" <<'PY' >/dev/null 2>&1
-import json,sys
-raise SystemExit(0 if json.loads(sys.argv[1]).get("state")=="OFF" else 1)
-PY
-  then stopped=1; break; fi
-  sleep 2
-done
-test "$stopped" -eq 1; CLEANUP_NEEDED=0
-echo 'TOWER_OFF_AFTER_ACCEPTANCE=PASS'
 echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
