@@ -95,6 +95,8 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
             "ip link", "ip addr", "ip route", "ethtool", "ethtool -i",
             "ethtool --show-eee", "/sys/class/net/",
             "802-3-ethernet.wake-on-lan", "WakeOnLan",
+            "TOWER_ACTIVE_PHYSICAL_ETHERNET_INTERFACE", "brif/*",
+            "/etc/network/interfaces", "bridge-ports",
             "StrictHostKeyChecking=yes", "TOWER_NETWORK_INSPECTION=COMPLETE",
         ):
             self.assertIn(required, source)
