@@ -104,6 +104,53 @@ PY
       ethtool --show-eee "$PHY_IFACE" || echo 'ETHTOOL_EEE_RESULT=UNSUPPORTED_OR_UNAVAILABLE'
     else
       echo 'ETHTOOL_RESULT=NOT_INSTALLED'
+      echo '==> TOWER read-only ethtool ioctl fallback'
+      python3 - "$ACTIVE_IFACE" <<'PY'
+import array, ctypes, errno, fcntl, os, socket, struct, sys
+iface = sys.argv[1]
+driver_link = f"/sys/class/net/{iface}/device/driver"
+try:
+    print("TOWER_DRIVER_SYSFS=" + os.path.basename(os.path.realpath(driver_link)))
+except OSError:
+    print("TOWER_DRIVER_SYSFS=UNAVAILABLE")
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+def query(cmd, size):
+    buf = bytearray(size)
+    struct.pack_into("=I", buf, 0, cmd)
+    holder = (ctypes.c_ubyte * size).from_buffer(buf)
+    ifreq = struct.pack("16sP", iface.encode(), ctypes.addressof(holder))
+    fcntl.ioctl(sock.fileno(), 0x8946, ifreq)
+    return buf
+def wol_letters(mask):
+    return "".join(letter for bit, letter in ((1,"p"),(2,"u"),(4,"m"),(8,"b"),(16,"a"),(32,"g"),(64,"s"),(128,"f")) if mask & bit) or "d"
+try:
+    wol = query(0x14, 16)
+    _, supported, current = struct.unpack_from("=III", wol)
+    print("TOWER_SUPPORTS_WAKE_ON=" + wol_letters(supported))
+    print("TOWER_CURRENT_WAKE_ON=" + wol_letters(current))
+    print("TOWER_ETHTOOL_GWOL=PASS")
+except OSError as exc:
+    print("TOWER_ETHTOOL_GWOL=UNAVAILABLE errno=" + str(exc.errno))
+try:
+    drv = query(0x3, 196)
+    name = bytes(drv[4:36]).split(b"\\0",1)[0].decode(errors="replace")
+    version = bytes(drv[36:68]).split(b"\\0",1)[0].decode(errors="replace")
+    bus = bytes(drv[100:132]).split(b"\\0",1)[0].decode(errors="replace")
+    print("TOWER_ETHTOOL_DRIVER=" + name)
+    print("TOWER_ETHTOOL_DRIVER_VERSION=" + version)
+    print("TOWER_ETHTOOL_BUS_INFO=" + bus)
+except OSError as exc:
+    print("TOWER_ETHTOOL_GDRVINFO=UNAVAILABLE errno=" + str(exc.errno))
+try:
+    eee = query(0x0c, 40)
+    _, supported, advertised, lp_advertised, active, enabled, tx_lpi, timer = struct.unpack_from("=IIIIIIII", eee)
+    print("TOWER_EEE_SUPPORTED=" + str(bool(supported)))
+    print("TOWER_EEE_ENABLED=" + str(bool(enabled)))
+    print("TOWER_EEE_ACTIVE=" + str(bool(active)))
+    print("TOWER_EEE_TX_LPI_ENABLED=" + str(bool(tx_lpi)))
+except OSError as exc:
+    print("TOWER_ETHTOOL_GEEE=UNSUPPORTED_OR_UNAVAILABLE errno=" + str(exc.errno))
+PY
     fi
     for power_file in       "/sys/class/net/$PHY_IFACE/device/power/wakeup"       "/sys/class/net/$PHY_IFACE/device/power/control"       "/sys/class/net/$PHY_IFACE/device/power/runtime_status"; do
       if [[ -r "$power_file" ]]; then
