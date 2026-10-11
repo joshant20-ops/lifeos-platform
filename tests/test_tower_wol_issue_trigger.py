@@ -53,6 +53,7 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
         gateway = load_gateway()
         fingerprint = "a" * 64
         self.assertEqual(gateway.parse_request(["inspect-tower-wol"]), ("inspect-tower-wol", []))
+        self.assertEqual(gateway.parse_request(["inspect-tower-network"]), ("inspect-tower-network", []))
         self.assertEqual(
             gateway.parse_request(["capture-tower-wol", fingerprint, "37782885765"]),
             ("capture-tower-wol", [fingerprint, "37782885765"]),
@@ -64,6 +65,7 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
             ["anything"],
             ["deploy-p0-resilience;id"],
             ["inspect-tower-wol", "extra"],
+            ["inspect-tower-network", "extra"],
             ["capture-tower-wol"],
             ["capture-tower-wol", "a" * 63, "1"],
             ["capture-tower-wol", "a" * 64 + ";id", "1"],
