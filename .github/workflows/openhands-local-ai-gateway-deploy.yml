@@ -6,6 +6,7 @@ on:
     paths:
       - 'governor/openhands_local_ai_gateway.py'
       - 'governor/ai_broker.py'
+      - 'governor/scripts/lifeos-ai-ha-wake.py'
       - 'scripts/lifeos-configure-ai-dns.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
       - 'scripts/lifeos-wake-aware-ai-acceptance.sh'

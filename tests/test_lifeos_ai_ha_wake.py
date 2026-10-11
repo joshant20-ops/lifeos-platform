@@ -22,8 +22,9 @@ def test_fixed_ha_helper_checks_lifeos_entities_without_waking(monkeypatch):
         "HA_TOKEN",
     ]
     script = args[-1]
-    assert "switch.z97_power" in script
-    assert "sensor.lifeos_grid_import_power" in script
+    assert "api/states/switch.z97_power" in script
+    assert "predbat.status" not in script
+    assert "sensor.lifeos_grid_import_power" not in script
     assert "switch.turn_on" not in script
     assert kwargs["check"] is True
 
