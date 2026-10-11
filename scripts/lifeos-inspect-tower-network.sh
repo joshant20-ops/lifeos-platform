@@ -53,17 +53,41 @@ if [[ -z "$ACTIVE_IFACE" ]]; then
   ACTIVE_IFACE="$(ip -j route show default 2>/dev/null | python3 -c 'import json,sys; rows=json.load(sys.stdin); print(rows[0].get("dev","") if rows else "")' || true)"
 fi
 echo "TOWER_ACTIVE_ROUTE_INTERFACE=${ACTIVE_IFACE:-UNKNOWN}"
-if [[ -n "$ACTIVE_IFACE" ]]; then
-  if [[ -r "/sys/class/net/$ACTIVE_IFACE/type" ]]; then
-    LINK_TYPE="$(cat "/sys/class/net/$ACTIVE_IFACE/type")"
+ROUTE_IFACE="$ACTIVE_IFACE"
+PHY_IFACES=()
+if [[ -n "$ROUTE_IFACE" ]]; then
+  for candidate_path in "/sys/class/net/$ROUTE_IFACE"/brif/* "/sys/class/net/$ROUTE_IFACE"/lower_*; do
+    [[ -e "$candidate_path" ]] || continue
+    candidate="${candidate_path##*/}"
+    [[ -e "/sys/class/net/$candidate/device" ]] && PHY_IFACES+=("$candidate")
+  done
+  if [[ ${#PHY_IFACES[@]} -eq 0 && -e "/sys/class/net/$ROUTE_IFACE/device" ]]; then
+    PHY_IFACES+=("$ROUTE_IFACE")
+  fi
+fi
+PHY_IFACE="$ROUTE_IFACE"
+for candidate in "${PHY_IFACES[@]}"; do
+  candidate_mac="$(cat "/sys/class/net/$candidate/address" 2>/dev/null || true)"
+  if [[ "${candidate_mac,,}" == "$EXPECTED_MAC" ]]; then
+    PHY_IFACE="$candidate"
+    break
+  fi
+done
+if [[ -z "$PHY_IFACE" || ! -e "/sys/class/net/$PHY_IFACE/device" ]]; then
+  PHY_IFACE="${PHY_IFACES[0]:-$ROUTE_IFACE}"
+fi
+echo "TOWER_ACTIVE_PHYSICAL_ETHERNET_INTERFACE=${PHY_IFACE:-UNKNOWN}"
+if [[ -n "$PHY_IFACE" ]]; then
+  if [[ -r "/sys/class/net/$PHY_IFACE/type" ]]; then
+    LINK_TYPE="$(cat "/sys/class/net/$PHY_IFACE/type")"
     echo "TOWER_ACTIVE_INTERFACE_LINK_TYPE=$LINK_TYPE"
-    if [[ -e "/sys/class/net/$ACTIVE_IFACE/device" ]]; then
+    if [[ -e "/sys/class/net/$PHY_IFACE/device" ]]; then
       echo 'TOWER_ACTIVE_INTERFACE_PHYSICAL_DEVICE=YES'
     else
       echo 'TOWER_ACTIVE_INTERFACE_PHYSICAL_DEVICE=NO'
     fi
-    echo "TOWER_ACTIVE_INTERFACE_MAC=$(cat "/sys/class/net/$ACTIVE_IFACE/address" 2>/dev/null || echo unknown)"
-    echo "TOWER_WOL_MAC_INTERFACE_MATCH=$(python3 - "$ACTIVE_IFACE" "$EXPECTED_MAC" <<'PY'
+    echo "TOWER_ACTIVE_INTERFACE_MAC=$(cat "/sys/class/net/$PHY_IFACE/address" 2>/dev/null || echo unknown)"
+    echo "TOWER_WOL_MAC_INTERFACE_MATCH=$(python3 - "$PHY_IFACE" "$EXPECTED_MAC" <<'PY'
 import sys
 from pathlib import Path
 iface,expected=sys.argv[1:]
@@ -73,15 +97,15 @@ PY
 )"
     echo '==> TOWER ethtool'
     if command -v ethtool >/dev/null 2>&1; then
-      ethtool "$ACTIVE_IFACE" || echo 'ETHTOOL_RESULT=UNAVAILABLE'
+      ethtool "$PHY_IFACE" || echo 'ETHTOOL_RESULT=UNAVAILABLE'
       echo '==> TOWER ethtool -i'
-      ethtool -i "$ACTIVE_IFACE" || echo 'ETHTOOL_DRIVER_RESULT=UNAVAILABLE'
+      ethtool -i "$PHY_IFACE" || echo 'ETHTOOL_DRIVER_RESULT=UNAVAILABLE'
       echo '==> TOWER ethtool --show-eee'
-      ethtool --show-eee "$ACTIVE_IFACE" || echo 'ETHTOOL_EEE_RESULT=UNSUPPORTED_OR_UNAVAILABLE'
+      ethtool --show-eee "$PHY_IFACE" || echo 'ETHTOOL_EEE_RESULT=UNSUPPORTED_OR_UNAVAILABLE'
     else
       echo 'ETHTOOL_RESULT=NOT_INSTALLED'
     fi
-    for power_file in       "/sys/class/net/$ACTIVE_IFACE/device/power/wakeup"       "/sys/class/net/$ACTIVE_IFACE/device/power/control"       "/sys/class/net/$ACTIVE_IFACE/device/power/runtime_status"; do
+    for power_file in       "/sys/class/net/$PHY_IFACE/device/power/wakeup"       "/sys/class/net/$PHY_IFACE/device/power/control"       "/sys/class/net/$PHY_IFACE/device/power/runtime_status"; do
       if [[ -r "$power_file" ]]; then
         echo "TOWER_SYSFS_$(basename "$power_file")=$(cat "$power_file")"
       else
@@ -95,20 +119,20 @@ PY
       systemctl is-active "$service" 2>/dev/null || true
     done
     if command -v nmcli >/dev/null 2>&1 && systemctl is-active --quiet NetworkManager 2>/dev/null; then
-      nmcli -f GENERAL.STATE,GENERAL.CONNECTION,GENERAL.HWADDR,GENERAL.TYPE device show "$ACTIVE_IFACE" || true
-      PROFILE="$(nmcli -g GENERAL.CONNECTION device show "$ACTIVE_IFACE" 2>/dev/null | head -n 1 || true)"
+      nmcli -f GENERAL.STATE,GENERAL.CONNECTION,GENERAL.HWADDR,GENERAL.TYPE device show "$PHY_IFACE" || true
+      PROFILE="$(nmcli -g GENERAL.CONNECTION device show "$PHY_IFACE" 2>/dev/null | head -n 1 || true)"
       if [[ -n "$PROFILE" && "$PROFILE" != '--' ]]; then
         echo "TOWER_NM_PROFILE=$PROFILE"
         nmcli -f connection.id,connection.interface-name,802-3-ethernet.wake-on-lan connection show "$PROFILE" || true
       fi
     fi
     if command -v networkctl >/dev/null 2>&1 && systemctl is-active --quiet systemd-networkd 2>/dev/null; then
-      NETWORK_STATUS="$(networkctl status "$ACTIVE_IFACE" --no-pager 2>/dev/null || true)"
+      NETWORK_STATUS="$(networkctl status "$PHY_IFACE" --no-pager 2>/dev/null || true)"
       printf '%s\n' "$NETWORK_STATUS"
       NETWORK_FILE="$(printf '%s\n' "$NETWORK_STATUS" | sed -n 's/^[[:space:]]*Network File: //p' | head -n 1)"
       case "$NETWORK_FILE" in
         /etc/systemd/network/*.network|/run/systemd/network/*.network)
-          python3 - "$NETWORK_FILE" "$ACTIVE_IFACE" "$EXPECTED_MAC" <<'PY'
+          python3 - "$NETWORK_FILE" "$PHY_IFACE" "$EXPECTED_MAC" <<'PY'
 import sys
 from pathlib import Path
 path,iface,mac=sys.argv[1:]
@@ -130,6 +154,39 @@ PY
           echo 'TOWER_NETWORKD_MATCHED_FILE=UNAVAILABLE'
           ;;
       esac
+    fi
+
+    if [[ -r /etc/network/interfaces || -d /etc/network/interfaces.d ]]; then
+      echo '==> TOWER ifupdown configuration'
+      python3 - "$ACTIVE_IFACE" "$ROUTE_IFACE" <<'PY'
+import glob, sys
+from pathlib import Path
+physical, bridge = sys.argv[1:]
+targets = {physical, bridge}
+paths = ["/etc/network/interfaces", *glob.glob("/etc/network/interfaces.d/*")]
+allowed = {"iface", "address", "netmask", "gateway", "bridge-ports", "bridge-stp", "bridge-fd", "bridge-vlan-aware", "bridge-pvid", "hwaddress"}
+for filename in paths:
+    path = Path(filename)
+    if not path.is_file():
+        continue
+    current = None
+    for raw in path.read_text(errors="replace").splitlines():
+        parts = raw.strip().split(None, 2)
+        if not parts or parts[0].startswith("#"):
+            continue
+        if parts[0] in {"auto", "allow-hotplug"} and any(name in parts[1:] for name in targets):
+            print(f"TOWER_IFUPDOWN_{path.name}_{parts[0]}={' '.join(parts[1:])}")
+            continue
+        if parts[0] == "iface" and len(parts) >= 2:
+            current = parts[1] if parts[1] in targets else None
+        if current is None:
+            continue
+        key = parts[0].lower()
+        if key in allowed:
+            print(f"TOWER_IFUPDOWN_{path.name}_{current}_{key}={' '.join(parts[1:])}")
+        elif key in {"post-up", "pre-up"} and any(word in raw.lower() for word in ("ethtool", "wakeonlan", "wol")):
+            print(f"TOWER_IFUPDOWN_{path.name}_{current}_{key}={raw.strip()[len(parts[0]):].strip()}")
+PY
     fi
   else
     echo 'TOWER_ACTIVE_INTERFACE_DEVICE_PATH=UNAVAILABLE'
