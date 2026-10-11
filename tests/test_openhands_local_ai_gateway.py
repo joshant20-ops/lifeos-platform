@@ -87,11 +87,5 @@ def test_ha_wake_invokes_existing_switch_service_action(monkeypatch):
     monkeypatch.setattr(GATEWAY.subprocess, "run", run)
     GATEWAY.invoke_ha_wake()
     args, kwargs = calls[0]
-    assert args[:4] == [
-        "/usr/local/sbin/lifeos-secret", "exec",
-        "homeassistant.long_lived_access_token", "HA_TOKEN",
-    ]
-    assert args[5] == "-c"
-    assert "http://127.0.0.1:8123/api/services/switch/turn_on" in args[6]
-    assert "switch.z97_power" in args[6]
+    assert args == ["/usr/bin/sudo", "-n", "/usr/local/sbin/lifeos-ai-ha-wake"]
     assert kwargs["check"] is True

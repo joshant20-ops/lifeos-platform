@@ -37,18 +37,10 @@ def health_status():
     return result
 def invoke_ha_wake():
     """Call the already-proven Home Assistant command_line switch action."""
-    script = (
-        "import json,os,urllib.request; "
-        "r=urllib.request.Request('http://127.0.0.1:8123/api/services/switch/turn_on', "
-        "data=json.dumps({'entity_id':'switch.z97_power'}).encode(), "
-        "headers={'Authorization':'Bearer '+os.environ['HA_TOKEN'],"
-        "'Content-Type':'application/json','Accept':'application/json'}, method='POST'); "
-        "urllib.request.urlopen(r,timeout=15).read()"
-    )
     try:
         subprocess.run(
-            ["/usr/local/sbin/lifeos-secret", "exec", "homeassistant.long_lived_access_token", "HA_TOKEN", "/usr/bin/python3", "-c", script],
-            capture_output=True, text=True, timeout=20, check=True,
+            ["/usr/bin/sudo", "-n", "/usr/local/sbin/lifeos-ai-ha-wake"],
+            capture_output=True, text=True, timeout=25, check=True,
         )
     except Exception as exc:
         raise RuntimeError(f"Home Assistant Tower wake action failed: {type(exc).__name__}") from exc

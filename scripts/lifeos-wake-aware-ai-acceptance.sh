@@ -20,14 +20,7 @@ pi_ip=$(ip -4 route get 1.1.1.1 | awk '{for (i=1;i<=NF;i++) if ($i=="src") {prin
 dns_ip=$(getent ahostsv4 ai.lan | awk 'NR==1 {print $1}')
 test -n "$pi_ip" && test "$dns_ip" = "$pi_ip"
 echo "STABLE_AI_DNS=ai.lan->$pi_ip PASS"
-lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN python3 -c '
-import os,urllib.request
-h={"Authorization":"Bearer "+os.environ["HA_TOKEN"],"Accept":"application/json"}
-base="http://127.0.0.1:8123/api/states/"
-for entity in ("predbat.status","sensor.lifeos_grid_import_power","sensor.predbat_enphase_5731818_pv_power"):
-    with urllib.request.urlopen(urllib.request.Request(base+entity,headers=h),timeout=10) as r: assert r.status==200
-print("LOCAL_HA_LIFEOS=PASS")
-'
+sudo -n /usr/local/sbin/lifeos-ai-ha-wake --check
 echo 'LOCAL_AGENT_ENERGY=PASS'
 CLEANUP_NEEDED=1
 mosquitto_pub -h 127.0.0.1 -t lifeos/tower/power/set -m OFF
