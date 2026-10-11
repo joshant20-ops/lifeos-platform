@@ -8,6 +8,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 GATEWAY = ROOT / "homelab/live/usr/local/sbin/lifeos-deploy-gateway"
 WORKFLOW = ROOT / ".github/workflows/lifeos-pi-deploy.yml"
 DIAGNOSTIC = ROOT / "scripts/lifeos-tower-wol-packet-diagnostic.py"
+NETWORK_DIAGNOSTIC = ROOT / "scripts/lifeos-inspect-tower-network.sh"
 
 
 def load_gateway():
@@ -39,6 +40,9 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
         })
         self.assertEqual(gateway.OPS["capture-tower-wol"], {
             "script": "scripts/lifeos-capture-tower-wol.sh", "privileged": True
+        })
+        self.assertEqual(gateway.OPS["inspect-tower-network"], {
+            "script": "scripts/lifeos-inspect-tower-network.sh", "privileged": True
         })
         self.assertFalse(any(
             "wol" in key and key not in {"inspect-tower-wol", "capture-tower-wol"}
@@ -76,11 +80,27 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
         workflow = WORKFLOW.read_text()
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: inspect-tower-wol'", workflow)
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: capture-tower-wol'", workflow)
+        self.assertIn("github.event.issue.title == 'LifeOS Deploy: inspect-tower-network'", workflow)
         self.assertIn(
             "inspect-tower-wol', 'capture-tower-wol'].includes(process.env.LIFEOS_OPERATION)",
             workflow,
         )
         self.assertNotIn("github.event.issue.title }} ", workflow)
+
+    def test_tower_network_inspection_is_read_only_and_captures_requested_state(self):
+        source = NETWORK_DIAGNOSTIC.read_text()
+        for required in (
+            "ip link", "ip addr", "ip route", "ethtool", "ethtool -i",
+            "ethtool --show-eee", "/sys/class/net/",
+            "802-3-ethernet.wake-on-lan", "WakeOnLan=",
+            "StrictHostKeyChecking=yes", "TOWER_NETWORK_INSPECTION=COMPLETE",
+        ):
+            self.assertIn(required, source)
+        for forbidden in (
+            "ethtool -s", "ip link set", "nmcli connection modify",
+            "networkctl reload", "systemctl restart", "poweroff", "wakeonlan ",
+        ):
+            self.assertNotIn(forbidden, source)
 
 
 if __name__ == "__main__":
