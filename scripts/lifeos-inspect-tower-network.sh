@@ -105,13 +105,13 @@ PY
     else
       echo 'ETHTOOL_RESULT=NOT_INSTALLED'
       echo '==> TOWER read-only ethtool ioctl fallback'
-      python3 - "$ACTIVE_IFACE" <<'PY'
+      python3 - "$PHY_IFACE" <<'PY'
 import array, ctypes, errno, fcntl, os, socket, struct, sys
 iface = sys.argv[1]
 driver_link = f"/sys/class/net/{iface}/device/driver"
-try:
+if os.path.exists(driver_link):
     print("TOWER_DRIVER_SYSFS=" + os.path.basename(os.path.realpath(driver_link)))
-except OSError:
+else:
     print("TOWER_DRIVER_SYSFS=UNAVAILABLE")
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 def query(cmd, size):
@@ -133,9 +133,9 @@ except OSError as exc:
     print("TOWER_ETHTOOL_GWOL=UNAVAILABLE errno=" + str(exc.errno))
 try:
     drv = query(0x3, 196)
-    name = bytes(drv[4:36]).split(b"\\0",1)[0].decode(errors="replace")
-    version = bytes(drv[36:68]).split(b"\\0",1)[0].decode(errors="replace")
-    bus = bytes(drv[100:132]).split(b"\\0",1)[0].decode(errors="replace")
+    name = bytes(drv[4:36]).split(b"\x00",1)[0].decode(errors="replace")
+    version = bytes(drv[36:68]).split(b"\x00",1)[0].decode(errors="replace")
+    bus = bytes(drv[100:132]).split(b"\x00",1)[0].decode(errors="replace")
     print("TOWER_ETHTOOL_DRIVER=" + name)
     print("TOWER_ETHTOOL_DRIVER_VERSION=" + version)
     print("TOWER_ETHTOOL_BUS_INFO=" + bus)
