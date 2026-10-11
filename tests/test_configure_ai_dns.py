@@ -94,3 +94,35 @@ def test_waits_for_adguard_dns_to_recover_after_restart():
     assert delays == [0.25, 0.25]
     assert diagnostics["127.0.0.1"] == "rcode=0 answers=1 A=192.168.0.30"
 
+def test_preserves_already_correct_enabled_ai_rewrite_verbatim():
+    source = """filtering:
+  filtering_enabled: true
+  rewrites_enabled: true
+  rewrites:
+    - domain: ai.lan
+      answer: 192.168.0.30
+      comment: keep this configuration intact
+    - domain: printer.lan
+      answer: 192.168.0.20
+dns:
+  upstream_dns:
+    - 1.1.1.1
+"""
+
+    assert configure_ai_dns.configure_ai_rewrite(source, "192.168.0.30") == source
+
+
+def test_rewrites_config_when_ai_entry_or_flags_are_wrong():
+    source = """filtering:
+  filtering_enabled: true
+  rewrites_enabled: false
+  rewrites:
+    - domain: ai.lan
+      answer: 192.168.0.10
+"""
+
+    result = configure_ai_dns.configure_ai_rewrite(source, "192.168.0.30")
+
+    assert "  rewrites_enabled: true" in result
+    assert "      answer: 192.168.0.30" in result
+
