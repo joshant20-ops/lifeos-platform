@@ -6,6 +6,10 @@ readonly BROKER_SOCKET=/run/lifeos-root-broker.sock
 readonly IDENTITY=/etc/lifeos-control/identity.json
 readonly APPROVAL_DIR=/var/lib/lifeos-control/engineer-deploy-approvals
 readonly AUDIT_DIR=/var/lib/lifeos-control/engineer-deploy-audit
+readonly AI_HA_WAKE_SOURCE=$PLATFORM/governor/scripts/lifeos-ai-ha-wake.py
+readonly AI_HA_WAKE_SUDOERS_SOURCE=$PLATFORM/governor/scripts/lifeos-ai-ha-wake.sudoers
+readonly AI_HA_WAKE_DEST=/usr/local/sbin/lifeos-ai-ha-wake
+readonly AI_HA_WAKE_SUDOERS_DEST=/etc/sudoers.d/lifeos-ai-ha-wake
 readonly DROPIN_SOURCE=$PLATFORM/governor/systemd/lifeos-engineer.service.d/governor-ai-broker.conf
 readonly DROPIN_DIR=/etc/systemd/system/lifeos-engineer.service.d
 readonly DROPIN_DEST=$DROPIN_DIR/governor-ai-broker.conf
@@ -17,6 +21,8 @@ sha(){ sha256sum "$1" | awk '{print $1}'; }
 [[ -S "$BROKER_SOCKET" ]] || fail root_broker_socket_missing
 [[ -r "$IDENTITY" ]] || fail control_identity_missing
 [[ -f "$DROPIN_SOURCE" && ! -L "$DROPIN_SOURCE" ]] || fail engineer_broker_dropin_missing
+[[ -f "$AI_HA_WAKE_SOURCE" && ! -L "$AI_HA_WAKE_SOURCE" ]] || fail ai_ha_wake_helper_missing
+[[ -f "$AI_HA_WAKE_SUDOERS_SOURCE" && ! -L "$AI_HA_WAKE_SUDOERS_SOURCE" ]] || fail ai_ha_wake_sudoers_missing
 
 HEAD=$(runuser -u joshan -- git -C "$PLATFORM" rev-parse HEAD)
 MAIN=$(runuser -u joshan -- git -C "$PLATFORM" rev-parse main)
@@ -49,7 +55,18 @@ install -d -o root -g root -m 0750 "$APPROVAL_DIR" "$AUDIT_DIR"
 # Engineer backend imports, matching the existing autonomous-agent sandbox.
 install -d -o root -g root -m 0755 "$DROPIN_DIR"
 install -o root -g root -m 0644 "$DROPIN_SOURCE" "$DROPIN_DEST"
+# Expose only the fixed HA check and proven Tower switch action to the user service.
+install -o root -g root -m 0755 "$AI_HA_WAKE_SOURCE" "$AI_HA_WAKE_DEST"
+SUDOERS_TEMP=$AI_HA_WAKE_SUDOERS_DEST.new
+install -o root -g root -m 0440 "$AI_HA_WAKE_SUDOERS_SOURCE" "$SUDOERS_TEMP"
+if ! visudo -cf "$SUDOERS_TEMP" >/dev/null; then
+  rm -f "$SUDOERS_TEMP"
+  fail ai_ha_wake_sudoers_invalid
+fi
+mv -f "$SUDOERS_TEMP" "$AI_HA_WAKE_SUDOERS_DEST"
+visudo -cf "$AI_HA_WAKE_SUDOERS_DEST" >/dev/null
 systemctl daemon-reload
+echo 'AI_HA_WAKE_HELPER=PASS'
 echo 'ENGINEER_BROKER_SANDBOX_BINDINGS=PASS'
 
 if [[ -e "$AUDIT" ]]; then

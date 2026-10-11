@@ -86,11 +86,13 @@ jobs:
       - name: Validate Governor AI routing contracts
         run: |
           bash -n scripts/lifeos-wake-aware-ai-acceptance.sh
+          bash -n scripts/lifeos-deploy-governor-managed-engineer.sh
           python3 -m py_compile \
             engineer/provider_router.py \
             governor/ai_broker.py \
             governor/tower_control.py \
             governor/openhands_local_ai_gateway.py \
+            governor/scripts/lifeos-ai-ha-wake.py \
             scripts/lifeos-configure-ai-dns.py \
             homelab/live/usr/local/sbin/lifeos-deploy-gateway \
             governor/assistant_bridge.py \
@@ -104,6 +106,7 @@ jobs:
             tests/test_configure_ai_dns.py \
             tests/test_lifeos_deploy_gateway.py \
             tests/test_openhands_local_ai_gateway.py \
+            tests/test_lifeos_ai_ha_wake.py \
             tests/test_openhands_integration.py \
             tests/test_privacy_classifier.py \
             tests/test_private_domain_policy.py
