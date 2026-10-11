@@ -68,6 +68,10 @@ OPS = {
         'script': 'scripts/lifeos-inspect-tower-wol.sh',
         'privileged': True,
     },
+    'inspect-tower-network': {
+        'script': 'scripts/lifeos-inspect-tower-network.sh',
+        'privileged': True,
+    },
     'capture-tower-wol': {
         'script': 'scripts/lifeos-capture-tower-wol.sh',
         'privileged': True,
