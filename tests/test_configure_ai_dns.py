@@ -67,3 +67,30 @@ def test_adds_rewrite_enable_flag_when_missing_from_filtering_section():
     result = configure_ai_dns.rewrite_config(source, "192.168.0.10")
     assert "  rewrites_enabled: true" in result
     assert result.count("rewrites_enabled:") == 1
+
+def test_waits_for_adguard_dns_to_recover_after_restart():
+    calls = []
+    delays = []
+
+    def query(name, resolver):
+        assert name == "ai.lan"
+        calls.append(resolver)
+        if len(calls) < 3:
+            return set(), "rcode=3 answers=0 A=none"
+        return {"192.168.0.30"}, "rcode=0 answers=1 A=192.168.0.30"
+
+    resolver, diagnostics, attempts = configure_ai_dns.wait_for_ai_dns(
+        ["127.0.0.1"],
+        "192.168.0.30",
+        attempts=5,
+        interval=0.25,
+        query=query,
+        sleep=delays.append,
+    )
+
+    assert resolver == "127.0.0.1"
+    assert attempts == 3
+    assert calls == ["127.0.0.1"] * 3
+    assert delays == [0.25, 0.25]
+    assert diagnostics["127.0.0.1"] == "rcode=0 answers=1 A=192.168.0.30"
+

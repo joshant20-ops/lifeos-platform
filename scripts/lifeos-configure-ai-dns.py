@@ -153,6 +153,38 @@ def rewrite_config(text: str, address: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+DNS_READY_ATTEMPTS = 120
+DNS_READY_INTERVAL_SECONDS = 1
+
+
+def wait_for_ai_dns(
+    resolvers: list[str],
+    expected: str,
+    attempts: int = DNS_READY_ATTEMPTS,
+    interval: float = DNS_READY_INTERVAL_SECONDS,
+    query=None,
+    sleep=None,
+) -> tuple[str | None, dict[str, str], int]:
+    """Wait for the rewritten name to answer after AdGuard has restarted."""
+    if query is None:
+        query = adguard_ipv4_answers
+    if sleep is None:
+        sleep = time.sleep
+    diagnostics: dict[str, str] = {}
+    for attempt in range(1, attempts + 1):
+        for resolver in resolvers:
+            try:
+                answers, response = query(HOSTNAME, resolver)
+                diagnostics[resolver] = response
+                if expected in answers:
+                    return resolver, diagnostics, attempt
+            except OSError as error:
+                diagnostics[resolver] = type(error).__name__
+        if attempt < attempts:
+            sleep(interval)
+    return None, diagnostics, attempts
+
+
 def adguard_ipv4_answers(name: str, resolver: str) -> tuple[set[str], str]:
     request_id = int.from_bytes(os.urandom(2), "big")
     labels = b"".join(bytes([len(label)]) + label.encode("ascii") for label in name.split(".")) + b"\0"
@@ -496,24 +528,17 @@ def configure_locked(original, container_resolvers: list[str]) -> int:
     print("ADGUARD_KNOWN_REWRITE_CONTROL=" + ";".join(
         f"{resolver}:{known_rewrite_diagnostics[resolver]}" for resolver in resolvers
     ))
-    diagnostics: dict[str, str] = {}
-    for _ in range(20):
-        for resolver in resolvers:
-            try:
-                answers, response = adguard_ipv4_answers(HOSTNAME, resolver)
-                diagnostics[resolver] = response
-                if expected in answers:
-                    print("ADGUARD_DNS_TRANSPORT_AT_ACCEPTANCE=" + dns_transport_state_summary())
-                    print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
-                    print("ADGUARD_QUERYLOG_API=" + ";".join(
-                        f"{base.rsplit(':', 1)[0].removeprefix('http://')}:{adguard_querylog_api_summary(base)}"
-                        for base in api_bases
-                    ))
-                    print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
-                    return 0
-            except OSError as error:
-                diagnostics[resolver] = type(error).__name__
-        time.sleep(1)
+    resolver, diagnostics, attempts_used = wait_for_ai_dns(resolvers, expected)
+    print(f"ADGUARD_DNS_READY_WAIT_ATTEMPTS={attempts_used}")
+    if resolver:
+        print("ADGUARD_DNS_TRANSPORT_AT_ACCEPTANCE=" + dns_transport_state_summary())
+        print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
+        print("ADGUARD_QUERYLOG_API=" + ";".join(
+            f"{base.rsplit(':', 1)[0].removeprefix('http://')}:{adguard_querylog_api_summary(base)}"
+            for base in api_bases
+        ))
+        print(f"ADGUARD_AI_DNS={HOSTNAME}->{expected} RESOLVER={resolver} PASS")
+        return 0
     print("ADGUARD_DNS_TRANSPORT_AFTER_PROBES=" + dns_transport_state_summary())
     print("ADGUARD_AI_QUERYLOG=" + adguard_ai_querylog_summary())
     print("ADGUARD_QUERYLOG_API=" + ";".join(
