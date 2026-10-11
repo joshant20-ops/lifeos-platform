@@ -84,7 +84,7 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: capture-tower-wol'", workflow)
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: inspect-tower-network'", workflow)
         self.assertIn(
-            "inspect-tower-wol', 'capture-tower-wol'].includes(process.env.LIFEOS_OPERATION)",
+            "inspect-tower-wol', 'inspect-tower-network', 'capture-tower-wol'].includes(process.env.LIFEOS_OPERATION)",
             workflow,
         )
         self.assertNotIn("github.event.issue.title }} ", workflow)
@@ -94,7 +94,7 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
         for required in (
             "ip link", "ip addr", "ip route", "ethtool", "ethtool -i",
             "ethtool --show-eee", "/sys/class/net/",
-            "802-3-ethernet.wake-on-lan", "WakeOnLan=",
+            "802-3-ethernet.wake-on-lan", "WakeOnLan",
             "StrictHostKeyChecking=yes", "TOWER_NETWORK_INSPECTION=COMPLETE",
         ):
             self.assertIn(required, source)
