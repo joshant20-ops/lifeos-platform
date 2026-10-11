@@ -121,6 +121,21 @@ def filtering_rewrite_flags(text: str) -> str:
     return ",".join(f"{key}:{values[key]}" for key in ("filtering_enabled", "rewrites_enabled"))
 
 
+def configure_ai_rewrite(text: str, address: str) -> str:
+    """Preserve a correct rewrite verbatim; avoid needless AdGuard restarts."""
+    expected_flags = "filtering_enabled:true,rewrites_enabled:true"
+    expected_rewrite = (
+        f"top_level_filtering_sections:1;selected_rewrites_keys:1;"
+        f"ai_lan_entries:1;ai_lan_answers:{address}"
+    )
+    if (
+        filtering_rewrite_flags(text) == expected_flags
+        and adguard_rewrite_structure_summary(text) == expected_rewrite
+    ):
+        return text
+    return rewrite_config(text, address)
+
+
 def rewrite_config(text: str, address: str) -> str:
     lines = text.splitlines()
     start, end = rewrite_section(lines)
@@ -364,7 +379,7 @@ def main() -> int:
 def configure_locked(original, container_resolvers: list[str]) -> int:
     old = CONFIG.read_text(encoding="utf-8")
     expected = pi_ipv4()
-    new = rewrite_config(old, expected)
+    new = configure_ai_rewrite(old, expected)
     if new != old:
         backup = CONFIG.with_name(f"AdGuardHome.yaml.ai-dns-backup-{time.time_ns()}")
         shutil.copy2(CONFIG, backup)
