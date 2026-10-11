@@ -89,4 +89,3 @@ def test_ha_wake_invokes_existing_switch_service_action(monkeypatch):
     args, kwargs = calls[0]
     assert args == ["/usr/bin/sudo", "-n", "/usr/local/sbin/lifeos-ai-ha-wake"]
     assert kwargs["check"] is True
-    assert kwargs["check"] is True
