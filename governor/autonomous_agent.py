@@ -1188,7 +1188,9 @@ class Handler(BaseHTTPRequestHandler):
                 if not messages:
                     raise ValueError("messages_required")
                 if tools:
-                    effective_privacy = "normal"
+                    # Tool-aware broker chat is deliberately Ollama-only; preserve that local-only
+                    # privacy boundary so the private_only local provider remains eligible.
+                    effective_privacy = "local-only"
                     result = _AI_BROKER.chat(
                         messages,
                         tools=tools,
