@@ -249,7 +249,7 @@ def _ollama_chat_once(messages: list[dict], tools: list[dict], model: str) -> di
         "stream": False,
         "keep_alive": "30m",
         "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH},
-    }, timeout=HTTP_TIMEOUT)
+    }, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
     raw_message = result.get("message")
     if not isinstance(raw_message, dict):
         raise BrokerError("ollama returned no tool-aware message")
