@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Wake-aware stable AI endpoint on the always-on Pi; Tower WoL remains controller-owned."""
+"""Wake-aware stable AI endpoint on the always-on Pi; Tower WoL is controller-owned; inference requests acquire the existing compute lease."""
 from __future__ import annotations
 import importlib.util, json, os, pathlib, subprocess, threading, time, uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
