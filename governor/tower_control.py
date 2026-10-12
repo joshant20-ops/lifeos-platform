@@ -285,11 +285,6 @@ def lease_loop() -> None:
         proc.terminate()
 
 
-def leases_delegate_wake_to_ha(active_leases: list[dict]) -> bool:
-    """True only when every active lease delegates wake to Home Assistant."""
-    return bool(active_leases) and all(v.get("wake_via_ha") is True for v in active_leases)
-
-
 def compute_lifecycle_loop() -> None:
     state = _load_compute_state()
     while not STOP.is_set():
@@ -300,17 +295,11 @@ def compute_lifecycle_loop() -> None:
                     LEASES.pop(key, None)
             active_leases = list(LEASES.values())
             active = bool(active_leases)
-            wake_via_ha = leases_delegate_wake_to_ha(active_leases)
         cfg = load_config()
         observed = observed_state(cfg)
         if active:
             state["idle_since"] = None
-            if wake_via_ha:
-                # The gateway has already delegated the packet to the proven HA
-                # switch action. Keep the existing lease lifecycle, but never
-                # send this request through a second WoL implementation.
-                state["woke_by_lifeos"] = True
-            if not observed["accessible"] and not wake_via_ha:
+            if not observed["accessible"]:
                 last_wake = int(state.get("last_wake_at") or 0)
                 if now_ts - last_wake >= 30:
                     send_wol(cfg)
