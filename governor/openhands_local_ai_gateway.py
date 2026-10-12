@@ -35,22 +35,11 @@ def health_status():
     result={"status":status,"compute":compute,"tower_accessible":accessible,"ollama_ready":ready,"model":MODEL}
     if not ready: result["degraded_reason"]="COMPUTE_ASLEEP" if accessible is False else "OLLAMA_UNAVAILABLE"
     return result
-def invoke_ha_wake():
-    """Call the already-proven Home Assistant command_line switch action."""
-    try:
-        subprocess.run(
-            ["/usr/bin/sudo", "-n", "/usr/local/sbin/lifeos-ai-ha-wake"],
-            capture_output=True, text=True, timeout=25, check=True,
-        )
-    except Exception as exc:
-        raise RuntimeError(f"Home Assistant Tower wake action failed: {type(exc).__name__}") from exc
-
 def ensure_tower(lease_id):
     cold = not ollama_ready()
-    BROKER._publish_lease("active",lease_id=lease_id,wake_via_ha=cold)
+    BROKER._publish_lease("active", lease_id=lease_id)
     if not cold: return
-    print("TOWER_WAKE_REQUEST=HA_SWITCH",flush=True)
-    invoke_ha_wake()
+    print("TOWER_WAKE_REQUEST=CONTROLLER_LEASE", flush=True)
     deadline=time.monotonic()+WAKE_TIMEOUT
     while time.monotonic()<deadline:
         if tower_accessible() is True and ollama_ready(): return

@@ -20,32 +20,33 @@ def test_health_asleep_is_read_only(monkeypatch):
     assert status["degraded_reason"] == "COMPUTE_ASLEEP"
 
 
-def test_cold_concurrent_requests_coalesce_to_one_wake(monkeypatch, capsys):
+def test_cold_concurrent_requests_coalesce_to_one_controller_wake_window(monkeypatch, capsys):
     awake = threading.Event()
     leases = []
-    actions = []
     monkeypatch.setattr(GATEWAY, "WAKE_TIMEOUT", 1)
     monkeypatch.setattr(GATEWAY, "tower_accessible", lambda: awake.is_set())
     monkeypatch.setattr(GATEWAY, "ollama_ready", lambda: awake.is_set())
 
     def publish(state, **kwargs):
         if state == "active":
-            leases.append(kwargs.get("wake_via_ha"))
+            leases.append(kwargs)
             if len(leases) == 1:
                 threading.Timer(0.03, awake.set).start()
+
     monkeypatch.setattr(GATEWAY.BROKER, "_publish_lease", publish)
-    monkeypatch.setattr(GATEWAY, "invoke_ha_wake", lambda: actions.append("ha"))
 
     def request():
         with GATEWAY.REQUEST_LOCK:
             GATEWAY.ensure_tower(f"test-{threading.get_ident()}")
+
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(request) for _ in range(2)]
         for future in futures:
             future.result(timeout=2)
-    assert leases == [True, False]
-    assert actions == ["ha"]
-    assert capsys.readouterr().out.count("TOWER_WAKE_REQUEST=HA_SWITCH") == 1
+
+    assert len(leases) == 2
+    assert all("wake_via_ha" not in lease for lease in leases)
+    assert capsys.readouterr().out.count("TOWER_WAKE_REQUEST=CONTROLLER_LEASE") == 1
 
 
 def test_cold_request_has_bounded_failure(monkeypatch):
@@ -53,9 +54,7 @@ def test_cold_request_has_bounded_failure(monkeypatch):
     monkeypatch.setattr(GATEWAY, "WAKE_TIMEOUT", 0.02)
     monkeypatch.setattr(GATEWAY, "tower_accessible", lambda: False)
     monkeypatch.setattr(GATEWAY, "ollama_ready", lambda: False)
-    actions = []
-    monkeypatch.setattr(GATEWAY.BROKER, "_publish_lease", lambda state, **kwargs: calls.append((state, kwargs.get("wake_via_ha"))))
-    monkeypatch.setattr(GATEWAY, "invoke_ha_wake", lambda: actions.append("ha"))
+    monkeypatch.setattr(GATEWAY.BROKER, "_publish_lease", lambda state, **kwargs: calls.append((state, kwargs)))
     monkeypatch.setattr(GATEWAY.time, "sleep", lambda _: None)
     started = time.monotonic()
     try:
@@ -65,27 +64,12 @@ def test_cold_request_has_bounded_failure(monkeypatch):
     else:
         raise AssertionError("cold request did not time out")
     assert time.monotonic() - started < 1
-    assert calls == [("active", True)]
-    assert actions == ["ha"]
+    assert calls == [("active", {"lease_id": "test-timeout"})]
 
 
-def test_warm_inference_does_not_call_home_assistant(monkeypatch):
+def test_warm_inference_keeps_controller_lease_without_wake_delegation(monkeypatch):
     leases = []
     monkeypatch.setattr(GATEWAY, "ollama_ready", lambda: True)
     monkeypatch.setattr(GATEWAY.BROKER, "_publish_lease", lambda *a, **k: leases.append((a, k)))
-    monkeypatch.setattr(GATEWAY, "invoke_ha_wake", lambda: (_ for _ in ()).throw(AssertionError("warm request woke Tower")))
     GATEWAY.ensure_tower("warm-test")
-    assert leases == [(('active',), {'lease_id': 'warm-test', 'wake_via_ha': False})]
-
-
-def test_ha_wake_invokes_existing_switch_service_action(monkeypatch):
-    calls = []
-
-    def run(args, **kwargs):
-        calls.append((args, kwargs))
-
-    monkeypatch.setattr(GATEWAY.subprocess, "run", run)
-    GATEWAY.invoke_ha_wake()
-    args, kwargs = calls[0]
-    assert args == ["/usr/bin/sudo", "-n", "/usr/local/sbin/lifeos-ai-ha-wake"]
-    assert kwargs["check"] is True
+    assert leases == [(("active",), {"lease_id": "warm-test"})]
