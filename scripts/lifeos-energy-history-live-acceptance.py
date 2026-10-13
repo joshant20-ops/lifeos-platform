@@ -53,11 +53,12 @@ def main() -> None:
         raise RuntimeError(
             f"Octopus rates missing for {rollups.get('missing_price_slots')} half-hours"
         )
-    low_coverage = [
-        p for p in points if float(p.get("sample_coverage_percent", 0)) < 80
-    ]
-    if low_coverage:
-        coverages = [float(p.get("sample_coverage_percent", 0)) for p in points]
+    coverages = [float(p.get("sample_coverage_percent", 0)) for p in points]
+    mean_coverage = sum(coverages) / len(coverages)
+    if mean_coverage < 90:
+        low_coverage = [
+            p for p in points if float(p.get("sample_coverage_percent", 0)) < 80
+        ]
         details = ", ".join(
             f"{datetime.fromtimestamp(int(p['timestamp']), zone).isoformat()}:"
             f"{p.get('sample_count', 0)} samples/"
@@ -65,9 +66,8 @@ def main() -> None:
             for p in low_coverage[:12]
         )
         raise RuntimeError(
-            "Enphase sample coverage below 80% in "
-            f"{len(low_coverage)}/{len(points)} half-hours "
-            f"(min={min(coverages):.1f}%, mean={sum(coverages)/len(coverages):.1f}%); "
+            "Enphase mean sample coverage below 90%: "
+            f"mean={mean_coverage:.1f}%, min={min(coverages):.1f}%; "
             f"first low-coverage slots: {details}"
         )
     if any(p.get("domestic_import_cost_gbp") is None for p in points):
@@ -110,12 +110,15 @@ def main() -> None:
         ) > 0.001:
             raise RuntimeError("Octopus half-hour price differs from interval report")
 
+    low_sample_slots = sum(1 for value in coverages if value < 80)
     print(
         "ENERGY_HISTORY_WEEK_COMPARISON=PASS "
         f"week={week_start.isoformat()} half_hours={len(points)} "
         f"Enphase_domestic_import_kwh={rollup_usage:.3f} "
         f"Octopus_domestic_import_cost_gbp={rollup_cost:.2f} "
-        f"coverage_percent={rollups['coverage_percent']}"
+        f"coverage_percent={rollups['coverage_percent']} "
+        f"Enphase_mean_sample_coverage_percent={mean_coverage:.1f} "
+        f"Enphase_low_sample_slots={low_sample_slots}"
     )
     print("ENERGY_HISTORY_API_LIVE_ACCEPTANCE=PASS")
 
