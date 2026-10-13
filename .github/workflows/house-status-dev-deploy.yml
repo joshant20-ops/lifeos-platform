@@ -7,6 +7,10 @@ on:
       - 'scripts/lifeos-deploy-house-status-dev-dashboard.sh'
       - '.github/workflows/house-status-dev-deploy.yml'
       - 'scripts/lifeos-energy-history-live-acceptance.py'
+      - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/octopus.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/history.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/energy.py'
   push:
     branches: [main]
     paths:
@@ -14,6 +18,11 @@ on:
       - 'homeassistant/verify-house-status-dev-dashboard.py'
       - 'scripts/lifeos-deploy-house-status-dev-dashboard.sh'
       - '.github/workflows/house-status-dev-deploy.yml'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/energy.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/history.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/octopus.py'
+      - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
+      - 'scripts/lifeos-energy-history-live-acceptance.py'
   workflow_dispatch:
 permissions:
   contents: read
