@@ -31,9 +31,10 @@ def validate_period(
     name: str,
     start_date: date,
     end_date: date,
-    expected_buckets: int,
+    expected_buckets: int | None,
     zone: ZoneInfo,
     bucket_mode: str,
+    allow_partial: bool = False,
 ) -> dict:
     start = datetime.combine(start_date, time.min, tzinfo=zone)
     end = datetime.combine(end_date, time.min, tzinfo=zone)
@@ -44,14 +45,31 @@ def validate_period(
     expected_slots = int((end_epoch - start_epoch) / 1800)
     if result.get("timezone") != "Europe/London":
         raise RuntimeError(f"{name} rollup timezone is not Europe/London")
-    if not isinstance(points, list) or len(points) != expected_slots:
-        count = len(points) if isinstance(points, list) else 0
+    count = len(points) if isinstance(points, list) else 0
+    if not isinstance(points, list) or count > expected_slots or (
+        not allow_partial and count != expected_slots
+    ):
         raise RuntimeError(f"{name} rollup returned {count}/{expected_slots} half-hours")
-    if result.get("coverage_percent", 0) < 99 or result.get("missing_price_slots") != 0:
+
+    expected_coverage = round(100 * count / expected_slots, 1) if expected_slots else 100.0
+    coverage = float(result.get("coverage_percent", 0))
+    if abs(coverage - expected_coverage) > 0.2:
         raise RuntimeError(
-            f"{name} rollup coverage/prices incomplete: "
-            f"coverage={result.get('coverage_percent')}% "
-            f"missing_prices={result.get('missing_price_slots')}"
+            f"{name} reported coverage does not match returned intervals: "
+            f"reported={coverage}% expected={expected_coverage}%"
+        )
+    is_partial = count < expected_slots
+    if is_partial and (not allow_partial or result.get("complete") is not False):
+        raise RuntimeError(
+            f"{name} rollup is incomplete without an allowed partial-data state: "
+            f"coverage={coverage}% complete={result.get('complete')}"
+        )
+    if not is_partial and result.get("complete") is not True:
+        raise RuntimeError(f"{name} complete interval set is not marked complete")
+    if result.get("missing_price_slots") != 0:
+        raise RuntimeError(
+            f"{name} rollup has missing Octopus prices: "
+            f"{result.get('missing_price_slots')}"
         )
     if any(
         point.get("domestic_import_cost_gbp") is None
@@ -89,7 +107,17 @@ def validate_period(
         bucket["cost"] += float(point["domestic_import_cost_gbp"])
         bucket["count"] += 1
 
-    if len(buckets) != expected_buckets:
+    if bucket_mode == "year" and allow_partial:
+        # Historical Enphase collection began after the start of this calendar
+        # year. Validate each month that has source data; the API's coverage and
+        # complete fields must continue to disclose absent earlier intervals.
+        if len(buckets) < 3:
+            raise RuntimeError(
+                f"{name} history covers only {len(buckets)} month buckets; "
+                "at least three are required to validate Year aggregation"
+            )
+        expected_buckets = len(buckets)
+    if expected_buckets is None or len(buckets) != expected_buckets:
         raise RuntimeError(
             f"{name} dashboard aggregation produced {len(buckets)}/"
             f"{expected_buckets} expected buckets"
@@ -105,7 +133,9 @@ def validate_period(
     print(
         f"ENERGY_HISTORY_{name.upper()}_VIEW=PASS "
         f"period={start_date.isoformat()}..{end_date.isoformat()} "
-        f"half_hours={len(points)} buckets={len(buckets)} "
+        f"half_hours={len(points)}/{expected_slots} buckets={len(buckets)} "
+        f"coverage_percent={coverage:.1f} missing_half_hours={expected_slots-count} "
+        f"partial={str(is_partial).lower()} "
         f"domestic_import_kwh={usage:.3f} cost_gbp={cost:.2f} "
         f"mean_sample_coverage_percent={mean_sample_coverage:.1f}"
     )
@@ -209,8 +239,7 @@ def main() -> None:
     current_year_end = datetime.now(zone).date() + timedelta(days=1)
     validate_period(
         args.base_url, "year", date(2026, 1, 1), current_year_end,
-        len({date(2026, month, 1).strftime("%Y-%m") for month in range(1, current_year_end.month + 1)}),
-        zone, "year",
+        None, zone, "year", allow_partial=True,
     )
 
     print(
