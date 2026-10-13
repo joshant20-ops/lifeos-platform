@@ -44,7 +44,6 @@ def _lease_topic(lease_id: str | None = None) -> str:
 
 def _publish_lease(
     state: str, *, required: bool = True, lease_id: str | None = None,
-    wake_via_ha: bool = False,
 ) -> None:
     owner = str(lease_id or os.getpid())
     lease = {
@@ -52,8 +51,6 @@ def _publish_lease(
         "state": state,
         "expires_at": int(time.time()) + (LEASE_TTL if state == "active" else 0),
     }
-    if state == "active" and wake_via_ha:
-        lease["wake_via_ha"] = True
     payload = json.dumps(lease, separators=(",", ":"))
     try:
         subprocess.run(
