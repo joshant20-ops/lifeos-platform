@@ -33,6 +33,7 @@ on:
       - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_energy_attention.yaml'
       - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py'
       - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
+      - 'scripts/lifeos-energy-history-live-acceptance.py'
       - 'tests/test_energy_opportunity_service.py'
       - 'deploy-triggers/house-status-dashboard'
       - 'deploy-triggers/ha-control-bridge'
