@@ -33,6 +33,7 @@ def validate_period(
     end_date: date,
     expected_buckets: int,
     zone: ZoneInfo,
+    bucket_mode: str,
 ) -> dict:
     start = datetime.combine(start_date, time.min, tzinfo=zone)
     end = datetime.combine(end_date, time.min, tzinfo=zone)
@@ -74,12 +75,12 @@ def validate_period(
         if stamp < start_epoch or stamp >= end_epoch or stamp % 1800:
             raise RuntimeError(f"{name} rollup contains an invalid UTC boundary")
         local = datetime.fromtimestamp(stamp, zone)
-        if datetime.fromisoformat(point["local_from"]).utcoffset() != local.utcoffset():
+        if datetime.fromisoformat(point["local_from"]) != local:
             raise RuntimeError(f"{name} local tariff boundary offset is invalid")
-        if period_kind == "month":
+        if bucket_mode == "month":
             bucket_date = local.date() - timedelta(days=local.date().weekday())
             key = bucket_date.isoformat()
-        elif period_kind == "year":
+        elif bucket_mode == "year":
             key = local.strftime("%Y-%m")
         else:
             key = local.date().isoformat()
@@ -196,24 +197,20 @@ def main() -> None:
             raise RuntimeError("Octopus half-hour price differs from interval report")
 
     low_sample_slots = sum(1 for value in coverages if value < 80)
-    period_kind = "day"
     validate_period(
-        args.base_url, "day", date(2026, 9, 29), date(2026, 9, 30), 1, zone
+        args.base_url, "day", date(2026, 9, 29), date(2026, 9, 30), 1, zone, "day"
     )
-    period_kind = "week"
     validate_period(
-        args.base_url, "week", date(2026, 9, 28), date(2026, 10, 5), 7, zone
+        args.base_url, "week", date(2026, 9, 28), date(2026, 10, 5), 7, zone, "week"
     )
-    period_kind = "month"
     validate_period(
-        args.base_url, "month", date(2026, 9, 1), date(2026, 10, 1), 5, zone
+        args.base_url, "month", date(2026, 9, 1), date(2026, 10, 1), 5, zone, "month"
     )
     current_year_end = datetime.now(zone).date() + timedelta(days=1)
-    period_kind = "year"
     validate_period(
         args.base_url, "year", date(2026, 1, 1), current_year_end,
         len({date(2026, month, 1).strftime("%Y-%m") for month in range(1, current_year_end.month + 1)}),
-        zone,
+        zone, "year",
     )
 
     print(
