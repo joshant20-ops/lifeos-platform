@@ -4,77 +4,77 @@
   ],
   "entities": {
     "predbat.battery_power_best": {
-      "last_updated": "2026-10-12T23:35:02.313800+00:00",
+      "last_updated": "2026-10-13T00:05:02.314284+00:00",
       "source": "home_assistant_live_api",
-      "state": 0.182
+      "state": 0.284
     },
     "predbat.best_export_energy": {
-      "last_updated": "2026-10-12T23:35:02.360170+00:00",
+      "last_updated": "2026-10-13T00:05:02.373410+00:00",
       "source": "home_assistant_live_api",
-      "state": 10.599
+      "state": 10.601
     },
     "predbat.best_import_energy": {
-      "last_updated": "2026-10-12T23:35:02.377919+00:00",
+      "last_updated": "2026-10-13T00:05:02.395601+00:00",
       "source": "home_assistant_live_api",
-      "state": 3.236
+      "state": 3.245
     },
     "predbat.best_import_energy_battery": {
-      "last_updated": "2026-10-12T23:35:02.382733+00:00",
+      "last_updated": "2026-10-13T00:05:02.401497+00:00",
       "source": "home_assistant_live_api",
       "state": 1.919
     },
     "predbat.best_import_energy_house": {
-      "last_updated": "2026-10-12T23:35:02.386694+00:00",
+      "last_updated": "2026-10-13T00:05:02.406832+00:00",
       "source": "home_assistant_live_api",
-      "state": 1.309
+      "state": 1.312
     },
     "predbat.best_load_energy": {
-      "last_updated": "2026-10-12T23:35:02.365806+00:00",
+      "last_updated": "2026-10-13T00:05:02.380311+00:00",
       "source": "home_assistant_live_api",
-      "state": 10.276
+      "state": 10.241
     },
     "predbat.best_pv_energy": {
-      "last_updated": "2026-10-12T23:35:02.372318+00:00",
+      "last_updated": "2026-10-13T00:05:02.388752+00:00",
       "source": "home_assistant_live_api",
       "state": 16.812
     },
     "predbat.best_soc_min_kwh": {
-      "last_updated": "2026-10-12T23:35:02.355562+00:00",
+      "last_updated": "2026-10-12T23:55:01.192708+00:00",
       "source": "home_assistant_live_api",
       "state": 1
     },
     "predbat.grid_power_best": {
-      "last_updated": "2026-10-12T23:35:02.331352+00:00",
+      "last_updated": "2026-10-13T00:05:02.335895+00:00",
       "source": "home_assistant_live_api",
-      "state": -0.011
+      "state": -0.027
     },
     "predbat.pv_power_best": {
-      "last_updated": "2026-10-12T23:35:02.325544+00:00",
+      "last_updated": "2026-10-13T00:05:02.328834+00:00",
       "source": "home_assistant_live_api",
       "state": 0
     },
     "predbat.rates": {
-      "last_updated": "2026-10-12T23:35:02.678031+00:00",
+      "last_updated": "2026-10-13T00:05:02.779270+00:00",
       "source": "home_assistant_live_api",
-      "state": 18.03
+      "state": 18.66
     },
     "predbat.rates_export": {
-      "last_updated": "2026-10-12T23:35:02.638607+00:00",
+      "last_updated": "2026-10-13T00:05:02.728994+00:00",
       "source": "home_assistant_live_api",
-      "state": 10.82
+      "state": 11.12
     },
     "predbat.soc_kw_best": {
-      "last_updated": "2026-10-12T23:35:02.307837+00:00",
+      "last_updated": "2026-10-13T00:05:02.307057+00:00",
       "source": "home_assistant_live_api",
       "state": 1.517
     },
     "predbat.status": {
-      "last_updated": "2026-10-13T00:35:02.745991+01:00",
+      "last_updated": "2026-10-13T01:05:02.837715+01:00",
       "state": "Demand"
     },
     "sensor.predbat_enphase_5731818_battery_power": {
-      "last_updated": "2026-10-13T00:33:02.900016+01:00",
-      "state": 182
+      "last_updated": "2026-10-13T01:04:50.478797+01:00",
+      "state": 284
     },
     "sensor.predbat_enphase_5731818_battery_reserve": {
       "last_updated": "2026-10-12T23:55:16.379704+01:00",
@@ -85,24 +85,24 @@
       "state": 5
     },
     "sensor.predbat_enphase_5731818_grid_power": {
-      "last_updated": "2026-10-13T00:33:02.895988+01:00",
-      "state": -11
+      "last_updated": "2026-10-13T01:04:50.472241+01:00",
+      "state": -27.3
     },
     "sensor.predbat_enphase_5731818_load_power": {
-      "last_updated": "2026-10-13T00:33:02.887795+01:00",
-      "state": 193
+      "last_updated": "2026-10-13T01:04:50.446343+01:00",
+      "state": 311.3
     },
     "sensor.predbat_enphase_5731818_pv_power": {
       "last_updated": "2026-10-12T23:55:16.527914+01:00",
       "state": 0
     },
     "sensor.predbat_enphase_5731818_soc_kw": {
-      "last_updated": "2026-10-13T00:27:43.536940+01:00",
-      "state": 3.95
+      "last_updated": "2026-10-13T00:59:32.872706+01:00",
+      "state": 3.8
     },
     "sensor.predbat_enphase_5731818_soc_percent": {
-      "last_updated": "2026-10-13T00:27:43.532311+01:00",
-      "state": 39.5
+      "last_updated": "2026-10-13T00:59:32.868223+01:00",
+      "state": 38
     }
   },
   "entities_expected": 29,
@@ -121,30 +121,6 @@
   "entities_present": 22,
   "forecast": {
     "predbat.battery_power_best": [
-      {
-        "time": "2026-10-13T00:35:00+0100",
-        "value": 0.383
-      },
-      {
-        "time": "2026-10-13T00:40:00+0100",
-        "value": 0.217
-      },
-      {
-        "time": "2026-10-13T00:45:00+0100",
-        "value": 0.378
-      },
-      {
-        "time": "2026-10-13T00:50:00+0100",
-        "value": 0.229
-      },
-      {
-        "time": "2026-10-13T00:55:00+0100",
-        "value": 0.336
-      },
-      {
-        "time": "2026-10-13T01:00:00+0100",
-        "value": 0.171
-      },
       {
         "time": "2026-10-13T01:05:00+0100",
         "value": 0.319
@@ -567,7 +543,7 @@
       },
       {
         "time": "2026-10-13T09:50:00+0100",
-        "value": 0.125
+        "value": 0.093
       },
       {
         "time": "2026-10-13T09:55:00+0100",
@@ -1368,11 +1344,35 @@
       {
         "time": "2026-10-15T00:30:00+0100",
         "value": 0.279
+      },
+      {
+        "time": "2026-10-15T00:35:00+0100",
+        "value": 0.434
+      },
+      {
+        "time": "2026-10-15T00:40:00+0100",
+        "value": 0.255
+      },
+      {
+        "time": "2026-10-15T00:45:00+0100",
+        "value": 0.441
+      },
+      {
+        "time": "2026-10-15T00:50:00+0100",
+        "value": 0.254
+      },
+      {
+        "time": "2026-10-15T00:55:00+0100",
+        "value": 0.388
+      },
+      {
+        "time": "2026-10-15T01:00:00+0100",
+        "value": 0.196
       }
     ],
     "predbat.grid_power_best": [
       {
-        "time": "2026-10-13T00:35:00+0100",
+        "time": "2026-10-13T01:05:00+0100",
         "value": 0.0
       },
       {
@@ -1389,7 +1389,7 @@
       },
       {
         "time": "2026-10-13T09:50:00+0100",
-        "value": 0.232
+        "value": 0.263
       },
       {
         "time": "2026-10-13T09:55:00+0100",
@@ -2902,11 +2902,15 @@
       {
         "time": "2026-10-15T00:30:00+0100",
         "value": 0.0
+      },
+      {
+        "time": "2026-10-15T01:00:00+0100",
+        "value": 0.0
       }
     ],
     "predbat.pv_power_best": [
       {
-        "time": "2026-10-13T00:35:00+0100",
+        "time": "2026-10-13T01:05:00+0100",
         "value": 0.0
       },
       {
@@ -4062,7 +4066,7 @@
         "value": 0.0
       },
       {
-        "time": "2026-10-15T00:30:00+0100",
+        "time": "2026-10-15T01:00:00+0100",
         "value": 0.0
       }
     ],
@@ -4830,6 +4834,10 @@
       {
         "time": "2026-10-16T00:30:00+0100",
         "value": 18.03
+      },
+      {
+        "time": "2026-10-16T01:00:00+0100",
+        "value": 18.66
       }
     ],
     "predbat.rates_export": [
@@ -5596,456 +5604,436 @@
       {
         "time": "2026-10-16T00:30:00+0100",
         "value": 10.82
+      },
+      {
+        "time": "2026-10-16T01:00:00+0100",
+        "value": 11.12
       }
     ],
     "predbat.soc_kw_best": [
       {
-        "time": "2026-10-13T00:35:00+0100",
-        "value": 3.95
-      },
-      {
-        "time": "2026-10-13T00:40:00+0100",
-        "value": 3.917
-      },
-      {
-        "time": "2026-10-13T00:45:00+0100",
-        "value": 3.898
-      },
-      {
-        "time": "2026-10-13T00:50:00+0100",
-        "value": 3.866
-      },
-      {
-        "time": "2026-10-13T00:55:00+0100",
-        "value": 3.846
-      },
-      {
-        "time": "2026-10-13T01:00:00+0100",
-        "value": 3.817
-      },
-      {
         "time": "2026-10-13T01:05:00+0100",
-        "value": 3.803
+        "value": 3.8
       },
       {
         "time": "2026-10-13T01:10:00+0100",
-        "value": 3.775
+        "value": 3.773
       },
       {
         "time": "2026-10-13T01:15:00+0100",
-        "value": 3.759
+        "value": 3.756
       },
       {
         "time": "2026-10-13T01:20:00+0100",
-        "value": 3.734
+        "value": 3.732
       },
       {
         "time": "2026-10-13T01:25:00+0100",
-        "value": 3.722
+        "value": 3.72
       },
       {
         "time": "2026-10-13T01:30:00+0100",
-        "value": 3.698
+        "value": 3.695
       },
       {
         "time": "2026-10-13T01:35:00+0100",
-        "value": 3.682
+        "value": 3.679
       },
       {
         "time": "2026-10-13T01:40:00+0100",
-        "value": 3.654
+        "value": 3.651
       },
       {
         "time": "2026-10-13T01:45:00+0100",
-        "value": 3.635
+        "value": 3.632
       },
       {
         "time": "2026-10-13T01:50:00+0100",
-        "value": 3.604
+        "value": 3.601
       },
       {
         "time": "2026-10-13T01:55:00+0100",
-        "value": 3.586
+        "value": 3.584
       },
       {
         "time": "2026-10-13T02:00:00+0100",
-        "value": 3.556
+        "value": 3.553
       },
       {
         "time": "2026-10-13T02:05:00+0100",
-        "value": 3.537
+        "value": 3.534
       },
       {
         "time": "2026-10-13T02:10:00+0100",
-        "value": 3.505
+        "value": 3.502
       },
       {
         "time": "2026-10-13T02:15:00+0100",
-        "value": 3.483
+        "value": 3.48
       },
       {
         "time": "2026-10-13T02:20:00+0100",
-        "value": 3.449
+        "value": 3.447
       },
       {
         "time": "2026-10-13T02:25:00+0100",
-        "value": 3.429
+        "value": 3.426
       },
       {
         "time": "2026-10-13T02:30:00+0100",
-        "value": 3.395
+        "value": 3.392
       },
       {
         "time": "2026-10-13T02:35:00+0100",
-        "value": 3.374
+        "value": 3.371
       },
       {
         "time": "2026-10-13T02:40:00+0100",
-        "value": 3.342
+        "value": 3.339
       },
       {
         "time": "2026-10-13T02:45:00+0100",
-        "value": 3.327
+        "value": 3.324
       },
       {
         "time": "2026-10-13T02:50:00+0100",
-        "value": 3.302
+        "value": 3.299
       },
       {
         "time": "2026-10-13T02:55:00+0100",
-        "value": 3.279
+        "value": 3.277
       },
       {
         "time": "2026-10-13T03:00:00+0100",
-        "value": 3.25
+        "value": 3.248
       },
       {
         "time": "2026-10-13T03:05:00+0100",
-        "value": 3.237
+        "value": 3.234
       },
       {
         "time": "2026-10-13T03:10:00+0100",
-        "value": 3.215
+        "value": 3.212
       },
       {
         "time": "2026-10-13T03:15:00+0100",
-        "value": 3.201
+        "value": 3.198
       },
       {
         "time": "2026-10-13T03:20:00+0100",
-        "value": 3.176
+        "value": 3.173
       },
       {
         "time": "2026-10-13T03:25:00+0100",
-        "value": 3.159
+        "value": 3.156
       },
       {
         "time": "2026-10-13T03:30:00+0100",
-        "value": 3.132
+        "value": 3.129
       },
       {
         "time": "2026-10-13T03:35:00+0100",
-        "value": 3.115
+        "value": 3.112
       },
       {
         "time": "2026-10-13T03:40:00+0100",
-        "value": 3.083
+        "value": 3.08
       },
       {
         "time": "2026-10-13T03:45:00+0100",
-        "value": 3.064
+        "value": 3.061
       },
       {
         "time": "2026-10-13T03:50:00+0100",
-        "value": 3.032
+        "value": 3.029
       },
       {
         "time": "2026-10-13T03:55:00+0100",
-        "value": 3.014
+        "value": 3.011
       },
       {
         "time": "2026-10-13T04:00:00+0100",
-        "value": 2.983
+        "value": 2.98
       },
       {
         "time": "2026-10-13T04:05:00+0100",
-        "value": 2.965
+        "value": 2.962
       },
       {
         "time": "2026-10-13T04:10:00+0100",
-        "value": 2.936
+        "value": 2.934
       },
       {
         "time": "2026-10-13T04:15:00+0100",
-        "value": 2.917
+        "value": 2.914
       },
       {
         "time": "2026-10-13T04:20:00+0100",
-        "value": 2.886
+        "value": 2.883
       },
       {
         "time": "2026-10-13T04:25:00+0100",
-        "value": 2.856
+        "value": 2.854
       },
       {
         "time": "2026-10-13T04:30:00+0100",
-        "value": 2.816
+        "value": 2.813
       },
       {
         "time": "2026-10-13T04:35:00+0100",
-        "value": 2.793
+        "value": 2.79
       },
       {
         "time": "2026-10-13T04:40:00+0100",
-        "value": 2.759
+        "value": 2.757
       },
       {
         "time": "2026-10-13T04:45:00+0100",
-        "value": 2.745
+        "value": 2.742
       },
       {
         "time": "2026-10-13T04:50:00+0100",
-        "value": 2.723
+        "value": 2.721
       },
       {
         "time": "2026-10-13T04:55:00+0100",
-        "value": 2.709
+        "value": 2.706
       },
       {
         "time": "2026-10-13T05:00:00+0100",
-        "value": 2.679
+        "value": 2.677
       },
       {
         "time": "2026-10-13T05:05:00+0100",
-        "value": 2.655
+        "value": 2.652
       },
       {
         "time": "2026-10-13T05:10:00+0100",
-        "value": 2.615
+        "value": 2.612
       },
       {
         "time": "2026-10-13T05:15:00+0100",
-        "value": 2.595
+        "value": 2.592
       },
       {
         "time": "2026-10-13T05:20:00+0100",
-        "value": 2.553
+        "value": 2.55
       },
       {
         "time": "2026-10-13T05:25:00+0100",
-        "value": 2.535
+        "value": 2.532
       },
       {
         "time": "2026-10-13T05:30:00+0100",
-        "value": 2.504
+        "value": 2.501
       },
       {
         "time": "2026-10-13T05:35:00+0100",
-        "value": 2.485
+        "value": 2.483
       },
       {
         "time": "2026-10-13T05:40:00+0100",
-        "value": 2.455
+        "value": 2.452
       },
       {
         "time": "2026-10-13T05:45:00+0100",
-        "value": 2.434
+        "value": 2.432
       },
       {
         "time": "2026-10-13T05:50:00+0100",
-        "value": 2.398
+        "value": 2.395
       },
       {
         "time": "2026-10-13T05:55:00+0100",
-        "value": 2.376
+        "value": 2.374
       },
       {
         "time": "2026-10-13T06:00:00+0100",
-        "value": 2.343
+        "value": 2.34
       },
       {
         "time": "2026-10-13T06:05:00+0100",
-        "value": 2.324
+        "value": 2.322
       },
       {
         "time": "2026-10-13T06:10:00+0100",
-        "value": 2.292
+        "value": 2.289
       },
       {
         "time": "2026-10-13T06:15:00+0100",
-        "value": 2.27
+        "value": 2.268
       },
       {
         "time": "2026-10-13T06:20:00+0100",
-        "value": 2.224
+        "value": 2.222
       },
       {
         "time": "2026-10-13T06:25:00+0100",
-        "value": 2.197
+        "value": 2.194
       },
       {
         "time": "2026-10-13T06:30:00+0100",
-        "value": 2.135
+        "value": 2.132
       },
       {
         "time": "2026-10-13T06:35:00+0100",
-        "value": 2.107
+        "value": 2.104
       },
       {
         "time": "2026-10-13T06:40:00+0100",
-        "value": 2.064
+        "value": 2.061
       },
       {
         "time": "2026-10-13T06:45:00+0100",
-        "value": 2.02
+        "value": 2.017
       },
       {
         "time": "2026-10-13T06:50:00+0100",
-        "value": 1.958
+        "value": 1.955
       },
       {
         "time": "2026-10-13T06:55:00+0100",
-        "value": 1.923
+        "value": 1.92
       },
       {
         "time": "2026-10-13T07:00:00+0100",
-        "value": 1.865
+        "value": 1.862
       },
       {
         "time": "2026-10-13T07:05:00+0100",
-        "value": 1.842
+        "value": 1.839
       },
       {
         "time": "2026-10-13T07:10:00+0100",
-        "value": 1.808
+        "value": 1.806
       },
       {
         "time": "2026-10-13T07:15:00+0100",
-        "value": 1.788
+        "value": 1.785
       },
       {
         "time": "2026-10-13T07:20:00+0100",
-        "value": 1.747
+        "value": 1.744
       },
       {
         "time": "2026-10-13T07:25:00+0100",
-        "value": 1.724
+        "value": 1.721
       },
       {
         "time": "2026-10-13T07:30:00+0100",
-        "value": 1.687
+        "value": 1.685
       },
       {
         "time": "2026-10-13T07:35:00+0100",
-        "value": 1.669
+        "value": 1.666
       },
       {
         "time": "2026-10-13T07:40:00+0100",
-        "value": 1.623
+        "value": 1.62
       },
       {
         "time": "2026-10-13T07:45:00+0100",
-        "value": 1.572
+        "value": 1.569
       },
       {
         "time": "2026-10-13T07:50:00+0100",
-        "value": 1.517
+        "value": 1.515
       },
       {
         "time": "2026-10-13T07:55:00+0100",
-        "value": 1.49
+        "value": 1.487
       },
       {
         "time": "2026-10-13T08:00:00+0100",
-        "value": 1.458
+        "value": 1.455
       },
       {
         "time": "2026-10-13T08:05:00+0100",
-        "value": 1.449
+        "value": 1.447
       },
       {
         "time": "2026-10-13T08:10:00+0100",
-        "value": 1.428
+        "value": 1.426
       },
       {
         "time": "2026-10-13T08:15:00+0100",
-        "value": 1.414
+        "value": 1.411
       },
       {
         "time": "2026-10-13T08:20:00+0100",
-        "value": 1.377
+        "value": 1.374
       },
       {
         "time": "2026-10-13T08:25:00+0100",
-        "value": 1.355
+        "value": 1.352
       },
       {
         "time": "2026-10-13T08:30:00+0100",
-        "value": 1.321
+        "value": 1.318
       },
       {
         "time": "2026-10-13T08:35:00+0100",
-        "value": 1.313
+        "value": 1.311
       },
       {
         "time": "2026-10-13T08:40:00+0100",
-        "value": 1.299
+        "value": 1.296
       },
       {
         "time": "2026-10-13T08:45:00+0100",
-        "value": 1.289
+        "value": 1.287
       },
       {
         "time": "2026-10-13T08:50:00+0100",
-        "value": 1.254
+        "value": 1.251
       },
       {
         "time": "2026-10-13T08:55:00+0100",
-        "value": 1.219
+        "value": 1.216
       },
       {
         "time": "2026-10-13T09:00:00+0100",
-        "value": 1.155
+        "value": 1.152
       },
       {
         "time": "2026-10-13T09:05:00+0100",
-        "value": 1.138
+        "value": 1.135
       },
       {
         "time": "2026-10-13T09:10:00+0100",
-        "value": 1.114
-      },
-      {
-        "time": "2026-10-13T09:15:00+0100",
         "value": 1.111
       },
       {
+        "time": "2026-10-13T09:15:00+0100",
+        "value": 1.108
+      },
+      {
         "time": "2026-10-13T09:20:00+0100",
-        "value": 1.078
+        "value": 1.075
       },
       {
         "time": "2026-10-13T09:25:00+0100",
-        "value": 1.066
+        "value": 1.063
       },
       {
         "time": "2026-10-13T09:30:00+0100",
-        "value": 1.038
+        "value": 1.035
       },
       {
         "time": "2026-10-13T09:35:00+0100",
-        "value": 1.039
-      },
-      {
-        "time": "2026-10-13T09:40:00+0100",
-        "value": 1.029
-      },
-      {
-        "time": "2026-10-13T09:45:00+0100",
         "value": 1.036
       },
       {
+        "time": "2026-10-13T09:40:00+0100",
+        "value": 1.026
+      },
+      {
+        "time": "2026-10-13T09:45:00+0100",
+        "value": 1.033
+      },
+      {
         "time": "2026-10-13T09:50:00+0100",
-        "value": 1.011
+        "value": 1.008
       },
       {
         "time": "2026-10-13T09:55:00+0100",
@@ -6886,53 +6874,77 @@
       {
         "time": "2026-10-15T00:30:00+0100",
         "value": 10.0
+      },
+      {
+        "time": "2026-10-15T00:35:00+0100",
+        "value": 9.976
+      },
+      {
+        "time": "2026-10-15T00:40:00+0100",
+        "value": 9.939
+      },
+      {
+        "time": "2026-10-15T00:45:00+0100",
+        "value": 9.917
+      },
+      {
+        "time": "2026-10-15T00:50:00+0100",
+        "value": 9.879
+      },
+      {
+        "time": "2026-10-15T00:55:00+0100",
+        "value": 9.857
+      },
+      {
+        "time": "2026-10-15T01:00:00+0100",
+        "value": 9.824
       }
     ]
   },
   "forecast_freshness": {
     "active_headline_count": 7,
-    "checked_at": "2026-10-13T00:38:06.217416+01:00",
+    "checked_at": "2026-10-13T01:08:06.649515+01:00",
     "fresh_active_headline_count": 7,
     "fresh_headline_count": 8,
     "headline_count": 8,
     "headline_entities": {
       "predbat.best_export_energy": {
-        "age_seconds": 183.857,
+        "age_seconds": 184.276,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       },
       "predbat.best_import_energy": {
-        "age_seconds": 183.839,
+        "age_seconds": 184.254,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       },
       "predbat.best_import_energy_battery": {
-        "age_seconds": 183.835,
+        "age_seconds": 184.248,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       },
       "predbat.best_import_energy_house": {
-        "age_seconds": 183.831,
+        "age_seconds": 184.243,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       },
       "predbat.best_load_energy": {
-        "age_seconds": 183.852,
+        "age_seconds": 184.269,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       },
       "predbat.best_pv_energy": {
-        "age_seconds": 183.845,
+        "age_seconds": 184.261,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       },
       "predbat.best_soc_min_kwh": {
-        "age_seconds": 183.862,
+        "age_seconds": 785.457,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       },
       "predbat.soc_kw_best": {
-        "age_seconds": 183.91,
+        "age_seconds": 184.342,
         "fresh_1h": true,
         "source": "home_assistant_live_api"
       }
@@ -6942,8 +6954,8 @@
   "forecast_provenance": {
     "forecast_entity_count": 6,
     "live_api": {
-      "queried_at": "2026-10-13T00:38:06.053766+01:00",
-      "request_seconds": 0.0431,
+      "queried_at": "2026-10-13T01:08:06.480361+01:00",
+      "request_seconds": 0.0499,
       "source": "home_assistant_live_api",
       "state_count": 1203,
       "status": "live_api_ok"
@@ -6952,7 +6964,7 @@
     "source": "home_assistant_live_api"
   },
   "forecast_summary": {
-    "grid_points": 383,
+    "grid_points": 384,
     "high_import_points_beyond_live_tariff_horizon": 25,
     "soc_max_kwh": 10.0,
     "soc_max_time": "2026-10-13T15:10:00+0100",
@@ -6960,7 +6972,7 @@
     "soc_min_time": "2026-10-13T09:55:00+0100",
     "soc_points": 322
   },
-  "generated_at": "2026-10-13T00:38:06.217398+01:00",
+  "generated_at": "2026-10-13T01:08:06.649490+01:00",
   "sanity_assessment": {
     "fail_flags": [],
     "level": "WATCH",
