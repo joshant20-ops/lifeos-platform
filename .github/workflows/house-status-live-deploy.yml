@@ -18,6 +18,8 @@ jobs:
           git show HEAD:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
       - name: Deploy House Status
         run: sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dashboard.sh
+      - name: Live Energy API acceptance
+        run: python3 scripts/lifeos-energy-history-live-acceptance.py --base-url http://127.0.0.1:8110 --week-start 2026-09-28
       - name: Discover live House Status runtime
         run: |
           sudo -n python3 /home/joshan/lifeos-platform/homeassistant/discover-house-status-entities.py | tee /tmp/house-status-discovery.json
@@ -25,7 +27,7 @@ jobs:
       - name: Live asset acceptance
         run: |
           set -Eeuo pipefail
-          target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
+          target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v29.js
           legacy=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v27.js
           doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
           doorbell_v28=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell-v28.js
@@ -55,11 +57,22 @@ jobs:
           require_marker HOUSE_STATUS_DISK_POWERDOWN_BAND 'band-powerdown' "$target"
           require_marker HOUSE_STATUS_DISK_JOINED_EVENTS 'joined_events' "$target"
           require_marker HOUSE_STATUS_DISK_FREE_LABEL 'Free electricity' "$target"
+          require_marker HOUSE_STATUS_DISK_ROLLING_WINDOW 'periodWindow(){return [this.periodStart(),this.periodEnd()];}' "$target"
+          require_marker HOUSE_STATUS_DISK_YEAR_POWERDOWN_HIDDEN "this.period()==='year'?'':powerdownWindows.map" "$target"
           served=$(mktemp)
           trap 'rm -f "$served"' EXIT
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js -o "$served"
+          curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "http://127.0.0.1:8123/local/house-status/lifeos-house-status-v29.js?acceptance=${GITHUB_SHA}" -o "$served"
+          cmp -s homeassistant/releases/house-status/live/lifeos-house-status-v29.js "$served" || { echo HOUSE_STATUS_LIVE_SERVED_ASSET=FAIL; exit 1; }
+          echo HOUSE_STATUS_LIVE_SERVED_ASSET=PASS
+          NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/externals -maxdepth 3 -type f -name node -perm -111 2>/dev/null | head -n1)
+          [[ -n "$NODE_BIN" ]] || { echo HOUSE_STATUS_LIVE_RUNTIME_NODE=FAIL; exit 1; }
+          TZ=Europe/London HOUSE_STATUS_LIVE_ASSET="$served" "$NODE_BIN" homeassistant/test-house-status-live-energy.js
+          echo HOUSE_STATUS_LIVE_ENERGY_RUNTIME=PASS
+          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v29.js -o "$served"
           require_marker HOUSE_STATUS_LIVE_FREE_BAND 'band-free' "$served"
           require_marker HOUSE_STATUS_LIVE_POWERDOWN_BAND 'band-powerdown' "$served"
+          require_marker HOUSE_STATUS_LIVE_ROLLING_WINDOW 'periodWindow(){return [this.periodStart(),this.periodEnd()];}' "$served"
+          require_marker HOUSE_STATUS_LIVE_YEAR_POWERDOWN_HIDDEN "this.period()==='year'?'':powerdownWindows.map" "$served"
           echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js -o "$served"
           require_marker DOORBELL_LIVE_SLOT 'data-doorbell-card' "$served"
@@ -84,7 +97,7 @@ jobs:
           require_marker DOORBELL_V27_MODULE_LIVE_HELPERS 'createCardElement' "$served"
           require_marker DOORBELL_V27_MODULE_LIVE_FALLBACK 'Camera view could not load' "$served"
           echo DOORBELL_V27_ASSET_LIVE=PASS
-          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1' -o "$served"
-          require_marker HOUSE_STATUS_V28_CACHE_BUSTED_LIVE "Doorbell v28" "$served"
-          echo HOUSE_STATUS_V28_ENTRYPOINT_CACHE_BUST=PASS
+          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-v29.js?v=energy-pages-20261013-1' -o "$served"
+          require_marker HOUSE_STATUS_V29_CACHE_BUSTED_LIVE "Energy v2" "$served"
+          echo HOUSE_STATUS_V29_ENTRYPOINT_CACHE_BUST=PASS
           echo DOORBELL_SHARED_HEADER_CAMERA_LIVE=PASS
