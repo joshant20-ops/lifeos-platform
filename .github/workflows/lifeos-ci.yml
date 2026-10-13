@@ -174,6 +174,7 @@ jobs:
           python3 -m py_compile app/main.py app/routers/energy.py app/services/history.py app/services/octopus.py
           python3 -m pytest -q tests/test_history.py
           cd "$GITHUB_WORKSPACE"
+          python3 -m py_compile scripts/lifeos-energy-history-live-acceptance.py
           python3 -m py_compile \
             homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py \
             homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py \
