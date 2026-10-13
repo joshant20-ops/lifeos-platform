@@ -1,4 +1,4 @@
 operation=deploy-ha-control-bridge
-reason=resolve-live-tower-status-and-ha-entity-ids
+reason=1588-restore-and-verify-production-600-second-tower-idle-grace
 requested_commit=fcfe2c5130239eb0da8ec5faa71955ed07eac9bd
-nonce=2026-09-05T11:15+01:00
+nonce=2026-10-13T09:15Z
