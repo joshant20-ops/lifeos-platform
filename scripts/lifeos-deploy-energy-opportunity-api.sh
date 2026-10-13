@@ -164,7 +164,7 @@ python3 "$PLATFORM/scripts/lifeos-energy-history-live-acceptance.py" --base-url 
 # Confirm the SQLite tariff cache and rollup history survive a service restart.
 docker restart lifeos-energy >/dev/null
 for _ in $(seq 1 90); do
-  health=$(docker inspect -f '{{.State.Status}}' lifeos-energy 2>/dev/null || true)
+  health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' lifeos-energy 2>/dev/null || true)
   [[ "$health" == healthy ]] && break
   sleep 2
 done
