@@ -124,6 +124,8 @@ print("WARM_INFERENCE=PASS")
 PY
 wakes_after=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' "$gateway_log" || true)
 test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+assert_no_active_leases
+echo 'INFERENCE_LEASE_RELEASE=PASS'
 systemctl is-active --quiet lifeos-autonomous-agent.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
 curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
