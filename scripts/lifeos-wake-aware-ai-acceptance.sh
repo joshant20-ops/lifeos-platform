@@ -123,6 +123,9 @@ assert isinstance(v.get("response"),str) and v["response"].strip(),v
 print("WARM_INFERENCE=PASS")
 PY
 wakes_after=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE
+assert_no_active_leases
+echo 'INFERENCE_LEASE_RELEASE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
 curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
 echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
