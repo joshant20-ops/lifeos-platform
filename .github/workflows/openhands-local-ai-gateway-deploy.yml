@@ -13,6 +13,8 @@ on:
       - 'scripts/lifeos-wake-aware-ai-acceptance.sh'
       - 'scripts/lifeos-deploy-ha-control-bridge.sh'
       - 'scripts/lifeos-deploy-ha-control-bridge-impl.sh'
+      - 'docs/operations/local-agent-model-candidates.md'
+      - 'docs/architecture/system-simplification-map.md'
       - '.github/workflows/lifeos-governor-tower-ai-lifecycle.yml'
       - 'governor/tower_control.py'
       - '.github/workflows/lifeos-governor-broker-deploy.yml'
