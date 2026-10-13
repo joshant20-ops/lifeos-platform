@@ -50,7 +50,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     const selectedUsage=selectedRows.reduce((n,o)=>n+(Number(o.domestic_import_kwh)||0),0);
     const pricedRows=selectedRows.filter(o=>o.domestic_import_cost_gbp!==null&&o.domestic_import_cost_gbp!==undefined&&Number.isFinite(Number(o.domestic_import_cost_gbp)));
     const selectedCost=pricedRows.reduce((n,o)=>n+Number(o.domestic_import_cost_gbp),0);
-    const selectedAvgPrice=selectedUsage>0&&pricedRows.length===selectedRows.length?selectedCost*100/selectedUsage:null;
+    const selectedAvgPrice=selectedUsage>0&&pricedRows.length===selectedRows.length&&this._energyCoverage>=99?selectedCost*100/selectedUsage:null;
     const fmtDate=d=>d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
     const selectedLabel=this.period()==='today'?'Today':
       this.period()==='day'?fmtDate(selectedStart):
@@ -125,8 +125,8 @@ class LifeOSHouseStatusCard extends HTMLElement {
     let body='';
     if(mode==='domestic'){
       const used=selectedUsage, exp=this.val('sensor.lifeos_export_energy');
-      body=`<div class="panel"><div class="panelhead"><div class="panelcopy"><div class="heading">Domestic energy consumption</div><div class="sub">${this._energyHistoryError||("Electricity used, excluding battery and car charging · "+selectedLabel+(this._energyHistoryLoading?" · Loading history…":""))}</div></div></div><div class="chartslot">${svgChart(false)}</div></div>
-      <div class="cards"><div class="metric"><b>⌂ Electricity used</b><div class="big">${pricedRows.length?'£'+selectedCost.toFixed(2):'—'}</div><div class="small">${used.toFixed(2)} kWh<br>${selectedAvgPrice===null?'Price unavailable':selectedAvgPrice.toFixed(1)+' p/kWh avg'} · ${selectedLabel}</div></div>
+      body=`<div class="panel"><div class="panelhead"><div class="panelcopy"><div class="heading">Domestic energy consumption</div><div class="sub">${this._energyHistoryError||("Electricity used, excluding battery and car charging · "+selectedLabel+(this._energyHistoryLoading?" · Loading history…":" · Data coverage "+(this._energyCoverage??0).toFixed(1)+"%"))}</div></div></div><div class="chartslot">${svgChart(false)}</div></div>
+      <div class="cards"><div class="metric"><b>⌂ Electricity used</b><div class="big">${selectedRows.length&&pricedRows.length===selectedRows.length&&this._energyCoverage>=99?'£'+selectedCost.toFixed(2):'—'}</div><div class="small">${selectedRows.length?used.toFixed(2)+' kWh':'No history available'}<br>${selectedAvgPrice===null?'Price or interval coverage incomplete':selectedAvgPrice.toFixed(1)+' p/kWh avg'} · ${selectedLabel}</div></div>
       
       <div class="metric"><b>♨ Gas used</b><div class="big">${this.money('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost')}</div><div class="small">${this.val('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_consumption_kwh').toFixed(2)} kWh</div></div>
       <div class="metric"><b>▤ Total energy cost</b><div class="big">£${(this.val('sensor.lifeos_domestic_import_cost')+this.val('sensor.octopus_energy_gas_e6e16309692443_2200667301_previous_accumulative_cost')).toFixed(2)}</div><div class="small">Electricity + gas</div></div></div>`;
@@ -153,7 +153,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     else end.setDate(end.getDate()+1);
     const now=Date.now(),effectiveEnd=Math.min(end.getTime(),now);
     if(effectiveEnd<=start.getTime()){this._energyHistory=[];this._energyHistoryError=null;this.render();return;}
-    const useRollups=period==='year'||start.getTime()<now-840*3600000;
+    const useRollups=true;
     const key=period+'|'+start.toISOString()+'|'+effectiveEnd;
     if(this._energyHistoryKey===key)return;
     this._energyHistoryLoading=true;
@@ -174,6 +174,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
         return r.json();
       });
       this._energyTimezone=data?.timezone||this._energyTimezone||'Europe/London';
+      this._energyCoverage=Number(data?.coverage_percent)||0;
       const intervals=useRollups
         ?(Array.isArray(data?.points)?data.points:[]).map(o=>({
           valid_from:new Date(Number(o.timestamp)*1000).toISOString(),
@@ -184,7 +185,9 @@ class LifeOSHouseStatusCard extends HTMLElement {
           consumption_kwh:Number(o.consumption_kwh)||0,
           import_p_per_kwh:o.import_p_per_kwh,
           import_price_available:o.import_price_available,
-          domestic_import_cost_gbp:o.domestic_import_cost_gbp
+          domestic_import_cost_gbp:o.domestic_import_cost_gbp,
+          sample_count:o.sample_count,
+          sample_coverage_percent:o.sample_coverage_percent
         }))
         :(Array.isArray(data?.intervals)?data.intervals:[]);
       this._energyHistory=intervals.filter(o=>{
