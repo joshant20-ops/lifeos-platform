@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 BASE_URL=http://ai.lan:18114
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 STARTED_AT=$(date --iso-8601=seconds)
 tower_state() { timeout 6 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state; }
 assert_service_unavailable() {
