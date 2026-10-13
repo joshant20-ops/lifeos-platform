@@ -77,6 +77,14 @@ jobs:
           controller_pid=$(systemctl show lifeos-tower-control.service -p MainPID --value)
           test "$controller_pid" -gt 1
           tr '\0' '\n' < "/proc/$controller_pid/environ" | grep -Fxq 'LIFEOS_TOWER_IDLE_GRACE=600'
+          controller_state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state)
+          python3 - "$controller_state" <<'PY'
+          import json,sys
+          state=json.loads(sys.argv[1])
+          assert int(state.get('idle_grace_seconds') or 0) == 600, state
+          assert state.get('lease_state') == 'NONE', state
+          print('TOWER_LIVE_CONTROLLER_STATE=PASS idle_grace_seconds=600 lease_state=NONE')
+          PY
           echo 'TOWER_IDLE_GRACE=600_RUNNING_PROCESS_PASS'
           python3 - <<'PY'
           import json
