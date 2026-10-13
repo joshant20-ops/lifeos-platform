@@ -19,6 +19,8 @@ assert.match(dev,/new URL\('\/api\/energy\/rollups',apiOrigin\)/);
 assert.match(dev,/fetch\(url,\{credentials:'omit',signal:this\._energyHistoryController\.signal\}\)/);
 assert.match(dev,/this\._period=p;this\._energyHistory=\[\];this\._energyCoverage=null;this\.render\(\);this\._loadEnergyHistory\(\);/,'period selection must fetch selected-range history and discard prior totals');
 assert.match(dev,/this\._energyHistoryRequestedKey===key/,'duplicate hass updates must not duplicate the active range request');
+assert.doesNotMatch(dev,/if\(this\.period\(\)==='today'\)this\._period='day'/,'date picking must preserve Today rather than silently changing tabs');
+assert.match(dev,/if\(period==='day'\)start\.setDate\(start\.getDate\(\)-1\)/,'Day fetch includes the prior calendar day');
 assert.match(dev,/this\._energyHistoryController\?\.abort\(\)/,'period changes must cancel an obsolete history request');
 assert.match(dev,/if\(requestId!==this\._energyHistoryRequestId\)return;/,'late responses must not overwrite the selected period');
 assert.match(dev,/Number\.isFinite\(reportedCoverage\)\?Math\.max\(0,Math\.min\(100,reportedCoverage\)\):0/,'coverage must come from the selected rollup response and stay bounded');
@@ -69,9 +71,9 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
     }
     querySelector(){return null;}
   }
-  const registry=new Map(),requests=[];
-  const periodCoverage=[100,92.4,77.0,27.0];
-  const periodUsage=[4.59,15.634,77.053,152.995];
+  const registry=new Map();
+    const requests=[];
+  let holdNextDayResponse=false,heldDayResponse=null;
   const context={
     HTMLElement:FakeCardElement,
     customElements:{get:name=>registry.get(name),define:(name,value)=>registry.set(name,value)},
@@ -79,59 +81,102 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
     document:{createElement:()=>new FakeElement()},
     URL,Date,Intl,AbortController,setTimeout,process,
     console:{warn(){},log(){},error:console.error},
-    fetch:async input=>{
+    fetch:input=>{
       const url=new URL(input);requests.push(url);
       const start=Number(url.searchParams.get('start'));
       const end=Number(url.searchParams.get('end'));
-      const index=requests.length-1;
-      return {ok:true,json:async()=>({
-        timezone:'Europe/London',coverage_percent:periodCoverage[index]??0,
-        points:[{timestamp:start,domestic_import_kwh:periodUsage[index]??0,
-          grid_import_kwh:periodUsage[index]??0,grid_export_kwh:0,production_kwh:0,
-          consumption_kwh:periodUsage[index]??0,import_p_per_kwh:24.5,
-          import_price_available:true,domestic_import_cost_gbp:[1.09,3.86,16.96,34.82][index]??0,
-          sample_count:30,sample_coverage_percent:92.4}],
-        _requestedEnd:end
-      })};
+      const hours=(end-start)/3600;
+      if(holdNextDayResponse&&hours>30&&hours<60){
+        holdNextDayResponse=false;
+        return new Promise(resolve=>{heldDayResponse=()=>resolve(makeResponse(start,end,99.99,9.99,100));});
+      }
+      return Promise.resolve(makeResponse(start,end));
     }
   };
+  function makeResponse(start,end,override,overrideCost,overrideCoverage){
+    const hours=(end-start)/3600;
+    let rows,coverage;
+    if(override!==undefined){
+      rows=[{timestamp:start,usage:override,cost:overrideCost,price:49.9}];coverage=overrideCoverage;
+    }else if(hours>30&&hours<60){
+      rows=[{timestamp:start,usage:1.59,cost:.40,price:10.5},{timestamp:start+86400,usage:4.59,cost:1.09,price:24.5}];coverage=100;
+    }else if(hours<30){
+      rows=[{timestamp:start,usage:4.59,cost:1.09,price:24.5}];coverage=100;
+    }else if(hours<200){
+      rows=[{timestamp:start,usage:15.634,cost:3.86,price:24.5}];coverage=92.4;
+    }else if(hours<1500){
+      rows=[{timestamp:start,usage:77.053,cost:16.96,price:24.5}];coverage=77;
+    }else{
+      rows=[{timestamp:start,usage:152.995,cost:34.82,price:24.5}];coverage=27;
+    }
+    return {ok:true,json:async()=>({timezone:'Europe/London',coverage_percent:coverage,points:rows.map(r=>({
+      timestamp:r.timestamp,domestic_import_kwh:r.usage,grid_import_kwh:r.usage,grid_export_kwh:0,
+      production_kwh:0,consumption_kwh:r.usage,import_p_per_kwh:r.price,
+      import_price_available:true,domestic_import_cost_gbp:r.cost,sample_count:30,
+      sample_coverage_percent:coverage
+    }))})};
+  }
   vm.runInNewContext(dev.replace(/^await import\([^\n]+\);\n/,''),context);
   const Card=registry.get('lifeos-house-status-dev');
   const card=new Card();
-  const anchor=new Date();anchor.setHours(12,0,0,0);
+  const anchor=new Date();anchor.setHours(12,0,0,0);anchor.setDate(anchor.getDate()-2);
+  const selectedDay=new Date(anchor);selectedDay.setHours(0,0,0,0);
+  const previousDay=new Date(selectedDay);previousDay.setDate(previousDay.getDate()-1);
+  const nextDay=new Date(selectedDay);nextDay.setDate(nextDay.getDate()+1);
   card._anchor=anchor;card._mode='domestic';
   card.hass={states:{}};
   const pause=()=>new Promise(resolve=>setTimeout(resolve,0));
-  await pause();
-  assert.equal(requests.length,1,'initial view requests its one-day history');
-  assert.match(card.innerHTML,/4\.59 kWh/);
-  const select=async period=>{
-    const button=card.periodButtons.find(item=>item.dataset.period===period);
-    assert.ok(button,period+' tab exists');
-    button.onclick();
-    await pause();
-    await pause();
-  };
+  await pause();await pause();
+  assert.equal(requests.length,1,'initial Today view requests its selected calendar day');
+  assert.equal(Number(requests[0].searchParams.get('start')),Math.floor(selectedDay.getTime()/1000),'Today request starts at selected-day midnight');
+  assert.equal(Number(requests[0].searchParams.get('end')),Math.floor(nextDay.getTime()/1000),'Today request ends at next midnight');
+  assert.match(card.innerHTML,/4\.59 kWh/,'Today uses only its selected day total');
+  assert.match(card.innerHTML,/Octopus price \(p\/kWh\)/,'Today chart labels the price axis');
+  assert.match(card.innerHTML,/class="price" d="M/,'Today chart renders the Octopus price series');
+  assert.match(card.innerHTML,/class="use" d="M/,'Today chart renders the Enphase cost series');
+  const select=async period=>{const button=card.periodButtons.find(item=>item.dataset.period===period);assert.ok(button,period+' tab exists');button.onclick();await pause();await pause();};
+  await select('day');
+  assert.equal(requests.length,2,'Day selection fetches its own rollup window');
+  assert.equal(Number(requests[1].searchParams.get('start')),Math.floor(previousDay.getTime()/1000),'Day request starts at previous calendar-day midnight');
+  assert.equal(Number(requests[1].searchParams.get('end')),Math.floor(nextDay.getTime()/1000),'Day request ends after the selected calendar day');
+  assert.equal(Number(requests[1].searchParams.get('end'))-Number(requests[1].searchParams.get('start')),Math.floor((nextDay-previousDay)/1000),'Day request spans two local calendar days');
+  assert.match(card.innerHTML,/6\.18 kWh/,'Day totals both days in its rolling history');
+  assert.match(card.innerHTML,/1\.49/,'Day cost sums both days');
+  assert.match(card.innerHTML,/Available history 100\.0%/,'Day shows coverage for its own 48-hour response');
+  assert.ok(card.innerHTML.includes(previousDay.toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short'})),'Day chart labels the previous calendar day');
+  const todayButton=card.periodButtons.find(item=>item.dataset.period==='today');assert.ok(todayButton);todayButton.onclick();await pause();await pause();
+  assert.equal(requests.length,3,'switching back to Today fetches its 24-hour response');
+  assert.match(card.innerHTML,/4\.59 kWh/,'switching back replaces the 48-hour total');
+  holdNextDayResponse=true;
+  const delayedDay=card.periodButtons.find(item=>item.dataset.period==='day');delayedDay.onclick();await pause();
+  assert.equal(requests.length,4,'rapid-switch scenario starts a Day request');
+  const latestToday=card.periodButtons.find(item=>item.dataset.period==='today');latestToday.onclick();await pause();await pause();
+  assert.equal(requests.length,5,'rapid switch starts a new Today request');
+  heldDayResponse();await pause();await pause();
+  assert.match(card.innerHTML,/4\.59 kWh/,'late Day response cannot overwrite the currently selected Today data');
+  assert.doesNotMatch(card.innerHTML,/99\.99 kWh/,'stale-response sentinel is never shown');
   await select('week');
-  assert.equal(requests.length,2,'Week selection issues a fresh rollup request');
-  assert.equal(requests[1].searchParams.get('granularity'),'30m');
-  const weekStart=new Date(Number(requests[1].searchParams.get('start'))*1000);
+  assert.equal(requests.length,6,'Week selection issues a fresh rollup request');
+  assert.equal(requests[5].searchParams.get('granularity'),'30m');
+  const weekStart=new Date(Number(requests[5].searchParams.get('start'))*1000);
   assert.equal(weekStart.getDay(),1,'Week request starts Monday at local midnight');
-  assert.ok(Number(requests[1].searchParams.get('end'))>Number(requests[1].searchParams.get('start')));
-  assert.ok(Number(requests[1].searchParams.get('end'))-Number(requests[1].searchParams.get('start'))<=7*86400);
+  assert.ok(Number(requests[5].searchParams.get('end'))>Number(requests[5].searchParams.get('start')));
+  assert.ok(Number(requests[5].searchParams.get('end'))-Number(requests[5].searchParams.get('start'))<=7*86400);
   assert.match(card.innerHTML,/15\.63 kWh/,'Week uses its own response rows');
   await select('month');
-  assert.equal(requests.length,3,'Month selection issues a fresh rollup request');
-  const monthStart=new Date(Number(requests[2].searchParams.get('start'))*1000);
+  assert.equal(requests.length,7,'Month selection issues a fresh rollup request');
+  const monthStart=new Date(Number(requests[6].searchParams.get('start'))*1000);
   assert.equal(monthStart.getDate(),1,'Month request starts on day one');
-  assert.ok(Number(requests[2].searchParams.get('end'))>Number(requests[2].searchParams.get('start')));
+  assert.ok(Number(requests[6].searchParams.get('end'))>Number(requests[6].searchParams.get('start')));
   assert.match(card.innerHTML,/77\.05 kWh/,'Month uses its own response rows');
   await select('year');
-  assert.equal(requests.length,4,'Year selection issues a fresh rollup request');
-  assert.equal(new Date(Number(requests[3].searchParams.get('start'))*1000).getMonth(),0);
+  assert.equal(requests.length,8,'Year selection issues a fresh rollup request');
+  assert.equal(new Date(Number(requests[7].searchParams.get('start'))*1000).getMonth(),0);
   assert.match(card.innerHTML,/27\.0% · Partial history/,'Year shows API-reported partial coverage instead of stale 100%');
-  assert.match(card.innerHTML,/24\.5p/,'historical Octopus price is plotted from the selected response');
-  console.log('HOUSE_STATUS_DEV_PERIOD_SWITCH_RUNTIME_REGRESSION=PASS');
+  assert.match(card.innerHTML,/class="price" d="M/,'historical Octopus price is plotted from the selected response');
+  console.log('HOUSE_STATUS_DEV_TODAY_DAY_WINDOWS=PASS');
+  console.log('HOUSE_STATUS_DEV_TODAY_DAY_SWITCH_RUNTIME_REGRESSION=PASS');
+  console.log('HOUSE_STATUS_DEV_STALE_DAY_RESPONSE=PASS');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 
 console.log('HOUSE_STATUS_DEV_PERIOD_HISTORY_RELOAD=PASS');
