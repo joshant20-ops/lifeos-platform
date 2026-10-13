@@ -113,6 +113,21 @@ class OctopusTariffCacheTests(unittest.TestCase):
         self.assertEqual(request.call_count, 2)
 
 
+class EnergyDeploymentGuardTests(unittest.TestCase):
+    def test_restart_wait_uses_healthcheck_status_not_container_state(self):
+        deploy_script = (
+            ROOT / "scripts/lifeos-deploy-energy-opportunity-api.sh"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "{{if .State.Health}}{{.State.Health.Status}}",
+            deploy_script,
+        )
+        self.assertNotIn(
+            "docker inspect -f '{{.State.Status}}' lifeos-energy",
+            deploy_script,
+        )
+
+
 class EnergyOpportunityServiceTests(unittest.TestCase):
     def test_groups_negative_slots_and_preserves_stable_identity(self):
         start = datetime.now(timezone.utc) + timedelta(hours=1)
