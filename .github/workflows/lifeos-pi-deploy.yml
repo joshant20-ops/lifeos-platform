@@ -25,6 +25,9 @@ on:
     branches: [main]
     paths:
       - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/energy.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/history.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/octopus.py'
       - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py'
       - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py'
       - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_energy_attention.yaml'
