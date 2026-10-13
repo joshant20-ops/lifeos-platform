@@ -40,7 +40,7 @@ jobs:
           node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
           node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
           node --input-type=module --check < homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js
-          node homeassistant/www/house-status-dev/test-isolation.js
+          TZ=Europe/London node homeassistant/www/house-status-dev/test-isolation.js
           bash -n scripts/lifeos-deploy-house-status-dev-dashboard.sh
           python3 -m py_compile homeassistant/verify-house-status-dev-dashboard.py
           python3 homeassistant/verify-house-status-dev-dashboard.py --source-only
@@ -62,5 +62,10 @@ jobs:
           set -Eeuo pipefail
           curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status-dev/lifeos-house-status-dev-loader.js -o /tmp/house-status-dev-served.js
           grep -Fq 'House Status development panel' /tmp/house-status-dev-served.js
+          curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "http://127.0.0.1:8123/local/house-status-dev/lifeos-house-status-dev.js?acceptance=${GITHUB_SHA}" -o /tmp/house-status-dev-served-bundle.js
+          cmp -s homeassistant/www/house-status-dev/lifeos-house-status-dev.js /tmp/house-status-dev-served-bundle.js || { echo HOUSE_STATUS_DEV_SERVED_ASSET=FAIL; exit 1; }
+          echo HOUSE_STATUS_DEV_SERVED_ASSET=PASS
+          TZ=Europe/London HOUSE_STATUS_DEV_ASSET=/tmp/house-status-dev-served-bundle.js node homeassistant/www/house-status-dev/test-isolation.js
           sudo -n python3 /home/joshan/lifeos-platform/homeassistant/verify-house-status-dev-dashboard.py
           echo HOUSE_STATUS_DEV_LIVE_ACCEPTANCE=PASS
+

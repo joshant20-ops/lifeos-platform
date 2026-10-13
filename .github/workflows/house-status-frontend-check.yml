@@ -46,7 +46,7 @@ jobs:
       - run: node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
       - run: node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
       - name: House Status development isolation
-        run: node homeassistant/www/house-status-dev/test-isolation.js
+        run: TZ=Europe/London node homeassistant/www/house-status-dev/test-isolation.js
       - name: Doorbell handoff behaviour
         run: node homeassistant/www/house-status/test-doorbell-handoff.js
       - name: V28 panel Lovelace card helper bootstrap
@@ -64,3 +64,4 @@ jobs:
           if(!customElements.get('lifeos-house-status-editor')) throw new Error('editor not registered');
           console.log('HOUSE_STATUS_FRONTEND_EXECUTION=PASS');
           NODE
+
