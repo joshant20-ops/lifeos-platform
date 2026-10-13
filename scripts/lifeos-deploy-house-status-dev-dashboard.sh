@@ -68,7 +68,7 @@ NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/extern
 [[ -n "$NODE_BIN" ]] || fail node_missing_for_frontend_syntax_gate
 "$NODE_BIN" --check "$SOURCE_DIR/lifeos-house-status-dev.js" || fail dev_frontend_js_syntax_invalid
 "$NODE_BIN" --check "$SOURCE_DIR/lifeos-house-status-doorbell.js" || fail dev_doorbell_js_syntax_invalid
-"$NODE_BIN" --check "$SOURCE_DIR/lifeos-house-status-dev-loader.js" || fail dev_loader_js_syntax_invalid
+"$NODE_BIN" --input-type=module --check < "$SOURCE_DIR/lifeos-house-status-dev-loader.js" || fail dev_loader_js_syntax_invalid
 python3 "$VERIFIER" --source-only
 PRODUCTION_BEFORE=$(snapshot "$PROD_DIR" "$DASH_TARGET" "$REGISTRY" "$RESOURCES")
 LIVE_PANEL_BEFORE=$(panel_entry "$CONFIG" lifeos-house-status-v28)
