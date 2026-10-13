@@ -31,7 +31,7 @@ def validate_period(
     name: str,
     start_date: date,
     end_date: date,
-    expected_buckets: int,
+    expected_buckets: int | None,
     zone: ZoneInfo,
     bucket_mode: str,
     allow_partial: bool = False,
