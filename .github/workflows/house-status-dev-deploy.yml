@@ -65,7 +65,10 @@ jobs:
           curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "http://127.0.0.1:8123/local/house-status-dev/lifeos-house-status-dev.js?acceptance=${GITHUB_SHA}" -o /tmp/house-status-dev-served-bundle.js
           cmp -s homeassistant/www/house-status-dev/lifeos-house-status-dev.js /tmp/house-status-dev-served-bundle.js || { echo HOUSE_STATUS_DEV_SERVED_ASSET=FAIL; exit 1; }
           echo HOUSE_STATUS_DEV_SERVED_ASSET=PASS
-          TZ=Europe/London HOUSE_STATUS_DEV_ASSET=/tmp/house-status-dev-served-bundle.js node homeassistant/www/house-status-dev/test-isolation.js
+          NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/externals -maxdepth 3 -type f -name node -perm -111 2>/dev/null | head -n1)
+          [[ -n "$NODE_BIN" ]] || { echo HOUSE_STATUS_DEV_RUNTIME_NODE=FAIL; exit 1; }
+          TZ=Europe/London HOUSE_STATUS_DEV_ASSET=/tmp/house-status-dev-served-bundle.js "$NODE_BIN" homeassistant/www/house-status-dev/test-isolation.js
           sudo -n python3 /home/joshan/lifeos-platform/homeassistant/verify-house-status-dev-dashboard.py
           echo HOUSE_STATUS_DEV_LIVE_ACCEPTANCE=PASS
+
 
