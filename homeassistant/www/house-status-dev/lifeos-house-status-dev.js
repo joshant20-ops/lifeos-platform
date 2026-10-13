@@ -169,7 +169,9 @@ class LifeOSHouseStatusCard extends HTMLElement {
         // The report endpoint is relative to now, so include the selected historical
         // day through now and filter its half-hour rows below.
         const hours=Math.max(1,Math.min(840,Math.ceil((now-start.getTime())/3600000)+2));
-        url='/lifeos-energy-api/api/energy/report?hours='+hours;
+        const apiOrigin=new URL(window.location.origin);
+        apiOrigin.port='8110';
+        url=new URL('/api/energy/report',apiOrigin).toString()+'?hours='+hours;
       }
       const data=await fetch(url,{credentials:'omit'}).then(r=>{
         if(!r.ok)throw new Error('energy history HTTP '+r.status);
