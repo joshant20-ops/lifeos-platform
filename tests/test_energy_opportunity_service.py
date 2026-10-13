@@ -1,11 +1,14 @@
 import importlib
 import json
+import sqlite3
 import sys
 import tempfile
 import unittest
+from io import BytesIO
+from urllib.error import HTTPError
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +18,95 @@ SERVICE_ROOT = (
 )
 sys.path.insert(0, str(SERVICE_ROOT))
 M = importlib.import_module("app.services.opportunities")
+CACHE = importlib.import_module("app.services.octopus_cache")
+OCTOPUS = importlib.import_module("app.services.octopus")
+
+
+class OctopusTariffCacheTests(unittest.TestCase):
+    def setUp(self):
+        self.connection = sqlite3.connect(":memory:")
+        CACHE.initialise(self.connection)
+        self.now = 1_800_000_000
+        self.tariff = "E-1R-AGILE-FLEX-22-11-25-J"
+
+    def tearDown(self):
+        self.connection.close()
+
+    def test_tariff_code_and_prices_are_reused_from_sqlite(self):
+        calls = {"account": 0, "prices": 0}
+
+        def fetch_code():
+            calls["account"] += 1
+            return self.tariff
+
+        def fetch_prices():
+            calls["prices"] += 1
+            return {1000: 25.0, 2800: 30.0}
+
+        code, account_status, _ = CACHE.import_tariff_code(
+            self.connection, now=self.now, fetch_tariff_code=fetch_code
+        )
+        rates, price_status, age, failed = CACHE.tariff_rates(
+            self.connection, code, [1000, 2800], now=self.now,
+            fetch_rates=fetch_prices,
+        )
+        self.assertEqual(account_status, "fresh")
+        self.assertEqual(price_status, "fresh")
+        self.assertEqual(rates, {1000: 25.0, 2800: 30.0})
+        self.assertEqual(age, 0)
+        self.assertFalse(failed)
+
+        code, account_status, _ = CACHE.import_tariff_code(
+            self.connection, now=self.now + 60,
+            fetch_tariff_code=lambda: self.fail("fresh account cache should be used"),
+        )
+        rates, price_status, _, failed = CACHE.tariff_rates(
+            self.connection, code, [1000, 2800], now=self.now + 60,
+            fetch_rates=lambda: self.fail("fresh price cache should be used"),
+        )
+        self.assertEqual(account_status, "cached")
+        self.assertEqual(price_status, "cached")
+        self.assertEqual(rates, {1000: 25.0, 2800: 30.0})
+        self.assertFalse(failed)
+        self.assertEqual(calls, {"account": 1, "prices": 1})
+
+    def test_stale_rates_are_used_when_octopus_is_temporarily_unavailable(self):
+        code, _, _ = CACHE.import_tariff_code(
+            self.connection, now=self.now,
+            fetch_tariff_code=lambda: self.tariff,
+        )
+        rates, _, _, _ = CACHE.tariff_rates(
+            self.connection, code, [1000, 2800], now=self.now,
+            fetch_rates=lambda: {1000: 25.0, 2800: 30.0},
+        )
+        stale_at = self.now + CACHE.PRICE_CACHE_TTL_SECONDS + 1
+        rates, status, age, failed = CACHE.tariff_rates(
+            self.connection, code, [1000, 2800], now=stale_at,
+            fetch_rates=lambda: (_ for _ in ()).throw(RuntimeError("offline")),
+        )
+        self.assertEqual(status, "stale_cache")
+        self.assertEqual(rates, {1000: 25.0, 2800: 30.0})
+        self.assertGreater(age, CACHE.PRICE_CACHE_TTL_SECONDS)
+        self.assertTrue(failed)
+
+    def test_transient_octopus_http_error_is_retried(self):
+        failure = HTTPError(
+            "https://api.octopus.energy/v1/example",
+            503,
+            "temporarily unavailable",
+            {"Retry-After": "0"},
+            BytesIO(b""),
+        )
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.read.return_value = b'{"available": true}'
+        with (
+            patch.object(OCTOPUS, "urlopen", side_effect=[failure, response]) as request,
+            patch.object(OCTOPUS.time, "sleep"),
+        ):
+            result = OCTOPUS._request_json("https://api.octopus.energy/v1/example")
+        self.assertEqual(result, {"available": True})
+        self.assertEqual(request.call_count, 2)
 
 
 class EnergyOpportunityServiceTests(unittest.TestCase):
