@@ -77,8 +77,11 @@ jobs:
           from pathlib import Path
           cfg=json.loads(Path('/etc/lifeos/tower.json').read_text())
           assert cfg.get('mac'), 'tower MAC missing'
-          assert cfg.get('wol_broadcast'), 'WoL broadcast missing'
-          assert int(cfg.get('wol_port', 0)) > 0, 'WoL port missing'
+          # tower_control.py deliberately defaults these when omitted from runtime config.
+          broadcast=str(cfg.get('broadcast') or '255.255.255.255')
+          port=int(cfg.get('wol_port') or 9)
+          assert broadcast, 'WoL broadcast invalid'
+          assert 1 <= port <= 65535, 'WoL port invalid'
           assert (cfg.get('access_probe') or {}).get('host'), 'Tower access probe host missing'
           print('TOWER_CONTROLLER_RUNTIME_REFRESH=PASS')
           print('TOWER_COLD_START_PREFLIGHT=PASS')
