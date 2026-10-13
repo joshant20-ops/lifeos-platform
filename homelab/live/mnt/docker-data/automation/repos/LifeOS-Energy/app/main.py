@@ -53,9 +53,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://ha.lan:8123",
-        "https://ha.lan:8123",
         "http://192.168.0.203:8123",
-        "https://192.168.0.203:8123",
     ],
     allow_credentials=False,
     allow_methods=["GET"],
