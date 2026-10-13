@@ -53,8 +53,23 @@ def main() -> None:
         raise RuntimeError(
             f"Octopus rates missing for {rollups.get('missing_price_slots')} half-hours"
         )
-    if any(float(p.get("sample_coverage_percent", 0)) < 80 for p in points):
-        raise RuntimeError("Enphase sample coverage below 80% in a half-hour")
+    low_coverage = [
+        p for p in points if float(p.get("sample_coverage_percent", 0)) < 80
+    ]
+    if low_coverage:
+        coverages = [float(p.get("sample_coverage_percent", 0)) for p in points]
+        details = ", ".join(
+            f"{datetime.fromtimestamp(int(p['timestamp']), zone).isoformat()}:"
+            f"{p.get('sample_count', 0)} samples/"
+            f"{p.get('sample_coverage_percent', 0)}%"
+            for p in low_coverage[:12]
+        )
+        raise RuntimeError(
+            "Enphase sample coverage below 80% in "
+            f"{len(low_coverage)}/{len(points)} half-hours "
+            f"(min={min(coverages):.1f}%, mean={sum(coverages)/len(coverages):.1f}%); "
+            f"first low-coverage slots: {details}"
+        )
     if any(p.get("domestic_import_cost_gbp") is None for p in points):
         raise RuntimeError("domestic import cost is missing for a priced half-hour")
 
