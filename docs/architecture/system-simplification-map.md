@@ -15,16 +15,17 @@ only after the named runtime proof and rollback gate pass.
 The stable client name `ai.lan:18114` terminates on the always-on Pi gateway. A cold inference request acquires the ordinary Tower lease; the Tower controller alone sends WoL, waits for Tower/Ollama readiness, and releases the waiting original request through the gateway. Passive discovery remains non-waking. Home Assistant is not part of the AI wake path.
 
 Local inference consumers acquire a retained, expiring compute lease through the
-Pi5 MQTT control plane before calling Ollama. The Tower controller, not the
-consumer, owns Wake-on-LAN and graceful shutdown. It wakes an inaccessible Tower
-while a lease is active, records that LifeOS requested the wake, and performs the
-already-governed operating-system shutdown only after all leases have been
-released or expired and the idle grace period has elapsed. The persisted wake
-ownership and lease TTLs make recovery deterministic across process restarts.
+Pi5 MQTT control plane before calling Ollama. The Tower controller owns Wake-on-LAN
+and readiness while a lease is active, and its persisted wake ownership and lease
+TTLs make recovery deterministic across process restarts. Tower shutdown remains
+on the existing Home Assistant governed path; the stable AI endpoint does not
+change or delegate shutdown behavior.
 
 The Open WebUI Engineer and independent Governor verifier must use the Governor
 AI broker rather than call the Tower endpoint directly. Cached monitoring values
 are presentation data and are never accepted as compute readiness evidence.
+Stable AI endpoint acceptance run #38379449425 passed on 2026-10-13 with passive discovery remaining cold, one coalesced controller wake, original cold inference and broker calls succeeding, a warm request without another wake, and HA/local LifeOS health intact.
+
 | Privileged execution | KEEP_THIN_GLUE | Root-broker socket -> protected transaction controller -> independent rollback | Watchman runtime retired; no second policy daemon and no interactive model root | Fail closed; root-owned state, two-hour watchdog, independent evidence, commit and forced rollback proof |
 | Engineering orchestration | KEEP_OTS + KEEP_THIN_GLUE | Semaphore/Ansible target with LifeOS policy client and bounded root interfaces | Rundeck shadow retired; custom queue/scheduler remains compatibility-only until Semaphore equivalence gates pass | Preserve historical evidence and old path until equivalence/restart/no-duplicate/rollback tests pass |
 | Monitoring and restart | KEEP_OTS | Uptime Kuma, systemd and Docker restart policy | Autoheal/Watchtower absent from active runtime; do not reintroduce overlapping remediation | Live container/unit inventory and health regression |
