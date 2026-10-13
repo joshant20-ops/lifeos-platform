@@ -13,6 +13,7 @@ mnt/docker-data/automation/repos/LifeOS-Energy/app/services/forecast.py
 mnt/docker-data/automation/repos/LifeOS-Energy/app/services/history.py
 mnt/docker-data/automation/repos/LifeOS-Energy/app/services/__init__.py
 mnt/docker-data/automation/repos/LifeOS-Energy/app/services/interval_ledger.py
+mnt/docker-data/automation/repos/LifeOS-Energy/app/services/octopus_cache.py
 mnt/docker-data/automation/repos/LifeOS-Energy/app/services/octopus.py
 mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py
 mnt/docker-data/automation/repos/LifeOS-Energy/app/services/plan_executor.py
