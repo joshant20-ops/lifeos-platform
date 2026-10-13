@@ -32,6 +32,8 @@ def main():
         if marker not in dev: fail('development_marker_missing:'+marker)
     if 'LifeOSHouseStatusModules' in dev or 'lifeos-house-status-v28' in dev or 'lifeos-house-status-editor' in dev:
         fail('live_custom_element_or_module_namespace_reused')
+    if "customElements.define('lifeos-house-status-dev',LifeOSHouseStatusCard)" not in dev:
+        fail('development_panel_element_name_mismatch')
     if 'LifeOSHouseStatusDevModules' not in bell or 'LifeOSHouseStatusModules' in bell:
         fail('development_doorbell_namespace_not_isolated')
     if "camera.front_door_live_view" not in bell or "camera_view:'live'" not in bell:
