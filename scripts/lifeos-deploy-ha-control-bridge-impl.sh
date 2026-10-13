@@ -134,7 +134,7 @@ systemctl is-active --quiet "$UNIT" || { echo 'ERROR=bridge_not_active'; false; 
 systemctl is-active --quiet lifeos-tower-control.service || { echo 'ERROR=tower_controller_not_active'; false; }
 CONTROLLER_PID="$(systemctl show lifeos-tower-control.service -p MainPID --value)"
 [[ "$CONTROLLER_PID" =~ ^[1-9][0-9]*$ ]] || { echo 'ERROR=tower_controller_main_pid_missing'; false; }
-tr '\\0' '\\n' < "/proc/$CONTROLLER_PID/environ" | grep -Fxq 'LIFEOS_TOWER_IDLE_GRACE=600' || { echo 'ERROR=tower_controller_runtime_idle_grace_not_600'; false; }
+tr '\0' '\n' < "/proc/$CONTROLLER_PID/environ" | grep -Fxq 'LIFEOS_TOWER_IDLE_GRACE=600' || { echo 'ERROR=tower_controller_runtime_idle_grace_not_600'; false; }
 echo 'TOWER_CONTROLLER_RUNTIME_IDLE_GRACE=600 PASS'
 
 CONTROL="$(timeout 15s mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/issue_queue/control 2>/dev/null || true)"
