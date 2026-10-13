@@ -24,7 +24,7 @@ change or delegate shutdown behavior.
 The Open WebUI Engineer and independent Governor verifier must use the Governor
 AI broker rather than call the Tower endpoint directly. Cached monitoring values
 are presentation data and are never accepted as compute readiness evidence.
-Stable AI endpoint acceptance run #38379449425 passed on 2026-10-13 with passive discovery remaining cold, one coalesced controller wake, original cold inference and broker calls succeeding, a warm request without another wake, and HA/local LifeOS health intact.
+Stable AI endpoint acceptance run #38386537674 passed on 2026-10-13 from deployed `main` `fc6f05d76cf6f1910e038cb016ccc4fe5a54297d`: passive discovery remained cold; one coalesced controller wake served the original concurrent inference and broker requests; warm inference, no second wake, lease release, and HA/local LifeOS health passed. Tower shutdown remains on the existing Home Assistant path.
 
 | Privileged execution | KEEP_THIN_GLUE | Root-broker socket -> protected transaction controller -> independent rollback | Watchman runtime retired; no second policy daemon and no interactive model root | Fail closed; root-owned state, two-hour watchdog, independent evidence, commit and forced rollback proof |
 | Engineering orchestration | KEEP_OTS + KEEP_THIN_GLUE | Semaphore/Ansible target with LifeOS policy client and bounded root interfaces | Rundeck shadow retired; custom queue/scheduler remains compatibility-only until Semaphore equivalence gates pass | Preserve historical evidence and old path until equivalence/restart/no-duplicate/rollback tests pass |
