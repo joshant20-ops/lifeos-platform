@@ -339,6 +339,51 @@ def tariff_prices(
     }
 
 
+
+def tariff_prices_range(
+    tariff_code: str,
+    start_date: date,
+    end_date: date,
+    timezone_name: str,
+) -> dict[int, float]:
+    """Return Octopus half-hour rates keyed by UTC epoch for an inclusive local date range."""
+    if end_date < start_date:
+        return {}
+    tz = ZoneInfo(timezone_name)
+    local_start = datetime.combine(start_date, time.min, tzinfo=tz)
+    local_end = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=tz)
+    utc_start = local_start.astimezone(timezone.utc)
+    utc_end = local_end.astimezone(timezone.utc)
+    product = _product_from_tariff(tariff_code)
+    endpoint = (
+        f"{API_ROOT}/products/{product}/"
+        f"electricity-tariffs/{tariff_code}/standard-unit-rates/"
+    )
+    payload = _request_json(
+        endpoint,
+        {
+            "period_from": utc_start.isoformat().replace("+00:00", "Z"),
+            "period_to": utc_end.isoformat().replace("+00:00", "Z"),
+            "page_size": "1500",
+        },
+    )
+    rates: dict[int, float] = {}
+    pages = 0
+    while payload:
+        pages += 1
+        if pages > 50:
+            raise OctopusError("Octopus tariff range exceeded pagination limit")
+        for row in payload.get("results", []):
+            valid_from = datetime.fromisoformat(
+                row["valid_from"].replace("Z", "+00:00")
+            )
+            rates[int(valid_from.timestamp())] = float(row["value_inc_vat"])
+        next_page = payload.get("next")
+        if not next_page:
+            break
+        payload = _request_json(str(next_page))
+    return rates
+
 def tomorrow_prices(
     target_date: date,
     timezone_name: str,
