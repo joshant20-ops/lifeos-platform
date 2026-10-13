@@ -43,6 +43,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Reconcile canonical checkout to main
         run: git show HEAD:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
+      - name: Verify live Enphase and Octopus history before dashboard mutation
+        run: python3 scripts/lifeos-energy-history-live-acceptance.py --base-url http://127.0.0.1:8110 --week-start 2026-09-28
       - name: Deploy development panel only
         run: sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dev-dashboard.sh
       - name: Verify live dashboard isolation
