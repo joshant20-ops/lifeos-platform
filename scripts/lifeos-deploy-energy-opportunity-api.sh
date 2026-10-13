@@ -25,8 +25,11 @@ status=$(runuser -u joshan -- git -C "$PLATFORM" status --porcelain)
 
 new_main_sha=$(sha "$SOURCE/app/main.py")
 live_main_sha=$(sha "$TARGET/app/main.py")
-[[ "$live_main_sha" == "$OLD_MAIN_SHA" || "$live_main_sha" == "$new_main_sha" ]] || \
+if [[ "$live_main_sha" != "$OLD_MAIN_SHA" && "$live_main_sha" != "$new_main_sha" ]]; then
+  echo "ENERGY_LIVE_MAIN_SHA=$live_main_sha"
+  echo "ENERGY_SOURCE_MAIN_SHA=$new_main_sha"
   fail live_energy_main_has_unreviewed_drift
+fi
 
 runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/main.py" "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py" "$SOURCE/app/services/history.py" "$SOURCE/app/services/octopus.py"
 runuser -u joshan -- /usr/bin/python3 "$PLATFORM/tests/test_energy_opportunity_service.py"
