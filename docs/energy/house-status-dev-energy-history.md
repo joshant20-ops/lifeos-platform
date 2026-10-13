@@ -29,3 +29,7 @@ For the regression week beginning 28 September 2026, the API returned all 336 in
 The governed deployment path verified the Energy API and Home Assistant health after deployment/restart, then deployed only `/local/house-status-dev/` and verified the `/house-status-dev` panel configuration and isolation. Production House Status release assets were not changed or promoted.
 
 Evidence for the current DEV acceptance is recorded on issue/PR #1583 and Actions runs #38409683430 (Energy API deployment/recovery) and #38409683094 (DEV panel deployment and live verification).
+
+## Octopus history reliability
+
+Historical import prices are cached in the existing `lifeos-energy-history.sqlite3` database alongside the Enphase rollups. The account import tariff code is refreshed every six hours and half-hour rates every 24 hours. Octopus HTTP/network requests retry transient failures; when a source request still fails, cached historical prices remain available and the API reports `price_source_status`, `price_source_error`, and `price_cache_age_seconds`. Missing rates remain explicit and do not produce calculated costs. Deployment acceptance checks the 2026-09-28 regression week before and after restarting the Energy service to verify the cache and rollups recover from restart.
