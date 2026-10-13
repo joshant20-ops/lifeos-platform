@@ -110,7 +110,7 @@ jobs:
           print('STEP6_NATIVE_DASHBOARD_ROUTE=PASS:200')
 
           # 7. Confirm Doorbell switches within the existing House Status shell.
-          shell=B/'www/house-status/lifeos-house-status-v28.js'
+          shell=B/'www/house-status/lifeos-house-status-v29.js'
           source=shell.read_text()
           if 'this._mode=el.dataset.mode;this.render();' not in source or 'data-doorbell-card' not in source:
             raise SystemExit('STEP7_HOUSE_STATUS_SHELL_NAVIGATION=FAIL')
@@ -122,9 +122,9 @@ jobs:
           cfg=(B/'configuration.yaml').read_text()
           checks={
             'v27_panel_name':'name: lifeos-house-status-v27',
-            'v28_panel_name':'name: lifeos-house-status-v28',
+            'v29_panel_name':'name: lifeos-house-status-v29',
             'house_status_path':'url_path: house-status',
-            'v28_module_url':'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1',
+            'v29_module_url':'module_url: /local/house-status/lifeos-house-status-v29.js?v=energy-pages-20261013-1',
           }
           for label,marker in checks.items():
             print('STEP8_'+label.upper()+'='+str(cfg.count(marker)))
@@ -185,7 +185,7 @@ jobs:
           # 11. Read static-asset cache policy without exposing URL tokens or camera data.
           for label,asset in (
             ('V27','lifeos-house-status-v27.js'),
-            ('V28','lifeos-house-status-v28.js'),
+            ('V29','lifeos-house-status-v29.js'),
             ('DOORBELL','lifeos-house-status-doorbell.js'),
           ):
             req=urllib.request.Request(BASE+'/local/house-status/'+asset,method='HEAD')
