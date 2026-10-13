@@ -72,6 +72,9 @@ jobs:
           systemctl is-active --quiet lifeos-tower-control.service
           systemctl is-enabled --quiet lifeos-tower-control.service
           test -r /etc/lifeos/tower.json
+          env=$(systemctl show lifeos-tower-control.service -p Environment --value)
+          grep -Eq '(^| )LIFEOS_TOWER_IDLE_GRACE=600($| )' <<<"$env"
+          echo 'TOWER_IDLE_GRACE=600 PASS'
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -82,9 +85,6 @@ jobs:
           port=int(cfg.get('wol_port') or 9)
           assert broadcast, 'WoL broadcast invalid'
           assert 1 <= port <= 65535, 'WoL port invalid'
-          env=$(systemctl show lifeos-tower-control.service -p Environment --value)
-          grep -Eq '(^| )LIFEOS_TOWER_IDLE_GRACE=600($| )' <<<"$env"
-          echo 'TOWER_IDLE_GRACE=600 PASS'
           assert (cfg.get('access_probe') or {}).get('host'), 'Tower access probe host missing'
           print('TOWER_CONTROLLER_RUNTIME_REFRESH=PASS')
           print('TOWER_COLD_START_PREFLIGHT=PASS')

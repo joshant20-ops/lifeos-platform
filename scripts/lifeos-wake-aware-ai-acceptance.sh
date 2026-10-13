@@ -76,7 +76,9 @@ curl -fsS --max-time 5 "$BASE_URL/api/tags" >/dev/null
 curl -fsS --max-time 5 "$BASE_URL/api/ps" >/dev/null
 sleep 3
 assert_cold_precondition
-passive_wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+gateway_log="$XDG_RUNTIME_DIR/lifeos-openhands-local-ai.log"
+test -r "$gateway_log"
+passive_wakes=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' "$gateway_log" || true)
 test "$passive_wakes" -eq 0
 echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
 python3 - "$BASE_URL" <<'PY'
@@ -110,7 +112,7 @@ PY
   sleep 2
 done
 test "$ready" -eq 1; echo 'TOWER_ACCESSIBLE_AND_OLLAMA_READY=PASS'
-wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+wakes=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' "$gateway_log" || true)
 test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
 python3 - "$BASE_URL" <<'PY'
 import json,sys,urllib.request
@@ -120,7 +122,7 @@ with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
 assert isinstance(v.get("response"),str) and v["response"].strip(),v
 print("WARM_INFERENCE=PASS")
 PY
-wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+wakes_after=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' "$gateway_log" || true)
 test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
 systemctl is-active --quiet lifeos-autonomous-agent.service
 systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service

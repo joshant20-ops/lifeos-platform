@@ -63,11 +63,15 @@ jobs:
           ExecStart=/usr/bin/python3 /home/joshan/lifeos-platform/governor/openhands_local_ai_gateway.py
           Restart=on-failure
           RestartSec=3
+          StandardOutput=append:%t/lifeos-openhands-local-ai.log
+          StandardError=inherit
           [Install]
           WantedBy=default.target
           UNIT
           export XDG_RUNTIME_DIR="/run/user/$(id -u)"
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          gateway_log="$XDG_RUNTIME_DIR/lifeos-openhands-local-ai.log"
+          install -m 0600 /dev/null "$gateway_log"
           systemctl --user daemon-reload
           systemctl --user enable lifeos-openhands-local-ai.service
           systemctl --user restart lifeos-openhands-local-ai.service
@@ -105,6 +109,7 @@ jobs:
           export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           systemctl --user status lifeos-openhands-local-ai.service --no-pager --full
           journalctl --user -u lifeos-openhands-local-ai.service -n 160 --no-pager -o short-iso
+          tail -n 160 "$XDG_RUNTIME_DIR/lifeos-openhands-local-ai.log" || true
           curl -fsS --max-time 5 http://127.0.0.1:18114/health || true
           timeout 5 getent ahostsv4 ai.lan || true
           timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state
