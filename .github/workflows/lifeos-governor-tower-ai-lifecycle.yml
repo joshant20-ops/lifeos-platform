@@ -74,7 +74,10 @@ jobs:
           test -r /etc/lifeos/tower.json
           env=$(systemctl show lifeos-tower-control.service -p Environment --value)
           grep -Eq '(^| )LIFEOS_TOWER_IDLE_GRACE=600($| )' <<<"$env"
-          echo 'TOWER_IDLE_GRACE=600 PASS'
+          controller_pid=$(systemctl show lifeos-tower-control.service -p MainPID --value)
+          test "$controller_pid" -gt 1
+          tr '\0' '\n' < "/proc/$controller_pid/environ" | grep -Fxq 'LIFEOS_TOWER_IDLE_GRACE=600'
+          echo 'TOWER_IDLE_GRACE=600_RUNNING_PROCESS_PASS'
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -147,16 +150,34 @@ jobs:
           lease=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t 'lifeos/tower/lease/+' || true)
           python3 -c 'import json,sys; assert json.loads(sys.argv[1]).get("state") == "released"' "$lease"
           echo 'MODEL_LEASE_RELEASE=PASS'
+          lease_released_at=$(date +%s)
           stopped=0
+          max_idle=0
           # Bound this proof tightly so a shutdown fault cannot monopolise the only Pi runner.
           # The controller's production idle grace is 600s. Allow that grace plus shutdown/readiness
           # propagation without changing production lifecycle behaviour for the test.
-          # 78 x (5s state read + 5s sleep worst case) is <= 13 minutes; the step timeout is the hard ceiling.
-          for _ in $(seq 1 78); do
+          # Poll for up to 14 minutes, allowing the full 600-second production grace plus shutdown propagation.
+          for _ in $(seq 1 84); do
             state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true)
-            if python3 -c 'import json,sys; raise SystemExit(0 if not json.loads(sys.argv[1]).get("accessible") else 1)' "$state" 2>/dev/null; then stopped=1; break; fi
+            idle=$(python3 - "$state" <<'PY'
+          import json,sys
+          try:
+              value=json.loads(sys.argv[1])
+              assert int(value.get('idle_grace_seconds') or 0) == 600
+              assert value.get('lease_state') == 'NONE'
+              print(int(value.get('idle_seconds') or 0))
+          except (ValueError, TypeError, AssertionError):
+              print(0)
+          PY
+          )
+            (( idle > max_idle )) && max_idle=$idle
+            if (( idle >= 600 )) && python3 -c 'import json,sys; raise SystemExit(0 if not json.loads(sys.argv[1]).get("accessible") else 1)' "$state" 2>/dev/null; then stopped=1; break; fi
             sleep 5
           done
+          elapsed=$(( $(date +%s) - lease_released_at ))
+          echo "TOWER_IDLE_GRACE_OBSERVED=${max_idle}s elapsed_since_lease_release=${elapsed}s"
+          test "$max_idle" -ge 600
+          test "$elapsed" -ge 600
           test "$stopped" -eq 1
           echo 'GOVERNOR_AUTOMATIC_TOWER_SHUTDOWN=PASS'
 
@@ -164,6 +185,17 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          test -z "$(git status --porcelain --untracked-files=all)"
-          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+          git fetch --prune origin main
+          head=$(git rev-parse HEAD)
+          origin=$(git rev-parse origin/main)
+          status=$(git status --short --untracked-files=all)
+          echo "RUNTIME_HEAD=$head"
+          echo "ORIGIN_MAIN=$origin"
+          if [[ -n "$status" ]]; then
+            echo 'RUNTIME_REPOSITORY_STATUS=DIRTY'
+            printf '%s\n' "$status"
+            git diff --stat
+            exit 1
+          fi
+          test "$head" = "$origin"
           echo 'GOVERNOR_TOWER_AI_LIFECYCLE=PASS'
