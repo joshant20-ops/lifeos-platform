@@ -88,49 +88,122 @@ def initialise_database() -> None:
         connection.commit()
 
 
-def compact_history(now: int | None = None) -> None:
-    """Roll minute Enphase samples into compact, tariff-aligned half-hour kWh.
+def _power_values(row: Any) -> dict[str, float]:
+    grid_import_w = max(0.0, float(row["grid_import_w"] or 0.0))
+    grid_export_w = max(0.0, float(row["grid_export_w"] or 0.0))
+    battery_power_w = float(row["battery_power_w"] or 0.0)
+    battery_charge_w = max(0.0, -battery_power_w)
+    return {
+        "production": max(0.0, float(row["production_w"] or 0.0)),
+        "consumption": max(0.0, float(row["consumption_w"] or 0.0)),
+        "grid_import": grid_import_w,
+        "domestic_import": max(0.0, grid_import_w - battery_charge_w),
+        "grid_export": grid_export_w,
+        "battery_charge": battery_charge_w,
+        "battery_discharge": max(0.0, battery_power_w),
+    }
 
-    Half-hour usage is retained because applying Octopus Agile prices to daily
-    totals would lose the time-of-use cost calculation. The existing SQLite
-    cache remains the only long-term store; minute samples are short lived.
+
+def _accumulate_sample_interval(
+    buckets: dict[int, dict[str, float]],
+    left: Any,
+    right: Any,
+    *,
+    clip_start: float,
+    clip_end: float,
+) -> None:
+    """Integrate Enphase power between two timestamped samples into 30m buckets."""
+    left_time = float(left["reading_time"])
+    right_time = float(right["reading_time"])
+    if right_time <= left_time:
+        return
+    start = max(left_time, clip_start)
+    end = min(right_time, clip_end)
+    if end <= start:
+        return
+    left_values = _power_values(left)
+    right_values = _power_values(right)
+    while start < end:
+        bucket = int(start) - int(start) % 1800
+        segment_end = min(end, bucket + 1800)
+        span = right_time - left_time
+        start_ratio = (start - left_time) / span
+        end_ratio = (segment_end - left_time) / span
+        totals = buckets.setdefault(
+            bucket,
+            {
+                "count": 0,
+                "production": 0.0,
+                "consumption": 0.0,
+                "grid_import": 0.0,
+                "domestic_import": 0.0,
+                "grid_export": 0.0,
+                "battery_charge": 0.0,
+                "battery_discharge": 0.0,
+            },
+        )
+        duration_hours = (segment_end - start) / 3600.0
+        for key in left_values:
+            start_w = left_values[key] + (right_values[key] - left_values[key]) * start_ratio
+            end_w = left_values[key] + (right_values[key] - left_values[key]) * end_ratio
+            totals[key] += (start_w + end_w) * 0.5 * duration_hours
+        start = segment_end
+
+
+def compact_history(now: int | None = None) -> None:
+    """Compact completed Enphase sample intervals into tariff-aligned half-hour kWh.
+
+    Each sample interval is integrated once using its actual timestamps and
+    linearly interpolated power, matching the existing interval-report method.
     """
     now = int(now or time.time())
     raw_cutoff = now - RAW_RETENTION_HOURS * 3600
-    dt_hours = COLLECTION_INTERVAL_SECONDS / 3600.0
     with closing(connect()) as connection:
-        rows = connection.execute(
+        old_rows = connection.execute(
             "SELECT * FROM telemetry WHERE reading_time < ? ORDER BY reading_time",
             (raw_cutoff,),
         ).fetchall()
+        if not old_rows:
+            return
+        next_row = connection.execute(
+            "SELECT * FROM telemetry WHERE reading_time >= ? ORDER BY reading_time LIMIT 1",
+            (raw_cutoff,),
+        ).fetchone()
+        rows = list(old_rows)
+        if next_row is not None:
+            rows.append(next_row)
+            process_rows = old_rows
+        else:
+            # Keep the last unclosed sample until a later reading can bound it.
+            process_rows = old_rows[:-1]
+            if not process_rows:
+                return
+        if not process_rows:
+            return
+
         buckets: dict[int, dict[str, float]] = {}
-        for row in rows:
-            timestamp = int(row["reading_time"])
-            bucket = timestamp - timestamp % 1800
-            totals = buckets.setdefault(
+        for row in process_rows:
+            bucket = int(row["reading_time"]) - int(row["reading_time"]) % 1800
+            buckets.setdefault(
                 bucket,
                 {
                     "count": 0,
-                    "production": 0,
-                    "consumption": 0,
-                    "grid_import": 0,
-                    "domestic_import": 0,
-                    "grid_export": 0,
-                    "battery_charge": 0,
-                    "battery_discharge": 0,
+                    "production": 0.0,
+                    "consumption": 0.0,
+                    "grid_import": 0.0,
+                    "domestic_import": 0.0,
+                    "grid_export": 0.0,
+                    "battery_charge": 0.0,
+                    "battery_discharge": 0.0,
                 },
+            )["count"] += 1
+
+        for left, right in zip(rows, rows[1:]):
+            if int(left["reading_time"]) >= raw_cutoff:
+                continue
+            _accumulate_sample_interval(
+                buckets, left, right, clip_start=float("-inf"), clip_end=float("inf")
             )
-            grid_import_w = max(0.0, float(row["grid_import_w"] or 0.0))
-            battery_power_w = float(row["battery_power_w"] or 0.0)
-            battery_charge_w = max(0.0, -battery_power_w)
-            totals["count"] += 1
-            totals["production"] += float(row["production_w"] or 0.0) * dt_hours
-            totals["consumption"] += float(row["consumption_w"] or 0.0) * dt_hours
-            totals["grid_import"] += grid_import_w * dt_hours
-            totals["domestic_import"] += max(0.0, grid_import_w - battery_charge_w) * dt_hours
-            totals["grid_export"] += float(row["grid_export_w"] or 0.0) * dt_hours
-            totals["battery_charge"] += battery_charge_w * dt_hours
-            totals["battery_discharge"] += max(0.0, battery_power_w) * dt_hours
 
         for bucket, values in buckets.items():
             connection.execute(
@@ -162,9 +235,11 @@ def compact_history(now: int | None = None) -> None:
                     values["domestic_import"],
                 ),
             )
-        connection.execute("DELETE FROM telemetry WHERE reading_time < ?", (raw_cutoff,))
+        processed_end = int(process_rows[-1]["reading_time"]) + 1
+        connection.execute(
+            "DELETE FROM telemetry WHERE reading_time < ?", (processed_end,)
+        )
         connection.commit()
-
 
 def insert_telemetry(telemetry: dict[str, Any]) -> None:
     battery = telemetry.get("battery") or {}
@@ -250,41 +325,68 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         points.append(point)
         by_bucket[point["timestamp"]] = point
 
-    # Uncompacted Enphase readings are included so the endpoint covers the
-    # current period as well as the permanent compact history.
+    # Integrate recent Enphase sample intervals by actual timestamps. Include
+    # one sample before the requested window and one after it to close the
+    # boundary intervals, but never re-integrate samples already compacted.
+    raw_cutoff = int(time.time()) - RAW_RETENTION_HOURS * 3600
+    raw_start = max(start, raw_cutoff)
     with closing(connect()) as connection:
-        raw_rows = connection.execute(
-            """SELECT * FROM telemetry
-               WHERE reading_time >= ? AND reading_time < ?
-               ORDER BY reading_time""",
-            (start, end),
+        before = connection.execute(
+            "SELECT * FROM telemetry WHERE reading_time < ? ORDER BY reading_time DESC LIMIT 1",
+            (raw_start,),
+        ).fetchone()
+        recent = connection.execute(
+            "SELECT * FROM telemetry WHERE reading_time >= ? AND reading_time < ? ORDER BY reading_time",
+            (raw_start, end),
         ).fetchall()
+        after = connection.execute(
+            "SELECT * FROM telemetry WHERE reading_time >= ? ORDER BY reading_time LIMIT 1",
+            (end,),
+        ).fetchone()
+    raw_rows = list(recent)
+    if before is not None:
+        raw_rows.insert(0, before)
+    if after is not None:
+        raw_rows.append(after)
+
     raw_buckets: dict[int, dict[str, float]] = {}
-    dt_hours = COLLECTION_INTERVAL_SECONDS / 3600.0
-    for row in raw_rows:
+    for row in recent:
         timestamp = int(row["reading_time"])
         bucket = timestamp - timestamp % 1800
         values = raw_buckets.setdefault(
             bucket,
-            {"count": 0, "production": 0, "consumption": 0, "grid_import": 0,
-             "domestic_import": 0, "grid_export": 0, "battery_charge": 0,
-             "battery_discharge": 0},
+            {
+                "count": 0,
+                "production": 0.0,
+                "consumption": 0.0,
+                "grid_import": 0.0,
+                "domestic_import": 0.0,
+                "grid_export": 0.0,
+                "battery_charge": 0.0,
+                "battery_discharge": 0.0,
+            },
         )
-        grid_import_w = max(0.0, float(row["grid_import_w"] or 0.0))
-        battery_power_w = float(row["battery_power_w"] or 0.0)
-        battery_charge_w = max(0.0, -battery_power_w)
         values["count"] += 1
-        values["production"] += float(row["production_w"] or 0.0) * dt_hours
-        values["consumption"] += float(row["consumption_w"] or 0.0) * dt_hours
-        values["grid_import"] += grid_import_w * dt_hours
-        values["domestic_import"] += max(0.0, grid_import_w - battery_charge_w) * dt_hours
-        values["grid_export"] += float(row["grid_export_w"] or 0.0) * dt_hours
-        values["battery_charge"] += battery_charge_w * dt_hours
-        values["battery_discharge"] += max(0.0, battery_power_w) * dt_hours
+
+    for left, right in zip(raw_rows, raw_rows[1:]):
+        if int(left["reading_time"]) < raw_cutoff:
+            continue
+        _accumulate_sample_interval(
+            raw_buckets,
+            left,
+            right,
+            clip_start=float(start),
+            clip_end=float(end),
+        )
+
     for bucket, values in raw_buckets.items():
         point = by_bucket.get(bucket)
         if point is None:
-            point = {"timestamp": bucket, "sample_count": 0, **{field: 0.0 for field in energy_fields}}
+            point = {
+                "timestamp": bucket,
+                "sample_count": 0,
+                **{field: 0.0 for field in energy_fields},
+            }
             points.append(point)
             by_bucket[bucket] = point
         point["sample_count"] += int(values["count"])

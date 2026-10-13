@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import time as system_time
 from pathlib import Path
 
 import app.services.history as history
@@ -19,19 +20,18 @@ def _insert_raw_sample(reading_time: int, *, grid_import: float = 500, battery: 
         )
 
 
-def test_compaction_preserves_usage_and_domestic_import_idempotently(
+def test_compaction_integrates_actual_sample_intervals_idempotently(
     monkeypatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(history, "DATABASE_PATH", tmp_path / "history.sqlite3")
     monkeypatch.setattr(history, "RAW_RETENTION_HOURS", 1)
-    monkeypatch.setattr(history, "COLLECTION_INTERVAL_SECONDS", 300)
     history.initialise_database()
     bucket = 4_000_000_000 - (4_000_000_000 % 1800)
-    _insert_raw_sample(bucket)
-    _insert_raw_sample(bucket + 300)
+    for offset in (0, 300, 600, 900):
+        _insert_raw_sample(bucket + offset)
 
     history.compact_history(now=bucket + 4500)
-    history.compact_history(now=bucket + 4800)
+    history.compact_history(now=bucket + 4500)
 
     with history.connect() as connection:
         row = connection.execute(
@@ -41,12 +41,37 @@ def test_compaction_preserves_usage_and_domestic_import_idempotently(
         ).fetchone()
         raw_count = connection.execute("SELECT COUNT(*) FROM telemetry").fetchone()[0]
 
-    assert row["sample_count"] == 2
-    assert row["production_wh"] == 2 * 1000 * 300 / 3600
-    assert row["grid_import_wh"] == 2 * 500 * 300 / 3600
-    assert row["domestic_import_wh"] == 2 * (500 - 200) * 300 / 3600
-    assert raw_count == 0
+    assert row["sample_count"] == 3
+    assert row["production_wh"] == 1000 * 900 / 3600
+    assert row["grid_import_wh"] == 500 * 900 / 3600
+    assert row["domestic_import_wh"] == 300 * 900 / 3600
+    assert raw_count == 1
 
+
+def test_recent_rollup_interpolates_irregular_enphase_samples(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(history, "DATABASE_PATH", tmp_path / "history.sqlite3")
+    monkeypatch.setattr(history, "load_config", lambda: {"site": {"timezone": "Europe/London"}})
+    history.initialise_database()
+    start = (int(system_time.time()) // 1800 - 2) * 1800
+    _insert_raw_sample(start, grid_import=100, battery=0)
+    _insert_raw_sample(start + 60, grid_import=300, battery=0)
+    _insert_raw_sample(start + 1800, grid_import=500, battery=0)
+    monkeypatch.setattr(
+        "app.services.octopus.account_tariffs",
+        lambda: {"import": {"tariff_code": "E-1R-TEST-1-A"}},
+    )
+    monkeypatch.setattr(
+        "app.services.octopus.tariff_prices_range",
+        lambda code, first, last, zone: {start: 25.0},
+    )
+
+    point = history.read_rollups(start, start + 1800, "30m")["points"][0]
+    assert point["sample_count"] == 2
+    assert point["grid_import_kwh"] == 0.196667
+    assert point["domestic_import_kwh"] == 0.196667
+    assert point["domestic_import_cost_gbp"] == 0.049167
 
 def test_rollup_cost_uses_domestic_import_and_octopus_rate(
     monkeypatch, tmp_path: Path
