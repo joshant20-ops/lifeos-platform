@@ -12,6 +12,8 @@ only after the named runtime proof and rollback gate pass.
 
 ### Governor-managed local-AI lifecycle
 
+The stable client name `ai.lan:18114` terminates on the always-on Pi gateway. A cold inference request acquires the ordinary Tower lease; the Tower controller alone sends WoL, waits for Tower/Ollama readiness, and releases the waiting original request through the gateway. Passive discovery remains non-waking. Home Assistant is not part of the AI wake path.
+
 Local inference consumers acquire a retained, expiring compute lease through the
 Pi5 MQTT control plane before calling Ollama. The Tower controller, not the
 consumer, owns Wake-on-LAN and graceful shutdown. It wakes an inaccessible Tower
