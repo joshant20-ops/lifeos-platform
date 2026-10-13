@@ -31,7 +31,7 @@ if [[ "$live_main_sha" != "$OLD_MAIN_SHA" && "$live_main_sha" != "$new_main_sha"
   fail live_energy_main_has_unreviewed_drift
 fi
 
-runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/main.py" "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py" "$SOURCE/app/services/history.py" "$SOURCE/app/services/octopus.py"
+runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/main.py" "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py" "$SOURCE/app/services/history.py" "$SOURCE/app/services/octopus.py" "$SOURCE/app/services/octopus_cache.py"
 runuser -u joshan -- /usr/bin/python3 "$PLATFORM/tests/test_energy_opportunity_service.py"
 echo ENERGY_OPPORTUNITY_API_TESTS=PASS
 
@@ -43,6 +43,7 @@ for pair in \
   "$TARGET/app/services/interval_ledger.py:energy/app/services/interval_ledger.py" \
   "$TARGET/app/services/history.py:energy/app/services/history.py" \
   "$TARGET/app/services/octopus.py:energy/app/services/octopus.py" \
+  "$TARGET/app/services/octopus_cache.py:energy/app/services/octopus_cache.py" \
   "$TARGET/app/routers/opportunities.py:energy/app/routers/opportunities.py" \
   "$TARGET/app/routers/energy.py:energy/app/routers/energy.py" \
   "$HA_TARGET/packages/lifeos_energy.yaml:ha/packages/lifeos_energy.yaml" \
@@ -66,6 +67,7 @@ rollback() {
     "energy/app/services/interval_ledger.py:$TARGET/app/services/interval_ledger.py" \
     "energy/app/services/history.py:$TARGET/app/services/history.py" \
     "energy/app/services/octopus.py:$TARGET/app/services/octopus.py" \
+    "energy/app/services/octopus_cache.py:$TARGET/app/services/octopus_cache.py" \
     "energy/app/routers/opportunities.py:$TARGET/app/routers/opportunities.py" \
     "energy/app/routers/energy.py:$TARGET/app/routers/energy.py" \
     "ha/packages/lifeos_energy.yaml:$HA_TARGET/packages/lifeos_energy.yaml" \
@@ -101,6 +103,8 @@ install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/services/history.py" "$TARGET/app/services/history.py"
 install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/services/octopus.py" "$TARGET/app/services/octopus.py"
+install -o joshan -g joshan -m 0644 \
+  "$SOURCE/app/services/octopus_cache.py" "$TARGET/app/services/octopus_cache.py"
 install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/routers/energy.py" "$TARGET/app/routers/energy.py"
 
@@ -156,6 +160,17 @@ print('ENERGY_OPPORTUNITY_API_LIVE=PASS')
 PY
 
 python3 "$PLATFORM/scripts/lifeos-energy-history-live-acceptance.py" --base-url http://127.0.0.1:8110 --week-start 2026-09-28
+
+# Confirm the SQLite tariff cache and rollup history survive a service restart.
+docker restart lifeos-energy >/dev/null
+for _ in $(seq 1 90); do
+  health=$(docker inspect -f '{{.State.Status}}' lifeos-energy 2>/dev/null || true)
+  [[ "$health" == healthy ]] && break
+  sleep 2
+done
+[[ "$health" == healthy ]] || fail "lifeos_energy_restart_health:$health"
+python3 "$PLATFORM/scripts/lifeos-energy-history-live-acceptance.py" --base-url http://127.0.0.1:8110 --week-start 2026-09-28
+echo ENERGY_HISTORY_RESTART_RECOVERY=PASS
 
 install -o joshan -g joshan -m 0644 \
   "$HA_SOURCE/packages/lifeos_energy.yaml" \
