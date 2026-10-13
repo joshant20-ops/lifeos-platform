@@ -172,15 +172,17 @@ def compact_history(now: int | None = None) -> None:
         rows = list(old_rows)
         if next_row is not None:
             rows.append(next_row)
+            process_rows = old_rows
         else:
             # Keep the last unclosed sample until a later reading can bound it.
-            old_rows = old_rows[:-1]
-            rows = list(old_rows)
-        if not old_rows:
+            process_rows = old_rows[:-1]
+            if not process_rows:
+                return
+        if not process_rows:
             return
 
         buckets: dict[int, dict[str, float]] = {}
-        for row in old_rows:
+        for row in process_rows:
             bucket = int(row["reading_time"]) - int(row["reading_time"]) % 1800
             buckets.setdefault(
                 bucket,
@@ -233,7 +235,7 @@ def compact_history(now: int | None = None) -> None:
                     values["domestic_import"],
                 ),
             )
-        processed_end = int(old_rows[-1]["reading_time"]) + 1
+        processed_end = int(process_rows[-1]["reading_time"]) + 1
         connection.execute(
             "DELETE FROM telemetry WHERE reading_time < ?", (processed_end,)
         )
