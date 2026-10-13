@@ -25,11 +25,15 @@ on:
     branches: [main]
     paths:
       - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/main.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/energy.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/history.py'
+      - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/octopus.py'
       - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/routers/opportunities.py'
       - 'homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/services/opportunities.py'
       - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_energy_attention.yaml'
       - 'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_energy_attention_sensor.py'
       - 'scripts/lifeos-deploy-energy-opportunity-api.sh'
+      - 'scripts/lifeos-energy-history-live-acceptance.py'
       - 'tests/test_energy_opportunity_service.py'
       - 'deploy-triggers/house-status-dashboard'
       - 'deploy-triggers/ha-control-bridge'
