@@ -5,7 +5,7 @@ import os
 import sqlite3
 import time
 from contextlib import closing
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -326,7 +326,7 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         totals[key] = round(sum(point[key] for point in points), 6)
     totals["domestic_import_cost_gbp"] = (
         None
-        if any(point.get("domestic_import_cost_gbp") is None for point in points)
+        if not points or any(point.get("domestic_import_cost_gbp") is None for point in points)
         else round(sum(point["domestic_import_cost_gbp"] for point in points), 6)
     )
     return {
