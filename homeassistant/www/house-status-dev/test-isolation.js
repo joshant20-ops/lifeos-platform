@@ -8,6 +8,7 @@ const devBell=fs.readFileSync(path.join(here,'lifeos-house-status-doorbell.js'),
 const loader=fs.readFileSync(path.join(here,'lifeos-house-status-dev-loader.js'),'utf8');
 const live=fs.readFileSync(path.join(__dirname,'../../releases/house-status/live/lifeos-house-status-v28.js'),'utf8');
 const deploy=fs.readFileSync(path.join(__dirname,'../../../scripts/lifeos-deploy-house-status-dev-dashboard.sh'),'utf8');
+const devWorkflow=fs.readFileSync(path.join(__dirname,'../../../.github/workflows/house-status-dev-deploy.yml'),'utf8');
 const liveWorkflow=fs.readFileSync(path.join(__dirname,'../../../.github/workflows/house-status-live-deploy.yml'),'utf8');
 const liveDeploy=fs.readFileSync(path.join(__dirname,'../../../scripts/lifeos-deploy-house-status-dashboard.sh'),'utf8');
 assert.match(dev,/customElements\.define\('lifeos-house-status-dev'/);
@@ -48,6 +49,7 @@ const haConfig=fs.readFileSync(path.join(__dirname,'../../../homelab/live/opt/st
 assert.ok(haConfig.includes('module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-4'));
 assert.ok(deploy.includes("old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3'"));
 assert.ok(deploy.includes("new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-4'"));
+assert.match(devWorkflow,/find \/opt\/actions-runner-lifeos\/externals/,'post-deploy runtime test must locate the Pi runner\'s bundled Node executable');
 assert.match(dev,/await import\('\/local\/house-status-dev\/lifeos-house-status-doorbell\.js\?dev='\+Date\.now\(\)\)/);
 assert.match(devBell,/LifeOSHouseStatusDevModules/);
 assert.doesNotMatch(devBell,/LifeOSHouseStatusModules/);
@@ -262,4 +264,5 @@ console.log('HOUSE_STATUS_DEV_CUSTOM_ELEMENTS=PASS');
 console.log('HOUSE_STATUS_DEV_CAMERA_NAMESPACE=PASS');
 console.log('HOUSE_STATUS_DEV_DEPLOY_TARGET=PASS');
 console.log('HOUSE_STATUS_LIVE_MANUAL_RELEASE_ONLY=PASS');
+
 
