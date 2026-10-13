@@ -94,7 +94,7 @@ panel_custom:
     sidebar_title: House Status Dev
     sidebar_icon: mdi:flask-outline
     url_path: house-status-dev
-    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2
+    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3
     require_admin: true
     config:
       mode: domestic
