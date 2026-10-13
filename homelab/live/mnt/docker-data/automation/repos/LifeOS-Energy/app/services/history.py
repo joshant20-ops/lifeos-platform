@@ -24,7 +24,7 @@ DATABASE_PATH = Path(
 COLLECTION_INTERVAL_SECONDS = max(
     30, int(os.getenv("ENERGY_COLLECTION_INTERVAL_SECONDS", "60"))
 )
-RAW_RETENTION_HOURS = max(48, int(os.getenv("ENERGY_RAW_RETENTION_HOURS", "48")))
+RAW_RETENTION_HOURS = max(842, int(os.getenv("ENERGY_RAW_RETENTION_HOURS", "842")))
 
 _client = EnphaseClient()
 _collector_task: asyncio.Task[None] | None = None
@@ -227,7 +227,9 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         ).fetchall()
 
     points = []
+    rolled_buckets = set()
     for row in rows:
+        rolled_buckets.add(int(row["bucket_start"]))
         points.append(
             {
                 "timestamp": int(row["bucket_start"]),
@@ -241,6 +243,56 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
                 "battery_discharge_kwh": round(float(row["battery_discharge_wh"]) / 1000, 6),
             }
         )
+
+    # Keep the report API's 35-day source window intact. During that window
+    # samples have not yet been compacted, so construct the same half-hour
+    # shape directly from the Enphase cache for long-range dashboard requests.
+    with closing(connect()) as connection:
+        raw_rows = connection.execute(
+            """SELECT * FROM telemetry
+               WHERE reading_time >= ? AND reading_time < ?
+               ORDER BY reading_time""",
+            (start, end),
+        ).fetchall()
+    raw_buckets: dict[int, dict[str, float]] = {}
+    dt_hours = COLLECTION_INTERVAL_SECONDS / 3600.0
+    for row in raw_rows:
+        timestamp = int(row["reading_time"])
+        bucket = timestamp - timestamp % 1800
+        if bucket in rolled_buckets:
+            continue
+        values = raw_buckets.setdefault(
+            bucket,
+            {"count": 0, "production": 0, "consumption": 0, "grid_import": 0,
+             "domestic_import": 0, "grid_export": 0, "battery_charge": 0,
+             "battery_discharge": 0},
+        )
+        grid_import_w = max(0.0, float(row["grid_import_w"] or 0.0))
+        battery_power_w = float(row["battery_power_w"] or 0.0)
+        battery_charge_w = max(0.0, -battery_power_w)
+        values["count"] += 1
+        values["production"] += float(row["production_w"] or 0.0) * dt_hours
+        values["consumption"] += float(row["consumption_w"] or 0.0) * dt_hours
+        values["grid_import"] += grid_import_w * dt_hours
+        values["domestic_import"] += max(0.0, grid_import_w - battery_charge_w) * dt_hours
+        values["grid_export"] += float(row["grid_export_w"] or 0.0) * dt_hours
+        values["battery_charge"] += battery_charge_w * dt_hours
+        values["battery_discharge"] += max(0.0, battery_power_w) * dt_hours
+    for bucket, values in raw_buckets.items():
+        points.append(
+            {
+                "timestamp": bucket,
+                "sample_count": int(values["count"]),
+                "production_kwh": round(values["production"] / 1000, 6),
+                "consumption_kwh": round(values["consumption"] / 1000, 6),
+                "grid_import_kwh": round(values["grid_import"] / 1000, 6),
+                "domestic_import_kwh": round(values["domestic_import"] / 1000, 6),
+                "grid_export_kwh": round(values["grid_export"] / 1000, 6),
+                "battery_charge_kwh": round(values["battery_charge"] / 1000, 6),
+                "battery_discharge_kwh": round(values["battery_discharge"] / 1000, 6),
+            }
+        )
+    points.sort(key=lambda point: point["timestamp"])
 
     timezone_name = str(load_config()["site"]["timezone"])
     if points:
