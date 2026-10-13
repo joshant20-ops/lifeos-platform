@@ -31,7 +31,8 @@ Start with:
 
 - `docs/architecture_overview.md` for system boundaries and authority.
 - `governance/communication.md` for worker communication rules.
-- `docs/roadmap.md` and `docs/migration_strategy.md` for planned work and gates.
+- `docs/UNIFIED_ROADMAP.md` for the single active programme roadmap and priority order.
+- `docs/roadmap.md` and older stage/wave/migration plans are retained as historical pointers/evidence only.
 - `AGENTS.md` for repository-wide contributor instructions.
 
 The repository contains existing runtime and deployment assets. Foundation-only
