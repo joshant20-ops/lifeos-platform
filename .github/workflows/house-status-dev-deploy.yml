@@ -39,7 +39,7 @@ jobs:
           set -Eeuo pipefail
           node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
           node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
-          node --check homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js
+          node --input-type=module --check < homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js
           node homeassistant/www/house-status-dev/test-isolation.js
           bash -n scripts/lifeos-deploy-house-status-dev-dashboard.sh
           python3 -m py_compile homeassistant/verify-house-status-dev-dashboard.py

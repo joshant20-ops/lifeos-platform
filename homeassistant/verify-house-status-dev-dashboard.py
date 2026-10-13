@@ -40,8 +40,10 @@ def main():
         fail('development_camera_config_missing')
     if dev==live: fail('development_entrypoint_matches_live_release')
     loader=(SOURCE/'lifeos-house-status-dev-loader.js').read_text()
-    if "await import(bundle)" not in loader or "Date.now()" not in loader:
+    if not loader.lstrip().startswith("const bundle=") or "await import(bundle);" not in loader or "Date.now()" not in loader:
         fail('dev_loader_cache_bypass_missing')
+    if "(async()=>{" in loader:
+        fail('dev_loader_registration_not_awaited')
     if "await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now())" not in dev:
         fail('dev_doorbell_cache_bypass_missing')
     if args.source_only:
@@ -53,7 +55,7 @@ def main():
     dev_panel=stanza(cfg,'lifeos-house-status-dev')
     if not live_panel or 'url_path: house-status' not in live_panel: fail('live_panel_missing')
     if not dev_panel: fail('development_panel_missing')
-    for marker in ('sidebar_title: House Status Dev','url_path: house-status-dev','module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2','require_admin: true'):
+    for marker in ('sidebar_title: House Status Dev','url_path: house-status-dev','module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3','require_admin: true'):
         if marker not in dev_panel: fail('development_panel_config_missing:'+marker)
     for filename in FILES:
         source=SOURCE/filename

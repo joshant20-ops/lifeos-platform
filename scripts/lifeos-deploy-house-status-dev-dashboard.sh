@@ -68,7 +68,7 @@ NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/extern
 [[ -n "$NODE_BIN" ]] || fail node_missing_for_frontend_syntax_gate
 "$NODE_BIN" --check "$SOURCE_DIR/lifeos-house-status-dev.js" || fail dev_frontend_js_syntax_invalid
 "$NODE_BIN" --check "$SOURCE_DIR/lifeos-house-status-doorbell.js" || fail dev_doorbell_js_syntax_invalid
-"$NODE_BIN" --check "$SOURCE_DIR/lifeos-house-status-dev-loader.js" || fail dev_loader_js_syntax_invalid
+"$NODE_BIN" --input-type=module --check < "$SOURCE_DIR/lifeos-house-status-dev-loader.js" || fail dev_loader_js_syntax_invalid
 python3 "$VERIFIER" --source-only
 PRODUCTION_BEFORE=$(snapshot "$PROD_DIR" "$DASH_TARGET" "$REGISTRY" "$RESOURCES")
 LIVE_PANEL_BEFORE=$(panel_entry "$CONFIG" lifeos-house-status-v28)
@@ -103,8 +103,8 @@ existing,i,j=stanza('lifeos-house-status-dev')
 if existing:
     if 'url_path: house-status-dev\n' not in existing:
         raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:dev_panel_conflict')
-    old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-1'
-    new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2'
+    old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2'
+    new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3'
     if new_url in existing:
         print('HOUSE_STATUS_DEV_CONFIG=UNCHANGED')
     elif old_url in existing:
@@ -133,7 +133,7 @@ else:
       '    sidebar_title: House Status Dev\n',
       '    sidebar_icon: mdi:flask-outline\n',
       '    url_path: house-status-dev\n',
-      '    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2\n',
+      '    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3\n',
       '    require_admin: true\n',
       '    config:\n',
       '      mode: domestic\n',
