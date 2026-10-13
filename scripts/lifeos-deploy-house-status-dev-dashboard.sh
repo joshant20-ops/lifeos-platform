@@ -103,8 +103,8 @@ existing,i,j=stanza('lifeos-house-status-dev')
 if existing:
     if 'url_path: house-status-dev\n' not in existing:
         raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:dev_panel_conflict')
-    old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2'
-    new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3'
+    old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3'
+    new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-4'
     if new_url in existing:
         print('HOUSE_STATUS_DEV_CONFIG=UNCHANGED')
     elif old_url in existing:
@@ -133,7 +133,7 @@ else:
       '    sidebar_title: House Status Dev\n',
       '    sidebar_icon: mdi:flask-outline\n',
       '    url_path: house-status-dev\n',
-      '    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3\n',
+      '    module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-4\n',
       '    require_admin: true\n',
       '    config:\n',
       '      mode: domestic\n',
@@ -160,3 +160,4 @@ echo HOUSE_STATUS_DEV_ASSETS=/local/house-status-dev/
 echo HOUSE_STATUS_DEV_PANEL=/house-status-dev
 echo HOUSE_STATUS_DEV_LIVE_ISOLATION=PASS
 echo HOUSE_STATUS_DEV_DEPLOY=PASS
+
