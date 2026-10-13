@@ -3,6 +3,7 @@ from pathlib import Path
 from time import monotonic
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -43,6 +44,22 @@ ROOT = Path(__file__).resolve().parent.parent
 app = FastAPI(
     title=APP["name"],
     version=APP["version"],
+)
+
+# The House Status frontend is served by Home Assistant while the existing
+# Energy API listens on port 8110. Allow browser reads only from the two
+# established Home Assistant LAN origins; the API remains read-only here.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://ha.lan:8123",
+        "https://ha.lan:8123",
+        "http://192.168.0.203:8123",
+        "https://192.168.0.203:8123",
+    ],
+    allow_credentials=False,
+    allow_methods=["GET"],
+    allow_headers=[],
 )
 
 app.include_router(enphase_router)
