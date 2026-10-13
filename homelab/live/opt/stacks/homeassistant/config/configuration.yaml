@@ -98,4 +98,3 @@ panel_custom:
     require_admin: true
     config:
       mode: domestic
-
