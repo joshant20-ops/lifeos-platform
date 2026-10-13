@@ -76,7 +76,7 @@ jobs:
           grep -Eq '(^| )LIFEOS_TOWER_IDLE_GRACE=600($| )' <<<"$env"
           controller_pid=$(systemctl show lifeos-tower-control.service -p MainPID --value)
           test "$controller_pid" -gt 1
-          tr '\\0' '\\n' < "/proc/$controller_pid/environ" | grep -Fxq 'LIFEOS_TOWER_IDLE_GRACE=600'
+          tr '\0' '\n' < "/proc/$controller_pid/environ" | grep -Fxq 'LIFEOS_TOWER_IDLE_GRACE=600'
           echo 'TOWER_IDLE_GRACE=600_RUNNING_PROCESS_PASS'
           python3 - <<'PY'
           import json
@@ -193,7 +193,7 @@ jobs:
           echo "ORIGIN_MAIN=$origin"
           if [[ -n "$status" ]]; then
             echo 'RUNTIME_REPOSITORY_STATUS=DIRTY'
-            printf '%s\\n' "$status"
+            printf '%s\n' "$status"
             git diff --stat
             exit 1
           fi
