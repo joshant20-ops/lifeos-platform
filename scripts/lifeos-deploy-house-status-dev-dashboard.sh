@@ -103,7 +103,7 @@ existing,i,j=stanza('lifeos-house-status-dev')
 if existing:
     if 'url_path: house-status-dev\n' not in existing:
         raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:dev_panel_conflict')
-    old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3'
+    old_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-2'
     new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-3'
     if new_url in existing:
         print('HOUSE_STATUS_DEV_CONFIG=UNCHANGED')
