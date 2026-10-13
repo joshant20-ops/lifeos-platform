@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -381,7 +381,7 @@ def tariff_prices_range(
         next_page = payload.get("next")
         if not next_page:
             break
-        payload = _request_json(str(next_page))
+        payload = _request_json(urljoin(endpoint, str(next_page)))
     return rates
 
 def tomorrow_prices(
