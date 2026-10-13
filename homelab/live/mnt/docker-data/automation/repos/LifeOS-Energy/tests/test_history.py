@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import date\nimport time as system_time
+from datetime import date
+import time as system_time
 from pathlib import Path
 
 import app.services.history as history
