@@ -9,6 +9,7 @@ on:
       - 'governor/scripts/lifeos-ai-ha-wake.py'
       - 'scripts/lifeos-configure-ai-dns.py'
       - 'governor/scripts/deploy-autonomous-agent-pi5.sh'
+      - 'governor/autonomous_agent.py'
       - 'scripts/lifeos-wake-aware-ai-acceptance.sh'
       - 'governor/tower_control.py'
       - '.github/workflows/lifeos-governor-broker-deploy.yml'
