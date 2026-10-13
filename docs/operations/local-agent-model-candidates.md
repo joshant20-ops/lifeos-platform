@@ -40,7 +40,7 @@ RAM figures are `free -h` host snapshots and therefore do not equal model alloca
 
 ## Production route and rollback
 
-The stable client name `ai.lan` resolves through AdGuard Home to the always-on Pi. `lifeos-openhands-local-ai.service` is the request interception point. On cold inference it calls Home Assistant's proven `switch.turn_on` action for `switch.z97_power`, waits for Tower Accessible and Ollama readiness, then proxies the original request. Its lease keeps the existing controller shutdown lifecycle while explicitly suppressing the controller's independent WoL sender for this HA-woken request. Passive health and model-discovery routes never wake the Tower. The endpoint advertises GPT-OSS as the default and permits only:
+The stable client name `ai.lan` resolves through AdGuard Home to the always-on Pi, where `lifeos-openhands-local-ai.service` serves `http://ai.lan:18114/v1`. On cold inference, the gateway acquires the normal Tower compute lease. `tower_control.py` is the sole wake owner: it sends WoL using the configured Tower identity, waits for Tower accessibility and Ollama readiness, and then the gateway proxies the original request. Passive health and model-discovery routes never acquire a wake lease or wake Tower. There is no gateway-to-Home-Assistant wake delegation or `wake_via_ha` lease mode. The endpoint advertises GPT-OSS as the default and permits only:
 
 - `gpt-oss:20b` — production OpenHands model;
 - `qwen2.5-coder:7b-instruct` — explicit rollback target.
