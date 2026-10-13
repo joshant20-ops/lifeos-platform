@@ -161,11 +161,10 @@ jobs:
           lease_released_at=$(date +%s)
           stopped=0
           max_idle=0
-          # Bound this proof tightly so a shutdown fault cannot monopolise the only Pi runner.
-          # The controller's production idle grace is 600s. Allow that grace plus shutdown/readiness
-          # propagation without changing production lifecycle behaviour for the test.
-          # Poll for up to 14 minutes, allowing the full 600-second production grace plus shutdown propagation.
-          for _ in $(seq 1 84); do
+          # Observe for at most 13 minutes: the full 600-second production grace plus shutdown propagation.
+          # This is a wall-clock deadline because retained MQTT state reads return immediately.
+          shutdown_deadline=$(( lease_released_at + 780 ))
+          while (( $(date +%s) < shutdown_deadline )); do
             state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true)
             idle=$(python3 - "$state" <<'PY'
           import json,sys
@@ -194,16 +193,20 @@ jobs:
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
-          head=$(git rev-parse HEAD)
-          origin=$(git rev-parse origin/main)
           status=$(git status --short --untracked-files=all)
-          echo "RUNTIME_HEAD=$head"
-          echo "ORIGIN_MAIN=$origin"
           if [[ -n "$status" ]]; then
             echo 'RUNTIME_REPOSITORY_STATUS=DIRTY'
             printf '%s\n' "$status"
             git diff --stat
             exit 1
           fi
+          # Another governed job may have advanced main while this 600-second
+          # lifecycle proof held the Pi runner. Fast-forward only a clean checkout.
+          git merge --ff-only origin/main
+          head=$(git rev-parse HEAD)
+          origin=$(git rev-parse origin/main)
+          echo "RUNTIME_HEAD=$head"
+          echo "ORIGIN_MAIN=$origin"
           test "$head" = "$origin"
+          test -z "$(git status --porcelain --untracked-files=all)"
           echo 'GOVERNOR_TOWER_AI_LIFECYCLE=PASS'
