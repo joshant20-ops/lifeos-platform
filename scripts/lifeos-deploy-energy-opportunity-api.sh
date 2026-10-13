@@ -139,6 +139,8 @@ print('ENERGY_INTERVAL_LEDGER_LIVE=PASS')
 print('ENERGY_OPPORTUNITY_API_LIVE=PASS')
 PY
 
+python3 "$PLATFORM/scripts/lifeos-energy-history-live-acceptance.py" --base-url http://127.0.0.1:8110 --week-start 2026-09-28
+
 install -o joshan -g joshan -m 0644 \
   "$HA_SOURCE/packages/lifeos_energy.yaml" \
   "$HA_TARGET/packages/lifeos_energy.yaml"
