@@ -51,7 +51,7 @@ def main():
         return
     if not CONFIG.exists(): fail('ha_configuration_missing')
     cfg=CONFIG.read_text()
-    live_panel=stanza(cfg,'lifeos-house-status-v28')
+    live_panel=stanza(cfg,'lifeos-house-status-v29') or stanza(cfg,'lifeos-house-status-v28')
     dev_panel=stanza(cfg,'lifeos-house-status-dev')
     if not live_panel or 'url_path: house-status' not in live_panel: fail('live_panel_missing')
     if not dev_panel: fail('development_panel_missing')
