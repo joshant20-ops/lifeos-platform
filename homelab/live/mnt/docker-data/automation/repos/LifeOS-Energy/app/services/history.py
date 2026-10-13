@@ -211,42 +211,47 @@ def read_history(hours: int) -> list[dict[str, Any]]:
 
 
 def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, Any]:
-    """Return Enphase-derived half-hour energy and Octopus prices/costs."""
+    """Return Enphase-derived half-hour energy joined to Octopus prices."""
     if end <= start:
-        return {"granularity": "30m", "start": start, "end": end, "points": []}
-    if granularity not in {"auto", "30m", "day"}:
-        raise ValueError("granularity must be auto, 30m, or day")
+        return {
+            "granularity": "30m", "start": start, "end": end,
+            "timezone": str(load_config()["site"]["timezone"]), "points": [],
+            "count": 0, "coverage_percent": 0.0, "complete": False,
+        }
+    if granularity not in {"auto", "30m"}:
+        raise ValueError("granularity must be auto or 30m")
     with closing(connect()) as connection:
         rows = connection.execute(
-            """
-            SELECT * FROM energy_rollup_30m
-            WHERE bucket_start >= ? AND bucket_start < ?
-            ORDER BY bucket_start
-            """,
+            """SELECT * FROM energy_rollup_30m
+               WHERE bucket_start >= ? AND bucket_start < ?
+               ORDER BY bucket_start""",
             (start - start % 1800, end),
         ).fetchall()
 
-    points = []
-    rolled_buckets = set()
+    points: list[dict[str, Any]] = []
+    by_bucket: dict[int, dict[str, Any]] = {}
+    energy_fields = (
+        "production_kwh", "consumption_kwh", "grid_import_kwh",
+        "domestic_import_kwh", "grid_export_kwh", "battery_charge_kwh",
+        "battery_discharge_kwh",
+    )
     for row in rows:
-        rolled_buckets.add(int(row["bucket_start"]))
-        points.append(
-            {
-                "timestamp": int(row["bucket_start"]),
-                "sample_count": int(row["sample_count"]),
-                "production_kwh": round(float(row["production_wh"]) / 1000, 6),
-                "consumption_kwh": round(float(row["consumption_wh"]) / 1000, 6),
-                "grid_import_kwh": round(float(row["grid_import_wh"]) / 1000, 6),
-                "domestic_import_kwh": round(float(row["domestic_import_wh"]) / 1000, 6),
-                "grid_export_kwh": round(float(row["grid_export_wh"]) / 1000, 6),
-                "battery_charge_kwh": round(float(row["battery_charge_wh"]) / 1000, 6),
-                "battery_discharge_kwh": round(float(row["battery_discharge_wh"]) / 1000, 6),
-            }
-        )
+        point = {
+            "timestamp": int(row["bucket_start"]),
+            "sample_count": int(row["sample_count"]),
+            "production_kwh": float(row["production_wh"]) / 1000,
+            "consumption_kwh": float(row["consumption_wh"]) / 1000,
+            "grid_import_kwh": float(row["grid_import_wh"]) / 1000,
+            "domestic_import_kwh": float(row["domestic_import_wh"]) / 1000,
+            "grid_export_kwh": float(row["grid_export_wh"]) / 1000,
+            "battery_charge_kwh": float(row["battery_charge_wh"]) / 1000,
+            "battery_discharge_kwh": float(row["battery_discharge_wh"]) / 1000,
+        }
+        points.append(point)
+        by_bucket[point["timestamp"]] = point
 
-    # Keep the report API's 35-day source window intact. During that window
-    # samples have not yet been compacted, so construct the same half-hour
-    # shape directly from the Enphase cache for long-range dashboard requests.
+    # Uncompacted Enphase readings are included so the endpoint covers the
+    # current period as well as the permanent compact history.
     with closing(connect()) as connection:
         raw_rows = connection.execute(
             """SELECT * FROM telemetry
@@ -259,8 +264,6 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
     for row in raw_rows:
         timestamp = int(row["reading_time"])
         bucket = timestamp - timestamp % 1800
-        if bucket in rolled_buckets:
-            continue
         values = raw_buckets.setdefault(
             bucket,
             {"count": 0, "production": 0, "consumption": 0, "grid_import": 0,
@@ -279,21 +282,24 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         values["battery_charge"] += battery_charge_w * dt_hours
         values["battery_discharge"] += max(0.0, battery_power_w) * dt_hours
     for bucket, values in raw_buckets.items():
-        points.append(
-            {
-                "timestamp": bucket,
-                "sample_count": int(values["count"]),
-                "production_kwh": round(values["production"] / 1000, 6),
-                "consumption_kwh": round(values["consumption"] / 1000, 6),
-                "grid_import_kwh": round(values["grid_import"] / 1000, 6),
-                "domestic_import_kwh": round(values["domestic_import"] / 1000, 6),
-                "grid_export_kwh": round(values["grid_export"] / 1000, 6),
-                "battery_charge_kwh": round(values["battery_charge"] / 1000, 6),
-                "battery_discharge_kwh": round(values["battery_discharge"] / 1000, 6),
-            }
-        )
-    points.sort(key=lambda point: point["timestamp"])
+        point = by_bucket.get(bucket)
+        if point is None:
+            point = {"timestamp": bucket, "sample_count": 0, **{field: 0.0 for field in energy_fields}}
+            points.append(point)
+            by_bucket[bucket] = point
+        point["sample_count"] += int(values["count"])
+        for field, source in (
+            ("production_kwh", "production"),
+            ("consumption_kwh", "consumption"),
+            ("grid_import_kwh", "grid_import"),
+            ("domestic_import_kwh", "domestic_import"),
+            ("grid_export_kwh", "grid_export"),
+            ("battery_charge_kwh", "battery_charge"),
+            ("battery_discharge_kwh", "battery_discharge"),
+        ):
+            point[field] += values[source] / 1000
 
+    points.sort(key=lambda point: point["timestamp"])
     timezone_name = str(load_config()["site"]["timezone"])
     rates: dict[int, float] = {}
     price_error = False
@@ -315,32 +321,31 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
             point["import_p_per_kwh"] = rate
             point["import_price_available"] = rate is not None
             point["domestic_import_cost_gbp"] = (
-                None
-                if rate is None
+                None if rate is None
                 else round(point["domestic_import_kwh"] * rate / 100, 6)
             )
 
     zone = ZoneInfo(timezone_name)
     for point in points:
+        sample_capacity = max(1, 1800 // COLLECTION_INTERVAL_SECONDS)
+        point["sample_coverage_percent"] = round(
+            min(100.0, point["sample_count"] * 100 / sample_capacity), 1
+        )
         start_at = datetime.fromtimestamp(point["timestamp"], timezone.utc)
         end_at = datetime.fromtimestamp(point["timestamp"] + 1800, timezone.utc)
         point["valid_from"] = start_at.isoformat()
         point["valid_to"] = end_at.isoformat()
         point["local_from"] = start_at.astimezone(zone).isoformat()
         point["local_to"] = end_at.astimezone(zone).isoformat()
+        for field in energy_fields:
+            point[field] = round(point[field], 6)
 
-    totals = {}
-    for key in (
-        "production_kwh",
-        "consumption_kwh",
-        "grid_import_kwh",
-        "domestic_import_kwh",
-        "grid_export_kwh",
-    ):
-        totals[key] = round(sum(point[key] for point in points), 6)
+    totals = {
+        field: round(sum(point[field] for point in points), 6)
+        for field in energy_fields
+    }
     totals["domestic_import_cost_gbp"] = (
-        None
-        if not points or any(point.get("domestic_import_cost_gbp") is None for point in points)
+        None if not points or any(point.get("domestic_import_cost_gbp") is None for point in points)
         else round(sum(point["domestic_import_cost_gbp"] for point in points), 6)
     )
     expected_count = max(0, (end - start + 1799) // 1800)
@@ -353,8 +358,10 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         "start": start,
         "end": end,
         "count": len(points),
-        "price_source_available": not price_error and all(p["import_price_available"] for p in points),
-        "missing_price_slots": sum(1 for p in points if not p["import_price_available"]),
+        "price_source_available": bool(points) and not price_error and all(
+            point["import_price_available"] for point in points
+        ),
+        "missing_price_slots": sum(1 for point in points if not point["import_price_available"]),
         "totals": totals,
         "points": points,
     }
