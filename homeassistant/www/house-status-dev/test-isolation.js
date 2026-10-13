@@ -15,7 +15,7 @@ assert.match(dev,/customElements\.define\('lifeos-house-status-dev-editor-v2'/);
 assert.match(dev,/House Status DEV/);
 assert.match(dev,/apiOrigin\.port='8110'/);
 assert.match(dev,/new URL\('\/api\/energy\/rollups',apiOrigin\)/);
-assert.match(dev,/fetch\(url,\{credentials:'omit'\}\)/);
+assert.match(dev,/fetch\(url,\{credentials:'omit',signal:this\._energyHistoryController\.signal\}\)/);
 assert.match(dev,/this\._period=p;this\._energyHistory=\[\];this\._energyCoverage=null;this\.render\(\);this\._loadEnergyHistory\(\);/,'period selection must fetch selected-range history and discard prior totals');
 assert.match(dev,/this\._energyHistoryRequestedKey===key/,'duplicate hass updates must not duplicate the active range request');
 assert.match(dev,/this\._energyHistoryController\?\.abort\(\)/,'period changes must cancel an obsolete history request');
