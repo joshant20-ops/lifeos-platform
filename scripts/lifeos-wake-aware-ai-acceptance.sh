@@ -122,15 +122,7 @@ with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
 assert isinstance(v.get("response"),str) and v["response"].strip(),v
 print("WARM_INFERENCE=PASS")
 PY
-wakes_after=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE
-assert_no_active_leases
-echo 'INFERENCE_LEASE_RELEASE=PASS'
-systemctl is-active --quiet lifeos-autonomous-agent.service
-systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
-curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
-echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
-echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
- "$gateway_log" || true)
+wakes_after=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' "$gateway_log" || true)
 test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
 assert_no_active_leases
 echo 'INFERENCE_LEASE_RELEASE=PASS'
