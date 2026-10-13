@@ -52,6 +52,21 @@ for file in "$SOURCE" "$TOWER_SOURCE" "$TOWER_UNIT_SOURCE" "$TOWER_CONFIG_EXAMPL
 done
 [[ -f "$DEST" && ! -L "$DEST" ]] || { echo 'ERROR=installed_bridge_missing'; exit 1; }
 
+# Do not restart the single wake owner while a valid inference lease is active.
+LEASES="$(timeout 5s mosquitto_sub -h 127.0.0.1 -v -t 'lifeos/tower/lease/+' 2>/dev/null || true)"
+python3 - "$LEASES" <<'PY'
+import json, sys, time
+for line in sys.argv[1].splitlines():
+    _, _, raw = line.partition(' ')
+    try:
+        lease = json.loads(raw)
+    except (ValueError, TypeError):
+        continue
+    if lease.get('state') == 'active' and int(lease.get('expires_at') or 0) > int(time.time()):
+        raise SystemExit('ERROR=active_tower_lease_prevents_controller_restart')
+print('TOWER_CONTROLLER_RESTART_LEASE_GUARD=PASS')
+PY
+
 mkdir -p "$BACKUP" /etc/lifeos /var/lib/lifeos-tower
 cp -a "$DEST" "$BACKUP/lifeos-ha-issue-queue-bridge.before"
 if [[ -f "$TOWER_DEST" ]]; then cp -a "$TOWER_DEST" "$BACKUP/lifeos-tower-control.before"; else : > "$BACKUP/lifeos-tower-control.absent"; fi
@@ -108,6 +123,7 @@ PY
 
 systemctl daemon-reload
 systemctl enable --now lifeos-tower-control.service
+systemctl restart lifeos-tower-control.service
 systemctl restart "$UNIT"
 
 for _ in $(seq 1 20); do
@@ -116,6 +132,10 @@ for _ in $(seq 1 20); do
 done
 systemctl is-active --quiet "$UNIT" || { echo 'ERROR=bridge_not_active'; false; }
 systemctl is-active --quiet lifeos-tower-control.service || { echo 'ERROR=tower_controller_not_active'; false; }
+CONTROLLER_PID="$(systemctl show lifeos-tower-control.service -p MainPID --value)"
+[[ "$CONTROLLER_PID" =~ ^[1-9][0-9]*$ ]] || { echo 'ERROR=tower_controller_main_pid_missing'; false; }
+tr '\\0' '\\n' < "/proc/$CONTROLLER_PID/environ" | grep -Fxq 'LIFEOS_TOWER_IDLE_GRACE=600' || { echo 'ERROR=tower_controller_runtime_idle_grace_not_600'; false; }
+echo 'TOWER_CONTROLLER_RUNTIME_IDLE_GRACE=600 PASS'
 
 CONTROL="$(timeout 15s mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/issue_queue/control 2>/dev/null || true)"
 [[ -n "$CONTROL" ]] || { echo 'ERROR=control_topic_absent'; false; }
