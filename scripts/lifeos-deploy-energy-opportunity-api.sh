@@ -28,7 +28,7 @@ live_main_sha=$(sha "$TARGET/app/main.py")
 [[ "$live_main_sha" == "$OLD_MAIN_SHA" || "$live_main_sha" == "$new_main_sha" ]] || \
   fail live_energy_main_has_unreviewed_drift
 
-runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py" "$SOURCE/app/services/history.py" "$SOURCE/app/services/octopus.py"
+runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/main.py" "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py" "$SOURCE/app/services/history.py" "$SOURCE/app/services/octopus.py"
 runuser -u joshan -- /usr/bin/python3 "$PLATFORM/tests/test_energy_opportunity_service.py"
 echo ENERGY_OPPORTUNITY_API_TESTS=PASS
 
@@ -135,6 +135,19 @@ tariffs=json.load(urllib.request.urlopen('http://127.0.0.1:8110/api/energy/tarif
 assert isinstance(tariffs['slots'],list) and len(tariffs['slots']) >= 48
 assert all('import_p_per_kwh' in s for s in tariffs['slots'])
 print('ENERGY_TARIFF_HORIZON_LIVE=PASS')
+import time
+base='http://127.0.0.1:8110/api/energy/rollups?start='+str(int(time.time())-3600)+'&end='+str(int(time.time()))+'&granularity=30m'
+for origin in ('http://ha.lan:8123','http://192.168.0.203:8123'):
+    request=urllib.request.Request(base,headers={'Origin':origin})
+    with urllib.request.urlopen(request,timeout=10) as response:
+        payload=json.load(response)
+        assert response.headers.get('Access-Control-Allow-Origin')==origin
+        assert isinstance(payload.get('points'),list)
+    print('HOUSE_STATUS_ENERGY_CORS_PASS='+origin)
+request=urllib.request.Request(base,headers={'Origin':'https://example.invalid'})
+with urllib.request.urlopen(request,timeout=10) as response:
+    assert response.headers.get('Access-Control-Allow-Origin') is None
+print('HOUSE_STATUS_ENERGY_CORS_UNTRUSTED=BLOCKED')
 print('ENERGY_INTERVAL_LEDGER_LIVE=PASS')
 print('ENERGY_OPPORTUNITY_API_LIVE=PASS')
 PY
