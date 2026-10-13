@@ -20,6 +20,7 @@ assert.match(devBell,/camera\.front_door_live_view/);
 assert.match(devBell,/camera_view:'live'/);
 assert.match(loader,/Date\.now\(\)/);
 assert.match(loader,/await import\(bundle\)/);
+assert.match(loader,/^\\s*await import\\(bundle\\);/m);
 assert.match(dev,/await import\('\/local\/house-status-dev\/lifeos-house-status-doorbell\.js\?dev='\+Date\.now\(\)\)/);
 assert.match(devBell,/LifeOSHouseStatusDevModules/);
 assert.doesNotMatch(devBell,/LifeOSHouseStatusModules/);
