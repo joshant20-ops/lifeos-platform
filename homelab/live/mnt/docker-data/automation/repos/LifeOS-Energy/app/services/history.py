@@ -16,6 +16,11 @@ from app.services.enphase import (
     EnphaseClient,
     EnphaseUnavailableError,
 )
+from app.services.octopus_cache import (
+    import_tariff_code as cached_import_tariff_code,
+    initialise as initialise_octopus_cache,
+    tariff_rates as cached_tariff_rates,
+)
 
 
 DATABASE_PATH = Path(
@@ -85,6 +90,7 @@ def initialise_database() -> None:
             connection.execute(
                 "ALTER TABLE energy_rollup_30m ADD COLUMN domestic_import_wh REAL NOT NULL DEFAULT 0"
             )
+        initialise_octopus_cache(connection)
         connection.commit()
 
 
@@ -405,19 +411,41 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
     timezone_name = str(load_config()["site"]["timezone"])
     rates: dict[int, float] = {}
     price_error = False
+    price_source_status = "unavailable"
+    price_cache_age_seconds = None
     if points:
         from app.services.octopus import OctopusError, account_tariffs, tariff_prices_range
 
         try:
-            tariffs = account_tariffs()
             zone = ZoneInfo(timezone_name)
             first_day = datetime.fromtimestamp(start, zone).date()
             last_day = datetime.fromtimestamp(end - 1, zone).date()
-            rates = tariff_prices_range(
-                tariffs["import"]["tariff_code"], first_day, last_day, timezone_name
-            )
+            now = int(time.time())
+            with closing(connect()) as connection:
+                tariff_code, account_status, account_age = cached_import_tariff_code(
+                    connection,
+                    now=now,
+                    fetch_tariff_code=lambda: account_tariffs()["import"]["tariff_code"],
+                )
+                rates, price_source_status, rate_age, rates_failed = cached_tariff_rates(
+                    connection,
+                    tariff_code,
+                    (point["timestamp"] for point in points),
+                    now=now,
+                    fetch_rates=lambda: tariff_prices_range(
+                        tariff_code, first_day, last_day, timezone_name
+                    ),
+                )
+            if account_status == "stale_cache":
+                price_source_status = "stale_cache"
+            price_error = rates_failed or account_status == "stale_cache"
+            ages = [age for age in (account_age, rate_age) if age is not None]
+            price_cache_age_seconds = max(ages) if ages else None
         except OctopusError:
+            rates = {}
             price_error = True
+            price_source_status = "unavailable"
+
         for point in points:
             rate = rates.get(point["timestamp"])
             point["import_p_per_kwh"] = rate
@@ -460,9 +488,12 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         "start": start,
         "end": end,
         "count": len(points),
-        "price_source_available": bool(points) and not price_error and all(
+        "price_source_available": bool(points) and all(
             point["import_price_available"] for point in points
         ),
+        "price_source_status": price_source_status,
+        "price_source_error": price_error,
+        "price_cache_age_seconds": price_cache_age_seconds,
         "missing_price_slots": sum(1 for point in points if not point["import_price_available"]),
         "totals": totals,
         "points": points,

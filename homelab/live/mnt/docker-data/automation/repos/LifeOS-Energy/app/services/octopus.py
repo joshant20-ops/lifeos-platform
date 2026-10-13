@@ -5,8 +5,10 @@ from datetime import date, datetime, time, timedelta, timezone
 import json
 import os
 from pathlib import Path
+import time
 from typing import Any
 from urllib.parse import urlencode, urljoin
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -66,14 +68,34 @@ def _request_json(
         headers["Authorization"] = f"Basic {token}"
 
     request = Request(url, headers=headers)
+    retryable_statuses = {408, 425, 429, 500, 502, 503, 504}
+    last_error: Exception | None = None
+    for attempt in range(3):
+        try:
+            with urlopen(request, timeout=20) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as exc:
+            last_error = exc
+            if exc.code not in retryable_statuses or attempt == 2:
+                break
+            try:
+                delay = min(4.0, max(0.0, float(exc.headers.get("Retry-After", ""))))
+            except (TypeError, ValueError):
+                delay = 0.5 * (2 ** attempt)
+            time.sleep(delay)
+        except (URLError, OSError, TimeoutError) as exc:
+            last_error = exc
+            if attempt == 2:
+                break
+            time.sleep(0.5 * (2 ** attempt))
+        except Exception as exc:
+            raise OctopusError(
+                f"Octopus API request failed: {exc}"
+            ) from exc
 
-    try:
-        with urlopen(request, timeout=20) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except Exception as exc:
-        raise OctopusError(
-            f"Octopus API request failed: {exc}"
-        ) from exc
+    raise OctopusError(
+        f"Octopus API request failed after retries: {last_error}"
+    ) from last_error
 
 
 def _active_agreement(

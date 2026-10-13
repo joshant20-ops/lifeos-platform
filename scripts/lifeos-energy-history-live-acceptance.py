@@ -137,7 +137,10 @@ def validate_period(
         f"coverage_percent={coverage:.1f} missing_half_hours={expected_slots-count} "
         f"partial={str(is_partial).lower()} "
         f"domestic_import_kwh={usage:.3f} cost_gbp={cost:.2f} "
-        f"mean_sample_coverage_percent={mean_sample_coverage:.1f}"
+        f"mean_sample_coverage_percent={mean_sample_coverage:.1f} "
+        f"price_source_status={result.get('price_source_status')} "
+        f"price_source_error={str(result.get('price_source_error')).lower()} "
+        f"price_cache_age_seconds={result.get('price_cache_age_seconds')}"
     )
     return result
 
@@ -249,7 +252,10 @@ def main() -> None:
         f"Octopus_domestic_import_cost_gbp={rollup_cost:.2f} "
         f"coverage_percent={rollups['coverage_percent']} "
         f"Enphase_mean_sample_coverage_percent={mean_coverage:.1f} "
-        f"Enphase_low_sample_slots={low_sample_slots}"
+        f"Enphase_low_sample_slots={low_sample_slots} "
+        f"price_source_status={rollups.get('price_source_status')} "
+        f"price_source_error={str(rollups.get('price_source_error')).lower()} "
+        f"price_cache_age_seconds={rollups.get('price_cache_age_seconds')}"
     )
     print("ENERGY_HISTORY_API_LIVE_ACCEPTANCE=PASS")
 
