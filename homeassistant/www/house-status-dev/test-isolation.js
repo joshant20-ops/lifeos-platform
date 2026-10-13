@@ -1,6 +1,7 @@
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
+const vm=require('node:vm');
 const here=__dirname;
 const dev=fs.readFileSync(path.join(here,'lifeos-house-status-dev.js'),'utf8');
 const devBell=fs.readFileSync(path.join(here,'lifeos-house-status-doorbell.js'),'utf8');
@@ -49,6 +50,85 @@ assert.doesNotMatch(deploy,/install[^\n]*\$PROD_DIR|DASH_TARGET=.*=/);
 assert.match(deploy,/HOUSE_STATUS_DEV_LIVE_ISOLATION=PASS/);
 assert.doesNotMatch(liveWorkflow,/^  push:/m,'production deploy is not triggered by ordinary pushes');
 assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
+(async()=>{
+  class FakeElement {
+    constructor(){this.dataset={};this.onclick=null;}
+  }
+  class FakeCardElement {
+    constructor(){this.dataset={};this._html='';this.periodButtons=[];}
+    set innerHTML(value){this._html=value;}
+    get innerHTML(){return this._html;}
+    querySelectorAll(selector){
+      if(selector==='[data-period]'){
+        this.periodButtons=[...this._html.matchAll(/data-period="([^"]+)"/g)].map(match=>{
+          const element=new FakeElement();element.dataset.period=match[1];return element;
+        });
+        return this.periodButtons;
+      }
+      return [];
+    }
+    querySelector(){return null;}
+  }
+  const registry=new Map(),requests=[];
+  const periodCoverage=[100,92.4,77.0,27.0];
+  const periodUsage=[4.59,15.634,77.053,152.995];
+  const context={
+    HTMLElement:FakeCardElement,
+    customElements:{get:name=>registry.get(name),define:(name,value)=>registry.set(name,value)},
+    window:{location:{origin:'http://ha.local'},customCards:[]},
+    document:{createElement:()=>new FakeElement()},
+    URL,Date,Intl,AbortController,
+    console:{warn(){}},
+    fetch:async input=>{
+      const url=new URL(input);requests.push(url);
+      const start=Number(url.searchParams.get('start'));
+      const end=Number(url.searchParams.get('end'));
+      const index=requests.length-1;
+      return {ok:true,json:async()=>({
+        timezone:'Europe/London',coverage_percent:periodCoverage[index]??0,
+        points:[{timestamp:start,domestic_import_kwh:periodUsage[index]??0,
+          grid_import_kwh:periodUsage[index]??0,grid_export_kwh:0,production_kwh:0,
+          consumption_kwh:periodUsage[index]??0,import_p_per_kwh:24.5,
+          import_price_available:true,domestic_import_cost_gbp:[1.09,3.86,16.96,34.82][index]??0,
+          sample_count:30,sample_coverage_percent:92.4}],
+        _requestedEnd:end
+      })};
+    }
+  };
+  vm.runInNewContext(dev.replace(/^await import\([^\\n]+\\);\\n/,''),context);
+  const Card=registry.get('lifeos-house-status-dev');
+  const card=new Card();
+  const anchor=new Date();anchor.setHours(12,0,0,0);
+  card._anchor=anchor;card._mode='domestic';
+  card.hass={states:{}};
+  const pause=()=>new Promise(resolve=>setTimeout(resolve,0));
+  await pause();
+  assert.equal(requests.length,1,'initial view requests its one-day history');
+  assert.match(card.innerHTML,/4\\.59 kWh/);
+  const select=async period=>{
+    const button=card.periodButtons.find(item=>item.dataset.period===period);
+    assert.ok(button,period+' tab exists');
+    button.onclick();
+    await pause();
+    await pause();
+  };
+  await select('week');
+  assert.equal(requests.length,2,'Week selection issues a fresh rollup request');
+  assert.equal(requests[1].searchParams.get('granularity'),'30m');
+  assert.ok(Number(requests[1].searchParams.get('end'))-Number(requests[1].searchParams.get('start'))>=6*86400);
+  assert.match(card.innerHTML,/15\\.63 kWh/,'Week uses its own response rows');
+  await select('month');
+  assert.equal(requests.length,3,'Month selection issues a fresh rollup request');
+  assert.ok(Number(requests[2].searchParams.get('end'))-Number(requests[2].searchParams.get('start'))>=27*86400);
+  assert.match(card.innerHTML,/77\\.05 kWh/,'Month uses its own response rows');
+  await select('year');
+  assert.equal(requests.length,4,'Year selection issues a fresh rollup request');
+  assert.equal(new Date(Number(requests[3].searchParams.get('start'))*1000).getMonth(),0);
+  assert.match(card.innerHTML,/27\\.0% · Partial history/,'Year shows API-reported partial coverage instead of stale 100%');
+  assert.match(card.innerHTML,/24\\.5p/,'historical Octopus price is plotted from the selected response');
+  console.log('HOUSE_STATUS_DEV_PERIOD_SWITCH_RUNTIME_REGRESSION=PASS');
+})().catch(error=>{console.error(error);process.exitCode=1;});
+
 console.log('HOUSE_STATUS_DEV_PERIOD_HISTORY_RELOAD=PASS');
 console.log('HOUSE_STATUS_DEV_STALE_HISTORY_RESPONSE=PASS');
 console.log('HOUSE_STATUS_DEV_HISTORY_COVERAGE=PASS');
