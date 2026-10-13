@@ -77,8 +77,8 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
     customElements:{get:name=>registry.get(name),define:(name,value)=>registry.set(name,value)},
     window:{location:{origin:'http://ha.local'},customCards:[]},
     document:{createElement:()=>new FakeElement()},
-    URL,Date,Intl,AbortController,
-    console:{warn(){}},
+    URL,Date,Intl,AbortController,setTimeout,process,
+    console:{warn(){},log(){},error:console.error},
     fetch:async input=>{
       const url=new URL(input);requests.push(url);
       const start=Number(url.searchParams.get('start'));
@@ -95,7 +95,7 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
       })};
     }
   };
-  vm.runInNewContext(dev.replace(/^await import\([^\\n]+\\);\\n/,''),context);
+  vm.runInNewContext(dev.replace(/^await import\([^\n]+\);\n/,''),context);
   const Card=registry.get('lifeos-house-status-dev');
   const card=new Card();
   const anchor=new Date();anchor.setHours(12,0,0,0);
@@ -104,7 +104,7 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
   const pause=()=>new Promise(resolve=>setTimeout(resolve,0));
   await pause();
   assert.equal(requests.length,1,'initial view requests its one-day history');
-  assert.match(card.innerHTML,/4\\.59 kWh/);
+  assert.match(card.innerHTML,/4\.59 kWh/);
   const select=async period=>{
     const button=card.periodButtons.find(item=>item.dataset.period===period);
     assert.ok(button,period+' tab exists');
@@ -116,16 +116,16 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
   assert.equal(requests.length,2,'Week selection issues a fresh rollup request');
   assert.equal(requests[1].searchParams.get('granularity'),'30m');
   assert.ok(Number(requests[1].searchParams.get('end'))-Number(requests[1].searchParams.get('start'))>=6*86400);
-  assert.match(card.innerHTML,/15\\.63 kWh/,'Week uses its own response rows');
+  assert.match(card.innerHTML,/15\.63 kWh/,'Week uses its own response rows');
   await select('month');
   assert.equal(requests.length,3,'Month selection issues a fresh rollup request');
   assert.ok(Number(requests[2].searchParams.get('end'))-Number(requests[2].searchParams.get('start'))>=27*86400);
-  assert.match(card.innerHTML,/77\\.05 kWh/,'Month uses its own response rows');
+  assert.match(card.innerHTML,/77\.05 kWh/,'Month uses its own response rows');
   await select('year');
   assert.equal(requests.length,4,'Year selection issues a fresh rollup request');
   assert.equal(new Date(Number(requests[3].searchParams.get('start'))*1000).getMonth(),0);
-  assert.match(card.innerHTML,/27\\.0% · Partial history/,'Year shows API-reported partial coverage instead of stale 100%');
-  assert.match(card.innerHTML,/24\\.5p/,'historical Octopus price is plotted from the selected response');
+  assert.match(card.innerHTML,/27\.0% · Partial history/,'Year shows API-reported partial coverage instead of stale 100%');
+  assert.match(card.innerHTML,/24\.5p/,'historical Octopus price is plotted from the selected response');
   console.log('HOUSE_STATUS_DEV_PERIOD_SWITCH_RUNTIME_REGRESSION=PASS');
 })().catch(error=>{console.error(error);process.exitCode=1;});
 
