@@ -74,11 +74,11 @@ def test_rollup_cost_uses_domestic_import_and_octopus_rate(
 
     result = history.read_rollups(timestamp, timestamp + 1800, "30m")
     point = result["points"][0]
-    assert point["grid_import_kwh"] == 0.0005
-    assert point["domestic_import_kwh"] == 0.0003
+    assert point["grid_import_kwh"] == 0.5
+    assert point["domestic_import_kwh"] == 0.3
     assert point["import_p_per_kwh"] == 25.0
-    assert point["domestic_import_cost_gbp"] == 0.000075
-    assert result["totals"]["domestic_import_cost_gbp"] == 0.000075
+    assert point["domestic_import_cost_gbp"] == 0.075
+    assert result["totals"]["domestic_import_cost_gbp"] == 0.075
 
 
 def test_missing_octopus_price_is_explicit_not_zero(
