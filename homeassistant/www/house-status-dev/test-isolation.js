@@ -9,8 +9,8 @@ const live=fs.readFileSync(path.join(__dirname,'../../releases/house-status/live
 const deploy=fs.readFileSync(path.join(__dirname,'../../../scripts/lifeos-deploy-house-status-dev-dashboard.sh'),'utf8');
 const liveWorkflow=fs.readFileSync(path.join(__dirname,'../../../.github/workflows/house-status-live-deploy.yml'),'utf8');
 const liveDeploy=fs.readFileSync(path.join(__dirname,'../../../scripts/lifeos-deploy-house-status-dashboard.sh'),'utf8');
-assert.match(dev,/customElements\.define\('lifeos-house-status-dev-v2'/);
-assert.match(dev,/type:'lifeos-house-status-dev-v2'/);
+assert.match(dev,/customElements\.define\('lifeos-house-status-dev'/);
+assert.match(dev,/type:'lifeos-house-status-dev'/);
 assert.match(dev,/customElements\.define\('lifeos-house-status-dev-editor-v2'/);
 assert.match(dev,/House Status DEV/);
 assert.match(dev,/Doorbell DEV/);
