@@ -58,13 +58,13 @@ def test_local_failure_never_falls_back_to_cloud(monkeypatch):
     assert called == ["ollama"]
 
 
-def test_ai_lease_marks_home_assistant_as_the_wake_owner(monkeypatch):
+def test_ai_lease_has_no_secondary_wake_owner_marker(monkeypatch):
     published = []
     monkeypatch.setattr(BROKER.subprocess, "run", lambda args, **kwargs: published.append(args))
-    BROKER._publish_lease("active", lease_id="ha-test", wake_via_ha=True)
+    BROKER._publish_lease("active", lease_id="stable-endpoint")
     payload = json.loads(published[0][published[0].index("-m") + 1])
-    assert payload["wake_via_ha"] is True
-    assert payload["owner"] == "ai-broker:ha-test"
+    assert "wake_via_ha" not in payload
+    assert payload["owner"] == "ai-broker:stable-endpoint"
 
 
 def test_forced_cloud_provider_must_still_be_policy_eligible(monkeypatch, tmp_path):
