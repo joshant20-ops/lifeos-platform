@@ -12,9 +12,9 @@ assert_service_unavailable() {
 import json,sys
 v=json.loads(sys.argv[1])
 assert v.get("accessible") is False, v
-assert v.get("physical_power") == "UNKNOWN", v
+physical_power=v.get("physical_power") or "UNKNOWN"
 print("TOWER_ACCESS_UNAVAILABLE=PASS")
-print("PHYSICAL_POWER=UNKNOWN (recorded; not a gate)")
+print(f"PHYSICAL_POWER={physical_power} (informational; not a gate)")
 PY
   python3 - <<'PY'
 import socket
