@@ -76,7 +76,254 @@ curl -fsS --max-time 5 "$BASE_URL/api/tags" >/dev/null
 curl -fsS --max-time 5 "$BASE_URL/api/ps" >/dev/null
 sleep 3
 assert_cold_precondition
-passive_wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+gateway_log="$XDG_RUNTIME_DIR/lifeos-openhands-local-ai.log"
+test -r "$gateway_log"
+passive_wakes=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE
+test "$passive_wakes" -eq 0
+echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import concurrent.futures,json,pathlib,sys,urllib.request
+base=sys.argv[1]
+def infer(label):
+    p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request "+label,"stream":False}
+    q=urllib.request.Request(base+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    assert isinstance(v.get("response"),str) and v["response"].strip(),v
+    return v["response"]
+def broker_infer():
+    token=pathlib.Path.home().joinpath(".config/lifeos/ai-broker.token").read_text().strip()
+    p={"model":"lifeos-local-only-normal","messages":[{"role":"user","content":"Call report_test_value with value ENDPOINT_BROKER_WAKE_OK. Do not answer normally."}],"stream":False,"tools":[{"type":"function","function":{"name":"report_test_value","description":"Report a harmless endpoint acceptance value.","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}}],"tool_choice":"required"}
+    q=urllib.request.Request("http://127.0.0.1:8790/v1/chat/completions",data=json.dumps(p).encode(),headers={"Content-Type":"application/json","Authorization":"Bearer "+token},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    calls=v["choices"][0]["message"].get("tool_calls") or []
+    assert any(c.get("function",{}).get("name")=="report_test_value" for c in calls),v
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+    futures=[ex.submit(infer,"cold-A"),ex.submit(infer,"cold-B"),ex.submit(broker_infer)]
+    [f.result(timeout=1600) for f in futures]
+print("ORIGINAL_COLD_INFERENCE_AND_CONCURRENCY=PASS")
+PY
+ready=0
+for _ in $(seq 1 120); do
+  if state=$(tower_state 2>/dev/null) && python3 - "$state" <<'PY' >/dev/null 2>&1
+import json,sys
+raise SystemExit(0 if json.loads(sys.argv[1]).get("accessible") is True else 1)
+PY
+  then if curl -fsS --max-time 3 http://192.168.0.201:11434/api/tags >/dev/null; then ready=1; break; fi; fi
+  sleep 2
+done
+test "$ready" -eq 1; echo 'TOWER_ACCESSIBLE_AND_OLLAMA_READY=PASS'
+wakes=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE
+test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import json,sys,urllib.request
+p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request warm.","stream":False}
+q=urllib.request.Request(sys.argv[1]+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
+assert isinstance(v.get("response"),str) and v["response"].strip(),v
+print("WARM_INFERENCE=PASS")
+PY
+wakes_after=$(grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE
+test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
+echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
+ "$gateway_log" || true)
+test "$passive_wakes" -eq 0
+echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import concurrent.futures,json,pathlib,sys,urllib.request
+base=sys.argv[1]
+def infer(label):
+    p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request "+label,"stream":False}
+    q=urllib.request.Request(base+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    assert isinstance(v.get("response"),str) and v["response"].strip(),v
+    return v["response"]
+def broker_infer():
+    token=pathlib.Path.home().joinpath(".config/lifeos/ai-broker.token").read_text().strip()
+    p={"model":"lifeos-local-only-normal","messages":[{"role":"user","content":"Call report_test_value with value ENDPOINT_BROKER_WAKE_OK. Do not answer normally."}],"stream":False,"tools":[{"type":"function","function":{"name":"report_test_value","description":"Report a harmless endpoint acceptance value.","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}}],"tool_choice":"required"}
+    q=urllib.request.Request("http://127.0.0.1:8790/v1/chat/completions",data=json.dumps(p).encode(),headers={"Content-Type":"application/json","Authorization":"Bearer "+token},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    calls=v["choices"][0]["message"].get("tool_calls") or []
+    assert any(c.get("function",{}).get("name")=="report_test_value" for c in calls),v
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+    futures=[ex.submit(infer,"cold-A"),ex.submit(infer,"cold-B"),ex.submit(broker_infer)]
+    [f.result(timeout=1600) for f in futures]
+print("ORIGINAL_COLD_INFERENCE_AND_CONCURRENCY=PASS")
+PY
+ready=0
+for _ in $(seq 1 120); do
+  if state=$(tower_state 2>/dev/null) && python3 - "$state" <<'PY' >/dev/null 2>&1
+import json,sys
+raise SystemExit(0 if json.loads(sys.argv[1]).get("accessible") is True else 1)
+PY
+  then if curl -fsS --max-time 3 http://192.168.0.201:11434/api/tags >/dev/null; then ready=1; break; fi; fi
+  sleep 2
+done
+test "$ready" -eq 1; echo 'TOWER_ACCESSIBLE_AND_OLLAMA_READY=PASS'
+wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import json,sys,urllib.request
+p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request warm.","stream":False}
+q=urllib.request.Request(sys.argv[1]+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
+assert isinstance(v.get("response"),str) and v["response"].strip(),v
+print("WARM_INFERENCE=PASS")
+PY
+wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
+echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
+ "$gateway_log" || true)
+test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import json,sys,urllib.request
+p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request warm.","stream":False}
+q=urllib.request.Request(sys.argv[1]+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
+assert isinstance(v.get("response"),str) and v["response"].strip(),v
+print("WARM_INFERENCE=PASS")
+PY
+wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
+echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
+ "$gateway_log" || true)
+test "$passive_wakes" -eq 0
+echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import concurrent.futures,json,pathlib,sys,urllib.request
+base=sys.argv[1]
+def infer(label):
+    p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request "+label,"stream":False}
+    q=urllib.request.Request(base+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    assert isinstance(v.get("response"),str) and v["response"].strip(),v
+    return v["response"]
+def broker_infer():
+    token=pathlib.Path.home().joinpath(".config/lifeos/ai-broker.token").read_text().strip()
+    p={"model":"lifeos-local-only-normal","messages":[{"role":"user","content":"Call report_test_value with value ENDPOINT_BROKER_WAKE_OK. Do not answer normally."}],"stream":False,"tools":[{"type":"function","function":{"name":"report_test_value","description":"Report a harmless endpoint acceptance value.","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}}],"tool_choice":"required"}
+    q=urllib.request.Request("http://127.0.0.1:8790/v1/chat/completions",data=json.dumps(p).encode(),headers={"Content-Type":"application/json","Authorization":"Bearer "+token},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    calls=v["choices"][0]["message"].get("tool_calls") or []
+    assert any(c.get("function",{}).get("name")=="report_test_value" for c in calls),v
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+    futures=[ex.submit(infer,"cold-A"),ex.submit(infer,"cold-B"),ex.submit(broker_infer)]
+    [f.result(timeout=1600) for f in futures]
+print("ORIGINAL_COLD_INFERENCE_AND_CONCURRENCY=PASS")
+PY
+ready=0
+for _ in $(seq 1 120); do
+  if state=$(tower_state 2>/dev/null) && python3 - "$state" <<'PY' >/dev/null 2>&1
+import json,sys
+raise SystemExit(0 if json.loads(sys.argv[1]).get("accessible") is True else 1)
+PY
+  then if curl -fsS --max-time 3 http://192.168.0.201:11434/api/tags >/dev/null; then ready=1; break; fi; fi
+  sleep 2
+done
+test "$ready" -eq 1; echo 'TOWER_ACCESSIBLE_AND_OLLAMA_READY=PASS'
+wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import json,sys,urllib.request
+p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request warm.","stream":False}
+q=urllib.request.Request(sys.argv[1]+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
+assert isinstance(v.get("response"),str) and v["response"].strip(),v
+print("WARM_INFERENCE=PASS")
+PY
+wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
+echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
+ "$gateway_log" || true)
+test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
+echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
+ "$gateway_log" || true)
+test "$passive_wakes" -eq 0
+echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import concurrent.futures,json,pathlib,sys,urllib.request
+base=sys.argv[1]
+def infer(label):
+    p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request "+label,"stream":False}
+    q=urllib.request.Request(base+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    assert isinstance(v.get("response"),str) and v["response"].strip(),v
+    return v["response"]
+def broker_infer():
+    token=pathlib.Path.home().joinpath(".config/lifeos/ai-broker.token").read_text().strip()
+    p={"model":"lifeos-local-only-normal","messages":[{"role":"user","content":"Call report_test_value with value ENDPOINT_BROKER_WAKE_OK. Do not answer normally."}],"stream":False,"tools":[{"type":"function","function":{"name":"report_test_value","description":"Report a harmless endpoint acceptance value.","parameters":{"type":"object","properties":{"value":{"type":"string"}},"required":["value"]}}}],"tool_choice":"required"}
+    q=urllib.request.Request("http://127.0.0.1:8790/v1/chat/completions",data=json.dumps(p).encode(),headers={"Content-Type":"application/json","Authorization":"Bearer "+token},method="POST")
+    with urllib.request.urlopen(q,timeout=1500) as r: v=json.load(r)
+    calls=v["choices"][0]["message"].get("tool_calls") or []
+    assert any(c.get("function",{}).get("name")=="report_test_value" for c in calls),v
+with concurrent.futures.ThreadPoolExecutor(max_workers=3) as ex:
+    futures=[ex.submit(infer,"cold-A"),ex.submit(infer,"cold-B"),ex.submit(broker_infer)]
+    [f.result(timeout=1600) for f in futures]
+print("ORIGINAL_COLD_INFERENCE_AND_CONCURRENCY=PASS")
+PY
+ready=0
+for _ in $(seq 1 120); do
+  if state=$(tower_state 2>/dev/null) && python3 - "$state" <<'PY' >/dev/null 2>&1
+import json,sys
+raise SystemExit(0 if json.loads(sys.argv[1]).get("accessible") is True else 1)
+PY
+  then if curl -fsS --max-time 3 http://192.168.0.201:11434/api/tags >/dev/null; then ready=1; break; fi; fi
+  sleep 2
+done
+test "$ready" -eq 1; echo 'TOWER_ACCESSIBLE_AND_OLLAMA_READY=PASS'
+wakes=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import json,sys,urllib.request
+p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request warm.","stream":False}
+q=urllib.request.Request(sys.argv[1]+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
+assert isinstance(v.get("response"),str) and v["response"].strip(),v
+print("WARM_INFERENCE=PASS")
+PY
+wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
+echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
+ "$gateway_log" || true)
+test "$wakes" -eq 1; echo 'COALESCED_LOGICAL_WAKE=PASS'
+python3 - "$BASE_URL" <<'PY'
+import json,sys,urllib.request
+p={"model":"gpt-oss:20b","prompt":"Reply with READY. Request warm.","stream":False}
+q=urllib.request.Request(sys.argv[1]+"/api/generate",data=json.dumps(p).encode(),headers={"Content-Type":"application/json"},method="POST")
+with urllib.request.urlopen(q,timeout=900) as r: v=json.load(r)
+assert isinstance(v.get("response"),str) and v["response"].strip(),v
+print("WARM_INFERENCE=PASS")
+PY
+wakes_after=$(journalctl --user -u lifeos-openhands-local-ai.service --since "$STARTED_AT" -o cat --no-pager | grep -c '^TOWER_WAKE_REQUEST=CONTROLLER_LEASE$' || true)
+test "$wakes_after" -eq "$wakes"; echo 'NO_SECOND_WAKE=PASS'
+systemctl is-active --quiet lifeos-autonomous-agent.service
+systemctl is-active --quiet lifeos-ha-issue-queue-bridge.service
+curl -fsS --max-time 10 http://127.0.0.1:8110/api/energy/current >/dev/null
+echo 'LOCAL_LIFEOS_HA_UNAFFECTED=PASS'
+echo 'WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS'
+ "$gateway_log" || true)
 test "$passive_wakes" -eq 0
 echo 'PASSIVE_STATUS_AND_MODEL_DISCOVERY_NO_WAKE=PASS'
 python3 - "$BASE_URL" <<'PY'
