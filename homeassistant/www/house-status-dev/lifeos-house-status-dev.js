@@ -140,12 +140,12 @@ class LifeOSHouseStatusCard extends HTMLElement {
     this.innerHTML=css+`<div class="app">${nav}${body}</div>`; this._doorbellHost=null; if(mode==='doorbell'){const host=this.querySelector('[data-doorbell-card]');this._doorbellHost=host;if(host)host.__lifeosDoorbellHass=this._hass;const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;doorbell?.mount?.(host,this._hass);}
     const menu=this.querySelector('.hamb');if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
     this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this._mode=el.dataset.mode;this.render();});
-    this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;this._energyHistoryKey=null;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this.render();});
+    this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;this._energyHistoryKey=null;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this._energyHistory=[];this._energyCoverage=null;this.render();this._loadEnergyHistory();});
     this.querySelectorAll('[data-shift]').forEach(el=>el.onclick=()=>this.shiftPeriod(Number(el.dataset.shift)));
     const picker=this.querySelector('[data-date-picker]');if(picker)picker.onchange=()=>{if(!picker.value)return;const [y,m,d]=picker.value.split('-').map(Number);const chosen=new Date(y,m-1,d);if(Number.isNaN(chosen.getTime()))return;this._anchor=chosen;this._energyHistoryKey=null;if(this.period()==='today')this._period='day';this.render();this._loadEnergyHistory();};
   }
   async _loadEnergyHistory(){
-    if(!this._hass||this._energyHistoryLoading)return;
+    if(!this._hass)return;
     const period=this.period(),start=this.periodStart(),end=new Date(start);
     if(period==='week')end.setDate(end.getDate()+7);
     else if(period==='month')end.setMonth(end.getMonth()+1);
@@ -155,8 +155,16 @@ class LifeOSHouseStatusCard extends HTMLElement {
     if(effectiveEnd<=start.getTime()){this._energyHistory=[];this._energyHistoryError=null;this.render();return;}
     const useRollups=true;
     const key=period+'|'+start.toISOString()+'|'+effectiveEnd;
-    if(this._energyHistoryKey===key)return;
+    if(this._energyHistoryKey===key||this._energyHistoryRequestedKey===key)return;
+    this._energyHistoryController?.abort();
+    const requestId=(this._energyHistoryRequestId||0)+1;
+    this._energyHistoryRequestId=requestId;
+    this._energyHistoryRequestedKey=key;
+    this._energyHistoryController=new AbortController();
+    this._energyHistory=[];
+    this._energyCoverage=null;
     this._energyHistoryLoading=true;
+    this.render();
     this._energyHistoryError=null;
     try{
       let url;
@@ -173,12 +181,14 @@ class LifeOSHouseStatusCard extends HTMLElement {
         apiOrigin.port='8110';
         url=new URL('/api/energy/report',apiOrigin).toString()+'?hours='+hours;
       }
-      const data=await fetch(url,{credentials:'omit'}).then(r=>{
+      const data=await fetch(url,{credentials:'omit',signal:this._energyHistoryController.signal}).then(r=>{
         if(!r.ok)throw new Error('energy history HTTP '+r.status);
         return r.json();
       });
       this._energyTimezone=data?.timezone||this._energyTimezone||'Europe/London';
-      this._energyCoverage=Number(data?.coverage_percent)||0;
+      if(requestId!==this._energyHistoryRequestId)return;
+      const reportedCoverage=Number(data?.coverage_percent);
+      this._energyCoverage=Number.isFinite(reportedCoverage)?Math.max(0,Math.min(100,reportedCoverage)):0;
       const intervals=useRollups
         ?(Array.isArray(data?.points)?data.points:[]).map(o=>({
           valid_from:new Date(Number(o.timestamp)*1000).toISOString(),
@@ -201,12 +211,19 @@ class LifeOSHouseStatusCard extends HTMLElement {
       this._energyHistoryKey=key;
       this._energyHistoryError=null;
     }catch(e){
-      console.warn('House Status DEV source-backed energy history load failed',e);
-      this._energyHistory=[];
-      this._energyHistoryError='Historical electricity data is temporarily unavailable.';
+      if(requestId!==this._energyHistoryRequestId)return;
+      if(e?.name!=='AbortError'){
+        console.warn('House Status DEV source-backed energy history load failed',e);
+        this._energyHistory=[];
+        this._energyHistoryError='Historical electricity data is temporarily unavailable.';
+      }
     }finally{
-      this._energyHistoryLoading=false;
-      this.render();
+      if(requestId===this._energyHistoryRequestId){
+        this._energyHistoryLoading=false;
+        this._energyHistoryRequestedKey=null;
+        this._energyHistoryController=null;
+        this.render();
+      }
     }
   }
 
