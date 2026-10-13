@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from io import BytesIO
 from urllib.error import HTTPError
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time as datetime_time, timedelta, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -89,6 +89,10 @@ class OctopusTariffCacheTests(unittest.TestCase):
         self.assertGreater(age, CACHE.PRICE_CACHE_TTL_SECONDS)
         self.assertTrue(failed)
 
+    def test_datetime_time_remains_available_for_tariff_boundaries(self):
+        self.assertIs(OCTOPUS.time, datetime_time)
+        self.assertEqual(OCTOPUS.time.min, datetime_time.min)
+
     def test_transient_octopus_http_error_is_retried(self):
         failure = HTTPError(
             "https://api.octopus.energy/v1/example",
@@ -102,7 +106,7 @@ class OctopusTariffCacheTests(unittest.TestCase):
         response.read.return_value = b'{"available": true}'
         with (
             patch.object(OCTOPUS, "urlopen", side_effect=[failure, response]) as request,
-            patch.object(OCTOPUS.time, "sleep"),
+            patch.object(OCTOPUS._time, "sleep"),
         ):
             result = OCTOPUS._request_json("https://api.octopus.energy/v1/example")
         self.assertEqual(result, {"available": True})
