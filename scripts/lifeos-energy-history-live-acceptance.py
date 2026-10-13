@@ -25,6 +25,91 @@ def epoch(value: str) -> int:
     return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp())
 
 
+
+def validate_period(
+    base_url: str,
+    name: str,
+    start_date: date,
+    end_date: date,
+    expected_buckets: int,
+    zone: ZoneInfo,
+) -> dict:
+    start = datetime.combine(start_date, time.min, tzinfo=zone)
+    end = datetime.combine(end_date, time.min, tzinfo=zone)
+    start_epoch, end_epoch = int(start.timestamp()), int(end.timestamp())
+    query = urlencode({"start": start_epoch, "end": end_epoch, "granularity": "30m"})
+    result = get_json(base_url, "/api/energy/rollups?" + query)
+    points = result.get("points")
+    expected_slots = int((end_epoch - start_epoch) / 1800)
+    if result.get("timezone") != "Europe/London":
+        raise RuntimeError(f"{name} rollup timezone is not Europe/London")
+    if not isinstance(points, list) or len(points) != expected_slots:
+        count = len(points) if isinstance(points, list) else 0
+        raise RuntimeError(f"{name} rollup returned {count}/{expected_slots} half-hours")
+    if result.get("coverage_percent", 0) < 99 or result.get("missing_price_slots") != 0:
+        raise RuntimeError(
+            f"{name} rollup coverage/prices incomplete: "
+            f"coverage={result.get('coverage_percent')}% "
+            f"missing_prices={result.get('missing_price_slots')}"
+        )
+    if any(
+        point.get("domestic_import_cost_gbp") is None
+        or point.get("import_p_per_kwh") is None
+        for point in points
+    ):
+        raise RuntimeError(f"{name} rollup has missing Enphase cost or Octopus price")
+    sample_coverage = [
+        float(point.get("sample_coverage_percent", 0)) for point in points
+    ]
+    mean_sample_coverage = sum(sample_coverage) / len(sample_coverage)
+    if mean_sample_coverage < 90:
+        raise RuntimeError(
+            f"{name} Enphase sample coverage below 90%: "
+            f"{mean_sample_coverage:.1f}%"
+        )
+
+    buckets: dict[str, dict[str, float]] = {}
+    for point in points:
+        stamp = int(point["timestamp"])
+        if stamp < start_epoch or stamp >= end_epoch or stamp % 1800:
+            raise RuntimeError(f"{name} rollup contains an invalid UTC boundary")
+        local = datetime.fromtimestamp(stamp, zone)
+        if datetime.fromisoformat(point["local_from"]).utcoffset() != local.utcoffset():
+            raise RuntimeError(f"{name} local tariff boundary offset is invalid")
+        if period_kind == "month":
+            bucket_date = local.date() - timedelta(days=local.date().weekday())
+            key = bucket_date.isoformat()
+        elif period_kind == "year":
+            key = local.strftime("%Y-%m")
+        else:
+            key = local.date().isoformat()
+        bucket = buckets.setdefault(key, {"usage": 0.0, "cost": 0.0, "count": 0})
+        bucket["usage"] += float(point["domestic_import_kwh"])
+        bucket["cost"] += float(point["domestic_import_cost_gbp"])
+        bucket["count"] += 1
+
+    if len(buckets) != expected_buckets:
+        raise RuntimeError(
+            f"{name} dashboard aggregation produced {len(buckets)}/"
+            f"{expected_buckets} expected buckets"
+        )
+    if any(
+        bucket["count"] <= 0 or bucket["usage"] < 0 or bucket["cost"] < 0
+        for bucket in buckets.values()
+    ):
+        raise RuntimeError(f"{name} dashboard aggregation contains an invalid bucket")
+
+    usage = sum(bucket["usage"] for bucket in buckets.values())
+    cost = sum(bucket["cost"] for bucket in buckets.values())
+    print(
+        f"ENERGY_HISTORY_{name.upper()}_VIEW=PASS "
+        f"period={start_date.isoformat()}..{end_date.isoformat()} "
+        f"half_hours={len(points)} buckets={len(buckets)} "
+        f"domestic_import_kwh={usage:.3f} cost_gbp={cost:.2f} "
+        f"mean_sample_coverage_percent={mean_sample_coverage:.1f}"
+    )
+    return result
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", default="http://127.0.0.1:8110")
@@ -111,6 +196,26 @@ def main() -> None:
             raise RuntimeError("Octopus half-hour price differs from interval report")
 
     low_sample_slots = sum(1 for value in coverages if value < 80)
+    period_kind = "day"
+    validate_period(
+        args.base_url, "day", date(2026, 9, 29), date(2026, 9, 30), 1, zone
+    )
+    period_kind = "week"
+    validate_period(
+        args.base_url, "week", date(2026, 9, 28), date(2026, 10, 5), 7, zone
+    )
+    period_kind = "month"
+    validate_period(
+        args.base_url, "month", date(2026, 9, 1), date(2026, 10, 1), 5, zone
+    )
+    current_year_end = datetime.now(zone).date() + timedelta(days=1)
+    period_kind = "year"
+    validate_period(
+        args.base_url, "year", date(2026, 1, 1), current_year_end,
+        len({date(2026, month, 1).strftime("%Y-%m") for month in range(1, current_year_end.month + 1)}),
+        zone,
+    )
+
     print(
         "ENERGY_HISTORY_WEEK_COMPARISON=PASS "
         f"week={week_start.isoformat()} half_hours={len(points)} "
