@@ -110,12 +110,15 @@ def main() -> None:
         ) > 0.001:
             raise RuntimeError("Octopus half-hour price differs from interval report")
 
+    low_sample_slots = sum(1 for value in coverages if value < 80)
     print(
         "ENERGY_HISTORY_WEEK_COMPARISON=PASS "
         f"week={week_start.isoformat()} half_hours={len(points)} "
         f"Enphase_domestic_import_kwh={rollup_usage:.3f} "
         f"Octopus_domestic_import_cost_gbp={rollup_cost:.2f} "
-        f"coverage_percent={rollups['coverage_percent']}"
+        f"coverage_percent={rollups['coverage_percent']} "
+        f"Enphase_mean_sample_coverage_percent={mean_coverage:.1f} "
+        f"Enphase_low_sample_slots={low_sample_slots}"
     )
     print("ENERGY_HISTORY_API_LIVE_ACCEPTANCE=PASS")
 
