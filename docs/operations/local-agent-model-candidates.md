@@ -60,7 +60,7 @@ Rollback is a settings-only change back to `openai/qwen2.5-coder:7b-instruct` wi
 
 On 2026-10-13, stable endpoint run #38379449425 passed from the cold service precondition. It confirmed `ai.lan:18114` resolved to the Pi, physical power `UNKNOWN` remained informational, SSH/Ollama were unavailable, and no lease existed before the request. Passive health/model discovery did not wake Tower. Concurrent original inference and broker requests succeeded after one controller-owned wake; the warm request succeeded without another wake. The run ended with `WAKE_AWARE_STABLE_AI_ACCEPTANCE=PASS` and Home Assistant/local LifeOS health passed.
 
-The governed 600-second lifecycle result will be recorded once its bounded acceptance completes.
+This acceptance covers cold-start wake, readiness, request proxying, lease release, and restart/recovery. The existing Home Assistant governed path remains responsible for Tower shutdown; this stable-endpoint work leaves it unchanged.
 
 ## Re-test policy
 
