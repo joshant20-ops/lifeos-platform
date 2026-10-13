@@ -6,7 +6,7 @@ HA=Path('/opt/stacks/homeassistant/config')
 DASH=HA/'.storage/lovelace.dashboard_house_status'
 REG=HA/'.storage/lovelace_dashboards'
 RESOURCE=HA/'.storage/lovelace_resources'
-CARD=HA/'www'/'house-status'/'lifeos-house-status-v28.js'
+CARD=HA/'www'/'house-status'/'lifeos-house-status-v29.js'
 LEGACY_CARD=HA/'www'/'house-status'/'lifeos-house-status-v27.js'
 DOORBELL=HA/'www'/'house-status'/'lifeos-house-status-doorbell.js'
 CONFIG=HA/'configuration.yaml'
@@ -57,7 +57,7 @@ if '\"extend_to\": \"false\"' in blob: fail('invalid ApexCharts boolean encoding
 if 'sensor.lifeos_domestic_import_cost' not in combined or 'sensor.lifeos_domestic_import_energy' not in combined: fail('domestic battery-excluded ledger not wired')
 if 'import_price_available===true' not in combined or 'import_p_per_kwh' not in combined: fail('published Octopus interval pricing contract missing')
 if "| round(2)" not in combined and '.toFixed(2)' not in combined: fail('currency/energy precision formatting missing')
-if "customElements.define('lifeos-house-status-v28'" not in card_blob: fail('purpose-built House Status frontend missing')
+if "customElements.define('lifeos-house-status-v29'" not in card_blob: fail('purpose-built House Status frontend missing')
 if 'Charge only' not in combined: fail('EV charge-only contract missing')
 doorbell=next((v for v in views if v.get('path')=='doorbell'),None)
 if not doorbell: fail('native Doorbell view missing')
@@ -81,11 +81,11 @@ if registered: fail('legacy House Status Lovelace resource remains',repr(registe
 card=CARD
 if not card.exists() or 'customElements.define' not in card.read_text(): fail('House Status frontend asset missing')
 cfg=CONFIG.read_text()
-if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v28' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1' not in cfg: fail('native House Status panel_custom registration missing')
+if 'panel_custom:' not in cfg or 'name: lifeos-house-status-v29' not in cfg or 'module_url: /local/house-status/lifeos-house-status-v29.js?v=energy-pages-20261013-1' not in cfg: fail('native House Status panel_custom registration missing')
 if sum(1 for line in cfg.splitlines() if line.strip()=="url_path: house-status")!=1: fail('duplicate live House Status panel registrations remain')
 if 'lifeos-house-status-v4.js' in cfg or 'lifeos-house-status-v5.js' in cfg: fail('stale House Status panel remains')
 release_dir=REPO/'homeassistant'/'releases'/'house-status'/'live'
-for runtime,release in ((CARD,release_dir/'lifeos-house-status-v28.js'),
+for runtime,release in ((CARD,release_dir/'lifeos-house-status-v29.js'),
                         (LEGACY_CARD,release_dir/'lifeos-house-status-v27.js'),
                         (DOORBELL,release_dir/'lifeos-house-status-doorbell.js')):
  if not release.exists(): fail('frozen live release file missing',str(release))
@@ -96,7 +96,7 @@ module_blob=blob+doorbell_blob
 if 'loadCardHelpers' not in doorbell_blob or 'createCardElement' not in doorbell_blob: fail('embedded Home Assistant camera-card renderer missing')
 if "camera_view:'live'" not in doorbell_blob or "entity:'camera.front_door_live_view'" not in doorbell_blob: fail('embedded live Doorbell camera config missing')
 if 'Camera view could not load' not in doorbell_blob: fail('camera renderer failure fallback missing')
-for marker in ['hass-toggle-menu','aria-label="Open Home Assistant menu"','standingChargeFor=r=>','Standing charge','1p / half-hour','flowPositive=todayReport.map','flowNegative=todayReport.map','data-zero-line','data-doorbell-card','window.loadCardHelpers','createCardElement','Camera view could not load','.doorcam','Today','Tomorrow','Octopus price (p/kWh)','Cost (£)','Gas cost','axis-cost','axis-price','data-period="day"','data-period="month"','data-period="year"','data-period="range"','data-shift="-1"','data-date-picker','type="date"','rawHi=vals.length?Math.max(...vals):0','rawPlo=pvals.length?Math.min(...pvals):0','Electricity used (excluding battery and car charging) and gas. Costs shown in £.','data-mode="doorbell"','band-free','band-powerdown','data-energy-band','Free electricity','Power down','joined_events']:
+for marker in ['hass-toggle-menu','aria-label="Open Home Assistant menu"','standingChargeFor=r=>','Standing charge','1p / half-hour','flowPositive=aggregate(todayReport.map','flowNegative=aggregate(todayReport.map','data-zero-line','data-doorbell-card','window.loadCardHelpers','createCardElement','Camera view could not load','.doorcam','Today','Tomorrow','Octopus price (p/kWh)','Cost (£)','Gas cost','axis-cost','axis-price','data-period="day"','data-period="month"','data-period="year"','data-period="range"','data-shift="-1"','data-date-picker','type="date"','rawHi=vals.length?Math.max(...vals):0','rawPlo=pvals.length?Math.min(...pvals):0','Electricity used, excluding battery and car charging ·','data-mode="doorbell"','band-free','band-powerdown','data-energy-band','Free electricity','Power down','joined_events']:
  if marker not in module_blob: fail('reference UI marker missing',marker)
 if '<div class="tabs">' in blob: fail('duplicate in-page mode strip returned')
 # Domestic view must not expose export line/card; export remains available to Full Energy Flow and total-cost calculation.
