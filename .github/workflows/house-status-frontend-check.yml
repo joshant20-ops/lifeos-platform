@@ -39,6 +39,8 @@ jobs:
       - run: node --check homeassistant/www/house-status/lifeos-house-status-v27.js
       - run: node --check homeassistant/www/house-status/lifeos-house-status-doorbell.js
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v28.js
+      - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v29.js
+      - run: TZ=Europe/London node homeassistant/test-house-status-live-energy.js
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v27.js
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-doorbell.js
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-doorbell-v28.js
