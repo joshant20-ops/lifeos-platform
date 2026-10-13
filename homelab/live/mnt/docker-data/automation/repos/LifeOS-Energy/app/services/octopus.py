@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta, timezone
 import json
 import os
 from pathlib import Path
-import time
+import time as _time
 from typing import Any
 from urllib.parse import urlencode, urljoin
 from urllib.error import HTTPError, URLError
@@ -82,12 +82,12 @@ def _request_json(
                 delay = min(4.0, max(0.0, float(exc.headers.get("Retry-After", ""))))
             except (TypeError, ValueError):
                 delay = 0.5 * (2 ** attempt)
-            time.sleep(delay)
+            _time.sleep(delay)
         except (URLError, OSError, TimeoutError) as exc:
             last_error = exc
             if attempt == 2:
                 break
-            time.sleep(0.5 * (2 ** attempt))
+            _time.sleep(0.5 * (2 ** attempt))
         except Exception as exc:
             raise OctopusError(
                 f"Octopus API request failed: {exc}"
