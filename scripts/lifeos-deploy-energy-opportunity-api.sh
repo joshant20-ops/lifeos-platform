@@ -28,7 +28,7 @@ live_main_sha=$(sha "$TARGET/app/main.py")
 [[ "$live_main_sha" == "$OLD_MAIN_SHA" || "$live_main_sha" == "$new_main_sha" ]] || \
   fail live_energy_main_has_unreviewed_drift
 
-runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py"
+runuser -u joshan -- /usr/bin/python3 -m py_compile "$SOURCE/app/services/interval_ledger.py" "$SOURCE/app/routers/energy.py" "$SOURCE/app/services/history.py" "$SOURCE/app/services/octopus.py"
 runuser -u joshan -- /usr/bin/python3 "$PLATFORM/tests/test_energy_opportunity_service.py"
 echo ENERGY_OPPORTUNITY_API_TESTS=PASS
 
@@ -38,6 +38,8 @@ for pair in \
   "$TARGET/app/main.py:energy/app/main.py" \
   "$TARGET/app/services/opportunities.py:energy/app/services/opportunities.py" \
   "$TARGET/app/services/interval_ledger.py:energy/app/services/interval_ledger.py" \
+  "$TARGET/app/services/history.py:energy/app/services/history.py" \
+  "$TARGET/app/services/octopus.py:energy/app/services/octopus.py" \
   "$TARGET/app/routers/opportunities.py:energy/app/routers/opportunities.py" \
   "$TARGET/app/routers/energy.py:energy/app/routers/energy.py" \
   "$HA_TARGET/packages/lifeos_energy.yaml:ha/packages/lifeos_energy.yaml" \
@@ -59,6 +61,8 @@ rollback() {
     "energy/app/main.py:$TARGET/app/main.py" \
     "energy/app/services/opportunities.py:$TARGET/app/services/opportunities.py" \
     "energy/app/services/interval_ledger.py:$TARGET/app/services/interval_ledger.py" \
+    "energy/app/services/history.py:$TARGET/app/services/history.py" \
+    "energy/app/services/octopus.py:$TARGET/app/services/octopus.py" \
     "energy/app/routers/opportunities.py:$TARGET/app/routers/opportunities.py" \
     "energy/app/routers/energy.py:$TARGET/app/routers/energy.py" \
     "ha/packages/lifeos_energy.yaml:$HA_TARGET/packages/lifeos_energy.yaml" \
@@ -90,6 +94,10 @@ install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/routers/opportunities.py" "$TARGET/app/routers/opportunities.py"
 install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/services/interval_ledger.py" "$TARGET/app/services/interval_ledger.py"
+install -o joshan -g joshan -m 0644 \
+  "$SOURCE/app/services/history.py" "$TARGET/app/services/history.py"
+install -o joshan -g joshan -m 0644 \
+  "$SOURCE/app/services/octopus.py" "$TARGET/app/services/octopus.py"
 install -o joshan -g joshan -m 0644 \
   "$SOURCE/app/routers/energy.py" "$TARGET/app/routers/energy.py"
 
