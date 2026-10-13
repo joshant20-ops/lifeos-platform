@@ -161,15 +161,19 @@ class LifeOSHouseStatusCard extends HTMLElement {
     try{
       let url;
       if(useRollups){
-        url='/lifeos-energy-api/api/energy/rollups?start='+Math.floor(start.getTime()/1000)+
+        const apiOrigin=new URL(window.location.origin);
+        apiOrigin.port='8110';
+        url=new URL('/api/energy/rollups',apiOrigin).toString()+'?start='+Math.floor(start.getTime()/1000)+
           '&end='+Math.ceil(effectiveEnd/1000)+'&granularity=30m';
       }else{
         // The report endpoint is relative to now, so include the selected historical
         // day through now and filter its half-hour rows below.
         const hours=Math.max(1,Math.min(840,Math.ceil((now-start.getTime())/3600000)+2));
-        url='/lifeos-energy-api/api/energy/report?hours='+hours;
+        const apiOrigin=new URL(window.location.origin);
+        apiOrigin.port='8110';
+        url=new URL('/api/energy/report',apiOrigin).toString()+'?hours='+hours;
       }
-      const data=await fetch(url,{credentials:'same-origin'}).then(r=>{
+      const data=await fetch(url,{credentials:'omit'}).then(r=>{
         if(!r.ok)throw new Error('energy history HTTP '+r.status);
         return r.json();
       });
