@@ -48,9 +48,9 @@ class LifeOSHouseStatusCard extends HTMLElement {
     else selectedEnd.setDate(selectedEnd.getDate()+1);
     const selectedRows=reportRows.filter(o=>stamp(o)>=selectedStart.getTime()&&stamp(o)<selectedEnd.getTime());
     const selectedUsage=selectedRows.reduce((n,o)=>n+(Number(o.domestic_import_kwh)||0),0);
-    const pricedRows=selectedRows.filter(o=>Number.isFinite(Number(o.domestic_import_cost_gbp)));
+    const pricedRows=selectedRows.filter(o=>o.domestic_import_cost_gbp!==null&&o.domestic_import_cost_gbp!==undefined&&Number.isFinite(Number(o.domestic_import_cost_gbp)));
     const selectedCost=pricedRows.reduce((n,o)=>n+Number(o.domestic_import_cost_gbp),0);
-    const selectedAvgPrice=selectedUsage>0&&pricedRows.length?selectedCost*100/selectedUsage:null;
+    const selectedAvgPrice=selectedUsage>0&&pricedRows.length===selectedRows.length?selectedCost*100/selectedUsage:null;
     const fmtDate=d=>d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
     const selectedLabel=this.period()==='today'?'Today':
       this.period()==='day'?fmtDate(selectedStart):
@@ -74,14 +74,14 @@ class LifeOSHouseStatusCard extends HTMLElement {
       const historicalPrice=reportRows.filter(o=>{const t=stamp(o);return t>=t0&&t<t2&&Number.isFinite(Number(o.import_p_per_kwh));}).map(o=>({...o,import_price_available:true})); const tariffPrice=tariff.filter(o=>o.import_price_available===true&&o.import_p_per_kwh!==null).filter(o=>{const t=stamp(o);return t>=t0&&t<t2;}); const priceByStamp=new Map(historicalPrice.map(o=>[stamp(o),o])); tariffPrice.forEach(o=>priceByStamp.set(stamp(o),o)); const published=[...priceByStamp.values()].sort((a,b)=>stamp(a)-stamp(b));
       const aggregate=(arr,key,kind='avg')=>{
         if(!['week','month','year'].includes(this.period()))
-          return arr.map(o=>{const t=stamp(o),v=Number(o[key]);return Number.isFinite(t)&&Number.isFinite(v)?[x(t),v]:null;}).filter(Boolean);
+          return arr.map(o=>{const t=stamp(o),raw=o[key],v=Number(raw);return raw!==null&&raw!==undefined&&Number.isFinite(t)&&Number.isFinite(v)?[x(t),v]:null;}).filter(Boolean);
         const buckets=new Map(),period=this.period(),zone=this._energyTimezone||'Europe/London';
         const partsFor=t=>Object.fromEntries(new Intl.DateTimeFormat('en-CA',{
           timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'
         }).formatToParts(new Date(t)).filter(p=>p.type!=='literal').map(p=>[p.type,p.value]));
         arr.forEach(o=>{
-          const t=stamp(o),v=Number(o[key]);
-          if(!Number.isFinite(t)||!Number.isFinite(v))return;
+          const t=stamp(o),raw=o[key],v=Number(raw);
+          if(raw===null||raw===undefined||!Number.isFinite(t)||!Number.isFinite(v))return;
           const parts=partsFor(t);
           const calendar=new Date(Date.UTC(Number(parts.year),Number(parts.month)-1,Number(parts.day)));
           if(period==='month'){
@@ -153,8 +153,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
     else end.setDate(end.getDate()+1);
     const now=Date.now(),effectiveEnd=Math.min(end.getTime(),now);
     if(effectiveEnd<=start.getTime()){this._energyHistory=[];this._energyHistoryError=null;this.render();return;}
-    const useRollups=['week','month','year','range'].includes(period)||
-      start.getTime()<now-48*3600000;
+    const useRollups=period==='year'||start.getTime()<now-840*3600000;
     const key=period+'|'+start.toISOString()+'|'+effectiveEnd;
     if(this._energyHistoryKey===key)return;
     this._energyHistoryLoading=true;
