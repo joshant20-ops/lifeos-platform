@@ -152,7 +152,7 @@ jobs:
           journalctl -u lifeos-tower-control.service -u lifeos-autonomous-agent.service -u lifeos-engineer.service -n 160 --no-pager -o short-iso
 
       - name: Prove lease release and automatic shutdown
-        timeout-minutes: 14
+        timeout-minutes: 17
         run: |
           set -Eeuo pipefail
           lease=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t 'lifeos/tower/lease/+' || true)
@@ -161,28 +161,31 @@ jobs:
           lease_released_at=$(date +%s)
           stopped=0
           max_idle=0
-          # Observe for at most 13 minutes: the full 600-second production grace plus shutdown propagation.
-          # This is a wall-clock deadline because retained MQTT state reads return immediately.
-          shutdown_deadline=$(( lease_released_at + 780 ))
+          # Observe for at most 15 minutes from lease release. Controller idle may begin
+          # after other normal leases drain; then allow the full 600-second grace plus
+          # shutdown propagation. Retained MQTT reads return immediately, so use wall time.
+          shutdown_deadline=$(( lease_released_at + 900 ))
+          idle_start_delay=-1
           while (( $(date +%s) < shutdown_deadline )); do
             state=$(timeout 5 mosquitto_sub -h 127.0.0.1 -C 1 -t lifeos/tower/state || true)
-            idle=$(python3 - "$state" <<'PY'
+            read -r idle idle_since < <(python3 - "$state" <<'PY'
           import json,sys
           try:
               value=json.loads(sys.argv[1])
               assert int(value.get('idle_grace_seconds') or 0) == 600
               assert value.get('lease_state') == 'NONE'
-              print(int(value.get('idle_seconds') or 0))
+              print(int(value.get('idle_seconds') or 0), int(value.get('idle_since') or 0))
           except (ValueError, TypeError, AssertionError):
-              print(0)
+              print('0 0')
           PY
           )
+            if (( idle_since > 0 && idle_start_delay < 0 )); then idle_start_delay=$(( idle_since - lease_released_at )); fi
             (( idle > max_idle )) && max_idle=$idle
             if (( idle >= 600 )) && python3 -c 'import json,sys; raise SystemExit(0 if not json.loads(sys.argv[1]).get("accessible") else 1)' "$state" 2>/dev/null; then stopped=1; break; fi
             sleep 5
           done
           elapsed=$(( $(date +%s) - lease_released_at ))
-          echo "TOWER_IDLE_GRACE_OBSERVED=${max_idle}s elapsed_since_lease_release=${elapsed}s"
+          echo "TOWER_IDLE_GRACE_OBSERVED=${max_idle}s elapsed_since_lease_release=${elapsed}s idle_started_after_release=${idle_start_delay}s"
           test "$max_idle" -ge 600
           test "$elapsed" -ge 600
           test "$stopped" -eq 1
