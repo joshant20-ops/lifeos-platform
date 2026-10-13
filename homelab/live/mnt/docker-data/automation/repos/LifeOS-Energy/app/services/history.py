@@ -295,16 +295,21 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
     points.sort(key=lambda point: point["timestamp"])
 
     timezone_name = str(load_config()["site"]["timezone"])
+    rates: dict[int, float] = {}
+    price_error = False
     if points:
-        from app.services.octopus import account_tariffs, tariff_prices_range
+        from app.services.octopus import OctopusError, account_tariffs, tariff_prices_range
 
-        tariffs = account_tariffs()
-        zone = ZoneInfo(timezone_name)
-        first_day = datetime.fromtimestamp(start, zone).date()
-        last_day = datetime.fromtimestamp(end - 1, zone).date()
-        rates = tariff_prices_range(
-            tariffs["import"]["tariff_code"], first_day, last_day, timezone_name
-        )
+        try:
+            tariffs = account_tariffs()
+            zone = ZoneInfo(timezone_name)
+            first_day = datetime.fromtimestamp(start, zone).date()
+            last_day = datetime.fromtimestamp(end - 1, zone).date()
+            rates = tariff_prices_range(
+                tariffs["import"]["tariff_code"], first_day, last_day, timezone_name
+            )
+        except OctopusError:
+            price_error = True
         for point in points:
             rate = rates.get(point["timestamp"])
             point["import_p_per_kwh"] = rate
@@ -348,6 +353,8 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         "start": start,
         "end": end,
         "count": len(points),
+        "price_source_available": not price_error and all(p["import_price_available"] for p in points),
+        "missing_price_slots": sum(1 for p in points if not p["import_price_available"]),
         "totals": totals,
         "points": points,
     }
