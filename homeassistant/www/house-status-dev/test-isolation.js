@@ -16,6 +16,10 @@ assert.match(dev,/customElements\.define\('lifeos-house-status-dev-editor-v2'/);
 assert.match(dev,/House Status DEV/);
 assert.match(dev,/apiOrigin\.port='8110'/);
 assert.match(dev,/new URL\('\/api\/energy\/rollups',apiOrigin\)/);
+assert.match(dev,/tomorrowTariffRows=isToday\?tariff\.filter/,'tomorrow extension is driven only by available Octopus tariff slots');
+assert.match(dev,/t<\(isToday\?t1:t2\)/,'Today consumption series is clipped at midnight');
+assert.match(dev,/data-midnight-boundary/,'Today and Tomorrow have an explicit midnight boundary');
+assert.match(dev,/data-tomorrow-pricing/,'partial and unavailable future pricing is identified');
 assert.match(dev,/fetch\(url,\{credentials:'omit',signal:this\._energyHistoryController\.signal\}\)/);
 assert.match(dev,/this\._period=p;this\._energyHistory=\[\];this\._energyCoverage=null;this\.render\(\);this\._loadEnergyHistory\(\);/,'period selection must fetch selected-range history and discard prior totals');
 assert.match(dev,/this\._energyHistoryRequestedKey===key/,'duplicate hass updates must not duplicate the active range request');
@@ -72,14 +76,19 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
     querySelector(){return null;}
   }
   const registry=new Map();
-    const requests=[];
+  const requests=[];
+  let clockNow=new Date();
+  class ControlledDate extends Date{
+    constructor(...args){if(args.length===0)super(clockNow.getTime());else super(...args);}
+    static now(){return clockNow.getTime();}
+  }
   let holdNextDayResponse=false,heldDayResponse=null;
   const context={
     HTMLElement:FakeCardElement,
     customElements:{get:name=>registry.get(name),define:(name,value)=>registry.set(name,value)},
     window:{location:{origin:'http://ha.local'},customCards:[]},
     document:{createElement:()=>new FakeElement()},
-    URL,Date,Intl,AbortController,setTimeout,process,
+    URL,Date:ControlledDate,Intl,AbortController,setTimeout,process,
     console:{warn(){},log(){},error:console.error},
     fetch:input=>{
       const url=new URL(input);requests.push(url);
@@ -119,7 +128,7 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
   vm.runInNewContext(dev.replace(/^await import\([^\n]+\);\n/,''),context);
   const Card=registry.get('lifeos-house-status-dev');
   const card=new Card();
-  const anchor=new Date();anchor.setHours(12,0,0,0);anchor.setDate(anchor.getDate()-2);
+  const anchor=new Date(2026,9,11,12,0,0,0);
   const selectedDay=new Date(anchor);selectedDay.setHours(0,0,0,0);
   const previousDay=new Date(selectedDay);previousDay.setDate(previousDay.getDate()-1);
   const nextDay=new Date(selectedDay);nextDay.setDate(nextDay.getDate()+1);
@@ -131,9 +140,39 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
   assert.equal(Number(requests[0].searchParams.get('start')),Math.floor(selectedDay.getTime()/1000),'Today request starts at selected-day midnight');
   assert.equal(Number(requests[0].searchParams.get('end')),Math.floor(nextDay.getTime()/1000),'Today request ends at next midnight');
   assert.match(card.innerHTML,/4\.59 kWh/,'Today uses only its selected day total');
-  assert.match(card.innerHTML,/Octopus price \(p\/kWh\)/,'Today chart labels the price axis');
+  assert.match(card.innerHTML,/class="axis axis-price"/,'Today chart renders price-scale labels');
   assert.match(card.innerHTML,/class="price" d="M/,'Today chart renders the Octopus price series');
   assert.match(card.innerHTML,/class="use" d="M/,'Today chart renders the Enphase cost series');
+  assert.match(card.innerHTML,/data-period-label="today"/,'Today section has a clear label');
+  assert.match(card.innerHTML,/data-period-label="tomorrow"/,'Tomorrow section has a clear label');
+  const midnightX=()=>Number(card.innerHTML.match(/data-midnight-boundary x1="([\d.]+)"/)?.[1]);
+  const widthShare=()=>((midnightX()-68)/864);
+  assert.ok(Math.abs(widthShare()-.85)<.001,'unavailable tomorrow prices reserve only 15% of the chart');
+  assert.match(card.innerHTML,/data-tomorrow-pricing="unavailable"/,'unavailable future pricing is explicit');
+  const makeTomorrowSlots=(count,basePrice=42)=>Array.from({length:count},(_,i)=>({
+    valid_from:new Date(nextDay.getTime()+i*1800000).toISOString(),
+    import_price_available:true,import_p_per_kwh:basePrice+i/10
+  }));
+  const pricePathX=()=>[...(card.innerHTML.match(/<path class="price" d="([^"]*)"/)||[])[1].matchAll(/[ML]([\d.]+) /g)].map(m=>Number(m[1]));
+  const seriesXs=klass=>{const d=card.innerHTML.match(new RegExp('<path class="'+klass+'" d="([^"]*)"'))?.[1]||'';return [...d.matchAll(/[ML]([0-9.]+) /g)].map(m=>Number(m[1]));};
+  const oldTodayMetric=()=>/4\.59 kWh/.test(card.innerHTML)&&/£1\.09/.test(card.innerHTML)&&/Available history 100\.0%/.test(card.innerHTML)&&seriesXs('use').every(x=>x<midnightX());
+  const setTomorrowSlots=async slots=>{card.hass={states:{'sensor.lifeos_energy_tariff_horizon':{attributes:{slots}}}};await pause();await pause();};
+  await setTomorrowSlots(makeTomorrowSlots(6));
+  assert.equal(requests.length,1,'tariff updates redraw Today without refetching its measured energy');
+  assert.ok(Math.abs(widthShare()-.5)<.001,'partial tomorrow pricing expands the chart to equal day widths');
+  assert.match(card.innerHTML,/data-tomorrow-pricing="partial"/,'partially published prices are identified');
+  assert.ok(pricePathX().some(x=>x>midnightX()),'partial Octopus prices plot in the tomorrow section');
+  assert.ok(oldTodayMetric(),'future rates do not alter Today kWh or cost totals');
+  await setTomorrowSlots(makeTomorrowSlots(48));
+  assert.ok(Math.abs(widthShare()-.5)<.001,'complete tomorrow pricing retains equal day widths');
+  assert.match(card.innerHTML,/Octopus price \(p\/kWh\)/,'published tomorrow prices are labeled with their tariff units');
+  assert.ok(pricePathX().some(x=>x>midnightX()+300),'complete prices occupy tomorrow through the day');
+  assert.ok(oldTodayMetric(),'complete future rates still do not alter Today totals');
+  await setTomorrowSlots([]);
+  assert.equal(requests.length,1,'prices becoming unavailable also redraw without refreshing the page');
+  assert.ok(Math.abs(widthShare()-.85)<.001,'chart shrinks the empty tomorrow section back to 15%');
+  assert.match(card.innerHTML,/data-tomorrow-pricing="unavailable"/,'missing tomorrow prices remain clearly marked');
+  assert.ok(oldTodayMetric(),'unavailable future rates leave Today totals unchanged');
   const select=async period=>{const button=card.periodButtons.find(item=>item.dataset.period===period);assert.ok(button,period+' tab exists');button.onclick();await pause();await pause();};
   await select('day');
   assert.equal(requests.length,2,'Day selection fetches its own rollup window');
@@ -174,6 +213,21 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
   assert.equal(new Date(Number(requests[7].searchParams.get('start'))*1000).getMonth(),0);
   assert.match(card.innerHTML,/27\.0% · Partial history/,'Year shows API-reported partial coverage instead of stale 100%');
   assert.match(card.innerHTML,/class="price" d="M/,'historical Octopus price is plotted from the selected response');
+  const requestsBeforeRollover=requests.length;
+  card._period='today';card._anchor=null;card._energyHistory=[];card._energyCoverage=null;card._energyHistoryKey=null;card._energyHistoryRequestedKey=null;
+  clockNow=new Date(2026,9,13,23,59,0,0);card.hass={states:{}};
+  await pause();await pause();
+  const beforeMidnight=new Date(clockNow);beforeMidnight.setHours(0,0,0,0);
+  assert.equal(Number(requests[requests.length-1].searchParams.get('start')),Math.floor(beforeMidnight.getTime()/1000),'Today uses the current calendar day before midnight');
+  clockNow=new Date(2026,9,14,0,1,0,0);card.hass={states:{}};
+  await pause();await pause();
+  const afterMidnight=new Date(clockNow);afterMidnight.setHours(0,0,0,0);
+  assert.equal(requests.length,requestsBeforeRollover+2,'midnight rollover issues a new Today request');
+  assert.equal(Number(requests[requests.length-1].searchParams.get('start')),Math.floor(afterMidnight.getTime()/1000),'Today automatically rolls to the new calendar day at midnight');
+  console.log('HOUSE_STATUS_DEV_TODAY_TOMORROW_PRICING=PASS');
+  console.log('HOUSE_STATUS_DEV_TOMORROW_COMPLETE_PARTIAL_UNAVAILABLE=PASS');
+  console.log('HOUSE_STATUS_DEV_TARIFF_LIVE_UPDATE=PASS');
+  console.log('HOUSE_STATUS_DEV_MIDNIGHT_ROLLOVER=PASS');
   console.log('HOUSE_STATUS_DEV_TODAY_DAY_WINDOWS=PASS');
   console.log('HOUSE_STATUS_DEV_TODAY_DAY_SWITCH_RUNTIME_REGRESSION=PASS');
   console.log('HOUSE_STATUS_DEV_STALE_DAY_RESPONSE=PASS');
