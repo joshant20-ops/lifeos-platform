@@ -315,6 +315,15 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
                 else round(point["domestic_import_kwh"] * rate / 100, 6)
             )
 
+    zone = ZoneInfo(timezone_name)
+    for point in points:
+        start_at = datetime.fromtimestamp(point["timestamp"], timezone.utc)
+        end_at = datetime.fromtimestamp(point["timestamp"] + 1800, timezone.utc)
+        point["valid_from"] = start_at.isoformat()
+        point["valid_to"] = end_at.isoformat()
+        point["local_from"] = start_at.astimezone(zone).isoformat()
+        point["local_to"] = end_at.astimezone(zone).isoformat()
+
     totals = {}
     for key in (
         "production_kwh",
@@ -329,8 +338,12 @@ def read_rollups(start: int, end: int, granularity: str = "auto") -> dict[str, A
         if not points or any(point.get("domestic_import_cost_gbp") is None for point in points)
         else round(sum(point["domestic_import_cost_gbp"] for point in points), 6)
     )
+    expected_count = max(0, (end - start + 1799) // 1800)
+    coverage_percent = round(100 * len(points) / expected_count, 1) if expected_count else 100.0
     return {
         "granularity": "30m",
+        "complete": bool(points) and coverage_percent >= 99.0,
+        "coverage_percent": coverage_percent,
         "timezone": timezone_name,
         "start": start,
         "end": end,
