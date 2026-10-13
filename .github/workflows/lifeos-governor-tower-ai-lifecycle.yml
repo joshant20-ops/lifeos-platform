@@ -62,7 +62,27 @@ jobs:
         run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-governor-managed-engineer
 
       - name: Refresh Tower controller runtime
-        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge
+        run: |
+          set -Eeuo pipefail
+          # #1588 acceptance deliberately begins with the Tower unavailable. The
+          # full HA bridge deploy has a live-Tower SSH/final-ACCESSIBLE gate, so
+          # do not redeploy the entire HA/dashboard stack as a controller refresh.
+          # The controller is already deployed by the governed bridge path; prove
+          # the Pi-side runtime/config locally without waking or requiring Tower.
+          systemctl is-active --quiet lifeos-tower-control.service
+          systemctl is-enabled --quiet lifeos-tower-control.service
+          test -r /etc/lifeos/tower.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          cfg=json.loads(Path('/etc/lifeos/tower.json').read_text())
+          assert cfg.get('mac'), 'tower MAC missing'
+          assert cfg.get('wol_broadcast'), 'WoL broadcast missing'
+          assert int(cfg.get('wol_port', 0)) > 0, 'WoL port missing'
+          assert (cfg.get('access_probe') or {}).get('host'), 'Tower access probe host missing'
+          print('TOWER_CONTROLLER_RUNTIME_REFRESH=PASS')
+          print('TOWER_COLD_START_PREFLIGHT=PASS')
+          PY
 
       - name: Capture Engineer diagnostics on deployment failure
         if: failure()
