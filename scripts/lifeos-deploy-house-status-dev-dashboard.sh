@@ -71,8 +71,7 @@ NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/extern
 "$NODE_BIN" --input-type=module --check < "$SOURCE_DIR/lifeos-house-status-dev-loader.js" || fail dev_loader_js_syntax_invalid
 python3 "$VERIFIER" --source-only
 PRODUCTION_BEFORE=$(snapshot "$PROD_DIR" "$DASH_TARGET" "$REGISTRY" "$RESOURCES")
-LIVE_PANEL_BEFORE=$(panel_entry "$CONFIG" lifeos-house-status-v29 || true)
-[[ -n "$LIVE_PANEL_BEFORE" ]] || LIVE_PANEL_BEFORE=$(panel_entry "$CONFIG" lifeos-house-status-v28 || true)
+LIVE_PANEL_BEFORE=$(panel_entry "$CONFIG" lifeos-house-status-v28)
 [[ -n "$LIVE_PANEL_BEFORE" ]] || fail live_panel_registration_missing
 mkdir -p "$BACKUP_DIR" "$(dirname "$TARGET_DIR")"
 if [[ -d "$TARGET_DIR" ]]; then HAD_TARGET=1; cp -a "$TARGET_DIR" "$BACKUP_DIR/dev-assets"; fi
@@ -97,8 +96,7 @@ def stanza(name):
                 j+=1
             return ''.join(lines[i:j]),i,j
     return None,None,None
-live,_,_=stanza('lifeos-house-status-v29')
-if not live: live,_,_=stanza('lifeos-house-status-v28')
+live,_,_=stanza('lifeos-house-status-v28')
 if not live or 'url_path: house-status\n' not in live:
     raise SystemExit('HOUSE_STATUS_DEV_CONFIG=FAIL:live_panel_not_found')
 existing,i,j=stanza('lifeos-house-status-dev')
@@ -153,8 +151,7 @@ if [[ "$CONFIG_CHANGED" -eq 1 ]]; then
   [[ "$state" == healthy || "$state" == running ]] || fail homeassistant_not_healthy_after_dev_panel_registration
 fi
 python3 "$VERIFIER"
-LIVE_PANEL_AFTER=$(panel_entry "$CONFIG" lifeos-house-status-v29 || true)
-[[ -n "$LIVE_PANEL_AFTER" ]] || LIVE_PANEL_AFTER=$(panel_entry "$CONFIG" lifeos-house-status-v28 || true)
+LIVE_PANEL_AFTER=$(panel_entry "$CONFIG" lifeos-house-status-v28)
 [[ "$LIVE_PANEL_AFTER" == "$LIVE_PANEL_BEFORE" ]] || fail live_panel_registration_changed
 PRODUCTION_AFTER=$(snapshot "$PROD_DIR" "$DASH_TARGET" "$REGISTRY" "$RESOURCES")
 [[ "$PRODUCTION_AFTER" == "$PRODUCTION_BEFORE" ]] || fail live_dashboard_or_assets_changed
