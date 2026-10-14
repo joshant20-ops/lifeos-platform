@@ -23,7 +23,7 @@ def validate(src):
     got=[(v.get('title'),v.get('path')) for v in views]
     if got!=expected: raise ValueError(f'House Status views invalid: {got!r}')
     blob=canonical(cfg)
-    card=pathlib.Path(__file__).parent/'releases'/'house-status'/'live'/'lifeos-house-status-v29.js'
+    card=pathlib.Path(__file__).parent/'releases'/'house-status'/'live'/'lifeos-house-status-v28.js'
     card_blob=card.read_text() if card.exists() else ''
     combined=blob+card_blob
     if 'EV' not in combined or 'Not installed' not in combined: raise ValueError('EV not-installed invariant missing')
@@ -51,7 +51,7 @@ def main():
     REGISTRY.write_text(json.dumps(reg,indent=2)+'\n')
     resources=load(RESOURCES); ritems=resources.setdefault('data',{}).setdefault('items',[])
     ritems[:]=[x for x in ritems if not str(x.get('url','')).startswith('/local/house-status/lifeos-house-status')]
-    card_src=pathlib.Path(__file__).parent/'releases'/'house-status'/'live'/'lifeos-house-status-v29.js'
+    card_src=pathlib.Path(__file__).parent/'releases'/'house-status'/'live'/'lifeos-house-status-v28.js'
     card_rev=hashlib.sha256(card_src.read_bytes()).hexdigest()[:12]
     
     # panel_custom owns loading this module; no Lovelace resource entry.
