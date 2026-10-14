@@ -25,6 +25,9 @@ STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 BACKUP_DIR="$HA/.storage/house-status-deploy-$STAMP"
 HAD_DASH=0; HAD_ASSET=0; HAD_CARD=0; HAD_LEGACY_CARD=0; HAD_DOORBELL=0; HAD_DOORBELL_V28=0; MUTATED=0
 fail(){ echo "HOUSE_STATUS_DEPLOY=FAIL"; echo "ERROR=$*"; exit 1; }
+[[ "${HOUSE_STATUS_RELEASE:-}" == "v28" ]] || fail "baseline_deployer_only_accepts_v28"
+[[ -n "${HOUSE_STATUS_RELEASE_SHA256:-}" ]] || fail "explicit_release_hash_required"
+python3 "$PLATFORM/homeassistant/verify-house-status-live-release.py" --request-release "$HOUSE_STATUS_RELEASE" --request-sha256 "$HOUSE_STATUS_RELEASE_SHA256" || fail "approved_release_gate_failed"
 rollback(){ rc=$?; if [[ "$MUTATED" -eq 1 && "$rc" -ne 0 ]]; then echo "HOUSE_STATUS_ROLLBACK=START"; if [[ "$HAD_DASH" -eq 1 ]]; then cp -a "$BACKUP_DIR/dashboard" "$DASH_TARGET"; else rm -f "$DASH_TARGET"; fi; cp -a "$BACKUP_DIR/registry" "$REGISTRY"; cp -a "$BACKUP_DIR/resources" "$RESOURCES"; cp -a "$BACKUP_DIR/configuration.yaml" "$CONFIG"; cp -a "$BACKUP_DIR/configuration.yaml" "$HA_CONFIG"; if [[ "$HAD_ASSET" -eq 1 ]]; then cp -a "$BACKUP_DIR/asset" "$ASSET_TARGET"; else rm -f "$ASSET_TARGET"; fi; if [[ "$HAD_CARD" -eq 1 ]]; then cp -a "$BACKUP_DIR/card" "$CARD_TARGET"; else rm -f "$CARD_TARGET"; fi; if [[ "$HAD_LEGACY_CARD" -eq 1 ]]; then cp -a "$BACKUP_DIR/legacy-v27" "$LEGACY_CARD_TARGET"; else rm -f "$LEGACY_CARD_TARGET"; fi; if [[ "$HAD_DOORBELL" -eq 1 ]]; then cp -a "$BACKUP_DIR/doorbell" "$DOORBELL_TARGET"; else rm -f "$DOORBELL_TARGET"; fi; if [[ "$HAD_DOORBELL_V28" -eq 1 ]]; then cp -a "$BACKUP_DIR/doorbell-v28" "$DOORBELL_V28_TARGET"; else rm -f "$DOORBELL_V28_TARGET"; fi; docker restart homeassistant >/dev/null || true; echo "HOUSE_STATUS_ROLLBACK=COMPLETE"; fi; exit "$rc"; }
 trap rollback EXIT
 [[ ${EUID:-$(id -u)} -eq 0 ]] || fail "must_run_as_root"

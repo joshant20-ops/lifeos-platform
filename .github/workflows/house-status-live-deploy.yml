@@ -1,90 +1,113 @@
 name: House Status Live Deploy
 on:
   workflow_dispatch:
+    inputs:
+      release:
+        description: Explicit approved House Status release (must match approved-release.json)
+        required: true
+        type: string
+      artifact_sha256:
+        description: Full SHA-256 from approved-release.json
+        required: true
+        type: string
 concurrency:
   group: house-status-panel-deploy
   cancel-in-progress: false
 permissions:
   contents: read
+  actions: read
 jobs:
   deploy-verify:
     if: github.ref == 'refs/heads/main'
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      REQUESTED_RELEASE: ${{ inputs.release }}
+      REQUESTED_SHA256: ${{ inputs.artifact_sha256 }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Reconcile canonical checkout to main
+        run: git show HEAD:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
+      - name: Require explicit approved release and source identity
+        id: release
         run: |
-          git show HEAD:scripts/reconcile-canonical-checkout.py | python3 - /home/joshan/lifeos-platform
-      - name: Deploy House Status
-        run: sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dashboard.sh
+          set -Eeuo pipefail
+          python3 homeassistant/verify-house-status-live-release.py --request-release "$REQUESTED_RELEASE" --request-sha256 "$REQUESTED_SHA256" --verify-dev-evidence
+          if [[ "$REQUESTED_RELEASE" == v28 ]]; then
+            mkdir -p /tmp/house-status-approved-release
+            cp homeassistant/releases/house-status/live/lifeos-house-status-v28.js /tmp/house-status-approved-release/
+            cp homeassistant/releases/house-status/live/lifeos-house-status-doorbell-v28.js /tmp/house-status-approved-release/
+            echo "source_commit=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["approved_production"]["source_commit"])')" >> "$GITHUB_OUTPUT"
+            echo "doorbell_sha256=$(sha256sum homeassistant/releases/house-status/live/lifeos-house-status-doorbell-v28.js | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+            echo "doorbell_query=20261005-2" >> "$GITHUB_OUTPUT"
+          else
+            SOURCE_SHA=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["promotion_candidate"]["source_commit"])')
+            PACKAGER_SHA=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["promotion_candidate"]["packager_commit"])')
+            git fetch --no-tags origin "$SOURCE_SHA"
+            git fetch --no-tags origin "$PACKAGER_SHA"
+            git show "$PACKAGER_SHA:homeassistant/build-house-status-release.py" > /tmp/house-status-build-approved.py
+            mkdir -p /tmp/house-status-approved-source /tmp/house-status-approved-release
+            git archive "$SOURCE_SHA" homeassistant/www/house-status-dev | tar -x -C /tmp/house-status-approved-source
+            python3 /tmp/house-status-build-approved.py --release "$REQUESTED_RELEASE" --source-commit "$SOURCE_SHA" --packager-commit "$PACKAGER_SHA" --source-dir /tmp/house-status-approved-source/homeassistant/www/house-status-dev --out-dir /tmp/house-status-approved-release
+            EXPECTED=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["approved_production"]["artifact_sha256"])')
+            ACTUAL=$(sha256sum "/tmp/house-status-approved-release/lifeos-house-status-$REQUESTED_RELEASE.js" | cut -d' ' -f1)
+            [[ "$ACTUAL" == "$EXPECTED" ]] || { echo HOUSE_STATUS_LIVE_RELEASE=FAIL:generated_artifact_identity_mismatch; exit 1; }
+            echo "source_commit=$SOURCE_SHA" >> "$GITHUB_OUTPUT"
+            BELL_SHA=$(sha256sum "/tmp/house-status-approved-release/lifeos-house-status-doorbell-$REQUESTED_RELEASE.js" | cut -d' ' -f1)
+            echo "doorbell_sha256=$BELL_SHA" >> "$GITHUB_OUTPUT"
+            echo "doorbell_query=${BELL_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "app=/tmp/house-status-approved-release/lifeos-house-status-$REQUESTED_RELEASE.js" >> "$GITHUB_OUTPUT"
+          echo "doorbell=/tmp/house-status-approved-release/lifeos-house-status-doorbell-$REQUESTED_RELEASE.js" >> "$GITHUB_OUTPUT"
+      - name: Deploy only the explicitly approved release
+        env:
+          HOUSE_STATUS_RELEASE: ${{ inputs.release }}
+          HOUSE_STATUS_RELEASE_SHA256: ${{ inputs.artifact_sha256 }}
+        run: |
+          set -Eeuo pipefail
+          if [[ "$HOUSE_STATUS_RELEASE" == v28 ]]; then
+            sudo -n --preserve-env=HOUSE_STATUS_RELEASE,HOUSE_STATUS_RELEASE_SHA256 bash /home/joshan/lifeos-platform/scripts/lifeos-deploy-house-status-dashboard.sh
+          else
+            sudo -n --preserve-env=GH_TOKEN,GITHUB_TOKEN,GITHUB_REPOSITORY bash /home/joshan/lifeos-platform/scripts/lifeos-promote-house-status-approved-release.sh "$HOUSE_STATUS_RELEASE" "$HOUSE_STATUS_RELEASE_SHA256" /tmp/house-status-approved-release
+          fi
       - name: Discover live House Status runtime
         run: |
           sudo -n python3 /home/joshan/lifeos-platform/homeassistant/discover-house-status-entities.py | tee /tmp/house-status-discovery.json
           grep -q 'camera.front_door_live_view' /tmp/house-status-discovery.json
-      - name: Live asset acceptance
+      - name: Verify exact browser-served release and environment isolation
+        env:
+          APP: ${{ steps.release.outputs.app }}
+          BELL: ${{ steps.release.outputs.doorbell }}
+          BELL_SHA: ${{ steps.release.outputs.doorbell_sha256 }}
+          BELL_QUERY: ${{ steps.release.outputs.doorbell_query }}
         run: |
           set -Eeuo pipefail
-          target=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v28.js
-          legacy=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-v27.js
-          doorbell=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell.js
-          doorbell_v28=/opt/stacks/homeassistant/config/www/house-status/lifeos-house-status-doorbell-v28.js
-          require_marker() {
-            label=$1
-            marker=$2
-            file=$3
-            if grep -Fq "$marker" "$file"; then
-              echo "$label=PASS"
-            else
-              echo "$label=FAIL"
-              exit 1
-            fi
-          }
-          test -s "$doorbell"
-          require_marker DOORBELL_DISK_SLOT 'data-doorbell-card' "$doorbell"
-          require_marker DOORBELL_DISK_CAMERA 'camera.front_door_live_view' "$doorbell"
-          require_marker DOORBELL_DISK_LIVE_VIEW "camera_view:'live'" "$doorbell"
-          require_marker DOORBELL_DISK_HELPERS 'window.loadCardHelpers()' "$doorbell"
-          require_marker DOORBELL_V28_DISK_PANEL_BOOTSTRAP 'partial-panel-resolver' "$doorbell_v28"
-          require_marker DOORBELL_V28_DISK_LOVELACE_BOOTSTRAP 'ha-panel-lovelace' "$doorbell_v28"
-          require_marker DOORBELL_V28_DISK_CAMERA 'camera.front_door_live_view' "$doorbell_v28"
-          require_marker DOORBELL_V28_DISK_LIVE_VIEW "camera_view:'live'" "$doorbell_v28"
-          require_marker DOORBELL_V28_ENTRY_IMPORT "lifeos-house-status-doorbell-v28.js?v=20261005-2" "$target"
-          require_marker DOORBELL_DISK_HEADER 'class="hanav"' "$target"
-          require_marker HOUSE_STATUS_DISK_FREE_BAND 'band-free' "$target"
-          require_marker HOUSE_STATUS_DISK_POWERDOWN_BAND 'band-powerdown' "$target"
-          require_marker HOUSE_STATUS_DISK_JOINED_EVENTS 'joined_events' "$target"
-          require_marker HOUSE_STATUS_DISK_FREE_LABEL 'Free electricity' "$target"
+          test -s "$APP" && test -s "$BELL"
+          if grep -Eq '/local/house-status-dev/|lifeos-house-status-dev|LifeOSHouseStatusDevModules' "$APP" "$BELL"; then
+            echo HOUSE_STATUS_LIVE_ENVIRONMENT_ISOLATION=FAIL
+            exit 1
+          fi
+          grep -Fq "lifeos-house-status-doorbell-${REQUESTED_RELEASE}.js?v=${BELL_QUERY}" "$APP"
           served=$(mktemp)
           trap 'rm -f "$served"' EXIT
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js -o "$served"
-          require_marker HOUSE_STATUS_LIVE_FREE_BAND 'band-free' "$served"
-          require_marker HOUSE_STATUS_LIVE_POWERDOWN_BAND 'band-powerdown' "$served"
-          echo HOUSE_STATUS_ENERGY_BANDS_LIVE=PASS
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js -o "$served"
-          require_marker DOORBELL_LIVE_SLOT 'data-doorbell-card' "$served"
-          require_marker DOORBELL_LIVE_CAMERA 'camera.front_door_live_view' "$served"
-          require_marker DOORBELL_LIVE_LIVE_VIEW "camera_view:'live'" "$served"
-          require_marker DOORBELL_LIVE_HELPERS 'createCardElement' "$served"
-          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell-v28.js?v=20261005-2' -o "$served"
-          require_marker DOORBELL_V28_LIVE_PANEL_BOOTSTRAP 'partial-panel-resolver' "$served"
-          require_marker DOORBELL_V28_LIVE_CARD_HELPERS 'loadCardHelpers' "$served"
-          require_marker DOORBELL_V28_LIVE_CAMERA 'camera.front_door_live_view' "$served"
-          require_marker DOORBELL_V28_LIVE_VIEW "camera_view:'live'" "$served"
-          curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v27.js -o "$served"
-          require_marker DOORBELL_V27_DISK_VERSION "Doorbell v27" "$legacy"
-          require_marker DOORBELL_V27_LIVE_VERSION "Doorbell v27" "$served"
-          require_marker DOORBELL_V27_LIVE_NAV 'this._mode=el.dataset.mode;this.render();' "$served"
-          require_marker DOORBELL_V27_LIVE_TAG "lifeos-house-status-v27" "$served"
-          require_marker DOORBELL_V27_CACHE_BUST_IMPORT "import './lifeos-house-status-doorbell.js?v=20261004-1';" "$legacy"
-          require_marker DOORBELL_V28_CACHE_BUST_IMPORT "import './lifeos-house-status-doorbell-v28.js?v=20261005-2';" "$target"
-          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell.js?v=20261004-1' -o "$served"
-          require_marker DOORBELL_V27_MODULE_LIVE_RENDER 'data-doorbell-card' "$served"
-          require_marker DOORBELL_V27_MODULE_LIVE_CAMERA "camera_view:'live'" "$served"
-          require_marker DOORBELL_V27_MODULE_LIVE_HELPERS 'createCardElement' "$served"
-          require_marker DOORBELL_V27_MODULE_LIVE_FALLBACK 'Camera view could not load' "$served"
-          echo DOORBELL_V27_ASSET_LIVE=PASS
-          curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1' -o "$served"
-          require_marker HOUSE_STATUS_V28_CACHE_BUSTED_LIVE "Doorbell v28" "$served"
-          echo HOUSE_STATUS_V28_ENTRYPOINT_CACHE_BUST=PASS
-          echo DOORBELL_SHARED_HEADER_CAMERA_LIVE=PASS
+          curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "http://127.0.0.1:8123/local/house-status/lifeos-house-status-${REQUESTED_RELEASE}.js?acceptance=${REQUESTED_SHA256}" -o "$served"
+          cmp -s "$APP" "$served" || { echo HOUSE_STATUS_LIVE_SERVED_ASSET=FAIL; exit 1; }
+          echo HOUSE_STATUS_LIVE_SERVED_ASSET=PASS
+          curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell-${REQUESTED_RELEASE}.js?acceptance=${BELL_SHA}" -o "$served"
+          cmp -s "$BELL" "$served" || { echo HOUSE_STATUS_LIVE_DOORBELL_ASSET=FAIL; exit 1; }
+          echo HOUSE_STATUS_LIVE_DOORBELL_ASSET=PASS
+          grep -Fq "name: lifeos-house-status-${REQUESTED_RELEASE}" /opt/stacks/homeassistant/config/configuration.yaml
+          grep -Fq "module_url: /local/house-status/lifeos-house-status-${REQUESTED_RELEASE}.js" /opt/stacks/homeassistant/config/configuration.yaml
+          if [[ "$REQUESTED_RELEASE" == v28 ]]; then
+            curl -fsS --max-time 10 http://127.0.0.1:8123/local/house-status/lifeos-house-status-v27.js -o "$served"
+            grep -Fq "Doorbell v27" "$served"
+            curl -fsS --max-time 10 'http://127.0.0.1:8123/local/house-status/lifeos-house-status-doorbell-v28.js?v=20261005-2' -o "$served"
+            grep -Fq 'partial-panel-resolver' "$served"
+            echo HOUSE_STATUS_V28_DOORBELL_BOOTSTRAP=PASS
+          fi
+          echo HOUSE_STATUS_LIVE_ENVIRONMENT_ISOLATION=PASS
+          echo HOUSE_STATUS_LIVE_RELEASE_ACCEPTANCE=PASS
