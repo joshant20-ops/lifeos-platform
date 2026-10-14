@@ -1,8 +1,7 @@
-# House Status live release bundle
+# House Status Live releases
 
-This is the versioned production bundle installed at `/local/house-status/`.
-It was frozen from the verified live dashboard at commit `41b65fc45218d3af942e8b5071e93a1c15887f51`.
+`approved-release.json` is the only production release pointer. It currently approves the frozen v28 artifact and SHA-256. v29 is retained as an inert, unapproved historical candidate; the Live workflow cannot select it.
 
-Normal development belongs in `homeassistant/www/house-status-dev/`. The live deploy workflow is manual and installs only this release bundle. Promote a tested version here through a reviewed change, then manually run **House Status Live Deploy**.
+New application behavior is edited only in `homeassistant/www/house-status-dev/`. The DEV workflow deterministically packages that source for a versioned Live candidate, records the candidate hashes and accepted source identity, and validates the browser-served DEV implementation. A separate reviewed manifest change is required to approve that exact accepted candidate. The manual Live workflow then requires the matching release ID and artifact SHA-256 and revalidates the DEV run evidence before deploying.
 
-The v29 energy bundle is retained as an inert candidate artifact. The production registration and Live deploy path remain on v28 until promotion is explicitly approved; the candidate file and its CI regression do not authorize Live promotion.
+Candidate creation or merge is not production approval. Production promotion requires separate explicit user approval. See [`docs/house-status-release-model.md`](../../../../docs/house-status-release-model.md) for the audit, promotion, and rollback procedures.
