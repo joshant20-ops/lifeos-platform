@@ -51,7 +51,11 @@ jobs:
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v28.js
       - run: bash -n scripts/lifeos-promote-house-status-approved-release.sh
       - run: python3 -m py_compile homeassistant/build-house-status-release.py homeassistant/verify-house-status-live-release.py
-      - run: python3 homeassistant/verify-house-status-live-release.py --request-release v28 --request-sha256 213e00ad65d5b3e45fdcc598b8691718e1230893dbe2af5ba3f90fddc98d0ade
+      - name: Verify the manifest-selected approved release identity
+        run: |
+          release=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["approved_production"]["release"])')
+          digest=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["approved_production"]["artifact_sha256"])')
+          python3 homeassistant/verify-house-status-live-release.py --request-release "$release" --request-sha256 "$digest"
       - run: python3 homeassistant/build-house-status-release.py --release v30 --check
       - run: python3 homeassistant/test-house-status-release-governance.py
       - run: node --check homeassistant/releases/house-status/live/lifeos-house-status-v29.js
