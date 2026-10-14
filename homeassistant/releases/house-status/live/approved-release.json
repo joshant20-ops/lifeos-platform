@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "approved_production": {
+    "release": "v28",
+    "source_commit": "41b65fc45218d3af942e8b5071e93a1c15887f51",
+    "artifact": "homeassistant/releases/house-status/live/lifeos-house-status-v28.js",
+    "artifact_sha256": "213e00ad65d5b3e45fdcc598b8691718e1230893dbe2af5ba3f90fddc98d0ade",
+    "acceptance": {
+      "kind": "existing-live-baseline",
+      "workflow": "House Status Live Deploy",
+      "run_id": 37233446561,
+      "run_attempt": 4,
+      "head_sha": "e9e31a0fbbbbb3b4560244cba8bce04ed19630b4"
+    }
+  },
+  "previous_production_release": "v28",
+  "promotion_candidate": null,
+  "previous_production_artifact_sha256": "213e00ad65d5b3e45fdcc598b8691718e1230893dbe2af5ba3f90fddc98d0ade",
+  "next_candidate_release": "v30"
+}
