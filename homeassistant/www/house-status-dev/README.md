@@ -1,9 +1,11 @@
 # House Status development panel
 
-This directory is the isolated development copy served at `/house-status-dev`.
+This directory is the isolated development panel served at `/house-status-dev`.
 
-- Edit and test development UI here.
-- The dev deploy installs only this directory under Home Assistant's `www/house-status-dev` and manages only the `lifeos-house-status-dev` panel entry.
-- The stable loader imports the current dev bundle with a unique URL; refresh the HA page after a deployment to reload custom elements. This does not restart Home Assistant.
-- The production panel at `/house-status` is deployed only from `homeassistant/releases/house-status/live/` through the explicit live deployment workflow.
-- To promote a tested change, update the versioned production release bundle in a reviewed change, then manually run the live deployment workflow.
+- Edit new application behavior only in this directory.
+- The DEV deploy installs only these files under Home Assistant's `www/house-status-dev` and manages only `lifeos-house-status-dev`.
+- The loader imports the development bundle with a cache-busting URL. DEV deployment does not restart Home Assistant unless the DEV panel registration must be added or upgraded.
+- Each main-branch DEV acceptance run also builds a versioned Live candidate from the accepted DEV source. The build applies only the checked-in environment substitutions and logs exact source and artifact hashes.
+- Building, merging, or accepting a candidate does not approve or deploy it to Live. A separate reviewed production-pointer change and a separately selected manual Live deployment are required.
+
+See [`docs/house-status-release-model.md`](../../../../docs/house-status-release-model.md) for the current v28 pointer and future promotion/rollback procedure.
