@@ -6,9 +6,9 @@ DASH_TARGET="$HA/.storage/lovelace.dashboard_house_status"
 REGISTRY="$HA/.storage/lovelace_dashboards"
 ASSET_DIR="$HA/www/house-status"
 ASSET_TARGET="$ASSET_DIR/placeholder-floorplan.svg"
-CARD_TARGET="$ASSET_DIR/lifeos-house-status-v29.js"
+CARD_TARGET="$ASSET_DIR/lifeos-house-status-v28.js"
 RELEASE_DIR="$PLATFORM/homeassistant/releases/house-status/live"
-CARD_SOURCE="$RELEASE_DIR/lifeos-house-status-v29.js"
+CARD_SOURCE="$RELEASE_DIR/lifeos-house-status-v28.js"
 LEGACY_CARD_TARGET="$ASSET_DIR/lifeos-house-status-v27.js"
 LEGACY_CARD_SOURCE="$RELEASE_DIR/lifeos-house-status-v27.js"
 DOORBELL_SOURCE="$RELEASE_DIR/lifeos-house-status-doorbell.js"
@@ -67,11 +67,11 @@ while i<len(lines):
     out.append(lines[i]); i+=1
 s=''.join(out)
 s=re.sub(r'(?m)^\s*- /local/house-status/lifeos-house-status(?:-card|-v[0-9]+)?\.js(?:\?[^\s]+)?\s*\n?', '', s)
-panel="""  - name: lifeos-house-status-v29
+panel="""  - name: lifeos-house-status-v28
     sidebar_title: House Status
     sidebar_icon: mdi:home-heart
     url_path: house-status
-    module_url: /local/house-status/lifeos-house-status-v29.js?v=energy-pages-20261013-1
+    module_url: /local/house-status/lifeos-house-status-v28.js?v=doorbell-shell-20261004-1
     require_admin: false
     config:
       mode: domestic
