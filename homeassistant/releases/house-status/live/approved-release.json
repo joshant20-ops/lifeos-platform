@@ -1,20 +1,22 @@
 {
   "schema_version": 1,
   "approved_production": {
-    "release": "v28",
-    "source_commit": "41b65fc45218d3af942e8b5071e93a1c15887f51",
-    "artifact": "homeassistant/releases/house-status/live/lifeos-house-status-v28.js",
-    "artifact_sha256": "213e00ad65d5b3e45fdcc598b8691718e1230893dbe2af5ba3f90fddc98d0ade",
-    "acceptance": {
-      "kind": "existing-live-baseline",
-      "workflow": "House Status Live Deploy",
-      "run_id": 37233446561,
-      "run_attempt": 4,
-      "head_sha": "e9e31a0fbbbbb3b4560244cba8bce04ed19630b4"
-    }
+    "release": "v30",
+    "artifact_sha256": "324d8ffd3f44b03bf065bc259e3fcf15024c3d97361986f562983e777b030821"
   },
   "previous_production_release": "v28",
-  "promotion_candidate": null,
+  "promotion_candidate": {
+    "release": "v30",
+    "artifact_sha256": "324d8ffd3f44b03bf065bc259e3fcf15024c3d97361986f562983e777b030821",
+    "source_commit": "5864f37169f4e42e41f2257f677ffdaa58cd85f9",
+    "packager_commit": "5864f37169f4e42e41f2257f677ffdaa58cd85f9",
+    "packager_version": 1,
+    "dev_acceptance_run_id": 38557356149,
+    "dev_acceptance_run_attempt": 1,
+    "dev_app_sha256": "14fafda6b4787b5badf47430143801e0722655610f7dba136f081a9fd5ceb21f",
+    "dev_doorbell_sha256": "9db118f7d2f39d53e1f5527d3d77ddceb8a41053a68e22c238638d900fe640ce",
+    "doorbell_sha256": "da8fce22d1226e6960fe0fa62d2f0faaa801a3688d2a02c787225d69d689be9a"
+  },
   "previous_production_artifact_sha256": "213e00ad65d5b3e45fdcc598b8691718e1230893dbe2af5ba3f90fddc98d0ade",
-  "next_candidate_release": "v30"
+  "next_candidate_release": "v31"
 }
