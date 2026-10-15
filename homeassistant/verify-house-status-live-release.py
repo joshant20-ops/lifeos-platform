@@ -108,24 +108,50 @@ def verify_baseline_acceptance(approved: dict, token: str, repo: str) -> None:
     if run.get('status')!='completed' or run.get('conclusion')!='success':
         fail('baseline_live_acceptance_not_successful')
 
+def successful_dev_deploy_job(payload: dict, candidate: dict) -> dict:
+    if not isinstance(payload, dict) or not isinstance(payload.get('jobs'), list):
+        fail('dev_jobs_response_invalid')
+    expected = {
+        'run_id': candidate['dev_acceptance_run_id'],
+        'run_attempt': candidate['dev_acceptance_run_attempt'],
+        'head_sha': candidate['source_commit'],
+        'workflow_name': 'House Status Development Deploy',
+    }
+    jobs = [job for job in payload['jobs'] if isinstance(job, dict) and job.get('name') == 'deploy']
+    if len(jobs) != 1:
+        fail('successful_dev_deploy_job_missing')
+    job = jobs[0]
+    if any(job.get(key) != value for key, value in expected.items()):
+        fail('dev_deploy_job_identity_mismatch')
+    if job.get('status') != 'completed' or job.get('conclusion') != 'success':
+        fail('successful_dev_deploy_job_missing')
+    if not isinstance(job.get('id'), int) or job['id'] <= 0:
+        fail('dev_deploy_job_id_missing')
+    return job
+
+def github_job_logs_api_url(repo: str, job: dict) -> str:
+    if not isinstance(repo, str) or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
+        fail('invalid_github_repository')
+    job_id = job.get('id') if isinstance(job, dict) else None
+    if not isinstance(job_id, int) or job_id <= 0:
+        fail('dev_deploy_job_id_missing')
+    return f'https://api.github.com/repos/{repo}/actions/jobs/{job_id}/logs'
+
 def verify_dev_acceptance(candidate: dict, token: str, repo: str) -> None:
     run_id=candidate['dev_acceptance_run_id']
     base=f'https://api.github.com/repos/{repo}/actions'
     run=api_json(token,f'{base}/runs/{run_id}')
-    jobs=api_json(token,f'{base}/runs/{run_id}/attempts/{candidate["dev_acceptance_run_attempt"]}/jobs').get('jobs',[])
-    jobs=[j for j in jobs if j.get('name')=='deploy' and j.get('conclusion')=='success']
-    if not jobs:
-        fail('successful_dev_deploy_job_missing')
+    jobs_payload=api_json(token,f'{base}/runs/{run_id}/attempts/{candidate["dev_acceptance_run_attempt"]}/jobs')
+    job=successful_dev_deploy_job(jobs_payload,candidate)
+    req=urllib.request.Request(github_job_logs_api_url(repo,job),headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json'})
+    with urllib.request.urlopen(req,timeout=30) as response:
+        raw=response.read()
     content=[]
-    for job in jobs:
-        req=urllib.request.Request(job['logs_url'],headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json'})
-        with urllib.request.urlopen(req,timeout=30) as response:
-            raw=response.read()
-        try:
-            with zipfile.ZipFile(io.BytesIO(raw)) as archive:
-                content.extend(archive.read(n).decode('utf-8','replace') for n in archive.namelist())
-        except zipfile.BadZipFile:
-            content.append(raw.decode('utf-8','replace'))
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            content.extend(archive.read(n).decode('utf-8','replace') for n in archive.namelist())
+    except zipfile.BadZipFile:
+        content.append(raw.decode('utf-8','replace'))
     validate_dev_evidence(candidate,run,'\n'.join(content))
 
 def validate_dev_evidence(candidate: dict, run: dict, logs: str) -> None:
