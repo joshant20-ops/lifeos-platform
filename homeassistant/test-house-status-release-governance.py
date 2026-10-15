@@ -62,6 +62,48 @@ class ReleaseGovernance(unittest.TestCase):
         for requested,digest_value in rejected:
             with self.assertRaises(gate.GateError): gate.select_release(self.manifest,requested,digest_value)
 
+    def test_actual_github_jobs_response_uses_job_id_logs_endpoint(self):
+        # Shape returned by GET /actions/runs/{run_id}/attempts/{attempt}/jobs.
+        # The jobs endpoint has no logs_url; the logs API uses job id.
+        payload={
+            'total_count':1,
+            'jobs':[{
+                'id':115829743019,
+                'run_id':38557356149,
+                'workflow_name':'House Status Development Deploy',
+                'head_branch':'main',
+                'run_url':'https://api.github.com/repos/joshant20-ops/lifeos-platform/actions/runs/38557356149',
+                'run_attempt':1,
+                'node_id':'CR_kwDOexample',
+                'head_sha':'5864f37169f4e42e41f2257f677ffdaa58cd85f9',
+                'url':'https://api.github.com/repos/joshant20-ops/lifeos-platform/actions/jobs/115829743019',
+                'html_url':'https://github.com/joshant20-ops/lifeos-platform/actions/runs/38557356149/job/115829743019',
+                'status':'completed',
+                'conclusion':'success',
+                'created_at':'2026-10-14T00:00:00Z',
+                'started_at':'2026-10-14T00:00:01Z',
+                'completed_at':'2026-10-14T00:01:00Z',
+                'name':'deploy',
+                'steps':[],
+                'check_run_url':'https://api.github.com/repos/joshant20-ops/lifeos-platform/check-runs/115829743019',
+                'labels':[],
+                'runner_id':1,
+                'runner_name':'github-hosted',
+                'runner_group_id':1,
+                'runner_group_name':'GitHub Actions',
+            }],
+        }
+        candidate={'dev_acceptance_run_id':38557356149,'dev_acceptance_run_attempt':1,'source_commit':'5864f37169f4e42e41f2257f677ffdaa58cd85f9'}
+        job=gate.successful_dev_deploy_job(payload,candidate)
+        self.assertNotIn('logs_url',job)
+        self.assertEqual(job['id'],115829743019)
+        self.assertEqual(gate.github_job_logs_api_url('joshant20-ops/lifeos-platform',job),'https://api.github.com/repos/joshant20-ops/lifeos-platform/actions/jobs/115829743019/logs')
+        for field,value in [('run_id',1),('run_attempt',2),('head_sha','f'*40),('conclusion','failure')]:
+            changed=json.loads(json.dumps(payload))
+            changed['jobs'][0][field]=value
+            with self.assertRaises(gate.GateError):
+                gate.successful_dev_deploy_job(changed,candidate)
+
     def test_candidate_identity_requires_accepted_dev_run(self):
         candidate={
           'release':'v30','artifact_sha256':'a'*64,'packager_version':builder.PACKAGER_VERSION,
