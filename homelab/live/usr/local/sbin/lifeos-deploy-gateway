@@ -100,6 +100,10 @@ OPS = {
         'script': 'scripts/lifeos-verify-transaction-core.sh',
         'privileged': True,
     },
+    'storage-remove-stale-copies': {
+        'script': 'scripts/lifeos-storage-remove-stale-copies.sh',
+        'privileged': True,
+    },
     'resume-issue26-after-root-proof': {
         'script': 'scripts/lifeos-resume-issue26-after-root-proof.sh',
         'privileged': True,
