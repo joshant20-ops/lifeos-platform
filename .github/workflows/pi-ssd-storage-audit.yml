@@ -13,47 +13,88 @@ permissions:
 jobs:
   audit:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
-      - name: Targeted SSD audit
+      - name: Prove storage usage and candidate inactivity
         shell: bash
         run: |
-          set -uo pipefail
+          set -Eeuo pipefail
           SSD=/mnt/docker-data
-          echo '=== TARGETED_STORAGE_AUDIT_BEGIN ==='
-          df -hT / "$SSD"
-
-          for d in automation pre_day7_backup host-data; do
-            P="$SSD/$d"
-            echo
-            echo "=== $P ==="
-            if [[ -d "$P" ]]; then
-              echo '--- level 1 ---'
-              sudo du -xhd1 "$P" 2>/dev/null | sort -h | tail -40
-              echo '--- level 2 largest ---'
-              sudo du -xhd2 "$P" 2>/dev/null | sort -h | tail -50
-              echo '--- files over 500 MiB ---'
-              sudo find "$P" -xdev -type f -size +500M -printf '%s %p\n' 2>/dev/null |
-                sort -nr | awk '{s=$1;$1="";printf "%.2f GB %s\n",s/1073741824,$0}' | head -40
+          CANDIDATES=(/mnt/docker-data/pre_day7_backup /mnt/docker-data/host-data/opt-stacks)
+          echo '=== PI_STORAGE_AUDIT_BEGIN ==='
+          date -u '+UTC=%Y-%m-%dT%H:%M:%SZ'
+          echo '--- filesystems and SSD identity ---'
+          df -hT / /opt /home /var/lib /var/log /var/mail "$SSD" 2>&1 || true
+          findmnt -no SOURCE,TARGET,FSTYPE,OPTIONS -T "$SSD" || true
+          sudo blkid -o full /dev/sda1 || true
+          sudo findmnt -R "$SSD" || true
+          echo '--- fstab mount policy ---'
+          sudo awk '!/^[[:space:]]*#/ && /a53fd6a0-c498-4b76-a496-0e5d9233447f|docker-data|opt\\/stacks/ {print FNR ":" $0}' /etc/fstab || true
+          echo '--- candidate mount and metadata ---'
+          for p in "${CANDIDATES[@]}"; do
+            echo "PATH=$p"
+            if [[ -e "$p" ]]; then
+              sudo stat -c 'TYPE=%F DEV=%d INODE=%i SIZE=%s MTIME=%y CTIME=%z' "$p"
+              sudo findmnt -no SOURCE,TARGET,FSTYPE,OPTIONS -T "$p" || true
+              sudo du -shx "$p"
+              sudo find "$p" -xdev -mindepth 1 -maxdepth 2 -printf '%y %s %T@ %p\\n' 2>/dev/null | sort -nr | sed -n '1,80p'
             else
               echo MISSING
             fi
           done
-
-          echo
-          echo '=== HOST-DATA MIGRATION COPY CHECK ==='
-          if [[ -d "$SSD/host-data/opt-stacks" ]]; then
-            sudo du -sh "$SSD/host-data/opt-stacks"
-            echo 'Top-level source vs candidate:'
-            sudo du -sh /opt/stacks "$SSD/host-data/opt-stacks" 2>/dev/null || true
-            echo 'Candidate newest files:'
-            sudo find "$SSD/host-data/opt-stacks" -xdev -type f -printf '%T@ %s %p\n' 2>/dev/null |
-              sort -nr | head -20 | cut -d' ' -f2-
+          echo '--- Docker and containerd configured roots ---'
+          sudo docker info --format 'DockerRootDir={{.DockerRootDir}} Driver={{.Driver}}' || true
+          sudo systemctl show docker.service containerd.service -p Id -p ActiveState -p FragmentPath -p DropInPaths
+          sudo rg -n -o --no-heading '(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|/mnt/docker-data/containerd|/var/lib/containerd|/var/lib/docker)' /etc/docker /etc/containerd /etc/systemd/system /usr/lib/systemd/system /lib/systemd/system 2>/dev/null || true
+          echo '--- active container states and mount sources ---'
+          ids=$(sudo docker ps -aq)
+          if [[ -n "$ids" ]]; then
+            sudo docker inspect $ids | python3 -c 'import json,sys; xs=json.load(sys.stdin); [print("CONTAINER",x.get("Name","").lstrip("/"),"STATE",x.get("State",{}).get("Status"),"IMAGE",x.get("Config",{}).get("Image"),"MOUNTS",json.dumps([{"source":m.get("Source"),"destination":m.get("Destination"),"type":m.get("Type")} for m in x.get("Mounts",[])],sort_keys=True)) for x in xs]'
           else
-            echo 'No opt-stacks candidate present.'
+            echo NO_CONTAINERS
           fi
-
-          echo
-          echo '=== DOCKER RECLAIMABLE SUMMARY ==='
-          sudo docker system df || true
-          echo '=== TARGETED_STORAGE_AUDIT_PASS ==='
+          echo '--- active processes with open descriptors under candidate paths ---'
+          sudo python3 - "${CANDIDATES[@]}" <<'PY'
+          import glob, os, sys
+          targets=[os.path.realpath(x) for x in sys.argv[1:]]
+          found=0
+          for proc in glob.glob('/proc/[0-9]*'):
+              pid=proc.rsplit('/',1)[-1]
+              try:
+                  name=open(proc+'/comm',encoding='utf-8',errors='replace').read().strip()
+              except OSError:
+                  continue
+              for fd in glob.glob(proc+'/fd/*'):
+                  try: link=os.readlink(fd)
+                  except OSError: continue
+                  if any(link == t or link.startswith(t+'/') for t in targets):
+                      print(f'OPEN_FD pid={pid} comm={name} fd={fd.rsplit("/",1)[-1]} path={link}')
+                      found+=1
+                      if found>=200: break
+              if found>=200: break
+          print('OPEN_FD_MATCH_COUNT_AT_LEAST='+str(found))
+          PY
+          echo '--- systemd, Docker, compose, and LifeOS repository path references ---'
+          for root in /etc/systemd /etc/docker /etc/containerd /opt/stacks /home/joshan/lifeos-platform /home/joshan/automation /home/joshan/opt; do
+            [[ -e "$root" ]] || continue
+            echo "SCAN_ROOT=$root"
+            sudo rg -n -o --hidden --no-ignore --glob '!**/.git/**' --glob '!**/node_modules/**' --glob '!**/venv/**' --glob '!**/cache/**' --glob '!**/logs/**' --glob '!**/*.log' --glob '!**/*.sqlite*' --glob '!**/*.db*' '(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)' "$root" 2>/dev/null || true
+          done
+          echo '--- persistent data still on SD: bounded inventory ---'
+          for p in /opt /home/joshan /var/lib /var/log /var/mail; do
+            [[ -e "$p" ]] || continue
+            echo "DU_ROOT=$p"
+            sudo du -xhd2 "$p" 2>/dev/null | sort -h | tail -60 || true
+          done
+          echo '--- related storage topology and services ---'
+          sudo systemctl list-units --all --type=mount --no-legend --no-pager
+          sudo systemctl list-units --state=running --type=service --no-legend --no-pager | sed -n '1,160p'
+          echo '=== PI_STORAGE_AUDIT_COMPLETE ==='
+      - name: Upload read-only audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-storage-audit-${{ github.run_id }}
+          path: ${{ runner.temp }}/not-used
+          if-no-files-found: ignore
+          retention-days: 30
