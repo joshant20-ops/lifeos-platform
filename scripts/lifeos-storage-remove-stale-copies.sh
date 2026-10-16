@@ -98,9 +98,9 @@ for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker
   [[ -e "$root" ]] || continue
   scan_list=$(mktemp /tmp/lifeos-storage-reference-scan.XXXXXX) || fail "reference_scan_temp_failed:$root"
   trap 'rm -f -- "$scan_list"' EXIT
-  if ! "$FIND" -H "$root" \\
-      -type d \\( -name .git -o -name logs -o -name backups -o -name snapshots -o -name queues -o -name data -o -name work -o -name node_modules -o -name .venv -o -name __pycache__ \\) -prune -o \\
-      -type f \\( -name '*.sh' -o -name '*.py' -o -name '*.yml' -o -name '*.yaml' -o -name '*.conf' -o -name '*.service' -o -name '*.mount' -o -name '*.timer' -o -name '*.toml' -o -name '*.ini' -o -name '*.env' -o -name '*.md' -o -name '*.json' \\) -print0 >"$scan_list"; then
+  if ! "$FIND" -H "$root" \
+      -type d \( -name .git -o -name logs -o -name backups -o -name snapshots -o -name queues -o -name data -o -name work -o -name node_modules -o -name .venv -o -name __pycache__ \) -prune -o \
+      -type f \( -name '*.sh' -o -name '*.py' -o -name '*.yml' -o -name '*.yaml' -o -name '*.conf' -o -name '*.service' -o -name '*.mount' -o -name '*.timer' -o -name '*.toml' -o -name '*.ini' -o -name '*.env' -o -name '*.md' -o -name '*.json' \) -print0 >"$scan_list"; then
     fail "reference_file_list_failed:$root"
   fi
   while IFS= read -r -d '' file; do
@@ -113,7 +113,7 @@ for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker
     rc=$?
     set -e
     if [[ "$rc" -eq 0 ]]; then
-      printf '%s\\n' "$matches"
+      printf '%s\n' "$matches"
       fail "candidate_reference_detected:$root"
     elif [[ "$rc" -ne 1 ]]; then
       fail "reference_scan_failed:$root:$matches"
