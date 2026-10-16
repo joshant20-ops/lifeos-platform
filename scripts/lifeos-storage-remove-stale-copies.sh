@@ -35,26 +35,31 @@ for p in "${CANDIDATES[@]}"; do
 done
 
 # Check every Docker mount source, including stopped containers.
-docker inspect $(docker ps -aq) 2>/dev/null | python3 - "${CANDIDATES[@]}" <<'PY'
+container_ids=$(docker ps -aq)
+if [[ -n "$container_ids" ]]; then
+  if ! docker inspect $container_ids | python3 -c '
 import json, sys
 candidates=sys.argv[1:]
 try:
     containers=json.load(sys.stdin)
-except Exception as exc:
+except Exception:
     print("ERROR=docker_inspect_unreadable")
     raise SystemExit(2)
 for container in containers:
     for mount in container.get("Mounts", []):
         source=mount.get("Source", "")
         if any(source == p or source.startswith(p + "/") for p in candidates):
-            print("ERROR=active_or_stopped_container_mount:" + source)
+            print("ERROR=container_mount_reference:" + source)
             raise SystemExit(3)
 print("DOCKER_CANDIDATE_MOUNTS=NONE")
-PY
-rc=$?
-[[ "$rc" -eq 0 ]] || fail "docker_mount_check_failed"
+' "${CANDIDATES[@]}"; then
+    fail "docker_mount_check_failed"
+  fi
+else
+  echo "DOCKER_CANDIDATE_MOUNTS=NONE"
+fi
 
-python3 - "${CANDIDATES[@]}" <<'PY'
+if python3 - "${CANDIDATES[@]}" <<'PY'
 import glob, os, sys
 targets=[os.path.realpath(p) for p in sys.argv[1:]]
 found=[]
@@ -76,15 +81,25 @@ for pid,name,path in found: print(f'OPEN_FD pid={pid} comm={name} path={path}')
 print(f'OPEN_FD_MATCH_COUNT={len(found)}')
 raise SystemExit(1 if found else 0)
 PY
-rc=$?
-[[ "$rc" -eq 0 ]] || fail "candidate_open_file_detected"
+then
+  :
+else
+  fail "candidate_open_file_detected"
+fi
 
 # Recheck host service, Docker, containerd, compose, and automation references.
 for root in /etc/systemd /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt; do
   [[ -e "$root" ]] || continue
-  if rg -n --hidden --no-ignore --glob '!**/.git/**' --glob '!**/logs/**' --glob '!**/*.log' \
-      '(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)' "$root" 2>/dev/null; then
+  set +e
+  matches=$(rg -n --hidden --no-ignore --glob '!**/.git/**' --glob '!**/logs/**' --glob '!**/*.log' \
+      '(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)' "$root" 2>&1)
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 0 ]]; then
+    printf '%s\\n' "$matches"
     fail "candidate_reference_detected:$root"
+  elif [[ "$rc" -ne 1 ]]; then
+    fail "reference_scan_failed:$root:$matches"
   fi
 done
 echo "RUNTIME_REFERENCES=NONE"
