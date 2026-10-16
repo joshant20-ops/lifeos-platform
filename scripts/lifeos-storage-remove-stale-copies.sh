@@ -104,10 +104,6 @@ for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker
     fail "reference_file_list_failed:$root"
   fi
   while IFS= read -r -d '' file; do
-    # This operation's own fixed-path guard necessarily names the candidates.
-    if [[ "$root" == /home/joshan/lifeos-platform && "$file" == */scripts/lifeos-storage-remove-stale-copies.sh ]]; then
-      continue
-    fi
     set +e
     matches=$("$GREP" -n -I -E -- "$pattern" "$file" 2>&1)
     rc=$?
