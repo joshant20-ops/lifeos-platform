@@ -109,8 +109,10 @@ for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker
     rc=$?
     set -e
     if [[ "$rc" -eq 0 ]]; then
+      echo "REFERENCE_ROOT=$root"
+      echo "REFERENCE_FILE=$file"
       printf '%s\n' "$matches"
-      fail "candidate_reference_detected:$root"
+      fail "candidate_reference_detected:$root:$file"
     elif [[ "$rc" -ne 1 ]]; then
       fail "reference_scan_failed:$root:$matches"
     fi
