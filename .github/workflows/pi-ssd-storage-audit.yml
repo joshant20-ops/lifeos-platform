@@ -19,6 +19,7 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          exec > >(tee "$RUNNER_TEMP/pi-storage-audit.log") 2>&1
           SSD=/mnt/docker-data
           CANDIDATES=(/mnt/docker-data/pre_day7_backup /mnt/docker-data/host-data/opt-stacks)
           echo '=== PI_STORAGE_AUDIT_BEGIN ==='
@@ -29,7 +30,19 @@ jobs:
           sudo blkid -o full /dev/sda1 || true
           sudo findmnt -R "$SSD" || true
           echo '--- fstab mount policy ---'
-          sudo awk '!/^[[:space:]]*#/ && /a53fd6a0-c498-4b76-a496-0e5d9233447f|docker-data|opt\\/stacks/ {print FNR ":" $0}' /etc/fstab || true
+          sudo grep -nE '^[[:space:]]*[^#].*(a53fd6a0-c498-4b76-a496-0e5d9233447f|docker-data|opt/stacks)' /etc/fstab || true
+          sudo systemctl status mnt-docker\\x2ddata.mount --no-pager || true
+          sudo systemctl show mnt-docker\\x2ddata.mount -p Id -p ActiveState -p FragmentPath -p Requires -p After -p Before -p What -p Where -p Options || true
+          sudo systemctl cat mnt-docker\\x2ddata.mount docker.service containerd.service actions.runner.joshant20-ops-lifeos-platform.lifeos-pi5.service 2>&1 || true
+          echo '--- runner workspace location ---'
+          for p in /opt/actions-runner-lifeos /opt/actions-runner-lifeos/_work /home/joshan/actions-runner/_work; do
+            [[ -e "$p" ]] || continue
+            echo "RUNNER_PATH=$p REAL=$(readlink -f "$p")"
+            findmnt -no SOURCE,TARGET,FSTYPE,OPTIONS -T "$p" || true
+            df -hT "$p" || true
+            sudo du -shx "$p" 2>/dev/null || true
+          done
+          sudo systemctl show actions.runner.joshant20-ops-lifeos-platform.lifeos-pi5.service -p User -p Group -p WorkingDirectory -p ExecStart -p Environment -p FragmentPath -p DropInPaths 2>&1 || true
           echo '--- candidate mount and metadata ---'
           for p in "${CANDIDATES[@]}"; do
             echo "PATH=$p"
@@ -86,6 +99,23 @@ jobs:
             echo "DU_ROOT=$p"
             sudo du -xhd2 "$p" 2>/dev/null | sort -h | tail -60 || true
           done
+          echo '--- automation retention data layout ---'
+          for p in /mnt/docker-data/automation/backups /mnt/docker-data/automation/repair_lifecycle/snapshots /mnt/docker-data/automation/queues /mnt/docker-data/automation/logs; do
+            [[ -e "$p" ]] || continue
+            echo "SSD_DATA_PATH=$p"
+            sudo du -shx "$p" || true
+            sudo find "$p" -xdev -mindepth 1 -maxdepth 2 -printf '%y %s %TY-%Tm-%TdT%TH:%TM:%TS %p\\n' 2>/dev/null | sort -k4 | tail -120 || true
+          done
+          echo '--- SD application and state locations ---'
+          for p in /home/joshan/.local/share /home/joshan/paperless /home/joshan/docker/matter-server /home/joshan/opt /home/joshan/automation_sd_backup /var/mail/joshan /var/swap; do
+            [[ -e "$p" ]] || continue
+            echo "SD_STATE_PATH=$p REAL=$(readlink -f "$p")"
+            findmnt -no SOURCE,TARGET,FSTYPE,OPTIONS -T "$p" || true
+            sudo du -shx "$p" 2>/dev/null || true
+            sudo find "$p" -xdev -mindepth 1 -maxdepth 2 -printf '%y %s %TY-%Tm-%TdT%TH:%TM:%TS %p\\n' 2>/dev/null | sort -nr -k2 | head -80 || true
+          done
+          sudo swapon --show --bytes || true
+          sudo grep -nE 'swap|docker-data|a53fd6a0-c498-4b76-a496-0e5d9233447f' /etc/fstab || true
           echo '--- related storage topology and services ---'
           sudo systemctl list-units --all --type=mount --no-legend --no-pager
           sudo systemctl list-units --state=running --type=service --no-legend --no-pager | sed -n '1,160p'
@@ -95,6 +125,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pi-storage-audit-${{ github.run_id }}
-          path: ${{ runner.temp }}/not-used
+          path: ${{ runner.temp }}/pi-storage-audit.log
           if-no-files-found: ignore
           retention-days: 30
