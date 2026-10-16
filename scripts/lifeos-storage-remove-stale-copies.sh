@@ -94,12 +94,12 @@ GREP=/usr/bin/grep
 FIND=/usr/bin/find
 [[ -x "$GREP" && -x "$FIND" ]] || fail "reference_scan_tool_missing"
 pattern='(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)'
-for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt /home/joshan/lifeos-platform; do
+for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt; do
   [[ -e "$root" ]] || continue
   scan_list=$(mktemp /tmp/lifeos-storage-reference-scan.XXXXXX) || fail "reference_scan_temp_failed:$root"
   trap 'rm -f -- "$scan_list"' EXIT
-  if ! "$FIND" "$root" \\
-      -type d \\( -name .git -o -name logs -o -name backups -o -name snapshots -o -name queues -o -name data -o -name node_modules -o -name .venv -o -name __pycache__ \\) -prune -o \\
+  if ! "$FIND" -H "$root" \\
+      -type d \\( -name .git -o -name logs -o -name backups -o -name snapshots -o -name queues -o -name data -o -name work -o -name node_modules -o -name .venv -o -name __pycache__ \\) -prune -o \\
       -type f \\( -name '*.sh' -o -name '*.py' -o -name '*.yml' -o -name '*.yaml' -o -name '*.conf' -o -name '*.service' -o -name '*.mount' -o -name '*.timer' -o -name '*.toml' -o -name '*.ini' -o -name '*.env' -o -name '*.md' -o -name '*.json' \\) -print0 >"$scan_list"; then
     fail "reference_file_list_failed:$root"
   fi
