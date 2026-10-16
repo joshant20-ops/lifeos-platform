@@ -1,0 +1,46 @@
+name: Pi SSD Storage Audit
+
+on:
+  push:
+    branches:
+      - ops/ssd-storage-audit-20261016
+    paths:
+      - .github/workflows/pi-ssd-storage-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - name: Audit SD and SSD storage
+        shell: bash
+        run: |
+          set -uo pipefail
+          SSD=/mnt/docker-data
+          echo '=== STORAGE_AUDIT_BEGIN ==='
+          echo '--- FILESYSTEMS ---'
+          df -hT / "$SSD"
+          echo '--- SSD TOP LEVEL ---'
+          sudo du -xhd1 "$SSD" 2>/dev/null | sort -h
+          echo '--- SSD LARGEST LEVEL-2 DIRECTORIES ---'
+          sudo du -xhd2 "$SSD" 2>/dev/null | sort -h | tail -60
+          echo '--- DOCKER SUMMARY ---'
+          sudo docker system df -v 2>/dev/null || true
+          echo '--- CONTAINERD LARGEST ---'
+          sudo du -xhd2 "$SSD/containerd" 2>/dev/null | sort -h | tail -40
+          echo '--- VOLUMES LARGEST ---'
+          sudo du -xhd2 "$SSD/volumes" 2>/dev/null | sort -h | tail -40
+          echo '--- AUTOMATION LARGEST ---'
+          sudo du -xhd3 "$SSD/automation" 2>/dev/null | sort -h | tail -50
+          echo '--- FILES OVER 1G ---'
+          sudo find "$SSD" -xdev -type f -size +1G -printf '%s %p\n' 2>/dev/null | sort -nr | awk '{s=$1;$1="";printf "%.2f GB %s\n",s/1073741824,$0}' | head -50
+          echo '--- SD TOP LEVEL ---'
+          sudo du -xhd1 / 2>/dev/null | sort -h
+          echo '--- STACKS NOW ---'
+          sudo du -xhd2 /opt/stacks 2>/dev/null | sort -h | tail -40
+          echo '--- DELETED OPEN FILES ---'
+          sudo lsof +L1 2>/dev/null | awk '$7 ~ /^[0-9]+$/ && $7 > 104857600 {print}' | tail -30 || true
+          echo '=== STORAGE_AUDIT_PASS ==='
