@@ -116,6 +116,12 @@ jobs:
           done
           sudo swapon --show --bytes || true
           sudo grep -nE 'swap|docker-data|a53fd6a0-c498-4b76-a496-0e5d9233447f' /etc/fstab || true
+          echo '--- runner privilege and installed gateway allow-list ---'
+          sudo -n -l 2>&1 || true
+          set +e
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway 2>&1
+          echo "INSTALLED_GATEWAY_USAGE_RC=$?"
+          set -e
           echo '--- related storage topology and services ---'
           sudo systemctl list-units --all --type=mount --no-legend --no-pager
           sudo systemctl list-units --state=running --type=service --no-legend --no-pager | sed -n '1,160p'
