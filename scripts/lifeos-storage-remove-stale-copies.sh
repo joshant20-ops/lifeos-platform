@@ -88,10 +88,13 @@ else
 fi
 
 # Recheck host service, Docker, containerd, compose, and automation references.
+# Use Debian's standard grep rather than requiring ripgrep on the Pi.
+GREP=/usr/bin/grep
+[[ -x "$GREP" ]] || fail "reference_scan_tool_missing:$GREP"
 for root in /etc/systemd /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt; do
   [[ -e "$root" ]] || continue
   set +e
-  matches=$(rg -n --hidden --no-ignore --glob '!**/.git/**' --glob '!**/logs/**' --glob '!**/*.log' \
+  matches=$("$GREP" -R -n -I -E --exclude-dir=.git --exclude-dir=logs --exclude='*.log' \
       '(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)' "$root" 2>&1)
   rc=$?
   set -e
