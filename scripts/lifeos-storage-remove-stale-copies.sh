@@ -87,24 +87,36 @@ else
   fail "candidate_open_file_detected"
 fi
 
-# Recheck host service, Docker, containerd, compose, and automation references.
-# Use Debian's standard grep without following broken unit symlinks. Scan both
-# systemd unit target directories as well as /etc's drop-ins and references.
+# Recheck service and source configuration references. Do not scan generated
+# automation backups, snapshots, queues, logs, databases, or other runtime data.
+# This bounds the scan to text files that can define service paths.
 GREP=/usr/bin/grep
-[[ -x "$GREP" ]] || fail "reference_scan_tool_missing:$GREP"
+FIND=/usr/bin/find
+[[ -x "$GREP" && -x "$FIND" ]] || fail "reference_scan_tool_missing"
+pattern='(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)'
 for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt; do
   [[ -e "$root" ]] || continue
-  set +e
-  matches=$("$GREP" -r -n -I -E --exclude-dir=.git --exclude-dir=logs --exclude='*.log' \
-      '(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)' "$root" 2>&1)
-  rc=$?
-  set -e
-  if [[ "$rc" -eq 0 ]]; then
-    printf '%s\\n' "$matches"
-    fail "candidate_reference_detected:$root"
-  elif [[ "$rc" -ne 1 ]]; then
-    fail "reference_scan_failed:$root:$matches"
+  scan_list=$(mktemp /tmp/lifeos-storage-reference-scan.XXXXXX) || fail "reference_scan_temp_failed:$root"
+  trap 'rm -f -- "$scan_list"' EXIT
+  if ! "$FIND" -H "$root" \
+      -type d \( -name .git -o -name logs -o -name backups -o -name snapshots -o -name queues -o -name data -o -name work -o -name node_modules -o -name .venv -o -name __pycache__ \) -prune -o \
+      -type f \( -name '*.sh' -o -name '*.py' -o -name '*.yml' -o -name '*.yaml' -o -name '*.conf' -o -name '*.service' -o -name '*.mount' -o -name '*.timer' -o -name '*.toml' -o -name '*.ini' -o -name '*.env' -o -name '*.md' -o -name '*.json' \) -print0 >"$scan_list"; then
+    fail "reference_file_list_failed:$root"
   fi
+  while IFS= read -r -d '' file; do
+    set +e
+    matches=$("$GREP" -n -I -E -- "$pattern" "$file" 2>&1)
+    rc=$?
+    set -e
+    if [[ "$rc" -eq 0 ]]; then
+      printf '%s\n' "$matches"
+      fail "candidate_reference_detected:$root"
+    elif [[ "$rc" -ne 1 ]]; then
+      fail "reference_scan_failed:$root:$matches"
+    fi
+  done <"$scan_list"
+  rm -f -- "$scan_list"
+  trap - EXIT
 done
 echo "RUNTIME_REFERENCES=NONE"
 
