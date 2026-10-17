@@ -121,7 +121,7 @@ actual_evidence_sha=$(sha256sum "$HISTORICAL_EVIDENCE" | awk '{print $1}')
 [[ "$actual_evidence_sha" == "$HISTORICAL_EVIDENCE_SHA256" ]] || fail "historical_evidence_hash_mismatch:$actual_evidence_sha"
 echo "HISTORICAL_EVIDENCE_SHA256=$actual_evidence_sha"
 echo "HISTORICAL_EVIDENCE_CLASS=IMMUTABLE_AUDIT_RECORD"
-for root in /etc/fstab /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly /var/spool/cron /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt /home/joshan/lifeos-platform/homelab/live /home/joshan/lifeos-platform/scripts; do
+for root in /etc/fstab /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly /var/spool/cron /etc/docker /etc/containerd /usr/local/sbin /usr/local/bin /opt/stacks /home/joshan/automation /home/joshan/opt /home/joshan/lifeos-platform/homelab/live /home/joshan/lifeos-platform/scripts /home/joshan/lifeos-platform/.github/workflows; do
   [[ -e "$root" ]] || continue
   scan_list=$(mktemp /tmp/lifeos-storage-reference-scan.XXXXXX) || fail "reference_scan_temp_failed:$root"
   trap 'rm -f -- "$scan_list"' EXIT
