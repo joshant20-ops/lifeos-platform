@@ -112,6 +112,22 @@ OPS = {
         'script': 'scripts/lifeos-storage-audit-pi-state.sh',
         'privileged': True,
     },
+    'storage-stage-opt-stacks': {
+        'script': 'scripts/lifeos-storage-stage-opt-stacks.sh',
+        'privileged': True,
+    },
+    'storage-activate-opt-stacks': {
+        'script': 'scripts/lifeos-storage-activate-opt-stacks.sh',
+        'privileged': True,
+    },
+    'storage-rollback-opt-stacks': {
+        'script': 'scripts/lifeos-storage-rollback-opt-stacks.sh',
+        'privileged': True,
+    },
+    'storage-finalize-opt-stacks': {
+        'script': 'scripts/lifeos-storage-finalize-opt-stacks.sh',
+        'privileged': True,
+    },
     'resume-issue26-after-root-proof': {
         'script': 'scripts/lifeos-resume-issue26-after-root-proof.sh',
         'privileged': True,
