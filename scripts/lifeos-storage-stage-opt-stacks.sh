@@ -77,7 +77,7 @@ du -sx --block-size=1 "$SOURCE" "$DEST" 2>/dev/null || true
 # similar transient files can legitimately disappear between enumeration and
 # transfer. Treat rsync code 24 as a retryable/live-source condition here only.
 # The stopped-writer final sync remains strict and must return zero.
-printf '%s\\n' "SOURCE=$SOURCE" "EXPECTED_UUID=$EXPECTED_UUID" "STAGE_STATUS=IN_PROGRESS" "STARTED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$PARTIAL_MARKER"
+printf '%s\n' "SOURCE=$SOURCE" "EXPECTED_UUID=$EXPECTED_UUID" "STAGE_STATUS=IN_PROGRESS" "STARTED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$PARTIAL_MARKER"
 chmod 0600 "$PARTIAL_MARKER"
 set +e
 rsync -aHAXx --numeric-ids --delete --info=stats2 "$SOURCE/" "$DEST/"
@@ -100,7 +100,7 @@ delta_count=$(printf '%s\n' "$delta" | awk 'NF {n++} END {print n+0}')
 echo "INITIAL_CHECKSUM_DELTA_ENTRIES=$delta_count"
 [[ -z "$delta" ]] || printf '%s\n' "$delta" | head -100
 
-printf '%s\\n' "SOURCE=$SOURCE" "EXPECTED_UUID=$EXPECTED_UUID" "STAGE_STATUS=COMPLETE" "STAGED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$MARKER.tmp"
+printf '%s\n' "SOURCE=$SOURCE" "EXPECTED_UUID=$EXPECTED_UUID" "STAGE_STATUS=COMPLETE" "STAGED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$MARKER.tmp"
 chmod 0600 "$MARKER.tmp"
 mv -f -- "$MARKER.tmp" "$MARKER"
 rm -f -- "$PARTIAL_MARKER"
