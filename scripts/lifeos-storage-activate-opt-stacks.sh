@@ -282,18 +282,38 @@ grep -qF "$ssd_unit" < <(systemctl show docker.service -p Requires -p BindsTo -p
 systemd-analyze verify docker.service "$stacks_unit" "$ssd_unit"
 
 systemctl restart docker.service
-if (( ${#original_containers[@]} )); then
-  docker start "${original_containers[@]}"
-fi
-for container in homeassistant mosquitto adguardhome; do
-  for _ in $(seq 1 120); do
-    state=$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)
-    health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)
-    [[ "$state" == running && "$health" == healthy ]] && break
-    sleep 2
+for id in "${original_containers[@]}"; do
+  state=$(docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null || true)
+  [[ "$state" == running ]] || docker start "$id"
+done
+
+# Wait for every previously active container to return. Containers with
+# healthchecks must reach healthy; containers without one must be running.
+deadline=$((SECONDS + 240))
+while :; do
+  all_ready=1
+  for id in "${original_containers[@]}"; do
+    name=$(docker inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
+    state=$(docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null || true)
+    health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null || true)
+    [[ "$state" == running ]] || all_ready=0
+    [[ "$health" == none || "$health" == healthy ]] || all_ready=0
+    [[ "$health" != unhealthy ]] || fail "container_unhealthy:$name"
   done
+  (( all_ready )) && break
+  (( SECONDS < deadline )) || fail "container_health_timeout"
+  sleep 2
+done
+for container in homeassistant mosquitto adguardhome lifeos-energy; do
+  state=$(docker inspect --format '{{.State.Status}}' "$container" 2>/dev/null || true)
+  health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$container" 2>/dev/null || true)
   [[ "$state" == running && "$health" == healthy ]] || fail "required_container_unhealthy:$container:$state:$health"
-  echo "SERVICE_HEALTH=$container:$health"
+  echo "REQUIRED_SERVICE_HEALTH=$container:$health"
+done
+for id in "${original_containers[@]}"; do
+  name=$(docker inspect --format '{{.Name}}' "$id" 2>/dev/null | sed 's#^/##')
+  health=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null || true)
+  echo "SERVICE_HEALTH=$name:$health"
 done
 
 # Prove an application container can write to its persistent config bind and
