@@ -38,7 +38,19 @@ echo "--- before ---"
 df -hT / "$SSD"
 du -sx --block-size=1 "$SOURCE" "$DEST" 2>/dev/null || true
 
+# Live writers may remove a transient file between traversal and open.
+# Accept rsync's documented partial-transfer/vanished-file status (24) only for
+# this initial stage. Checksum comparison and activation's final sync stay strict.
+set +e
 rsync -aHAXx --numeric-ids --delete --info=stats2 "$SOURCE/" "$DEST/"
+initial_rsync_rc=$?
+set -e
+echo "INITIAL_RSYNC_EXIT_CODE=$initial_rsync_rc"
+case "$initial_rsync_rc" in
+  0) echo "INITIAL_RSYNC_RESULT=PASS" ;;
+  24) echo "INITIAL_RSYNC_RESULT=PASS_WITH_VANISHED_TRANSIENT_FILES" ;;
+  *) fail "initial_rsync_failed:$initial_rsync_rc" ;;
+esac
 
 # A live first copy may differ in files written during transfer; report that
 # delta, then the separate stopped-writer final sync will close it.
