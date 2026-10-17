@@ -63,7 +63,7 @@ for container in containers:
         if any(source == p or source.startswith(p + "/") for p in candidates):
             print("ERROR=container_mount_reference:" + source)
             raise SystemExit(3)
-        labels=container.get("Config", {}).get("Labels") or {}
+    labels=container.get("Config", {}).get("Labels") or {}
     config_files=labels.get("com.docker.compose.project.config_files", "")
     working_dir=labels.get("com.docker.compose.project.working_dir", "")
     for value in [config_files, working_dir]:
@@ -165,6 +165,10 @@ echo "RUNTIME_REFERENCES=NONE"
 
 echo "--- before ---"
 df -hT / "$SSD"
+echo "DOCKER_SERVICES_BEFORE_BEGIN"
+docker ps --format 'table {{.Names}}\t{{.Status}}'
+echo "DOCKER_SERVICES_BEFORE_END"
+echo "SYSTEMD_FAILED_BEFORE=$(systemctl --failed --no-legend --plain | wc -l)"
 for p in "${CANDIDATES[@]}"; do
   du -sx --block-size=1 "$p"
 done
@@ -179,4 +183,8 @@ done
 
 echo "--- after ---"
 df -hT / "$SSD"
+echo "DOCKER_SERVICES_AFTER_BEGIN"
+docker ps --format 'table {{.Names}}\t{{.Status}}'
+echo "DOCKER_SERVICES_AFTER_END"
+echo "SYSTEMD_FAILED_AFTER=$(systemctl --failed --no-legend --plain | wc -l)"
 echo "RESULT=PASS"
