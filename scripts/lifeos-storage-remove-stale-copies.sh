@@ -114,13 +114,24 @@ GREP=/usr/bin/grep
 FIND=/usr/bin/find
 [[ -x "$GREP" && -x "$FIND" ]] || fail "reference_scan_tool_missing"
 pattern='(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)'
-HISTORICAL_EVIDENCE=/home/joshan/automation/docker_fleet_auditor/evidence/docker_fleet_evidence_20260602_010106.json
-HISTORICAL_EVIDENCE_SHA256=32f07a333acba53c11f85531f031bea9542f18ac4c681034227759679e285190
-[[ -f "$HISTORICAL_EVIDENCE" && ! -L "$HISTORICAL_EVIDENCE" ]] || fail "historical_evidence_missing_or_symlink"
-actual_evidence_sha=$(sha256sum "$HISTORICAL_EVIDENCE" | awk '{print $1}')
-[[ "$actual_evidence_sha" == "$HISTORICAL_EVIDENCE_SHA256" ]] || fail "historical_evidence_hash_mismatch:$actual_evidence_sha"
-echo "HISTORICAL_EVIDENCE_SHA256=$actual_evidence_sha"
-echo "HISTORICAL_EVIDENCE_CLASS=IMMUTABLE_AUDIT_RECORD"
+HISTORICAL_EVIDENCE_FILES=(
+  /home/joshan/automation/docker_fleet_auditor/evidence/docker_fleet_evidence_20260602_010106.json
+  /home/joshan/automation/grafana_auditor/evidence/grafana_data_link_evidence_v3_20260602_005737.json
+)
+HISTORICAL_EVIDENCE_SHA256S=(
+  32f07a333acba53c11f85531f031bea9542f18ac4c681034227759679e285190
+  1b920eabd8135ae6247ddd374600d645d9b4360125d70e9b40d58d7066fabeee
+)
+for i in "${!HISTORICAL_EVIDENCE_FILES[@]}"; do
+  evidence="${HISTORICAL_EVIDENCE_FILES[$i]}"
+  expected="${HISTORICAL_EVIDENCE_SHA256S[$i]}"
+  [[ -f "$evidence" && ! -L "$evidence" ]] || fail "historical_evidence_missing_or_symlink:$evidence"
+  actual="$(sha256sum "$evidence" | awk '{print $1}')"
+  [[ "$actual" == "$expected" ]] || fail "historical_evidence_hash_mismatch:$evidence:$actual"
+  echo "HISTORICAL_EVIDENCE_FILE=$evidence"
+  echo "HISTORICAL_EVIDENCE_SHA256=$actual"
+  echo "HISTORICAL_EVIDENCE_CLASS=IMMUTABLE_AUDIT_RECORD"
+done
 for root in /etc/fstab /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly /var/spool/cron /etc/docker /etc/containerd /usr/local/sbin /usr/local/bin /opt/stacks /home/joshan/automation /home/joshan/opt /home/joshan/lifeos-platform/homelab/live /home/joshan/lifeos-platform/scripts /home/joshan/lifeos-platform/.github/workflows; do
   [[ -e "$root" ]] || continue
   scan_list=$(mktemp /tmp/lifeos-storage-reference-scan.XXXXXX) || fail "reference_scan_temp_failed:$root"
@@ -136,8 +147,13 @@ for root in /etc/fstab /etc/systemd /lib/systemd/system /usr/lib/systemd/system 
     rc=$?
     set -e
     if [[ "$rc" -eq 0 ]]; then
-      if [[ "$file" == "$HISTORICAL_EVIDENCE" ]]; then
+      if [[ "$file" == "${HISTORICAL_EVIDENCE_FILES[0]}" ]]; then
         echo "HISTORICAL_EVIDENCE_REFERENCES=4"
+        echo "HISTORICAL_EVIDENCE_REFERENCE_FILE=$file"
+        echo "HISTORICAL_EVIDENCE_REFERENCE_CLASS=IMMUTABLE_HISTORICAL_ONLY"
+        continue
+      elif [[ "$file" == "${HISTORICAL_EVIDENCE_FILES[1]}" ]]; then
+        echo "HISTORICAL_EVIDENCE_REFERENCES=13"
         echo "HISTORICAL_EVIDENCE_REFERENCE_FILE=$file"
         echo "HISTORICAL_EVIDENCE_REFERENCE_CLASS=IMMUTABLE_HISTORICAL_ONLY"
         continue
