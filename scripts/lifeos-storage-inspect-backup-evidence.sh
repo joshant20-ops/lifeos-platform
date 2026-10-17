@@ -1,27 +1,33 @@
 #!/usr/bin/env bash
-# Read-only inspection of the exact historical evidence file blocking the
-# stale-copy preflight. No candidate data is modified or copied.
+# Read-only inspection of fixed historical audit evidence that mentions stale-copy paths.
+# This operation never changes or removes candidate data or evidence.
 set -Eeuo pipefail
 
-EVIDENCE=/home/joshan/automation/docker_fleet_auditor/evidence/docker_fleet_evidence_20260602_010106.json
-[[ -f "$EVIDENCE" && ! -L "$EVIDENCE" ]] || { echo "RESULT=FAIL"; echo "ERROR=evidence_missing_or_symlink"; exit 1; }
+EXPECTED_DOCKER_FLEET_SHA256=32f07a333acba53c11f85531f031bea9542f18ac4c681034227759679e285190
+FILES=(
+  /home/joshan/automation/docker_fleet_auditor/evidence/docker_fleet_evidence_20260602_010106.json
+  /home/joshan/automation/grafana_auditor/evidence/grafana_data_link_evidence_v3_20260602_005737.json
+)
 
 echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "OPERATION=storage-inspect-backup-evidence"
-echo "EVIDENCE_FILE=$EVIDENCE"
-stat -c 'EVIDENCE_STAT=size:%s owner:%U:%G mode:%a mtime:%y' "$EVIDENCE"
-sha256sum "$EVIDENCE" | sed 's#  .*#  [fixed evidence file]#'
-
-python3 - "$EVIDENCE" <<'PY'
+for i in "${!FILES[@]}"; do
+  path="${FILES[$i]}"
+  [[ -f "$path" && ! -L "$path" ]] || { echo "RESULT=FAIL"; echo "ERROR=evidence_missing_or_symlink:$path"; exit 1; }
+  actual="$(sha256sum "$path" | awk '{print $1}')"
+  if [[ "$i" == 0 ]]; then
+    [[ "$actual" == "$EXPECTED_DOCKER_FLEET_SHA256" ]] || { echo "RESULT=FAIL"; echo "ERROR=docker_fleet_evidence_hash_mismatch:$actual"; exit 1; }
+    echo "DOCKER_FLEET_EVIDENCE_HASH_CHECK=PASS"
+  fi
+  echo "EVIDENCE_FILE=$path"
+  echo "EVIDENCE_SHA256=$actual"
+  stat -c 'EVIDENCE_STAT=size:%s owner:%U:%G mode:%a mtime:%y' "$path"
+  python3 - "$path" <<'PY'
 import json, sys
 path = sys.argv[1]
 with open(path, encoding='utf-8') as f:
     data = json.load(f)
 print('EVIDENCE_JSON_TOP_LEVEL_TYPE=' + type(data).__name__)
-if isinstance(data, dict):
-    print('EVIDENCE_JSON_TOP_LEVEL_KEYS=' + ','.join(sorted(str(k) for k in data.keys())))
-else:
-    print('EVIDENCE_JSON_TOP_LEVEL_KEYS=NONE')
 needles = (
     '/mnt/docker-data/pre_day7_backup',
     '/mnt/docker-data/host-data/opt-stacks',
@@ -47,5 +53,5 @@ for keypath, value in matches:
     print('EVIDENCE_REFERENCE_VALUE=' + value)
 print(f'EVIDENCE_REFERENCE_COUNT={len(matches)}')
 PY
-
+done
 echo "RESULT=PASS"
