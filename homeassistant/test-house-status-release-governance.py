@@ -6,6 +6,9 @@ import pathlib
 import subprocess
 import tempfile
 import unittest
+import urllib.error
+from email.message import Message
+from unittest import mock
 
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 def load(name,path):
@@ -103,6 +106,30 @@ class ReleaseGovernance(unittest.TestCase):
             changed['jobs'][0][field]=value
             with self.assertRaises(gate.GateError):
                 gate.successful_dev_deploy_job(changed,candidate)
+
+    def test_github_job_logs_redirect_does_not_forward_authorization(self):
+        api_url='https://api.github.com/repos/example/lifeos/actions/jobs/123/logs'
+        signed_url='https://signed-blob.example/logs.zip?sig=secret'
+        headers=Message(); headers['Location']=signed_url
+        redirect=urllib.error.HTTPError(api_url,302,'Found',headers,None)
+        class FakeOpener:
+            def __init__(self): self.request=None
+            def open(self,request,timeout):
+                self.request=request
+                raise redirect
+        class FakeResponse:
+            def __enter__(self): return self
+            def __exit__(self,*args): return None
+            def read(self): return b'zip-log-bytes'
+        opener=FakeOpener()
+        with mock.patch.object(gate.urllib.request,'build_opener',return_value=opener):
+            with mock.patch.object(gate.urllib.request,'urlopen',return_value=FakeResponse()) as signed_fetch:
+                result=gate.fetch_github_job_logs('github-secret',api_url)
+        self.assertEqual(result,b'zip-log-bytes')
+        self.assertEqual(opener.request.get_header('Authorization'),'Bearer github-secret')
+        redirected_request=signed_fetch.call_args.args[0]
+        self.assertEqual(redirected_request.full_url,signed_url)
+        self.assertIsNone(redirected_request.get_header('Authorization'))
 
     def test_candidate_identity_requires_accepted_dev_run(self):
         candidate={
