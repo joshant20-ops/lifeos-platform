@@ -4,6 +4,7 @@
 set -Eeuo pipefail
 
 EXPECTED_DOCKER_FLEET_SHA256=32f07a333acba53c11f85531f031bea9542f18ac4c681034227759679e285190
+EXPECTED_GRAFANA_EVIDENCE_SHA256=1b920eabd8135ae6247ddd374600d645d9b4360125d70e9b40d58d7066fabeee
 FILES=(
   /home/joshan/automation/docker_fleet_auditor/evidence/docker_fleet_evidence_20260602_010106.json
   /home/joshan/automation/grafana_auditor/evidence/grafana_data_link_evidence_v3_20260602_005737.json
@@ -18,6 +19,9 @@ for i in "${!FILES[@]}"; do
   if [[ "$i" == 0 ]]; then
     [[ "$actual" == "$EXPECTED_DOCKER_FLEET_SHA256" ]] || { echo "RESULT=FAIL"; echo "ERROR=docker_fleet_evidence_hash_mismatch:$actual"; exit 1; }
     echo "DOCKER_FLEET_EVIDENCE_HASH_CHECK=PASS"
+  else
+    [[ "$actual" == "$EXPECTED_GRAFANA_EVIDENCE_SHA256" ]] || { echo "RESULT=FAIL"; echo "ERROR=grafana_evidence_hash_mismatch:$actual"; exit 1; }
+    echo "GRAFANA_EVIDENCE_HASH_CHECK=PASS"
   fi
   echo "EVIDENCE_FILE=$path"
   echo "EVIDENCE_SHA256=$actual"
