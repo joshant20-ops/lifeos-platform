@@ -59,7 +59,7 @@ for c in items:
     state=c.get("State") or {}
     health=((state.get("Health") or {}).get("Status") or "no-healthcheck")
     labels=c.get("Config",{}).get("Labels") or {}
-    print(f"CONTAINER_DETAIL={name} state={state.get(chr(83)+chr(116)+chr(97)+chr(116)+chr(117)+chr(115))} health={health}")
+    print(f"CONTAINER_DETAIL={name} state={state.get("Status")} health={health}")
     print("COMPOSE_METADATA=" + json.dumps({k:labels.get(k) for k in ("com.docker.compose.project","com.docker.compose.project.working_dir","com.docker.compose.project.config_files")},sort_keys=True))
     for m in c.get("Mounts",[]):
         print("CONTAINER_MOUNT=" + json.dumps({k:m.get(k) for k in ("Type","Name","Source","Destination","RW")},sort_keys=True))
@@ -81,5 +81,13 @@ echo "--- data footprint ---"
 du -x -d1 -h /opt/stacks /home/joshan /opt /var/mail /var 2>/dev/null | sort -h | tail -100 || true
 echo "--- swap and mail ---"
 swapon --show --bytes
-ls -lh /var/swap /var/mail/joshan 2>/dev/null || true
+ls -ldh /var/swap /var/mail/joshan 2>/dev/null || true
+if [[ -f /var/mail/joshan ]]; then
+  echo "MAIL_SPOOL_BYTES=$(stat -c %s /var/mail/joshan)"
+  echo "MAIL_SPOOL_MTIME=$(stat -c %y /var/mail/joshan)"
+  echo "MAIL_SPOOL_MESSAGE_COUNT=$(grep -c '^From ' /var/mail/joshan || true)"
+  echo "MAIL_SPOOL_OWNER=$(stat -c %U:%G /var/mail/joshan)"
+elif [[ -d /var/mail/joshan ]]; then
+  find /var/mail/joshan -maxdepth 2 -type f -printf 'MAIL_FILE=%p bytes=%s mtime=%TY-%Tm-%TdT%TH:%TM:%TS\\n'
+fi
 echo "RESULT=PASS"
