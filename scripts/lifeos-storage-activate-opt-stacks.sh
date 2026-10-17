@@ -13,6 +13,7 @@ FSTAB=/etc/fstab
 DROPIN=/etc/systemd/system/docker.service.d/20-lifeos-storage.conf
 GUARD=/usr/local/sbin/lifeos-require-opt-stacks-ssd
 rollback_needed=0
+cutover_started=0
 original_containers=()
 
 fail(){ echo "RESULT=FAIL"; echo "ERROR=$*"; return 1; }
@@ -22,26 +23,79 @@ rollback_cutover(){
   echo "AUTOMATIC_ROLLBACK=START"
   systemctl stop docker.service
   if mountpoint -q "$SOURCE"; then umount "$SOURCE"; fi
-  if [[ -f "$STATE/fstab.before" ]]; then cp -a "$STATE/fstab.before" "$FSTAB"; fi
-  if [[ -f "$STATE/docker-dropin.before" ]]; then
-    install -D -o root -g root -m 0644 "$STATE/docker-dropin.before" "$DROPIN"
-  else
-    rm -f "$DROPIN"
+
+  if [[ -d "$ROLLBACK" ]]; then
+    if [[ -d "$SOURCE" ]]; then rmdir "$SOURCE" 2>/dev/null; fi
+    if [[ ! -e "$SOURCE" ]]; then
+      mv -- "$ROLLBACK" "$SOURCE"
+      echo "AUTOMATIC_ROLLBACK_SOURCE_RESTORED=YES"
+    else
+      echo "AUTOMATIC_ROLLBACK_SOURCE_RESTORED=NO_SOURCE_PATH_NOT_EMPTY"
+    fi
   fi
-  if [[ -f "$STATE/guard.before" ]]; then
-    install -D -o root -g root -m 0755 "$STATE/guard.before" "$GUARD"
+  [[ -d "$SOURCE" ]] && chmod 0755 "$SOURCE"
+
+  if (( cutover_started )); then
+    # Fail closed after any path switch. Keep/restore an SSD-only Docker gate;
+    # do not restart services on the SD rollback tree.
+    cat >"$GUARD" <<'SH'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+EXPECTED_UUID=a53fd6a0-c498-4b76-a496-0e5d9233447f
+TARGET=/opt/stacks
+SSD=/mnt/docker-data
+mountpoint -q "$TARGET"
+[[ "$(findmnt -n -o TARGET -T "$TARGET")" == "$TARGET" ]]
+[[ "$(findmnt -n -o UUID -T "$TARGET")" == "$EXPECTED_UUID" ]]
+[[ "$(findmnt -n -o UUID -T "$SSD")" == "$EXPECTED_UUID" ]]
+SH
+    chown root:root "$GUARD"
+    chmod 0755 "$GUARD"
+    ssd_unit=$(systemd-escape --path --suffix=mount "$SSD")
+    stacks_unit=$(systemd-escape --path --suffix=mount "$SOURCE")
+    install -d -o root -g root -m 0755 "$(dirname "$DROPIN")"
+    cat >"$DROPIN" <<EOF
+[Unit]
+RequiresMountsFor=$SSD
+BindsTo=$ssd_unit $stacks_unit
+After=$ssd_unit $stacks_unit
+
+[Service]
+ExecStartPre=$GUARD
+EOF
+    chown root:root "$DROPIN"
+    chmod 0644 "$DROPIN"
+    systemctl daemon-reload
+    systemctl stop docker.service
+    echo "AUTOMATIC_ROLLBACK_SERVICES=LEFT_STOPPED_FAIL_CLOSED"
   else
-    rm -f "$GUARD"
-  fi
-  systemctl daemon-reload
-  if [[ -d "$ROLLBACK" && ! -e "$SOURCE" ]]; then mv -- "$ROLLBACK" "$SOURCE"; fi
-  if [[ -d "$SOURCE" ]]; then chmod 0755 "$SOURCE"; fi
-  if [[ "$(findmnt -n -o UUID -T "$SSD" 2>/dev/null || true)" == "$EXPECTED_UUID" ]]; then
-    systemctl start docker.service
-    for id in "${original_containers[@]}"; do docker start "$id" >/dev/null 2>&1 || true; done
-    echo "AUTOMATIC_ROLLBACK_DOCKER=STARTED"
-  else
-    echo "AUTOMATIC_ROLLBACK_DOCKER=SSD_UNAVAILABLE"
+    if [[ -f "$STATE/fstab.before" ]]; then cp -a "$STATE/fstab.before" "$FSTAB"; fi
+    if [[ -f "$STATE/docker-dropin.before" ]]; then
+      install -D -o root -g root -m 0644 "$STATE/docker-dropin.before" "$DROPIN"
+    else
+      rm -f "$DROPIN"
+    fi
+    if [[ -f "$STATE/guard.before" ]]; then
+      install -D -o root -g root -m 0755 "$STATE/guard.before" "$GUARD"
+    else
+      rm -f "$GUARD"
+    fi
+    systemctl daemon-reload
+    if [[ "$(findmnt -n -o UUID -T "$SSD" 2>/dev/null || true)" == "$EXPECTED_UUID" ]]; then
+      systemctl start docker.service
+      for id in "${original_containers[@]}"; do
+        state=$(docker inspect --format '{{.State.Status}}' "$id" 2>/dev/null || true)
+        [[ "$state" == running ]] || docker start "$id" >/dev/null 2>&1 || true
+      done
+      if [[ -f "$STATE/active-host-units.before" ]]; then
+        while IFS= read -r unit; do
+          [[ -n "$unit" ]] && systemctl start "$unit" || true
+        done <"$STATE/active-host-units.before"
+      fi
+      echo "AUTOMATIC_ROLLBACK_DOCKER=STARTED_PRE_CUTOVER"
+    else
+      echo "AUTOMATIC_ROLLBACK_DOCKER=SSD_UNAVAILABLE"
+    fi
   fi
   echo "AUTOMATIC_ROLLBACK=FINISHED"
 }
@@ -149,6 +203,7 @@ echo "FINAL_RSYNC_CHECKSUM=PASS"
 
 # Keep the old source in place on the SD until the reboot and boot-ordering gate passes.
 mv -- "$SOURCE" "$ROLLBACK"
+cutover_started=1
 install -d -o root -g root -m 0555 "$SOURCE"
 
 python3 - "$FSTAB" "$SSD" "$DEST" "$SOURCE" <<'PY'
