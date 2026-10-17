@@ -108,6 +108,10 @@ OPS = {
         'script': 'scripts/lifeos-storage-inspect-backup-evidence.sh',
         'privileged': True,
     },
+    'storage-audit-pi-state': {
+        'script': 'scripts/lifeos-storage-audit-pi-state.sh',
+        'privileged': True,
+    },
     'resume-issue26-after-root-proof': {
         'script': 'scripts/lifeos-resume-issue26-after-root-proof.sh',
         'privileged': True,
