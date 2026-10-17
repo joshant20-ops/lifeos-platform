@@ -23,28 +23,15 @@
 
 ## Active Docker Services
 
-- `adguardhome` — `adguard/adguardhome:latest`
-- `homeassistant` — `ghcr.io/home-assistant/home-assistant:stable`
+- `adguardhome` — `aba9e3bf0613`
+- `homeassistant` — `372d991e5888`
 - `lifeos-agent-canvas` — `ghcr.io/openhands/agent-canvas:1.23.0`
 - `lifeos-agent-canvas-tls` — `nginx:1.29-alpine`
-- `lifeos-energy` — `d7933b4b7e5d`
-- `lifeos-engineer-ui` — `ghcr.io/open-webui/open-webui:v0.11.1`
-- `lifeos-pa-radicale` — `tomsquest/docker-radicale:latest`
-- `lifeos-pa-vikunja-db` — `postgres:17-alpine`
-- `lifeos-pa-vikunja` — `vikunja/vikunja:latest`
-- `lifeos-semaphore-shadow-semaphore-1` — `semaphoreui/semaphore:v2.18.29`
-- `lifeos-semaphore-shadow-semaphore-db-1` — `postgres:17.6-bookworm`
-- `matter-server` — `ghcr.io/home-assistant-libs/python-matter-server:stable`
-- `mosquitto` — `eclipse-mosquitto:latest`
-- `nginx-proxy-manager` — `jc21/nginx-proxy-manager:latest`
-- `paperless-db-1` — `postgres:15`
-- `paperless-paperless-1` — `ghcr.io/paperless-ngx/paperless-ngx:latest`
-- `paperless-redis-1` — `redis:7`
-- `predbat` — `31413752bb3e`
-- `qbittorrent` — `lscr.io/linuxserver/qbittorrent:latest`
-- `uptime-kuma` — `louislam/uptime-kuma:latest`
+- `mosquitto` — `6f8d8a947c50`
+- `nginx-proxy-manager` — `52b2c59994f3`
+- `uptime-kuma` — `3d632903e6af`
 - `vaultwarden` — `094b5689ed81`
-- `zwave-js-ui` — `zwavejs/zwave-js-ui:latest`
+- `zwave-js-ui` — `86f418050ce6`
 
 ## Key Source Locations
 

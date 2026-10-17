@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+EXPECTED_UUID=a53fd6a0-c498-4b76-a496-0e5d9233447f
+TARGET=/opt/stacks
+SSD=/mnt/docker-data
+mountpoint -q "$TARGET"
+[[ "$(findmnt -n -o TARGET -T "$TARGET")" == "$TARGET" ]]
+[[ "$(findmnt -n -o UUID -T "$TARGET")" == "$EXPECTED_UUID" ]]
+[[ "$(findmnt -n -o UUID -T "$SSD")" == "$EXPECTED_UUID" ]]
