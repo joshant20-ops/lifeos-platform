@@ -9,6 +9,7 @@ import pathlib
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -137,15 +138,39 @@ def github_job_logs_api_url(repo: str, job: dict) -> str:
         fail('dev_deploy_job_id_missing')
     return f'https://api.github.com/repos/{repo}/actions/jobs/{job_id}/logs'
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """Keep GitHub API credentials on the API request, never a signed redirect."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+def fetch_github_job_logs(token: str, url: str) -> bytes:
+    req=urllib.request.Request(url,headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json'})
+    opener=urllib.request.build_opener(_NoRedirectHandler)
+    try:
+        with opener.open(req,timeout=30) as response:
+            return response.read()
+    except urllib.error.HTTPError as response:
+        if response.code not in (301,302,303,307,308):
+            raise
+        location=response.headers.get('Location')
+        response.close()
+    if not location:
+        fail('dev_deploy_job_logs_redirect_location_missing')
+    signed_url=urllib.parse.urljoin(url,location)
+    if urllib.parse.urlsplit(signed_url).scheme!='https':
+        fail('dev_deploy_job_logs_redirect_not_https')
+    # The signed URL authorizes this fetch. Do not attach GitHub credentials.
+    signed_req=urllib.request.Request(signed_url,headers={'Accept':'application/vnd.github+json'})
+    with urllib.request.urlopen(signed_req,timeout=30) as response:
+        return response.read()
+
 def verify_dev_acceptance(candidate: dict, token: str, repo: str) -> None:
     run_id=candidate['dev_acceptance_run_id']
     base=f'https://api.github.com/repos/{repo}/actions'
     run=api_json(token,f'{base}/runs/{run_id}')
     jobs_payload=api_json(token,f'{base}/runs/{run_id}/attempts/{candidate["dev_acceptance_run_attempt"]}/jobs')
     job=successful_dev_deploy_job(jobs_payload,candidate)
-    req=urllib.request.Request(github_job_logs_api_url(repo,job),headers={'Authorization':f'Bearer {token}','Accept':'application/vnd.github+json'})
-    with urllib.request.urlopen(req,timeout=30) as response:
-        raw=response.read()
+    raw=fetch_github_job_logs(token,github_job_logs_api_url(repo,job))
     content=[]
     try:
         with zipfile.ZipFile(io.BytesIO(raw)) as archive:
