@@ -38,7 +38,19 @@ echo "--- before ---"
 df -hT / "$SSD"
 du -sx --block-size=1 "$SOURCE" "$DEST" 2>/dev/null || true
 
+# The source remains live during this first-pass copy. SQLite WAL/SHM and
+# similar transient files can legitimately disappear between enumeration and
+# transfer. Treat rsync code 24 as a retryable/live-source condition here only.
+# The stopped-writer final sync remains strict and must return zero.
+set +e
 rsync -aHAXx --numeric-ids --delete --info=stats2 "$SOURCE/" "$DEST/"
+stage_rc=$?
+set -e
+if [[ "$stage_rc" -ne 0 && "$stage_rc" -ne 24 ]]; then
+  fail "initial_rsync_failed:$stage_rc"
+fi
+echo "INITIAL_RSYNC_RC=$stage_rc"
+[[ "$stage_rc" -eq 24 ]] && echo "INITIAL_RSYNC_VANISHED_FILES=TOLERATED_LIVE_STAGE"
 
 # A live first copy may differ in files written during transfer; report that
 # delta, then the separate stopped-writer final sync will close it.
