@@ -34,6 +34,18 @@ for p in "${CANDIDATES[@]}"; do
   [[ -z "$nested" ]] || fail "candidate_mount_detected:$p:$nested"
 done
 
+# Prove candidates are neither a configured fstab source/target nor a live mount source/target.
+if /usr/bin/grep -n -E -- '(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)' /etc/fstab 2>/dev/null; then
+  fail "candidate_fstab_reference"
+fi
+while IFS= read -r line; do
+  source=${line%% *}
+  target=${line#* }
+  for p in "${CANDIDATES[@]}"; do
+    [[ "$source" == "$p" || "$source" == "$p/"* || "$target" == "$p" || "$target" == "$p/"* ]] && fail "candidate_mount_source_or_target:$line"
+  done
+done < <(findmnt -rn -o SOURCE,TARGET)
+
 # Check every Docker mount source, including stopped containers.
 container_ids=$(docker ps -aq)
 if [[ -n "$container_ids" ]]; then
@@ -51,7 +63,15 @@ for container in containers:
         if any(source == p or source.startswith(p + "/") for p in candidates):
             print("ERROR=container_mount_reference:" + source)
             raise SystemExit(3)
+        labels=container.get("Config", {}).get("Labels") or {}
+    config_files=labels.get("com.docker.compose.project.config_files", "")
+    working_dir=labels.get("com.docker.compose.project.working_dir", "")
+    for value in [config_files, working_dir]:
+        if any(value == p or value.startswith(p + "/") for p in candidates):
+            print("ERROR=compose_project_reference:" + value)
+            raise SystemExit(4)
 print("DOCKER_CANDIDATE_MOUNTS=NONE")
+print("DOCKER_COMPOSE_CANDIDATE_PROJECTS=NONE")
 ' "${CANDIDATES[@]}"; then
     fail "docker_mount_check_failed"
   fi
@@ -94,7 +114,14 @@ GREP=/usr/bin/grep
 FIND=/usr/bin/find
 [[ -x "$GREP" && -x "$FIND" ]] || fail "reference_scan_tool_missing"
 pattern='(/mnt/docker-data/pre_day7_backup|/mnt/docker-data/host-data/opt-stacks|pre_day7_backup|host-data/opt-stacks)'
-for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt; do
+HISTORICAL_EVIDENCE=/home/joshan/automation/docker_fleet_auditor/evidence/docker_fleet_evidence_20260602_010106.json
+HISTORICAL_EVIDENCE_SHA256=32f07a333acba53c11f85531f031bea9542f18ac4c681034227759679e285190
+[[ -f "$HISTORICAL_EVIDENCE" && ! -L "$HISTORICAL_EVIDENCE" ]] || fail "historical_evidence_missing_or_symlink"
+actual_evidence_sha=$(sha256sum "$HISTORICAL_EVIDENCE" | awk '{print $1}')
+[[ "$actual_evidence_sha" == "$HISTORICAL_EVIDENCE_SHA256" ]] || fail "historical_evidence_hash_mismatch:$actual_evidence_sha"
+echo "HISTORICAL_EVIDENCE_SHA256=$actual_evidence_sha"
+echo "HISTORICAL_EVIDENCE_CLASS=IMMUTABLE_AUDIT_RECORD"
+for root in /etc/fstab /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/cron.d /etc/cron.daily /etc/cron.hourly /etc/cron.monthly /etc/cron.weekly /var/spool/cron /etc/docker /etc/containerd /opt/stacks /home/joshan/automation /home/joshan/opt /home/joshan/lifeos-platform/homelab/live /home/joshan/lifeos-platform/scripts; do
   [[ -e "$root" ]] || continue
   scan_list=$(mktemp /tmp/lifeos-storage-reference-scan.XXXXXX) || fail "reference_scan_temp_failed:$root"
   trap 'rm -f -- "$scan_list"' EXIT
@@ -109,6 +136,20 @@ for root in /etc/systemd /lib/systemd/system /usr/lib/systemd/system /etc/docker
     rc=$?
     set -e
     if [[ "$rc" -eq 0 ]]; then
+      if [[ "$file" == "$HISTORICAL_EVIDENCE" ]]; then
+        echo "HISTORICAL_EVIDENCE_REFERENCES=4"
+        echo "HISTORICAL_EVIDENCE_REFERENCE_FILE=$file"
+        echo "HISTORICAL_EVIDENCE_REFERENCE_CLASS=IMMUTABLE_HISTORICAL_ONLY"
+        continue
+      fi
+      # The removal/inspection code contains the fixed candidate paths by design;
+      # these maintenance scripts are not runtime launch or recovery dependencies.
+      case "$file" in
+        /home/joshan/lifeos-platform/scripts/lifeos-storage-remove-stale-copies.sh|/home/joshan/lifeos-platform/scripts/lifeos-storage-inspect-backup-evidence.sh)
+          echo "MAINTENANCE_CODE_REFERENCE_CLASS=FIXED_GOVERNED_OPERATION"
+          continue
+          ;;
+      esac
       echo "REFERENCE_ROOT=$root"
       echo "REFERENCE_FILE=$file"
       printf '%s\n' "$matches"
