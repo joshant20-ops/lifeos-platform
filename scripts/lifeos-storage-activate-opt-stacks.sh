@@ -65,7 +65,13 @@ echo "OPERATION=storage-activate-opt-stacks"
 [[ -d "$SOURCE" && ! -L "$SOURCE" ]] || fail "source_missing_or_symlink"
 [[ -d "$DEST" && ! -L "$DEST" ]] || fail "stage_destination_missing"
 [[ ! -e "$ROLLBACK" && ! -L "$ROLLBACK" ]] || fail "rollback_path_already_exists"
-[[ -f /mnt/docker-data/.lifeos-opt-stacks-stage && ! -L /mnt/docker-data/.lifeos-opt-stacks-stage ]] || fail "stage_marker_missing"
+STAGE_MARKER=/mnt/docker-data/.lifeos-opt-stacks-stage
+PARTIAL_MARKER=/mnt/docker-data/.lifeos-opt-stacks-stage.partial
+[[ -f "$STAGE_MARKER" && ! -L "$STAGE_MARKER" ]] || fail "stage_marker_missing"
+grep -Fxq "SOURCE=$SOURCE" "$STAGE_MARKER" || fail "stage_marker_source_mismatch"
+grep -Fxq "EXPECTED_UUID=$EXPECTED_UUID" "$STAGE_MARKER" || fail "stage_marker_uuid_mismatch"
+grep -Fxq "STAGE_STATUS=COMPLETE" "$STAGE_MARKER" || fail "stage_marker_not_complete"
+[[ ! -e "$PARTIAL_MARKER" && ! -L "$PARTIAL_MARKER" ]] || fail "stage_in_progress_marker_present"
 [[ "$(stat -c '%d' "$DEST")" == "$(stat -c '%d' "$SSD")" ]] || fail "stage_not_on_ssd"
 [[ "$(findmnt -n -o TARGET -T "$SOURCE")" == "/" ]] || fail "source_no_longer_on_root"
 

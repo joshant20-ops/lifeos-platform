@@ -24,11 +24,46 @@ echo "SOURCE_BYTES=$source_bytes"
 echo "SSD_AVAILABLE_BYTES=$available_bytes"
 (( available_bytes > source_bytes * 3 )) || fail "insufficient_staging_headroom"
 
+PARTIAL_MARKER=/mnt/docker-data/.lifeos-opt-stacks-stage.partial
 if [[ -e "$DEST" ]]; then
   [[ -d "$DEST" && ! -L "$DEST" ]] || fail "destination_not_directory"
-  [[ -f "$MARKER" && ! -L "$MARKER" ]] || fail "destination_exists_without_stage_marker"
-  grep -Fxq "SOURCE=$SOURCE" "$MARKER" || fail "stage_marker_source_mismatch"
-  grep -Fxq "EXPECTED_UUID=$EXPECTED_UUID" "$MARKER" || fail "stage_marker_uuid_mismatch"
+  if [[ -f "$MARKER" && ! -L "$MARKER" ]]; then
+    grep -Fxq "SOURCE=$SOURCE" "$MARKER" || fail "stage_marker_source_mismatch"
+    grep -Fxq "EXPECTED_UUID=$EXPECTED_UUID" "$MARKER" || fail "stage_marker_uuid_mismatch"
+    grep -Fxq "STAGE_STATUS=COMPLETE" "$MARKER" || fail "stage_marker_not_complete"
+  elif [[ -f "$PARTIAL_MARKER" && ! -L "$PARTIAL_MARKER" ]]; then
+    grep -Fxq "SOURCE=$SOURCE" "$PARTIAL_MARKER" || fail "partial_marker_source_mismatch"
+    grep -Fxq "EXPECTED_UUID=$EXPECTED_UUID" "$PARTIAL_MARKER" || fail "partial_marker_uuid_mismatch"
+    grep -Fxq "STAGE_STATUS=IN_PROGRESS" "$PARTIAL_MARKER" || fail "partial_marker_invalid"
+  else
+    # Resume the known previous interrupted stage only if the destination
+    # contains no paths outside the current source, except the two SQLite
+    # sidecars reported vanished by run 39012878535.
+    python3 - "$SOURCE" "$DEST" <<'PY'
+import os, sys
+source, dest = map(os.path.realpath, sys.argv[1:])
+allowed_vanished = {"forecast_history.sqlite-shm", "forecast_history.sqlite-wal"}
+checked = 0
+for root, dirs, files in os.walk(dest, topdown=True, followlinks=False):
+    for name in dirs + files:
+        staged = os.path.join(root, name)
+        rel = os.path.relpath(staged, dest)
+        live = os.path.join(source, rel)
+        is_dir = os.path.isdir(staged) and not os.path.islink(staged)
+        if os.path.lexists(live):
+            live_is_dir = os.path.isdir(live) and not os.path.islink(live)
+            if is_dir != live_is_dir:
+                print(f"UNSAFE_STAGED_TYPE_MISMATCH={rel}")
+                raise SystemExit(1)
+        elif is_dir or name not in allowed_vanished:
+            print(f"UNSAFE_DESTINATION_ONLY_PATH={rel}")
+            raise SystemExit(1)
+        checked += 1
+    dirs[:] = [name for name in dirs if not os.path.islink(os.path.join(root, name))]
+print(f"UNMARKED_PARTIAL_PATHS_CHECKED={checked}")
+print("UNMARKED_PARTIAL_DESTINATION=SAFE_TO_RESUME")
+PY
+  fi
 else
   mkdir -p -- "$DEST"
 fi
@@ -42,6 +77,8 @@ du -sx --block-size=1 "$SOURCE" "$DEST" 2>/dev/null || true
 # similar transient files can legitimately disappear between enumeration and
 # transfer. Treat rsync code 24 as a retryable/live-source condition here only.
 # The stopped-writer final sync remains strict and must return zero.
+printf '%s\n' "SOURCE=$SOURCE" "EXPECTED_UUID=$EXPECTED_UUID" "STAGE_STATUS=IN_PROGRESS" "STARTED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$PARTIAL_MARKER"
+chmod 0600 "$PARTIAL_MARKER"
 set +e
 rsync -aHAXx --numeric-ids --delete --info=stats2 "$SOURCE/" "$DEST/"
 stage_rc=$?
@@ -63,8 +100,10 @@ delta_count=$(printf '%s\n' "$delta" | awk 'NF {n++} END {print n+0}')
 echo "INITIAL_CHECKSUM_DELTA_ENTRIES=$delta_count"
 [[ -z "$delta" ]] || printf '%s\n' "$delta" | head -100
 
-printf '%s\n' "SOURCE=$SOURCE" "EXPECTED_UUID=$EXPECTED_UUID" "STAGED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$MARKER"
-chmod 0600 "$MARKER"
+printf '%s\n' "SOURCE=$SOURCE" "EXPECTED_UUID=$EXPECTED_UUID" "STAGE_STATUS=COMPLETE" "STAGED_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$MARKER.tmp"
+chmod 0600 "$MARKER.tmp"
+mv -f -- "$MARKER.tmp" "$MARKER"
+rm -f -- "$PARTIAL_MARKER"
 echo "STAGE_DESTINATION=$DEST"
 du -sx --block-size=1 "$SOURCE" "$DEST"
 echo "--- after ---"
