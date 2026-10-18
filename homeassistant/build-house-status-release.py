@@ -48,11 +48,15 @@ def normalize_app(dev: str, release: str, doorbell_hash: str) -> str:
     return out
 
 def normalize_doorbell(dev: str, release: str) -> str:
+    n = int(release[1:])
     out=replace_exact(dev, 'LifeOSHouseStatusDevModules', 'LifeOSHouseStatusModules', 3)
+    out=replace_exact(out, 'window.LifeOSHouseStatusModules.doorbell=', f'window.LifeOSHouseStatusModules.doorbellV{n}=', 1)
     return replace_exact(out, 'Doorbell DEV', f'Doorbell {release}', 1)
 
 def denormalize_doorbell(live: str, release: str) -> str:
+    n = int(release[1:])
     out=replace_exact(live, f'Doorbell {release}', 'Doorbell DEV', 1)
+    out=replace_exact(out, f'window.LifeOSHouseStatusModules.doorbellV{n}=', 'window.LifeOSHouseStatusModules.doorbell=', 1)
     return replace_exact(out, 'LifeOSHouseStatusModules', 'LifeOSHouseStatusDevModules', 3)
 
 def denormalize_app(live: str, release: str, doorbell_hash: str) -> str:
