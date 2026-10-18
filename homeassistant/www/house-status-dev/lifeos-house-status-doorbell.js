@@ -11,19 +11,40 @@ const cameraConfig={
   hold_action:{action:'none'}
 };
 
-async function loadCardHelpersWithRetry(){
+async function bootstrapLovelaceCardHelpers(hass){
+  if(typeof window.loadCardHelpers==='function')return;
+  if(!window.__lifeosDoorbellLovelaceHelpers){
+    window.__lifeosDoorbellLovelaceHelpers=(async()=>{
+      await customElements.whenDefined('partial-panel-resolver');
+      const resolver=document.createElement('partial-panel-resolver');
+      if(typeof resolver._getRoutes!=='function')throw new Error('lovelace_route_loader_unavailable');
+      const routeName='lifeos-doorbell-helper';
+      const routes=resolver._getRoutes([{component_name:'lovelace',url_path:routeName}]);
+      const loadPanel=routes?.routes?.[routeName]?.load;
+      if(typeof loadPanel!=='function')throw new Error('lovelace_panel_route_unavailable');
+      await loadPanel();
+      await customElements.whenDefined('ha-panel-lovelace');
+      const panel=document.createElement('ha-panel-lovelace');
+      panel.hass=hass;
+      panel.panel={config:{mode:'yaml'}};
+      if(typeof panel._fetchConfig!=='function')throw new Error('lovelace_panel_config_loader_unavailable');
+      await panel._fetchConfig(false);
+      if(typeof window.loadCardHelpers!=='function')throw new Error('card_helpers_not_registered');
+    })().finally(()=>{window.__lifeosDoorbellLovelaceHelpers=null;});
+  }
+  await window.__lifeosDoorbellLovelaceHelpers;
+}
+
+async function loadCardHelpersWithRetry(hass){
   let lastError;
   for(let attempt=0;attempt<8;attempt++){
-    if(typeof window.loadCardHelpers==='function'){
-      try{
-        const helpers=await window.loadCardHelpers();
-        if(helpers?.createCardElement)return helpers;
-        lastError=new Error('card_helpers_incomplete');
-      }catch(error){
-        lastError=error;
-      }
-    }else{
-      lastError=new Error('card_helpers_unavailable');
+    try{
+      if(typeof window.loadCardHelpers!=='function')await bootstrapLovelaceCardHelpers(hass);
+      const helpers=await window.loadCardHelpers();
+      if(helpers?.createCardElement)return helpers;
+      lastError=new Error('card_helpers_incomplete');
+    }catch(error){
+      lastError=error;
     }
     if(attempt<7)await new Promise(resolve=>setTimeout(resolve,250));
   }
@@ -41,8 +62,8 @@ async function mountCamera(host,hass){
   host.innerHTML='<div class="floor">Loading live camera…</div>';
   host.__lifeosCameraMount=(async()=>{
     try{
-      const helpers=await loadCardHelpersWithRetry();
-      const card=helpers.createCardElement(cameraConfig);
+      const helpers=await loadCardHelpersWithRetry(host.__lifeosDoorbellHass||hass);
+      const card=await helpers.createCardElement(cameraConfig);
       if(!card)throw new Error('picture_entity_card_unavailable');
       card.hass=host.__lifeosDoorbellHass||hass;
       if(!host.isConnected)return;
@@ -54,8 +75,10 @@ async function mountCamera(host,hass){
       const fallback=document.createElement('div');
       fallback.className='floor';
       fallback.textContent='Camera view could not load';
+      const code=(typeof error?.message==='string'&&/^[a-z0-9_]+$/.test(error.message))?error.message:(error?.name||'unknown');
+      fallback.dataset.errorCode=code;
       host.replaceChildren(fallback);
-      console.error('LifeOS Doorbell DEV camera card failed to mount',error?.name||'Error');
+      console.error('LifeOS Doorbell DEV camera card failed to mount',code);
     }finally{
       host.__lifeosCameraMount=null;
     }
