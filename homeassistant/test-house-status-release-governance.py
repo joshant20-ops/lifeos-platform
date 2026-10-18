@@ -165,26 +165,30 @@ class ReleaseGovernance(unittest.TestCase):
         src=ROOT/'homeassistant/www/house-status-dev'
         app=(src/'lifeos-house-status-dev.js').read_text()
         bell=(src/'lifeos-house-status-doorbell.js').read_text()
-        live_bell=builder.normalize_doorbell(bell,'v30')
+        release='v31'
+        live_bell=builder.normalize_doorbell(bell,release)
         bell_hash=builder.sha256(live_bell.encode())
-        live_app=builder.normalize_app(app,'v30',bell_hash)
-        self.assertEqual(builder.denormalize_app(live_app,'v30',bell_hash),app)
-        self.assertEqual(builder.denormalize_doorbell(live_bell,'v30'),bell)
+        live_app=builder.normalize_app(app,release,bell_hash)
+        self.assertEqual(builder.denormalize_app(live_app,release,bell_hash),app)
+        self.assertEqual(builder.denormalize_doorbell(live_bell,release),bell)
+        self.assertIn('LifeOSHouseStatusModules?.doorbellV31',live_app,'packaged app must look up its release-specific Doorbell module')
+        self.assertIn('window.LifeOSHouseStatusModules.doorbellV31=',live_bell,'imported Doorbell module must register under the app lookup key')
+        self.assertIn("import './lifeos-house-status-doorbell-v31.js?v=",live_app)
         self.assertIn("this.period()==='year'?'':powerdownWindows.map",live_app)
         self.assertIn('periodWindow(){return [this.periodStart(),this.periodEnd()];}',live_app)
         self.assertNotIn('/local/house-status-dev/',live_app)
         with tempfile.TemporaryDirectory() as t:
             a=pathlib.Path(t)/'a'; b=pathlib.Path(t)/'b'
-            cmd=['python3',str(ROOT/'homeassistant/build-house-status-release.py'),'--release','v30','--source-commit','b'*40,'--out-dir']
+            cmd=['python3',str(ROOT/'homeassistant/build-house-status-release.py'),'--release',release,'--source-commit','b'*40,'--out-dir']
             first=subprocess.run(cmd+[str(a)],capture_output=True,text=True,check=True)
             second=subprocess.run(cmd+[str(b)],capture_output=True,text=True,check=True)
-            self.assertEqual((a/'lifeos-house-status-v30.js').read_bytes(),(b/'lifeos-house-status-v30.js').read_bytes())
-            self.assertEqual((a/'lifeos-house-status-doorbell-v30.js').read_bytes(),(b/'lifeos-house-status-doorbell-v30.js').read_bytes())
-            self.assertIn('HOUSE_STATUS_RELEASE_CANDIDATE=v30:',first.stdout)
+            self.assertEqual((a/'lifeos-house-status-v31.js').read_bytes(),(b/'lifeos-house-status-v31.js').read_bytes())
+            self.assertEqual((a/'lifeos-house-status-doorbell-v31.js').read_bytes(),(b/'lifeos-house-status-doorbell-v31.js').read_bytes())
+            self.assertIn('HOUSE_STATUS_RELEASE_CANDIDATE=v31:',first.stdout)
             self.assertEqual(first.stdout,second.stdout)
             self.assertEqual((ROOT/'homeassistant/releases/house-status/live/approved-release.json').read_bytes(),manifest_before,'candidate creation cannot change the approved Live pointer')
-            subprocess.run(['node','--check',str(a/'lifeos-house-status-v30.js')],check=True)
-            subprocess.run(['node','--check',str(a/'lifeos-house-status-doorbell-v30.js')],check=True)
+            subprocess.run(['node','--check',str(a/'lifeos-house-status-v31.js')],check=True)
+            subprocess.run(['node','--check',str(a/'lifeos-house-status-doorbell-v31.js')],check=True)
 
     def test_dev_deployer_cannot_write_live_targets_and_rollback_is_pinned(self):
         deploy=(ROOT/'scripts/lifeos-deploy-house-status-dev-dashboard.sh').read_text()
