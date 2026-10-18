@@ -38,7 +38,7 @@ function environment({failCreate=false}={}){
   }};
   const context={window,document,customElements,setTimeout,console:{error(){}}};
   vm.runInNewContext(source,context,{filename:sourcePath});
-  return {window,document,customElements,...{get routeLoads(){return routeLoads;},get panelFetches(){return panelFetches;},get helperCalls(){return helperCalls;},get createCalls(){return createCalls;},get cardConfig(){return cardConfig;},release(){releaseCreate();}}};
+  return {window,document,customElements,get routeLoads(){return routeLoads;},get panelFetches(){return panelFetches;},get helperCalls(){return helperCalls;},get createCalls(){return createCalls;},get cardConfig(){return cardConfig;},release(){releaseCreate();}};
 }
 
 (async()=>{
