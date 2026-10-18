@@ -1,10 +1,10 @@
-name: OpenHands Level 2 Ledger 16384 Experiment
+name: OpenHands Level 2 Current-Profile Acceptance
 
 on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/openhands-level2-ledger-16384.yml'
+      - '.github/workflows/openhands-level2-current-profile.yml'
 
 permissions:
   contents: write
@@ -12,11 +12,11 @@ permissions:
   issues: write
 
 jobs:
-  experiment:
+  acceptance:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 55
     steps:
-      - name: Run clean #935 at 16384 context
+      - name: Run clean #935 on the deployed profile and context
         shell: bash
         env:
           ACCEPTANCE_GITHUB_TOKEN: ${{ github.token }}
@@ -27,6 +27,33 @@ jobs:
           git checkout main
           git reset --hard origin/main
 
+          # Prove the unchanged Level 2 fixture fails for the intended status mismatch.
+          python3 - <<'PY'
+          import importlib.util
+          import pathlib
+          import re
+
+          test_path = pathlib.Path("tests/test_available_hardware_inventory_status.py")
+          spec = importlib.util.spec_from_file_location("inventory_status_test", test_path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          document = pathlib.Path("docs/operations/available-hardware.md").read_text()
+          section = document.split("## Status definitions", 1)[1].split("## Inventory", 1)[0]
+          documented = set(re.findall(r"^- \*\*(.+?)\*\* —", section, re.MULTILINE))
+          rows = [
+              line for line in document.splitlines()
+              if line.startswith("| ") and not line.startswith("| ---")
+          ][1:]
+          used = {line.split("|")[2].strip() for line in rows}
+          extra = used - documented
+          assert extra == {"Candidate"}, f"unexpected initial fixture: {sorted(extra)}"
+          try:
+              module.test_hardware_inventory_rows_use_documented_statuses()
+          except AssertionError:
+              print("OPENHANDS_LEVEL2_INITIAL_ASSERTION=FAIL_AS_EXPECTED status=Candidate")
+          else:
+              raise SystemExit("OPENHANDS_LEVEL2_INITIAL_ASSERTION=FAIL fixture was already green")
+          PY
           python3 - <<'PY'
           import importlib.util, pathlib
           path=pathlib.Path("governor/ai_broker.py")
@@ -41,61 +68,6 @@ jobs:
           done
           ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor true
 
-          # Ollama's OpenAI-compatible endpoint ignored per-request options in
-          # the first probe (ollama ps remained at 8192). Apply a reversible
-          # service-level override so this attempt genuinely changes context.
-          ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE'
-          set -Eeuo pipefail
-          override=/etc/systemd/system/ollama.service.d/99-lifeos-context-experiment.conf
-          backup=/tmp/lifeos-ollama-context-experiment.backup
-          marker=/tmp/lifeos-ollama-context-experiment.marker
-          sudo -n mkdir -p /etc/systemd/system/ollama.service.d
-          if sudo -n test -f "$override"; then
-            sudo -n cp "$override" "$backup"
-            echo existing >"$marker"
-          else
-            echo absent >"$marker"
-          fi
-          printf '%s\n' '[Service]' 'Environment=OLLAMA_CONTEXT_LENGTH=16384' |
-            sudo -n tee "$override" >/dev/null
-          sudo -n systemctl daemon-reload
-          sudo -n systemctl restart ollama
-          for _ in $(seq 1 60); do
-            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
-            sleep 2
-          done
-          systemctl show ollama --property=Environment --value |
-            grep -q 'OLLAMA_CONTEXT_LENGTH=16384'
-          echo TOWER_CONTEXT_OVERRIDE_16384=PASS
-          REMOTE
-
-          restore_context() {
-            ssh -o BatchMode=yes -o ConnectTimeout=8 TowerPC.Tailor 'bash -s' <<'REMOTE' || true
-          set -Eeuo pipefail
-          override=/etc/systemd/system/ollama.service.d/99-lifeos-context-experiment.conf
-          backup=/tmp/lifeos-ollama-context-experiment.backup
-          marker=/tmp/lifeos-ollama-context-experiment.marker
-          if [[ -f "$marker" ]] && grep -qx existing "$marker" && [[ -f "$backup" ]]; then
-            sudo -n cp "$backup" "$override"
-          else
-            sudo -n rm -f "$override"
-          fi
-          rm -f "$backup" "$marker"
-          sudo -n systemctl daemon-reload
-          sudo -n systemctl restart ollama
-          for _ in $(seq 1 60); do
-            curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1 && break
-            sleep 2
-          done
-          if systemctl show ollama --property=Environment --value |
-             grep -q 'OLLAMA_CONTEXT_LENGTH=16384'; then
-            echo TOWER_CONTEXT_ROLLBACK=FAIL
-            exit 1
-          fi
-          echo TOWER_CONTEXT_ROLLBACK=PASS
-          REMOTE
-          }
-
           docker exec lifeos-agent-canvas sh -c '
             set -eu
             git -C /projects/lifeos-platform fetch origin main
@@ -104,7 +76,7 @@ jobs:
             git -C /projects/lifeos-platform clean -fd
           '
 
-          monitor=/tmp/openhands-level2-context-16384-resources.log
+          monitor=/tmp/openhands-level2-current-profile-resources.log
           : >"$monitor"
           (
             while true; do
@@ -119,10 +91,14 @@ jobs:
             done
           ) >>"$monitor" 2>&1 &
           monitor_pid=$!
+          verify_dir=""
           cleanup() {
             kill "$monitor_pid" 2>/dev/null || true
             wait "$monitor_pid" 2>/dev/null || true
-            restore_context
+            if [[ -n "$verify_dir" ]]; then
+              git -C /home/joshan/lifeos-platform worktree remove --force "$verify_dir" >/dev/null 2>&1 || rm -rf -- "$verify_dir"
+              verify_dir=""
+            fi
             python3 - <<'PY' >/dev/null 2>&1 || true
           import importlib.util,pathlib
           path=pathlib.Path("governor/ai_broker.py")
@@ -154,7 +130,7 @@ jobs:
 
           status,_=request("/api/settings/secrets","PUT",{
               "name":"GITHUB_TOKEN","value":token,
-              "description":"ephemeral Level 2 ledger experiment",
+              "description":"ephemeral Level 2 current-profile acceptance",
           })
           assert status==200
           hydrate_env=dict(os.environ)
@@ -197,12 +173,13 @@ jobs:
           )
           cid=uuid.uuid4().hex
           try:
+              _,profiles=request("/api/profiles")
+              assert profiles.get("active_profile")=="gpt-oss-20b", profiles
               _,settings=request("/api/settings",expose=True)
               agent=settings["agent_settings"]
               llm=agent["llm"]
               assert llm["model"]=="openai/gpt-oss:20b"
               assert llm["native_tool_calling"] is True
-              llm["max_input_tokens"]=16384
               payload={
                   "conversation_id":cid,
                   "agent_settings":agent,
@@ -222,7 +199,7 @@ jobs:
               started=time.monotonic()
               _,created=request("/api/conversations","POST",payload)
               actual=str(created["id"]).replace("-","")
-              print("OPENHANDS_LEVEL2_LEDGER_16384_CONVERSATION_ID="+actual,flush=True)
+              print("OPENHANDS_LEVEL2_CURRENT_PROFILE_CONVERSATION_ID="+actual,flush=True)
               root="/home/openhands/.openhands/agent-canvas/conversations/"+actual
               baseline=subprocess.check_output([
                   "docker","exec","lifeos-agent-canvas","git","-C",
@@ -294,7 +271,7 @@ jobs:
                       "python3","governor/scripts/openhands-task-ledger.py"
                   ],input=json.dumps(snapshot),text=True)
                   ledger=json.loads(ledger_text)
-                  print("OPENHANDS_LEVEL2_LEDGER_16384_PROGRESS="+json.dumps({
+                  print("OPENHANDS_LEVEL2_CURRENT_PROFILE_PROGRESS="+json.dumps({
                       "round":recovery_round,"snapshot":snapshot,
                       "earliest_unmet":ledger["earliest_unmet"],
                       "stalled":ledger["stalled"],
@@ -309,13 +286,15 @@ jobs:
                   recoveries+=1
                   state=wait_for_terminal(900)
 
-              print("OPENHANDS_LEVEL2_LEDGER_16384_STATUS="+state,flush=True)
-              print("OPENHANDS_LEVEL2_LEDGER_16384_RECOVERIES="+str(recoveries),flush=True)
-              print("OPENHANDS_LEVEL2_LEDGER_16384_WALL_S="+str(round(time.monotonic()-started,2)),flush=True)
+              if not ledger.get("complete"):
+                  raise SystemExit("OPENHANDS_LEVEL2_CURRENT_PROFILE_LEDGER=INCOMPLETE")
+              print("OPENHANDS_LEVEL2_CURRENT_PROFILE_STATUS="+state,flush=True)
+              print("OPENHANDS_LEVEL2_CURRENT_PROFILE_RECOVERIES="+str(recoveries),flush=True)
+              print("OPENHANDS_LEVEL2_CURRENT_PROFILE_WALL_S="+str(round(time.monotonic()-started,2)),flush=True)
               summary=subprocess.check_output([
                   "docker","exec","-i","lifeos-agent-canvas","python","-",root
               ],input=open("governor/scripts/openhands-level2-evidence.py").read(),text=True)
-              print("OPENHANDS_LEVEL2_LEDGER_16384_EVIDENCE="+summary.strip(),flush=True)
+              print("OPENHANDS_LEVEL2_CURRENT_PROFILE_EVIDENCE="+summary.strip(),flush=True)
           finally:
               try: request("/api/settings/secrets/GITHUB_TOKEN","DELETE")
               except Exception: pass
@@ -323,24 +302,60 @@ jobs:
 
           kill "$monitor_pid" 2>/dev/null || true
           wait "$monitor_pid" 2>/dev/null || true
-          echo OPENHANDS_LEVEL2_LEDGER_16384_RESOURCE_BEGIN
+          echo OPENHANDS_LEVEL2_CURRENT_PROFILE_RESOURCE_BEGIN
           tail -240 "$monitor"
-          echo OPENHANDS_LEVEL2_LEDGER_16384_RESOURCE_END
+          echo OPENHANDS_LEVEL2_CURRENT_PROFILE_RESOURCE_END
 
           branch="$(docker exec lifeos-agent-canvas git -C /projects/lifeos-platform branch --show-current)"
           head="$(docker exec lifeos-agent-canvas git -C /projects/lifeos-platform rev-parse HEAD)"
           base_head="$(docker exec lifeos-agent-canvas git -C /projects/lifeos-platform rev-parse origin/main)"
           changed=false
           [[ "$head" != "$base_head" ]] && changed=true
-          echo "OPENHANDS_LEVEL2_LEDGER_16384_BRANCH=$branch"
-          echo "OPENHANDS_LEVEL2_LEDGER_16384_HEAD=$head"
-          echo "OPENHANDS_LEVEL2_LEDGER_16384_CHANGED=$changed"
+          echo "OPENHANDS_LEVEL2_CURRENT_PROFILE_BRANCH=$branch"
+          echo "OPENHANDS_LEVEL2_CURRENT_PROFILE_HEAD=$head"
+          echo "OPENHANDS_LEVEL2_CURRENT_PROFILE_CHANGED=$changed"
           pr_count=0
           if [[ "$branch" != main ]]; then
             pr_json="$(curl -fsS -H "Authorization: Bearer $ACCEPTANCE_GITHUB_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/joshant20-ops/lifeos-platform/pulls?state=all&head=joshant20-ops:$branch")"
             pr_count="$(python3 -c 'import json,sys; print(len(json.loads(sys.argv[1])))' "$pr_json")"
-            python3 -c 'import json,sys; print("OPENHANDS_LEVEL2_LEDGER_16384_PRS="+json.dumps([{"number":p["number"],"state":p["state"],"url":p["html_url"],"sha":p["head"]["sha"]} for p in json.loads(sys.argv[1])],sort_keys=True))' "$pr_json"
+            python3 -c 'import json,sys; pulls=json.loads(sys.argv[1]); print("OPENHANDS_LEVEL2_CURRENT_PROFILE_PRS="+json.dumps([{"number":p["number"],"state":p["state"],"url":p["html_url"],"sha":p["head"]["sha"]} for p in pulls],sort_keys=True)); assert len(pulls)==1 and pulls[0]["state"]=="open" and pulls[0]["head"]["sha"]==sys.argv[2], "expected one open PR matching the verified head"' "$pr_json" "$head"
           fi
-          echo "OPENHANDS_LEVEL2_LEDGER_16384_PR_COUNT=$pr_count"
-          restore_context
-          echo OPENHANDS_LEVEL2_LEDGER_16384_EXPERIMENT=COMPLETE
+          echo "OPENHANDS_LEVEL2_CURRENT_PROFILE_PR_COUNT=$pr_count"
+          [[ "$branch" != main && "$head" != "$base_head" ]] || {
+            echo OPENHANDS_LEVEL2_CURRENT_PROFILE=FAIL_NO_REPAIR_BRANCH
+            exit 1
+          }
+          [[ "$pr_count" -eq 1 ]] || {
+            echo OPENHANDS_LEVEL2_CURRENT_PROFILE=FAIL_EXPECTED_ONE_PR
+            exit 1
+          }
+
+          verify_dir="$(mktemp -d /tmp/openhands-level2-verify.XXXXXX)"
+          git -C /home/joshan/lifeos-platform fetch origin "$branch"
+          git -C /home/joshan/lifeos-platform worktree add --detach "$verify_dir" "$head"
+          python3 - "$verify_dir" <<'PY'
+          import importlib.util
+          import pathlib
+          import re
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          document = (root / "docs/operations/available-hardware.md").read_text()
+          section = document.split("## Status definitions", 1)[1].split("## Inventory", 1)[0]
+          documented = set(re.findall(r"^- \*\*(.+?)\*\* —", section, re.MULTILINE))
+          rows = [
+              line for line in document.splitlines()
+              if line.startswith("| ") and not line.startswith("| ---")
+          ][1:]
+          used = {line.split("|")[2].strip() for line in rows}
+          assert "Reserved" in documented
+          assert used <= documented, f"undocumented inventory statuses: {sorted(used - documented)}"
+
+          test_path = root / "tests/test_available_hardware_inventory_status.py"
+          spec = importlib.util.spec_from_file_location("inventory_status_test", test_path)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          module.test_hardware_inventory_rows_use_documented_statuses()
+          print("OPENHANDS_LEVEL2_INDEPENDENT_INVENTORY_ASSERTION=PASS")
+          PY
+          echo OPENHANDS_LEVEL2_CURRENT_PROFILE=PASS
