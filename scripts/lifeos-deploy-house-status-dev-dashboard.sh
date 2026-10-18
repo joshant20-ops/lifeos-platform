@@ -71,15 +71,28 @@ NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/extern
 "$NODE_BIN" --input-type=module --check < "$SOURCE_DIR/lifeos-house-status-dev-loader.js" || fail dev_loader_js_syntax_invalid
 python3 "$VERIFIER" --source-only
 PRODUCTION_BEFORE=$(snapshot "$PROD_DIR" "$DASH_TARGET" "$REGISTRY" "$RESOURCES")
-LIVE_RELEASE=$(python3 - "$PLATFORM/homeassistant/releases/house-status/live/approved-release.json" <<'PY'
-import json,sys
-print(json.load(open(sys.argv[1]))['approved_production']['release'])
+LIVE_PANEL_NAME=$(python3 - "$CONFIG" "$PLATFORM/homeassistant/releases/house-status/live/approved-release.json" <<'PY'
+import json, pathlib, re, sys
+config=pathlib.Path(sys.argv[1]).read_text().splitlines()
+manifest=json.load(open(sys.argv[2]))
+allowed={manifest['approved_production']['release'],manifest['previous_production_release']}
+found=[]
+for i,line in enumerate(config):
+    match=re.fullmatch(r'  - name: lifeos-house-status-(v[0-9]+)',line)
+    if not match: continue
+    release=match.group(1); j=i+1
+    while j<len(config) and not config[j].startswith('  - name:') and (not config[j] or config[j][0].isspace()):
+        j+=1
+    stanza='\n'.join(config[i:j])
+    if release in allowed and 'url_path: house-status' in stanza and f'/local/house-status/lifeos-house-status-{release}.js' in stanza:
+        found.append('lifeos-house-status-'+release)
+if len(found)!=1:
+    raise SystemExit('expected exactly one configured approved-or-rollback Live panel')
+print(found[0])
 PY
-)
-[[ "$LIVE_RELEASE" =~ ^v[0-9]+$ ]] || fail approved_live_release_invalid
-LIVE_PANEL_NAME="lifeos-house-status-$LIVE_RELEASE"
+) || fail protected_live_panel_registration_invalid
 LIVE_PANEL_BEFORE=$(panel_entry "$CONFIG" "$LIVE_PANEL_NAME")
-[[ -n "$LIVE_PANEL_BEFORE" ]] || fail approved_live_panel_registration_missing
+[[ -n "$LIVE_PANEL_BEFORE" ]] || fail protected_live_panel_registration_missing
 mkdir -p "$BACKUP_DIR" "$(dirname "$TARGET_DIR")"
 if [[ -d "$TARGET_DIR" ]]; then HAD_TARGET=1; cp -a "$TARGET_DIR" "$BACKUP_DIR/dev-assets"; fi
 cp -a "$CONFIG" "$BACKUP_DIR/configuration.yaml"
