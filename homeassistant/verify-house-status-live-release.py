@@ -75,9 +75,11 @@ def verify_manifest(data: dict) -> dict:
             fail('candidate_packager_commit_missing')
         run_id=candidate.get('dev_acceptance_run_id')
         run_number=candidate.get('dev_acceptance_run_number')
+        has_id='dev_acceptance_run_id' in candidate
+        has_number='dev_acceptance_run_number' in candidate
         valid_id=type(run_id) is int and run_id > 0
         valid_number=type(run_number) is int and run_number > 0
-        if valid_id == valid_number:
+        if has_id == has_number or (has_id and not valid_id) or (has_number and not valid_number):
             fail('candidate_dev_acceptance_identity_missing')
         if type(candidate.get('dev_acceptance_run_attempt')) is not int or candidate['dev_acceptance_run_attempt'] < 1:
             fail('candidate_dev_acceptance_attempt_missing')
