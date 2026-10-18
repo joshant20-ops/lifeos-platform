@@ -27,6 +27,7 @@
 - `homeassistant` — `372d991e5888`
 - `lifeos-agent-canvas` — `ghcr.io/openhands/agent-canvas:1.23.0`
 - `lifeos-agent-canvas-tls` — `nginx:1.29-alpine`
+- `lifeos-energy` — `d7933b4b7e5d`
 - `mosquitto` — `6f8d8a947c50`
 - `nginx-proxy-manager` — `52b2c59994f3`
 - `uptime-kuma` — `3d632903e6af`
