@@ -198,7 +198,7 @@ class ReleaseGovernance(unittest.TestCase):
                          'Doorbell-only package changes with an explicit regression do not require the unrelated long Energy endpoint')
         self.assertTrue(energy_scope.energy_acceptance_required({energy_scope.BUILDER},builder_source,builder_source),
                         'a packager change without paired governance coverage fails closed')
-        changed_app=builder_source.replace('    out = dev\\n    pairs = [','    out = dev\\n    out = out + \'\'\\n    pairs = [',1)
+        changed_app=builder_source.replace('def normalize_app(','def normalize_app_changed(',1)
         self.assertNotEqual(changed_app,builder_source)
         self.assertTrue(energy_scope.energy_acceptance_required(paths,builder_source,changed_app),
                         'changes outside the Doorbell-only normalizers retain the full Energy preflight')
