@@ -73,9 +73,15 @@ def verify_manifest(data: dict) -> dict:
             fail('candidate_source_commit_missing')
         if not re.fullmatch(r'[0-9a-f]{40}', str(candidate.get('packager_commit',''))):
             fail('candidate_packager_commit_missing')
-        if not isinstance(candidate.get('dev_acceptance_run_id'), int) or candidate['dev_acceptance_run_id'] < 1:
-            fail('candidate_dev_acceptance_missing')
-        if not isinstance(candidate.get('dev_acceptance_run_attempt'), int) or candidate['dev_acceptance_run_attempt'] < 1:
+        run_id=candidate.get('dev_acceptance_run_id')
+        run_number=candidate.get('dev_acceptance_run_number')
+        has_id='dev_acceptance_run_id' in candidate
+        has_number='dev_acceptance_run_number' in candidate
+        valid_id=type(run_id) is int and run_id > 0
+        valid_number=type(run_number) is int and run_number > 0
+        if has_id == has_number or (has_id and not valid_id) or (has_number and not valid_number):
+            fail('candidate_dev_acceptance_identity_missing')
+        if type(candidate.get('dev_acceptance_run_attempt')) is not int or candidate['dev_acceptance_run_attempt'] < 1:
             fail('candidate_dev_acceptance_attempt_missing')
         for key in ('dev_app_sha256','dev_doorbell_sha256','doorbell_sha256'):
             if not re.fullmatch(r'[0-9a-f]{64}', str(candidate.get(key,''))):
@@ -164,12 +170,49 @@ def fetch_github_job_logs(token: str, url: str) -> bytes:
     with urllib.request.urlopen(signed_req,timeout=30) as response:
         return response.read()
 
+def successful_dev_run_by_number(payload: dict, candidate: dict) -> dict:
+    if not isinstance(payload, dict) or not isinstance(payload.get('workflow_runs'), list):
+        fail('dev_runs_response_invalid')
+    number=candidate.get('dev_acceptance_run_number')
+    matches=[run for run in payload['workflow_runs']
+             if isinstance(run,dict) and run.get('run_number')==number]
+    if len(matches)!=1:
+        fail('dev_acceptance_run_number_not_unique')
+    run=matches[0]
+    expected={
+      'name':'House Status Development Deploy',
+      'path':'.github/workflows/house-status-dev-deploy.yml',
+      'event':'push',
+      'head_branch':'main',
+      'head_sha':candidate['source_commit'],
+      'run_attempt':candidate['dev_acceptance_run_attempt'],
+      'status':'completed',
+      'conclusion':'success',
+    }
+    if any(run.get(key)!=value for key,value in expected.items()):
+        fail('dev_acceptance_run_number_identity_mismatch')
+    if type(run.get('id')) is not int or run['id']<1:
+        fail('dev_acceptance_run_id_missing')
+    return run
+
 def verify_dev_acceptance(candidate: dict, token: str, repo: str) -> None:
-    run_id=candidate['dev_acceptance_run_id']
     base=f'https://api.github.com/repos/{repo}/actions'
-    run=api_json(token,f'{base}/runs/{run_id}')
+    if 'dev_acceptance_run_id' in candidate:
+        run=api_json(token,f'{base}/runs/{candidate["dev_acceptance_run_id"]}')
+    else:
+        query=urllib.parse.urlencode({
+            'branch':'main',
+            'event':'push',
+            'head_sha':candidate['source_commit'],
+            'per_page':100,
+        })
+        runs_url=f'{base}/workflows/374218333/runs?{query}'
+        run=successful_dev_run_by_number(api_json(token,runs_url),candidate)
+    run_id=run.get('id')
+    candidate_for_job=dict(candidate)
+    candidate_for_job['dev_acceptance_run_id']=run_id
     jobs_payload=api_json(token,f'{base}/runs/{run_id}/attempts/{candidate["dev_acceptance_run_attempt"]}/jobs')
-    job=successful_dev_deploy_job(jobs_payload,candidate)
+    job=successful_dev_deploy_job(jobs_payload,candidate_for_job)
     raw=fetch_github_job_logs(token,github_job_logs_api_url(repo,job))
     content=[]
     try:

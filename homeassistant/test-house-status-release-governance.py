@@ -60,7 +60,10 @@ class ReleaseGovernance(unittest.TestCase):
             self.assertEqual(candidate['artifact_sha256'],approved['artifact_sha256'])
             self.assertEqual(len(candidate['source_commit']),40)
             self.assertEqual(len(candidate['packager_commit']),40)
-            self.assertGreater(candidate['dev_acceptance_run_id'],0)
+            run_id=candidate.get('dev_acceptance_run_id')
+            run_number=candidate.get('dev_acceptance_run_number')
+            self.assertNotEqual(run_id is not None,run_number is not None)
+            self.assertGreater(run_id if run_id is not None else run_number,0)
             self.assertGreater(candidate['dev_acceptance_run_attempt'],0)
             for field in ('dev_app_sha256','dev_doorbell_sha256','doorbell_sha256'):
                 self.assertEqual(len(candidate[field]),64)
@@ -116,6 +119,30 @@ class ReleaseGovernance(unittest.TestCase):
             changed['jobs'][0][field]=value
             with self.assertRaises(gate.GateError):
                 gate.successful_dev_deploy_job(changed,candidate)
+
+    def test_dev_run_number_resolves_only_exact_successful_main_push(self):
+        sha='eb2044e62ae7c4b7d4d49350df297971a1094060'
+        candidate={'dev_acceptance_run_number':141,'dev_acceptance_run_attempt':1,'source_commit':sha}
+        run={
+            'id':39165812345,
+            'run_number':141,
+            'name':'House Status Development Deploy',
+            'path':'.github/workflows/house-status-dev-deploy.yml',
+            'event':'push',
+            'head_branch':'main',
+            'head_sha':sha,
+            'run_attempt':1,
+            'status':'completed',
+            'conclusion':'success',
+        }
+        self.assertEqual(gate.successful_dev_run_by_number({'workflow_runs':[run]},candidate),run)
+        with self.assertRaises(gate.GateError):
+            gate.successful_dev_run_by_number({'workflow_runs':[run,dict(run)]},candidate)
+        for field,value in [('head_sha','f'*40),('event','pull_request'),('conclusion','failure'),('run_attempt',2)]:
+            changed=dict(run)
+            changed[field]=value
+            with self.assertRaises(gate.GateError):
+                gate.successful_dev_run_by_number({'workflow_runs':[changed]},candidate)
 
     def test_github_job_logs_redirect_does_not_forward_authorization(self):
         api_url='https://api.github.com/repos/example/lifeos/actions/jobs/123/logs'
