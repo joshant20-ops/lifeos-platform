@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-import argparse, pathlib, sys
+import argparse, json, pathlib, re, sys
 REPO=pathlib.Path(__file__).resolve().parents[1]
 SOURCE=REPO/'homeassistant'/'www'/'house-status-dev'
 HA=pathlib.Path('/opt/stacks/homeassistant/config')
 TARGET=HA/'www'/'house-status-dev'
 CONFIG=HA/'configuration.yaml'
+MANIFEST=REPO/'homeassistant'/'releases'/'house-status'/'live'/'approved-release.json'
 FILES=('lifeos-house-status-dev.js','lifeos-house-status-doorbell.js','lifeos-house-status-dev-loader.js','placeholder-floorplan.svg')
 
 def fail(msg):
@@ -28,6 +29,15 @@ def main():
     dev=(SOURCE/'lifeos-house-status-dev.js').read_text()
     bell=(SOURCE/'lifeos-house-status-doorbell.js').read_text()
     live=(REPO/'homeassistant'/'releases'/'house-status'/'live'/'lifeos-house-status-v28.js').read_text()
+    try:
+        approved=json.loads(MANIFEST.read_text()).get('approved_production',{})
+    except (OSError,json.JSONDecodeError):
+        fail('approved_live_manifest_unreadable')
+    release=approved.get('release')
+    if not isinstance(release,str) or not re.fullmatch(r'v[0-9]+',release):
+        fail('approved_live_release_invalid')
+    if not isinstance(approved.get('artifact_sha256'),str) or not re.fullmatch(r'[0-9a-f]{64}',approved['artifact_sha256']):
+        fail('approved_live_artifact_hash_invalid')
     for marker in ("lifeos-house-status-dev","lifeos-house-status-dev-editor","House Status DEV","Doorbell DEV","LifeOSHouseStatusDevModules","border:2px solid #b568ff"):
         if marker not in dev: fail('development_marker_missing:'+marker)
     if 'LifeOSHouseStatusModules' in dev or 'lifeos-house-status-v28' in dev or 'lifeos-house-status-editor' in dev:
@@ -51,9 +61,10 @@ def main():
         return
     if not CONFIG.exists(): fail('ha_configuration_missing')
     cfg=CONFIG.read_text()
-    live_panel=stanza(cfg,'lifeos-house-status-v28')
+    live_panel=stanza(cfg,'lifeos-house-status-'+release)
     dev_panel=stanza(cfg,'lifeos-house-status-dev')
-    if not live_panel or 'url_path: house-status' not in live_panel: fail('live_panel_missing')
+    if not live_panel or 'url_path: house-status' not in live_panel: fail('approved_live_panel_missing')
+    if '/local/house-status/lifeos-house-status-'+release+'.js' not in live_panel: fail('approved_live_panel_asset_mismatch')
     if not dev_panel: fail('development_panel_missing')
     for marker in ('sidebar_title: House Status Dev','url_path: house-status-dev','module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-4','require_admin: true'):
         if marker not in dev_panel: fail('development_panel_config_missing:'+marker)
