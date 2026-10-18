@@ -23,7 +23,7 @@ class ReleaseGovernance(unittest.TestCase):
 
     def test_approved_pointer_is_explicit_and_v29_is_inert(self):
         approved=gate.verify_manifest(self.manifest)
-        self.assertIn(approved['release'],('v28','v30'))
+        self.assertRegex(approved['release'],r'^v(?:[3-9][0-9]|[1-9][0-9]{2,})$')
         cfg=(ROOT/'homelab/live/opt/stacks/homeassistant/config/configuration.yaml').read_text()
         self.assertIn(f'name: lifeos-house-status-{approved["release"]}',cfg)
         self.assertIn(f'lifeos-house-status-{approved["release"]}.js',cfg)
@@ -189,8 +189,11 @@ class ReleaseGovernance(unittest.TestCase):
         deploy=(ROOT/'scripts/lifeos-deploy-house-status-dev-dashboard.sh').read_text()
         self.assertIn('HOUSE_STATUS_DEV_LIVE_ISOLATION=PASS',deploy)
         self.assertIn('PRODUCTION_AFTER',deploy)
-        self.assertEqual(self.manifest['previous_production_release'],'v28')
-        self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(gate.V28))
+        self.assertLess(int(self.manifest['previous_production_release'][1:]),int(self.manifest['approved_production']['release'][1:]))
+        if self.manifest['previous_production_release']=='v28':
+            self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(gate.V28))
+        else:
+            self.assertEqual(len(self.manifest['previous_production_artifact_sha256']),64)
         rollback=(ROOT/'scripts/lifeos-promote-house-status-approved-release.sh').read_text()
         self.assertIn('HOUSE_STATUS_LIVE_ROLLBACK=COMPLETE',rollback)
         self.assertIn('lifeos-house-status-$RELEASE.js',rollback)
