@@ -49,6 +49,7 @@ jobs:
           node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
           node --input-type=module --check < homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js
           TZ=Europe/London node homeassistant/www/house-status-dev/test-isolation.js
+          node homeassistant/www/house-status-dev/test-doorbell-bootstrap.js
           bash -n scripts/lifeos-deploy-house-status-dev-dashboard.sh
           python3 -m py_compile homeassistant/verify-house-status-dev-dashboard.py
           python3 homeassistant/verify-house-status-dev-dashboard.py --source-only
@@ -83,9 +84,13 @@ jobs:
           cmp -s homeassistant/www/house-status-dev/lifeos-house-status-dev.js /tmp/house-status-dev-served-bundle.js || { echo HOUSE_STATUS_DEV_SERVED_ASSET=FAIL; exit 1; }
           echo HOUSE_STATUS_DEV_SERVED_ASSET=PASS
           echo HOUSE_STATUS_DEV_SERVED_SHA256=$(sha256sum /tmp/house-status-dev-served-bundle.js | cut -d" " -f1)
+          curl -fsS --max-time 10 -H 'Cache-Control: no-cache' "http://127.0.0.1:8123/local/house-status-dev/lifeos-house-status-doorbell.js?acceptance=${GITHUB_SHA}" -o /tmp/house-status-dev-doorbell-served.js
+          cmp -s homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js /tmp/house-status-dev-doorbell-served.js || { echo HOUSE_STATUS_DEV_DOORBELL_SERVED_ASSET=FAIL; exit 1; }
+          echo HOUSE_STATUS_DEV_DOORBELL_SERVED_ASSET=PASS
           NODE_BIN=$(command -v node 2>/dev/null || find /opt/actions-runner-lifeos/externals -maxdepth 3 -type f -name node -perm -111 2>/dev/null | head -n1)
           [[ -n "$NODE_BIN" ]] || { echo HOUSE_STATUS_DEV_RUNTIME_NODE=FAIL; exit 1; }
           TZ=Europe/London HOUSE_STATUS_DEV_ASSET=/tmp/house-status-dev-served-bundle.js "$NODE_BIN" homeassistant/www/house-status-dev/test-isolation.js
+          HOUSE_STATUS_DOORBELL_ASSET=/tmp/house-status-dev-doorbell-served.js "$NODE_BIN" homeassistant/www/house-status-dev/test-doorbell-bootstrap.js
           sudo -n python3 /home/joshan/lifeos-platform/homeassistant/verify-house-status-dev-dashboard.py
           CANDIDATE_RELEASE=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["next_candidate_release"])')
           echo HOUSE_STATUS_DEV_RELEASE_CANDIDATE=$CANDIDATE_RELEASE:$(sha256sum "/tmp/house-status-$CANDIDATE_RELEASE-candidate/lifeos-house-status-$CANDIDATE_RELEASE.js" | cut -d" " -f1)
