@@ -205,7 +205,7 @@ if __name__=='__main__': unittest.main(verbosity=2)
         self.assertNotEqual(hashlib.sha256(v29.read_bytes()).hexdigest(),approved['artifact_sha256'])
         previous=self.manifest['previous_production_release']
         self.assertIn(previous,('v28','v30'))
-        previous_path=gate.LIVE_DIR/f'lifeos-house-status-{previous}.js'
+        previous_path=gate.MANIFEST.parent/f'lifeos-house-status-{previous}.js'
         self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(previous_path))
         candidate=self.manifest['promotion_candidate']
         self.assertIsNotNone(candidate)
@@ -351,7 +351,7 @@ if __name__=='__main__': unittest.main(verbosity=2)
         self.assertIn('lifeos-house-status-$RELEASE.js',rollback)
         self.assertTrue(gate.V28.exists())
         approved=self.manifest['approved_production']
-        approved_path=gate.LIVE_DIR / ('lifeos-house-status-'+approved['release']+'.js')
+        approved_path=gate.MANIFEST.parent / ('lifeos-house-status-'+approved['release']+'.js')
         self.assertEqual(gate.sha(approved_path),approved['artifact_sha256'])
 
 if __name__=='__main__': unittest.main(verbosity=2)
