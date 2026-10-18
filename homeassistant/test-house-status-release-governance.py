@@ -16,6 +16,7 @@ def load(name,path):
     mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod); return mod
 builder=load('house_status_builder',ROOT/'homeassistant/build-house-status-release.py')
 gate=load('house_status_gate',ROOT/'homeassistant/verify-house-status-live-release.py')
+energy_scope=load('house_status_energy_scope',ROOT/'scripts/lifeos-house-status-energy-scope.py')
 
 class ReleaseGovernance(unittest.TestCase):
     def setUp(self):
@@ -189,6 +190,23 @@ class ReleaseGovernance(unittest.TestCase):
             self.assertEqual((ROOT/'homeassistant/releases/house-status/live/approved-release.json').read_bytes(),manifest_before,'candidate creation cannot change the approved Live pointer')
             subprocess.run(['node','--check',str(a/'lifeos-house-status-v31.js')],check=True)
             subprocess.run(['node','--check',str(a/'lifeos-house-status-doorbell-v31.js')],check=True)
+
+    def test_energy_preflight_scope_keeps_doorbell_only_packaging_separate(self):
+        builder_source=(ROOT/'homeassistant/build-house-status-release.py').read_text()
+        paths={energy_scope.BUILDER,energy_scope.GOVERNANCE_TEST}
+        self.assertFalse(energy_scope.energy_acceptance_required(paths,builder_source,builder_source),
+                         'Doorbell-only package changes with an explicit regression do not require the unrelated long Energy endpoint')
+        self.assertTrue(energy_scope.energy_acceptance_required({energy_scope.BUILDER},builder_source,builder_source),
+                        'a packager change without paired governance coverage fails closed')
+        changed_app=builder_source.replace('def normalize_app(','def normalize_app_changed(',1)
+        self.assertNotEqual(changed_app,builder_source)
+        self.assertTrue(energy_scope.energy_acceptance_required(paths,builder_source,changed_app),
+                        'changes outside the Doorbell-only normalizers retain the full Energy preflight')
+        self.assertTrue(energy_scope.energy_acceptance_required(
+            paths|{'homeassistant/www/house-status-dev/lifeos-house-status-dev.js'},
+            builder_source,builder_source),
+            'Energy source changes always retain the full preflight')
+        self.assertFalse(energy_scope.energy_acceptance_required({'README.md'},builder_source,builder_source))
 
     def test_dev_deployer_cannot_write_live_targets_and_rollback_is_pinned(self):
         deploy=(ROOT/'scripts/lifeos-deploy-house-status-dev-dashboard.sh').read_text()
