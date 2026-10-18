@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
   "approved_production": {
-    "release": "v31",
-    "artifact_sha256": "e3ed6ac0d7f3c11841c11b9ee1a6d5a87cf05a689f14303d0cd051281ae00c94"
+    "release": "v32",
+    "artifact_sha256": "265e4c5feae4c48ddfa1dd4096c013cce37927e3298e9a222ffa16bcf2c71857"
   },
-  "previous_production_release": "v30",
+  "previous_production_release": "v31",
   "promotion_candidate": {
-    "release": "v31",
-    "artifact_sha256": "e3ed6ac0d7f3c11841c11b9ee1a6d5a87cf05a689f14303d0cd051281ae00c94",
-    "source_commit": "772cf9982ec83d3f429cd0274e3e4614365fabc5",
-    "packager_commit": "772cf9982ec83d3f429cd0274e3e4614365fabc5",
+    "release": "v32",
+    "artifact_sha256": "265e4c5feae4c48ddfa1dd4096c013cce37927e3298e9a222ffa16bcf2c71857",
+    "source_commit": "eb2044e62ae7c4b7d4d49350df297971a1094060",
+    "packager_commit": "eb2044e62ae7c4b7d4d49350df297971a1094060",
     "packager_version": 1,
-    "dev_acceptance_run_id": 39110003761,
+    "dev_acceptance_run_number": 141,
     "dev_acceptance_run_attempt": 1,
-    "dev_app_sha256": "14fafda6b4787b5badf47430143801e0722655610f7dba136f081a9fd5ceb21f",
-    "dev_doorbell_sha256": "2bcd6e0273d6ea9edf0a5517d8eccb9eebfbf56d1f1402b1345283f1c129a172",
-    "doorbell_sha256": "5a2542729fcc8dfc7f7459e27e47b37aef8ffd4368e0ee92193fe428bdccb2c8"
+    "dev_app_sha256": "6cd4754596877a21caaf41543c44b5bab35aa7d7ac2a2d5dc6745cadc02253f5",
+    "dev_doorbell_sha256": "732d3fd8305b483582122a9ec575f811d5fc5e629e257b04b95f48d4b3cfc303",
+    "doorbell_sha256": "ec24364d02874c7874ef7828f4c2811f05bd728841872441ffae7905da636226"
   },
-  "previous_production_artifact_sha256": "324d8ffd3f44b03bf065bc259e3fcf15024c3d97361986f562983e777b030821",
-  "next_candidate_release": "v32"
+  "previous_production_artifact_sha256": "e3ed6ac0d7f3c11841c11b9ee1a6d5a87cf05a689f14303d0cd051281ae00c94",
+  "next_candidate_release": "v33"
 }
