@@ -82,11 +82,11 @@ command_line:
       scan_interval: 10
 
 panel_custom:
-  - name: lifeos-house-status-v30
+  - name: lifeos-house-status-v31
     sidebar_title: House Status
     sidebar_icon: mdi:home-heart
     url_path: house-status
-    module_url: /local/house-status/lifeos-house-status-v30.js?v=da8fce22d122
+    module_url: /local/house-status/lifeos-house-status-v31.js?v=5a2542729fcc
     require_admin: false
     config:
       mode: domestic
