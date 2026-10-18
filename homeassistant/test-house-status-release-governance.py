@@ -23,7 +23,7 @@ class ReleaseGovernance(unittest.TestCase):
 
     def test_approved_pointer_is_explicit_and_v29_is_inert(self):
         approved=gate.verify_manifest(self.manifest)
-        self.assertRegex(approved['release'],r'^v[0-9]+
+        self.assertGreaterEqual(int(approved['release'][1:]),28)
         cfg=(ROOT/'homelab/live/opt/stacks/homeassistant/config/configuration.yaml').read_text()
         self.assertIn(f"name: lifeos-house-status-{approved['release']}",cfg)
         self.assertIn(f"lifeos-house-status-{approved['release']}.js",cfg)
