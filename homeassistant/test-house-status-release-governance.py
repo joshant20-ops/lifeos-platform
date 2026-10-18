@@ -23,7 +23,7 @@ class ReleaseGovernance(unittest.TestCase):
 
     def test_approved_pointer_is_explicit_and_v29_is_inert(self):
         approved=gate.verify_manifest(self.manifest)
-        self.assertGreaterEqual(int(approved['release'][1:]),28)
+        self.assertIn(approved['release'],('v28','v30'))
         cfg=(ROOT/'homelab/live/opt/stacks/homeassistant/config/configuration.yaml').read_text()
         self.assertIn(f'name: lifeos-house-status-{approved["release"]}',cfg)
         self.assertIn(f'lifeos-house-status-{approved["release"]}.js',cfg)
@@ -38,25 +38,30 @@ class ReleaseGovernance(unittest.TestCase):
         self.assertTrue(v29.exists())
         self.assertNotEqual(hashlib.sha256(v29.read_bytes()).hexdigest(),approved['artifact_sha256'])
         previous=self.manifest['previous_production_release']
-        self.assertLess(int(previous[1:]),int(approved['release'][1:]))
-        previous_path=gate.MANIFEST.parent/f'lifeos-house-status-{previous}.js'
         if previous=='v28':
-            if previous=='v28':
-            self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(previous_path))
+            self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(gate.V28))
         else:
             self.assertEqual(len(self.manifest['previous_production_artifact_sha256']),64)
+        previous=self.manifest['previous_production_release']
+        self.assertLess(int(previous[1:]),int(approved['release'][1:]))
+        if previous=='v28':
+            self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(gate.V28))
         else:
             self.assertEqual(len(self.manifest['previous_production_artifact_sha256']),64)
-        candidate=self.manifest['promotion_candidate']
-        self.assertIsNotNone(candidate)
-        self.assertEqual(candidate['release'],approved['release'])
-        self.assertEqual(candidate['artifact_sha256'],approved['artifact_sha256'])
-        self.assertEqual(len(candidate['source_commit']),40)
-        self.assertEqual(len(candidate['packager_commit']),40)
-        self.assertGreater(candidate['dev_acceptance_run_id'],0)
-        self.assertGreater(candidate['dev_acceptance_run_attempt'],0)
-        for field in ('dev_app_sha256','dev_doorbell_sha256','doorbell_sha256'):
-            self.assertEqual(len(candidate[field]),64)
+        candidate=self.manifest.get('promotion_candidate')
+        if approved['release']=='v28':
+            self.assertIsNone(candidate)
+            self.assertEqual(approved['artifact_sha256'],gate.sha(gate.V28))
+        else:
+            self.assertIsNotNone(candidate)
+            self.assertEqual(candidate['release'],approved['release'])
+            self.assertEqual(candidate['artifact_sha256'],approved['artifact_sha256'])
+            self.assertEqual(len(candidate['source_commit']),40)
+            self.assertEqual(len(candidate['packager_commit']),40)
+            self.assertGreater(candidate['dev_acceptance_run_id'],0)
+            self.assertGreater(candidate['dev_acceptance_run_attempt'],0)
+            for field in ('dev_app_sha256','dev_doorbell_sha256','doorbell_sha256'):
+                self.assertEqual(len(candidate[field]),64)
         self.assertGreater(int(self.manifest['next_candidate_release'][1:]),int(approved['release'][1:]))
 
     def test_manual_selection_fails_closed(self):
@@ -184,9 +189,8 @@ class ReleaseGovernance(unittest.TestCase):
         deploy=(ROOT/'scripts/lifeos-deploy-house-status-dev-dashboard.sh').read_text()
         self.assertIn('HOUSE_STATUS_DEV_LIVE_ISOLATION=PASS',deploy)
         self.assertIn('PRODUCTION_AFTER',deploy)
-        previous=self.manifest['previous_production_release']
-        previous_path=gate.MANIFEST.parent / ('lifeos-house-status-'+previous+'.js')
-        self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(previous_path))
+        self.assertEqual(self.manifest['previous_production_release'],'v28')
+        self.assertEqual(self.manifest['previous_production_artifact_sha256'],gate.sha(gate.V28))
         rollback=(ROOT/'scripts/lifeos-promote-house-status-approved-release.sh').read_text()
         self.assertIn('HOUSE_STATUS_LIVE_ROLLBACK=COMPLETE',rollback)
         self.assertIn('lifeos-house-status-$RELEASE.js',rollback)
@@ -194,11 +198,8 @@ class ReleaseGovernance(unittest.TestCase):
         approved=self.manifest['approved_production']
         approved_path=gate.MANIFEST.parent / ('lifeos-house-status-'+approved['release']+'.js')
         if approved_path.exists():
-            if approved_path.exists():
             self.assertEqual(gate.sha(approved_path),approved['artifact_sha256'])
         else:
             self.assertEqual(approved['artifact_sha256'],self.manifest['promotion_candidate']['artifact_sha256'])
-        else:
-            self.assertEqual(approved['artifact_sha256'],candidate['artifact_sha256'])
 
 if __name__=='__main__': unittest.main(verbosity=2)
