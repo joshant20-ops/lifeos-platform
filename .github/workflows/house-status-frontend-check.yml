@@ -68,6 +68,8 @@ jobs:
       - run: node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
       - name: House Status development isolation
         run: TZ=Europe/London node homeassistant/www/house-status-dev/test-isolation.js
+      - name: Isolated DEV Doorbell cold bootstrap
+        run: node homeassistant/www/house-status-dev/test-doorbell-bootstrap.js
       - name: Doorbell handoff behaviour
         run: node homeassistant/www/house-status/test-doorbell-handoff.js
       - name: V28 panel Lovelace card helper bootstrap
