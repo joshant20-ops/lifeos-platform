@@ -81,14 +81,7 @@ jobs:
           required=true
           if [[ "${GITHUB_EVENT_NAME}" == "push" ]]; then
             if parent="$(git rev-parse "${GITHUB_SHA}^" 2>/dev/null)"; then
-              required=false
-              while IFS= read -r path; do
-                case "$path" in
-                  homeassistant/www/house-status-dev/lifeos-house-status-dev.js|homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js|homeassistant/build-house-status-release.py|scripts/lifeos-energy-history-live-acceptance.py|scripts/lifeos-deploy-energy-opportunity-api.sh|homelab/live/mnt/docker-data/automation/repos/LifeOS-Energy/app/*)
-                    required=true
-                    ;;
-                esac
-              done < <(git diff --name-only "$parent" "${GITHUB_SHA}")
+              required="$(python3 scripts/lifeos-house-status-energy-scope.py "$parent" "${GITHUB_SHA}")"
             else
               echo "Energy acceptance scope cannot be determined; failing closed."
             fi
