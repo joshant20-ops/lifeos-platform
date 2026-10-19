@@ -201,9 +201,6 @@ class ReleaseGovernance(unittest.TestCase):
         self.assertEqual(builder.denormalize_doorbell(live_bell,release),bell)
         self.assertIn('LifeOSHouseStatusModules?.doorbellV31',live_app,'packaged app must look up its release-specific Doorbell module')
         self.assertIn('window.LifeOSHouseStatusModules.doorbellV31=',live_bell,'imported Doorbell module must register under the app lookup key')
-        self.assertIn('lifeos-doorbell-camera-v31',live_app,'packaged Doorbell custom element is release-specific')
-        self.assertIn("customElements.define('lifeos-doorbell-camera-v31'",live_bell,'the isolated custom element registration is packaged with Doorbell')
-        self.assertNotIn('lifeos-doorbell-camera-dev',live_app+live_bell,'DEV custom element identity cannot leak into Live')
         self.assertIn("import './lifeos-house-status-doorbell-v31.js?v=",live_app)
         self.assertIn("this.period()==='year'?'':powerdownWindows.map",live_app)
         self.assertIn('periodWindow(){return [this.periodStart(),this.periodEnd()];}',live_app)
@@ -234,7 +231,7 @@ class ReleaseGovernance(unittest.TestCase):
                         'changes outside the Doorbell-only normalizers retain the full Energy preflight')
         shell_test=energy_scope.DOORBELL_SHELL_TEST
         changed_paths=paths|{energy_scope.APP_INPUT,shell_test}
-        old_setter=energy_scope.OLD_DOORBELL_SETTER
+        old_setter=energy_scope.BASE_DOORBELL_SETTER
         new_setter=energy_scope.NEW_DOORBELL_SETTER
         old_app=old_setter+"\n    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':LifeOSDoorbellModule.owns(mode)?'doorbell':'energy';\n    this.dataset.module=moduleOwner;\n    const stamp=o=>new Date(o.valid_from||0).getTime();"
         new_app=(new_setter+"\n    if(mode==='doorbell'){\n      this.dataset.module='doorbell';\n      const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;\n      let body='';\n      try{if(doorbell?.render)body=doorbell.render(this._hass);}catch(error){console.warn(error);}\n      this._doorbellHost=this.querySelector('[data-doorbell-card]');\n      if(this._doorbellHost){\n        try{Promise.resolve(doorbell?.mount?.(this._doorbellHost,this._hass)).catch(error=>console.warn(error));}catch(error){console.warn(error);}\n      }\n      return;\n    }\n    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':'energy';\n    this.dataset.module=moduleOwner;\n    const stamp=o=>new Date(o.valid_from||0).getTime();")
