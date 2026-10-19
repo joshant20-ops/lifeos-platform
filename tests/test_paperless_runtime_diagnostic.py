@@ -98,6 +98,38 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertTrue(all(timeout <= 8 for _, timeout in calls))
         self.assertFalse(any(args[1] in {"up", "down", "start", "stop", "restart", "rm", "pull"} for args, _ in calls if args[0] == "docker"))
 
+    def test_authenticated_document_and_media_probe_emits_only_fixed_results(self):
+        class Response:
+            def __init__(self, status, body):
+                self.status = status
+                self.body = body
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+            def read(self, size=-1):
+                return self.body[:size] if size >= 0 else self.body
+
+        with tempfile.TemporaryDirectory() as temp:
+            token_path = pathlib.Path(temp) / "token"
+            token_path.write_text("private-token\n")
+            responses = [
+                Response(200, b'{"count": 42, "results": [{"id": 123, "title": "private"}]}'),
+                Response(206, b"x"),
+            ]
+            with patch.object(audit.urllib.request, "urlopen", side_effect=responses) as opened:
+                self.assertEqual(audit.paperless_document_media_probe(token_path), ("PASS", "PASS"))
+            self.assertEqual(len(opened.call_args_list), 2)
+            self.assertEqual(opened.call_args_list[0].args[0].get_header("Authorization"), "Token private-token")
+            self.assertEqual(opened.call_args_list[1].args[0].get_header("Range"), "bytes=0-0")
+
+    def test_document_media_probe_fails_closed_without_token(self):
+        with tempfile.TemporaryDirectory() as temp:
+            self.assertEqual(
+                audit.paperless_document_media_probe(pathlib.Path(temp) / "missing"),
+                ("UNKNOWN", "UNKNOWN"),
+            )
+
     def test_mount_consistency_detects_unit_mount_table_mismatch(self):
         self.assertEqual(audit.mount_consistency("UNMOUNTED", "MOUNTED"), "INCONSISTENT")
         self.assertEqual(audit.mount_consistency("MOUNTED", "UNMOUNTED"), "INCONSISTENT")
