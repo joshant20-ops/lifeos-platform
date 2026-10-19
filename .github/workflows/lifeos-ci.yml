@@ -59,7 +59,8 @@ jobs:
             tests.test_tower_metrics \
             tests.test_tower_wol_issue_trigger \
             tests.test_openhands_level2_failure_evidence \
-            tests.test_paperless_readonly_audit_trigger
+            tests.test_paperless_readonly_audit_trigger \
+            tests.test_paperless_governed_restore
 
       - name: Install focused Python contract dependency
         run: python3 -m pip install pytest

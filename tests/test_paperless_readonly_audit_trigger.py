@@ -32,7 +32,7 @@ class PaperlessReadOnlyAuditTriggerTests(unittest.TestCase):
             workflow,
         )
         self.assertIn(
-            '|| "$LIFEOS_OPERATION" == "audit-paperless-runtime" ]]; then',
+            '|| "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then',
             workflow,
         )
 
@@ -58,6 +58,18 @@ class PaperlessReadOnlyAuditTriggerTests(unittest.TestCase):
             wrapper,
         )
         self.assertIn('PAPERLESS_AUDIT_MUTATIONS=NONE', DIAGNOSTIC.read_text())
+
+    def test_restore_uses_exact_issue_route_and_refreshes_root_gateway(self):
+        workflow = WORKFLOW.read_text()
+        self.assertIn("LifeOS Deploy: restore-paperless", workflow)
+        self.assertIn("github.event.issue.title == 'LifeOS Deploy: restore-paperless' && 'restore-paperless'", workflow)
+        self.assertIn('|| "$LIFEOS_OPERATION" == "restore-paperless" ]]; then', workflow)
+        gateway = load_gateway()
+        self.assertEqual(
+            gateway.OPS["restore-paperless"],
+            {"script": "scripts/lifeos-paperless-restore.sh", "privileged": True},
+        )
+        self.assertEqual(gateway.parse_request(["restore-paperless"]), ("restore-paperless", []))
 
     def test_audit_is_serialized_and_uses_existing_pi_runner(self):
         workflow = WORKFLOW.read_text()
