@@ -21,6 +21,10 @@ class SnapshotProtectedDriftTests(unittest.TestCase):
                 "script.relative_to(allowed_root)",
                 "Strict FIFO: only the oldest staged manifest is considered per run.",
             ),
+            "opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py": (
+                "def project_timeline_events(events):",
+                '"timeline_events": project_timeline_events(x.get("timeline_events"))',
+            ),
             "usr/local/sbin/lifeos-github-sync": (
                 'PROTECTED_MANIFEST="$REPO/homelab/.snapshot-protected.txt"',
                 '[ -f "$PROTECTED_MANIFEST" ] || fail "Snapshot protection policy missing"',
