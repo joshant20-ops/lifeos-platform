@@ -39,8 +39,27 @@ print(target)
 PY
 ) || fail invalid_control_identity
 
+ENGINEER_SOURCES=(
+  governor/autonomous_agent.py
+  governor/target_identity.py
+  governor/engineer_backend.py
+)
+REPO_OWNER=$(stat -c %u "$PLATFORM") || fail repository_owner_unavailable
+for rel in "${ENGINEER_SOURCES[@]}"; do
+  path="$PLATFORM/$rel"
+  [[ -f "$path" && ! -L "$path" ]] || fail "unsafe_source_type:$rel"
+  [[ "$(stat -c %u "$path")" == "$REPO_OWNER" ]] || fail "unsafe_source_owner:$rel"
+  # Remove only group/other write bits on the three exact tracked inputs. The
+  # fixed root broker still checks ownership, regular-file type and checksums.
+  runuser -u joshan -- chmod go-w -- "$path" || fail "source_mode_hardening_failed:$rel"
+  mode=$(stat -c %a "$path") || fail "source_mode_unavailable:$rel"
+  mode_num=$((8#$mode))
+  (( (mode_num & 0022) == 0 )) || fail "unsafe_source_mode:$rel"
+done
+echo 'ENGINEER_SOURCE_METADATA=PASS'
+
 declare -A HASHES
-for rel in governor/autonomous_agent.py governor/target_identity.py governor/engineer_backend.py; do
+for rel in "${ENGINEER_SOURCES[@]}"; do
   runuser -u joshan -- git -C "$PLATFORM" ls-files --error-unmatch -- "$rel" >/dev/null || fail "untracked_source:$rel"
   python3 -m py_compile "$PLATFORM/$rel" || fail "compile_failed:$rel"
   HASHES[$rel]=$(sha "$PLATFORM/$rel")
