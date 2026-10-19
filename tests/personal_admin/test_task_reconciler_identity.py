@@ -192,28 +192,64 @@ def test_attention_timeline_projection_exposes_only_bounded_summary_fields():
 
 
 
-def test_failure_diagnostic_contains_only_allowlisted_markers():
-    diagnostic = reconciler.safe_failure_diagnostic(
-        RuntimeError("private email subject and body must not appear")
-    )
-    assert diagnostic == (
-        "TASK_RECONCILER_FAILURE_STAGE=execution\n"
-        "TASK_RECONCILER_FAILURE_CLASS=RuntimeError"
-    )
-    assert "private email" not in diagnostic
+
+def test_failure_diagnostic_uses_only_fixed_stages_and_buckets():
+    stages = {
+        "startup", "state_load", "credential_load", "mailbox_connect",
+        "mailbox_search", "mailbox_fetch", "classification", "paperless_lookup",
+        "reconcile", "persist_publish", "complete",
+    }
+    for stage in stages:
+        diagnostic = reconciler.safe_failure_diagnostic(
+            RuntimeError("private message body and credential text"), stage
+        )
+        assert diagnostic == (
+            f"TASK_RECONCILER_FAILURE_STAGE={stage}\n"
+            "TASK_RECONCILER_FAILURE_BUCKET=OTHER"
+        )
+        assert "private message" not in diagnostic
+        assert "credential text" not in diagnostic
 
 
-def test_failure_diagnostic_normalizes_unknown_exception_classes():
+def test_failure_exception_types_map_to_safe_buckets():
+    import imaplib
+    import json
+    import socket
+    import ssl
+    from urllib.error import HTTPError, URLError
+
+    samples = [
+        (ssl.SSLError("secret"), "TLS"),
+        (imaplib.IMAP4.error("secret"), "IMAP"),
+        (HTTPError("https://private.invalid", 500, "secret", {}, None), "HTTP"),
+        (URLError("private host"), "NETWORK"),
+        (json.JSONDecodeError("private content", "sensitive", 0), "JSON"),
+        (socket.timeout("secret"), "NETWORK"),
+        (PermissionError("private path"), "FILESYSTEM"),
+        (OSError("private details"), "IO"),
+        (ValueError("private email"), "DATA"),
+    ]
+    for exc, expected in samples:
+        diagnostic = reconciler.safe_failure_diagnostic(exc, "mailbox_connect")
+        assert diagnostic.endswith("TASK_RECONCILER_FAILURE_BUCKET=" + expected)
+        assert str(exc) not in diagnostic
+
+
+def test_failure_diagnostic_normalizes_unknown_stage_and_exception():
     class PrivateErrorName(Exception):
         pass
 
-    assert reconciler.safe_failure_diagnostic(PrivateErrorName("secret")) == (
-        "TASK_RECONCILER_FAILURE_STAGE=execution\n"
-        "TASK_RECONCILER_FAILURE_CLASS=Other"
+    diagnostic = reconciler.safe_failure_diagnostic(
+        PrivateErrorName("secret"), "private-stage"
     )
+    assert diagnostic == (
+        "TASK_RECONCILER_FAILURE_STAGE=startup\n"
+        "TASK_RECONCILER_FAILURE_BUCKET=OTHER"
+    )
+    assert "secret" not in diagnostic
 
 
 def test_deploy_failure_diagnostics_filter_journal_to_fixed_markers():
     deploy = (REPO / "governor/scripts/deploy-pa-task-reconciler.sh").read_text()
-    assert "grep -E '^TASK_RECONCILER_FAILURE_(STAGE|CLASS)=[A-Za-z0-9_]+$'" in deploy
+    assert "grep -E '^TASK_RECONCILER_FAILURE_(STAGE|BUCKET)=[A-Za-z0-9_]+$'" in deploy
     assert "journalctl -u lifeos-task-reconciler.service -n 60 --no-pager;" not in deploy
