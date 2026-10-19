@@ -231,7 +231,7 @@ class ReleaseGovernance(unittest.TestCase):
                         'changes outside the Doorbell-only normalizers retain the full Energy preflight')
         shell_test=energy_scope.DOORBELL_SHELL_TEST
         changed_paths=paths|{energy_scope.APP_INPUT,shell_test}
-        old_setter=energy_scope.OLD_DOORBELL_SETTER
+        old_setter=energy_scope.BASE_DOORBELL_SETTER
         new_setter=energy_scope.NEW_DOORBELL_SETTER
         old_app=old_setter+"\n    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':LifeOSDoorbellModule.owns(mode)?'doorbell':'energy';\n    this.dataset.module=moduleOwner;\n    const stamp=o=>new Date(o.valid_from||0).getTime();"
         new_app=(new_setter+"\n    if(mode==='doorbell'){\n      this.dataset.module='doorbell';\n      const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;\n      let body='';\n      try{if(doorbell?.render)body=doorbell.render(this._hass);}catch(error){console.warn(error);}\n      this._doorbellHost=this.querySelector('[data-doorbell-card]');\n      if(this._doorbellHost){\n        try{Promise.resolve(doorbell?.mount?.(this._doorbellHost,this._hass)).catch(error=>console.warn(error));}catch(error){console.warn(error);}\n      }\n      return;\n    }\n    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':'energy';\n    this.dataset.module=moduleOwner;\n    const stamp=o=>new Date(o.valid_from||0).getTime();")

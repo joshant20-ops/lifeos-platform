@@ -7,18 +7,18 @@ const base=__dirname;
 const sourcePath=process.env.HOUSE_STATUS_DEV_ASSET||path.join(base,'lifeos-house-status-dev.js');
 const source=fs.readFileSync(sourcePath,'utf8').replace(/^await import\([^\n]+\);\n/,'');
 assert.match(source,/if\(mode==='doorbell'\)\{[\s\S]*?return;\s*\}\s*const moduleOwner=/,'Doorbell returns through its dedicated shell path before Energy ownership or rendering');
-assert.match(source,/const mode=this\._mode\|\|this\.config\?\.mode\|\|'domestic'; const host=this\._doorbellHost; if\(mode==='doorbell'/,'Doorbell mode is resolved from config before its first HA update');
+assert.match(source,/const mode=this\._mode\|\|this\.config\?\.mode\|\|'domestic'; const host=this\._doorbellHost; if\(mode==='doorbell'&&host\?\.isConnected\)\{try\{host\.hass=hass/,'Doorbell mode is resolved from config and forwarded to its isolated element before Energy');
 
-class FakeElement{constructor(){this.dataset={};this.isConnected=true;this.onclick=null;this.onkeydown=null;this.children=[];}replaceChildren(...items){this.children=items;}}
+class FakeElement{constructor(){this.dataset={};this.isConnected=true;this.onclick=null;this.onkeydown=null;this.children=[];}set hass(value){this._hass=value;if(this.__lifeosCameraCard)this.__lifeosCameraCard.hass=value;}get hass(){return this._hass;}replaceChildren(...items){this.children=items;}}
 class FakeCard extends FakeElement{constructor(){super();this._html='';this.doorbellHost=new FakeElement();this.menu=new FakeElement();this.modeButtons=['domestic','flow','home','doorbell'].map(mode=>{const item=new FakeElement();item.dataset.mode=mode;return item;});}
 set innerHTML(value){this._html=value;}get innerHTML(){return this._html;}
-querySelector(selector){if(selector==='[data-doorbell-card]')return this.doorbellHost;if(selector==='.hamb')return this.menu;return null;}
+querySelector(selector){if(selector==='[data-lifeos-doorbell-camera]')return this.doorbellHost;if(selector==='.hamb')return this.menu;return null;}
 querySelectorAll(selector){if(selector==='[data-mode]')return this.modeButtons;return [];}}
 
 (async()=>{
   const registry=new Map(),mountCalls=[],renderCalls=[];
   const camera={hass:null};
-  const doorbell={render(hass){renderCalls.push(hass);return '<section data-doorbell-card>isolated camera host</section>';},mount(host,hass){mountCalls.push({host,hass});host.__lifeosCameraCard=camera;}};
+  const doorbell={render(hass){renderCalls.push(hass);return '<lifeos-doorbell-camera-dev data-lifeos-doorbell-camera>isolated camera host</lifeos-doorbell-camera-dev>';},mount(host,hass){mountCalls.push({host,hass});host.__lifeosCameraCard=camera;host.hass=hass;}};
   const states=new Proxy({}, {get(_target,key){throw new Error('Doorbell read unrelated HA state: '+String(key));}});
   class DoorbellBlockedEnergy{static owns(){throw new Error('Energy ownership code ran in Doorbell mode');}}
   const context={
@@ -38,13 +38,14 @@ querySelectorAll(selector){if(selector==='[data-mode]')return this.modeButtons;r
   const card=new Card();card.setConfig({mode:'doorbell'});
   const hass={states};card.hass=hass;
   assert.equal(card.dataset.module,'doorbell');
-  assert.match(card.innerHTML,/isolated camera host/);
+  assert.ok(card.innerHTML.includes('data-lifeos-doorbell-camera'));
   assert.equal(renderCalls.length,1);assert.equal(renderCalls[0],hass);
   assert.equal(mountCalls.length,1);assert.equal(mountCalls[0].hass,hass);
-  assert.equal(card.doorbellHost.__lifeosDoorbellHass,hass);
+  assert.equal(card.doorbellHost.hass,hass);
   card.hass={states};
   assert.equal(renderCalls.length,1,'HA updates do not rerender the shared Energy shell');
   assert.equal(mountCalls.length,1,'HA updates do not recreate the Doorbell card');
+  assert.equal(card.doorbellHost.hass,card._hass,'the isolated Doorbell element receives each current HA state');
   assert.equal(camera.hass,card._hass,'HA updates reach the mounted camera card directly');
   console.log('HOUSE_STATUS_DOORBELL_SHARED_SHELL_ISOLATION=PASS');
   console.log('HOUSE_STATUS_DOORBELL_NO_ENERGY_STATE_OR_FETCH=PASS');

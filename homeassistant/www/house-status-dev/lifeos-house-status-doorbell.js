@@ -1,4 +1,4 @@
-window.LifeOSHouseStatusDevModules=window.LifeOSHouseStatusDevModules||{};
+const doorbellModules=window.LifeOSHouseStatusDevModules=window.LifeOSHouseStatusDevModules||{};
 
 const cameraConfig={
   type:'picture-entity',
@@ -59,7 +59,7 @@ async function mountCamera(host,hass){
     return;
   }
   if(host.__lifeosCameraMount)return host.__lifeosCameraMount;
-  host.innerHTML='<div class="floor">Loading live camera…</div>';
+  host.innerHTML='<div class="loading">Loading live camera…</div>';
   host.__lifeosCameraMount=(async()=>{
     try{
       const helpers=await loadCardHelpersWithRetry(host.__lifeosDoorbellHass||hass);
@@ -73,7 +73,7 @@ async function mountCamera(host,hass){
       host.__lifeosCameraCard=null;
       if(!host.isConnected)return;
       const fallback=document.createElement('div');
-      fallback.className='floor';
+      fallback.className='error';
       fallback.textContent='Camera view could not load';
       const code=(typeof error?.message==='string'&&/^[a-z0-9_]+$/.test(error.message))?error.message:(error?.name||'unknown');
       fallback.dataset.errorCode=code;
@@ -86,9 +86,43 @@ async function mountCamera(host,hass){
   return host.__lifeosCameraMount;
 }
 
-window.LifeOSHouseStatusDevModules.doorbell={
-  mount:mountCamera,
-  render(){
-    return '<div class="panel"><div class="heading">Doorbell</div><div class="doorcam" data-doorbell-card><div class="floor">Loading live camera…</div></div></div>';
+class LifeOSDoorbellCamera extends HTMLElement{
+  constructor(){
+    super();
+    const root=this.attachShadow({mode:'open'});
+    root.innerHTML=`<style>
+      :host{display:block;min-width:0}
+      .panel{border:1px solid #163747;border-radius:10px;background:rgba(6,25,35,.82);padding:12px;margin-top:10px;color:#f4f7f9;font-family:Arial,sans-serif}
+      .heading{font-size:20px;font-weight:750}
+      .doorcam{margin-top:10px;overflow:hidden;border-radius:10px}
+      .doorcam > *{display:block}
+      .loading,.error{min-height:320px;display:flex;align-items:center;justify-content:center;border:1px dashed #31566a;border-radius:8px;color:#b8c6ce;background:#071923}
+      @media(max-width:850px){.loading,.error{min-height:240px}}
+    </style><section class="panel"><div class="heading">Doorbell</div><div class="doorcam"><div class="loading">Loading live camera…</div></div></section>`;
+    this.__lifeosCameraHost=root.querySelector('.doorcam');
   }
+  set hass(hass){
+    this._hass=hass;
+    if(this.__lifeosCameraHost){
+      this.__lifeosCameraHost.__lifeosDoorbellHass=hass;
+      if(this.__lifeosCameraHost.__lifeosCameraCard){
+        try{this.__lifeosCameraHost.__lifeosCameraCard.hass=hass;}
+        catch(error){console.warn('LifeOS Doorbell camera update failed',error);}
+      }else{
+        mountCamera(this.__lifeosCameraHost,hass);
+      }
+    }
+  }
+  get hass(){return this._hass;}
+}
+window.LifeOSHouseStatusDevModules.doorbell={
+  mount(host,hass){
+    if(host&&'hass' in host){host.hass=hass;return host.__lifeosCameraHost?.__lifeosCameraMount;}
+    return mountCamera(host,hass);
+  },
+  render(){return '<'+doorbellElementName+' data-lifeos-doorbell-camera></'+doorbellElementName+'>';}
 };
+const registeredDoorbellKey=doorbellModules.doorbell?'doorbell':Object.keys(doorbellModules).filter(key=>/^doorbellV\d+$/.test(key)).at(-1);
+if(!registeredDoorbellKey)throw new Error('doorbell_module_identity_unavailable');
+const doorbellElementName='lifeos-doorbell-camera-'+(registeredDoorbellKey==='doorbell'?'dev':registeredDoorbellKey.slice(8).toLowerCase());
+if(!customElements.get(doorbellElementName))customElements.define(doorbellElementName,LifeOSDoorbellCamera);
