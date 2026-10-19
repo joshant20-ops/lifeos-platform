@@ -57,7 +57,8 @@ jobs:
             tests.test_step11_live_terminal_policy_diagnostic \
             tests.test_step11_live_closure \
             tests.test_tower_metrics \
-            tests.test_tower_wol_issue_trigger
+            tests.test_tower_wol_issue_trigger \
+            tests.test_openhands_level2_failure_evidence
 
       - name: Install focused Python contract dependency
         run: python3 -m pip install pytest
