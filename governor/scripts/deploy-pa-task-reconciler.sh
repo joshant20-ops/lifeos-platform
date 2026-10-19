@@ -37,51 +37,7 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now lifeos-task-reconciler.timer >/dev/null
 paperless_runtime_diagnostic() {
-  local ids state health state_health http_status reachability
-  local published=UNKNOWN container_status=unknown container_health=unknown
-  local -a container_ids=()
-
-  if command -v docker >/dev/null 2>&1; then
-    if ids="$(timeout 3 docker ps -aq --filter publish=8010 2>/dev/null)"; then
-      if [[ -z "$ids" ]]; then
-        published=NO
-        container_status=none
-        container_health=none
-      else
-        mapfile -t container_ids <<<"$ids"
-        published=YES
-        if [[ "${#container_ids[@]}" -eq 1 ]]; then
-          state_health="$(timeout 3 docker inspect --format '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "${container_ids[0]}" 2>/dev/null || true)"
-          read -r state health <<<"$state_health"
-          case "$state" in
-            running|exited|created|restarting|paused|dead|removing) container_status="$state" ;;
-            *) container_status=unknown ;;
-          esac
-          case "$health" in
-            healthy|unhealthy|starting|none) container_health="$health" ;;
-            *) container_health=unknown ;;
-          esac
-        else
-          container_status=multiple
-          container_health=multiple
-        fi
-      fi
-    fi
-  fi
-
-  http_status="$(curl --silent --output /dev/null --write-out '%{http_code}' --connect-timeout 2 --max-time 5 http://127.0.0.1:8010/api/ 2>/dev/null || true)"
-  if [[ "$http_status" =~ ^[1-5][0-9]{2}$ ]]; then
-    reachability=REACHABLE
-  else
-    http_status=000
-    reachability=UNREACHABLE
-  fi
-
-  printf 'PAPERLESS_8010_PUBLISHED=%s\n' "$published"
-  printf 'PAPERLESS_CONTAINER_STATUS=%s\n' "$container_status"
-  printf 'PAPERLESS_CONTAINER_HEALTH=%s\n' "$container_health"
-  printf 'PAPERLESS_API_HTTP_STATUS=%s\n' "$http_status"
-  printf 'PAPERLESS_API_REACHABILITY=%s\n' "$reachability"
+  /usr/bin/python3 "$REPO/governor/paperless_runtime_diagnostic.py"
 }
 
 if ! systemctl start lifeos-task-reconciler.service; then
