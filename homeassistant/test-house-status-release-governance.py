@@ -251,6 +251,25 @@ class ReleaseGovernance(unittest.TestCase):
         self.assertFalse(energy_scope.energy_acceptance_required(
             changed_paths,builder_source,builder_source,legacy_old,legacy_new),
             'the legacy post-render selector change is isolated from Energy after the active Doorbell early return')
+        # A guarded Doorbell import is a bootstrap-only change. Prove it stays out
+        # of the long-range Energy preflight while the shared Energy code is unchanged.
+        current_app=(ROOT/energy_scope.APP_INPUT).read_text()
+        guarded="try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }"
+        unguarded="await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());"
+        self.assertIn(guarded,current_app)
+        old_app=current_app.replace(guarded,unguarded,1)
+        doorbell_import_paths=changed_paths|{energy_scope.BUILDER,energy_scope.GOVERNANCE_TEST,'scripts/lifeos-house-status-energy-scope.py'}
+        old_builder=builder_source.replace(guarded,unguarded)
+        guarded_live="try{{ await import('/local/house-status/lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}'); }} catch(error) {{ console.warn('House Status Doorbell module load failed',error); }}"
+        static_live="import './lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}';"
+        old_builder=old_builder.replace(guarded_live,static_live)
+        self.assertFalse(energy_scope.energy_acceptance_required(
+            doorbell_import_paths,old_builder,builder_source,old_app,current_app),
+            'the exact Doorbell import failure guard is isolated from Energy')
+        altered_builder=builder_source.replace('def normalize_app(', 'def normalize_app_unrelated_change(', 1)
+        self.assertTrue(energy_scope.energy_acceptance_required(
+            doorbell_import_paths,builder_source,altered_builder,old_app,current_app),
+            'unrecognized builder changes remain Energy-scoped')
         self.assertFalse(energy_scope.energy_acceptance_required({'README.md'},builder_source,builder_source))
 
     def test_dev_deployer_cannot_write_live_targets_and_rollback_is_pinned(self):
