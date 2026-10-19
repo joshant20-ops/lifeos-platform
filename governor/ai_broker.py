@@ -576,7 +576,10 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
 def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None, response_format=None) -> dict:
     if privacy not in {"normal", "local-only"}:
         raise BrokerError("unsupported privacy class")
-    if response_format is not None and (privacy != "local-only" or response_format != "json"):
+    if response_format is not None and (
+        privacy != "local-only"
+        or not (response_format == "json" or isinstance(response_format, dict))
+    ):
         raise BrokerError("structured output format is restricted to local JSON mode")
     prompt = str(prompt)
     if not prompt.strip():
