@@ -56,6 +56,7 @@ assert.ok(deploy.includes("old_url='module_url: /local/house-status-dev/lifeos-h
 assert.ok(deploy.includes("new_url='module_url: /local/house-status-dev/lifeos-house-status-dev-loader.js?v=dev-loader-4'"));
 assert.match(devWorkflow,/find \/opt\/actions-runner-lifeos\/externals/,'post-deploy runtime test must locate the Pi runner\'s bundled Node executable');
 assert.match(dev,/await import\('\/local\/house-status-dev\/lifeos-house-status-doorbell\.js\?dev='\+Date\.now\(\)\)/);
+assert.match(dev,/try\{ await import\([^\n]+\); \} catch\(error\) \{ console\.warn\('House Status Doorbell module load failed',error\); \}/,'Doorbell module load errors are contained');
 assert.match(devBell,/LifeOSHouseStatusDevModules/);
 assert.doesNotMatch(devBell,/LifeOSHouseStatusModules/);
 assert.match(live,/customElements\.define\('lifeos-house-status-v28'/);
@@ -133,7 +134,7 @@ assert.match(liveDeploy,/RELEASE_DIR=.*releases/);
       sample_coverage_percent:coverage
     }))})};
   }
-  vm.runInNewContext(dev.replace(/^await import\([^\n]+\);\n/,''),context);
+  vm.runInNewContext(dev.replace(/^try\{ await import\([^\n]+\); \} catch\(error\) \{ console\.warn\([^\n]+\); \}\n/,''),context);
   const Card=registry.get('lifeos-house-status-dev');
   const card=new Card();
   const anchor=new Date(2026,9,13,12,0,0,0);

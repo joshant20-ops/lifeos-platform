@@ -29,8 +29,8 @@ def normalize_app(dev: str, release: str, doorbell_hash: str) -> str:
     n = int(release[1:])
     out = dev
     pairs = [
-        ("await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());",
-         f"import './lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}';", 1),
+        ("try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }",
+         f"try{{ await import('/local/house-status/lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}'); }} catch(error) {{ console.warn('House Status Doorbell module load failed',error); }}", 1),
         ('lifeos-house-status-dev-editor-v2', 'lifeos-house-status-editor', 3),
         ('LifeOS House Status Development v2', f'LifeOS House Status {release}', 1),
         ('lifeos-house-status-dev', f'lifeos-house-status-{release}', 3),
@@ -62,8 +62,8 @@ def denormalize_doorbell(live: str, release: str) -> str:
 def denormalize_app(live: str, release: str, doorbell_hash: str) -> str:
     n = int(release[1:])
     pairs = [
-        (f"import './lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}';",
-         "await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());", 1),
+        (f"try{{ await import('/local/house-status/lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}'); }} catch(error) {{ console.warn('House Status Doorbell module load failed',error); }}",
+         "try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }", 1),
         ('lifeos-house-status-editor', 'lifeos-house-status-dev-editor-v2', 3),
         (f'LifeOS House Status {release}', 'LifeOS House Status Development v2', 1),
         (f'lifeos-house-status-{release}', 'lifeos-house-status-dev', 3),
