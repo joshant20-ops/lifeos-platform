@@ -231,3 +231,32 @@ def test_canonical_policy_routes_private_normal_work_to_gpt_oss():
     assert eligible[0]["id"] == "ollama"
     assert eligible[0]["api_model"] == "gpt-oss:20b"
     assert next(x for x in considered if x["provider"] == "ollama")["status"] == "AVAILABLE"
+
+
+def test_local_json_mode_uses_ollama_format_parameter(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        BROKER,
+        "_post_json",
+        lambda url, payload, **kwargs: calls.append(payload) or {"response": "{}"},
+    )
+    assert BROKER._ollama_once("structured prompt", "current-model", response_format="json") == "{}"
+    assert calls[0]["format"] == "json"
+
+
+def test_structured_output_is_restricted_to_local_only(monkeypatch):
+    monkeypatch.setattr(BROKER, "candidates", lambda **_: ([{"id": "ollama", "api_model": "local"}], []))
+    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
+    called = []
+    monkeypatch.setattr(
+        BROKER,
+        "_invoke",
+        lambda provider, prompt, secrets, **kwargs: called.append(kwargs) or "{}",
+    )
+    result = BROKER.generate(
+        "private structured task", privacy="local-only", response_format="json"
+    )
+    assert result["text"] == "{}"
+    assert called == [{"response_format": "json"}]
+    with pytest.raises(BROKER.BrokerError, match="restricted to local JSON mode"):
+        BROKER.generate("public task", privacy="normal", response_format="json")
