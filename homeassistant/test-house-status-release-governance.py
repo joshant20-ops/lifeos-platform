@@ -229,10 +229,22 @@ class ReleaseGovernance(unittest.TestCase):
         self.assertNotEqual(changed_app,builder_source)
         self.assertTrue(energy_scope.energy_acceptance_required(paths,builder_source,changed_app),
                         'changes outside the Doorbell-only normalizers retain the full Energy preflight')
+        shell_test=energy_scope.DOORBELL_SHELL_TEST
+        changed_paths=paths|{energy_scope.APP_INPUT,shell_test}
+        old_setter=energy_scope.OLD_DOORBELL_SETTER
+        new_setter=energy_scope.NEW_DOORBELL_SETTER
+        old_app=old_setter+"\\n    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':LifeOSDoorbellModule.owns(mode)?'doorbell':'energy';\\n    this.dataset.module=moduleOwner;\\n    const stamp=o=>new Date(o.valid_from||0).getTime();"
+        new_app=(new_setter+"\\n    if(mode==='doorbell'){\\n      this.dataset.module='doorbell';\\n      const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;\\n      let body='';\\n      try{if(doorbell?.render)body=doorbell.render(this._hass);}catch(error){console.warn(error);}\\n      this._doorbellHost=this.querySelector('[data-doorbell-card]');\\n      if(this._doorbellHost){\\n        try{Promise.resolve(doorbell?.mount?.(this._doorbellHost,this._hass)).catch(error=>console.warn(error));}catch(error){console.warn(error);}\\n      }\\n      return;\\n    }\\n    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':'energy';\\n    this.dataset.module=moduleOwner;\\n    const stamp=o=>new Date(o.valid_from||0).getTime();")
+        self.assertFalse(energy_scope.energy_acceptance_required(
+            changed_paths,builder_source,builder_source,old_app,new_app),
+            'a tested Doorbell-shell-only app change bypasses the unrelated long Energy endpoint')
+        energy_changed=new_app.replace("const stamp=o=>","const stamp=o=>/* Energy logic changed */",1)
         self.assertTrue(energy_scope.energy_acceptance_required(
-            paths|{'homeassistant/www/house-status-dev/lifeos-house-status-dev.js'},
-            builder_source,builder_source),
-            'Energy source changes always retain the full preflight')
+            changed_paths,builder_source,builder_source,old_app,energy_changed),
+            'any change outside the Doorbell shell retains full Energy acceptance')
+        self.assertTrue(energy_scope.energy_acceptance_required(
+            paths|{energy_scope.APP_INPUT},builder_source,builder_source,old_app,new_app),
+            'a Doorbell shell change without its regression test fails closed')
         self.assertFalse(energy_scope.energy_acceptance_required({'README.md'},builder_source,builder_source))
 
     def test_dev_deployer_cannot_write_live_targets_and_rollback_is_pinned(self):
