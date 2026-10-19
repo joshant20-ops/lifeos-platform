@@ -44,7 +44,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                 if args[:2] == ["docker", "ps"] and "--quiet" in args:
                     return subprocess.CompletedProcess(args, 0, "container-id\n", "")
                 if args[:2] == ["docker", "ps"]:
-                    return subprocess.CompletedProcess(args, 0, "running|healthy\nexited|\nunknown|custom\n", "container details")
+                    return subprocess.CompletedProcess(args, 0, "running|Up 4 minutes (healthy)\nexited|Exited (1) 2 minutes ago\nunknown|Created\n", "container details")
                 if args[0] == "curl":
                     return subprocess.CompletedProcess(args, 0, "200", "sensitive response body")
                 raise AssertionError(args)
@@ -60,6 +60,11 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_REDIS_VOLUME=PRESENT", output)
         self.assertIn("PAPERLESS_REVERSE_PROXY_NETWORK=PRESENT", output)
         self.assertIn("PAPERLESS_FSTAB_SYNOLOGY=YES", output)
+        self.assertIn("PAPERLESS_SYNOLOGY_MOUNT=MOUNTED", output)
+        self.assertIn("PAPERLESS_DOCKER_SERVICE_ACTIVE=YES", output)
+        self.assertIn("PAPERLESS_CONTAINERD_SERVICE_ACTIVE=YES", output)
+        self.assertIn("PAPERLESS_RECONCILER_SERVICE_ACTIVE=YES", output)
+        self.assertIn("PAPERLESS_ASSISTANT_SERVICE_ACTIVE=YES", output)
         self.assertIn("PAPERLESS_FSTAB_MEDIA=NO", output)
         self.assertIn("PAPERLESS_FSTAB_INTAKE=YES", output)
         self.assertIn("PAPERLESS_MOUNT_UNIT_SYNOLOGY_ENABLED=YES", output)
@@ -68,7 +73,8 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_API_HTTP_STATUS=200", output)
         self.assertIn("PAPERLESS_8010_PUBLISHED=YES", output)
         self.assertIn("PAPERLESS_CONTAINER_STATE_UNKNOWN=1", output)
-        self.assertIn("PAPERLESS_CONTAINER_HEALTH_UNKNOWN=1", output)
+        self.assertIn("PAPERLESS_CONTAINER_HEALTH_NONE=2", output)
+        self.assertIn("PAPERLESS_CONTAINER_HEALTH_UNKNOWN=0", output)
         for private in ("do-not-print-this-secret", "16-secret-value", "private source path", "hidden compose diagnostics", "container details", "container-id", "sensitive response body", "/dev/disk/by-id", "credentials=/private/secret"):
             self.assertNotIn(private, output)
         self.assertTrue(all(timeout <= 8 for _, timeout in calls))
