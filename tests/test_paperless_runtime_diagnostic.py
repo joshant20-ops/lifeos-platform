@@ -91,6 +91,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertEqual(audit.mount_consistency("MOUNTED", "UNMOUNTED"), "INCONSISTENT")
         self.assertEqual(audit.mount_consistency("MOUNTED", "MOUNTED"), "CONSISTENT")
         self.assertEqual(audit.mount_consistency("UNMOUNTED", "UNMOUNTED"), "CONSISTENT")
+        self.assertEqual(audit.mount_consistency("UNMOUNTED", "FAILED"), "CONSISTENT")
         self.assertEqual(audit.mount_consistency("UNKNOWN", "UNKNOWN"), "UNKNOWN")
 
     def test_mount_check_accepts_synology_parent_mount_only(self):
