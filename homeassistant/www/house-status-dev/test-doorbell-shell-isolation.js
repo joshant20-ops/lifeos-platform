@@ -8,6 +8,8 @@ const sourcePath=process.env.HOUSE_STATUS_DEV_ASSET||path.join(base,'lifeos-hous
 const source=fs.readFileSync(sourcePath,'utf8').replace(/^await import\([^\n]+\);\n/,'');
 assert.match(source,/if\(mode==='doorbell'\)\{[\s\S]*?return;\s*\}\s*const moduleOwner=/,'Doorbell returns through its dedicated shell path before Energy ownership or rendering');
 assert.match(source,/const mode=this\._mode\|\|this\.config\?\.mode\|\|'domestic'; const host=this\._doorbellHost; if\(mode==='doorbell'&&host\?\.isConnected\)\{try\{host\.hass=hass/,'Doorbell mode is resolved from config and forwarded to its isolated element before Energy');
+assert.equal((source.match(/querySelector\\('\[data-lifeos-doorbell-camera\]'\\)/g)||[]).length,1,'only the active Doorbell branch targets the isolated element');
+assert.ok(source.includes("querySelector('[data-doorbell-card]')"),'legacy Energy-render fallback stays outside the early-return Doorbell path');
 
 class FakeElement{constructor(){this.dataset={};this.isConnected=true;this.onclick=null;this.onkeydown=null;this.children=[];}set hass(value){this._hass=value;if(this.__lifeosCameraCard)this.__lifeosCameraCard.hass=value;}get hass(){return this._hass;}replaceChildren(...items){this.children=items;}}
 class FakeCard extends FakeElement{constructor(){super();this._html='';this.doorbellHost=new FakeElement();this.menu=new FakeElement();this.modeButtons=['domestic','flow','home','doorbell'].map(mode=>{const item=new FakeElement();item.dataset.mode=mode;return item;});}
