@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, "/home/joshan/lifeos-platform/governor")
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import paperless_runtime_diagnostic as audit
 
 PROJECT = pathlib.Path("/home/joshan/paperless")
