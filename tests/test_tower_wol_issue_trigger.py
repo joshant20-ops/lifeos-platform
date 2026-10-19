@@ -87,7 +87,7 @@ class TowerWolIssueTriggerTests(unittest.TestCase):
         self.assertIn("active Tower leases must be zero", workflow)
         self.assertIn("github.event.issue.title == 'LifeOS Deploy: inspect-tower-network'", workflow)
         self.assertIn(
-            "inspect-tower-wol', 'inspect-tower-network', 'capture-tower-wol', 'controlled-tower-shutdown-proof', 'audit-paperless-runtime'].includes(process.env.LIFEOS_OPERATION)",
+            "inspect-tower-wol', 'inspect-tower-network', 'capture-tower-wol', 'controlled-tower-shutdown-proof', 'audit-paperless-runtime', 'restore-paperless'].includes(process.env.LIFEOS_OPERATION)",
             workflow,
         )
         self.assertNotIn("github.event.issue.title }} ", workflow)
