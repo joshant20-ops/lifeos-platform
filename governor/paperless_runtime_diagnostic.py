@@ -107,27 +107,56 @@ def mountinfo_state(target: str, path: pathlib.Path | None = None) -> str:
 
 
 def mount_state_diagnostic(path: str) -> tuple[str, str]:
-    result = run(["findmnt", "--noheadings", "--raw", "--target", path, "--output", "TARGET"])
+    # findmnt may return stacked autofs and NFS entries for one target.
+    # Inspect target and filesystem only; never expose source/options.
+    result = run([
+        "findmnt", "--noheadings", "--raw", "--target", path,
+        "--output", "TARGET,FSTYPE",
+    ])
     if result is None:
         return "UNKNOWN", "COMMAND_UNAVAILABLE"
     if result.returncode != 0:
         return "UNKNOWN", "COMMAND_FAILED"
-    raw_target = result.stdout.strip()
-    if not raw_target:
+    lines = [line.split() for line in result.stdout.splitlines() if line.strip()]
+    records = [(fields[0], fields[1].lower()) for fields in lines if len(fields) == 2]
+    if not records:
         return "UNKNOWN", "EMPTY_OUTPUT"
-    target = raw_target.rstrip("/") or "/"
+
     requested = path.rstrip("/") or "/"
     synology_root = "/mnt/synology"
-    if target == "/":
-        return "UNMOUNTED", "HOST_ROOT"
-    if target != synology_root and not target.startswith(synology_root + "/"):
-        return "UNMOUNTED", "OUTSIDE_SYNOLOGY_TREE"
-    if requested == target:
-        return "MOUNTED", "EXACT"
-    if requested.startswith(target.rstrip("/") + "/"):
-        return "MOUNTED", "ANCESTOR"
-    if target.startswith(requested.rstrip("/") + "/"):
+    relations: list[tuple[str, str]] = []
+    for raw_target, filesystem in records:
+        target = raw_target.rstrip("/") or "/"
+        if target == "/":
+            relation = "HOST_ROOT"
+        elif target != synology_root and not target.startswith(synology_root + "/"):
+            relation = "OUTSIDE_SYNOLOGY_TREE"
+        elif requested == target:
+            relation = "EXACT"
+        elif requested.startswith(target.rstrip("/") + "/"):
+            relation = "ANCESTOR"
+        elif target.startswith(requested.rstrip("/") + "/"):
+            relation = "DESCENDANT"
+        else:
+            relation = "NO_ANCESTOR"
+        relations.append((relation, filesystem))
+
+    # A stacked autofs entry alone is not proof that the expected NAS filesystem
+    # is available. Require an NFS mount at the requested path or an ancestor.
+    for relation in ("EXACT", "ANCESTOR"):
+        if any(found == relation and filesystem in {"nfs", "nfs4"}
+               for found, filesystem in relations):
+            return "MOUNTED", relation
+
+    if any(relation in {"EXACT", "ANCESTOR"} for relation, _ in relations):
+        return "UNMOUNTED", "NFS_FILESYSTEM_MISSING"
+    if any(relation == "DESCENDANT" and filesystem in {"nfs", "nfs4"}
+           for relation, filesystem in relations):
         return "UNMOUNTED", "DESCENDANT"
+    if any(relation == "HOST_ROOT" for relation, _ in relations):
+        return "UNMOUNTED", "HOST_ROOT"
+    if any(relation == "OUTSIDE_SYNOLOGY_TREE" for relation, _ in relations):
+        return "UNMOUNTED", "OUTSIDE_SYNOLOGY_TREE"
     return "UNMOUNTED", "NO_ANCESTOR"
 
 
