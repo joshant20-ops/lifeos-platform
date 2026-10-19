@@ -36,3 +36,11 @@ def test_actions_summary_filter_accepts_only_numeric_error_counters():
     ]
     assert "PrivateClassName" not in result.stdout
     assert "private@example.test" not in result.stdout
+
+
+def test_ha_config_is_set_before_attention_paths_use_it():
+    script = SCRIPT.read_text()
+    assignment = "HA_CONFIG=/opt/stacks/homeassistant/config"
+    first_use = 'HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"'
+    assert assignment in script
+    assert script.index(assignment) < script.index(first_use)
