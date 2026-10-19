@@ -91,9 +91,9 @@ def energy_acceptance_required(changed_paths, old_builder: str | None, new_build
     if BUILDER not in paths:
         return False
 
-    # A packager edit is exempt only when the PR also adds the governance regression
-    # and every change is limited to those two files and the Doorbell-only functions.
-    if not paths.issubset({BUILDER, GOVERNANCE_TEST}) or GOVERNANCE_TEST not in paths:
+    # A packager edit is exempt only with governance coverage and Doorbell-only changes.
+    # If the shared app changed, the strict shell normalizer above must prove Energy code is identical.
+    if not paths.issubset(DOORBELL_ONLY_PATHS) or GOVERNANCE_TEST not in paths:
         return True
     if old_builder is None or new_builder is None:
         return True
