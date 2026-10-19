@@ -59,24 +59,19 @@ def _without_doorbell_shell(source: str) -> str | None:
     )
     for owner_block in owner_blocks:
         text = text.replace(owner_block, "", 1)
-    # The app bootstrap is shared, so normalize only the exact Doorbell import boundary;
-    # unknown changes to the import statement remain Energy-scoped by default.
+    # The app bootstrap is shared, so normalize only the exact Doorbell import boundary.
+    # Synthetic shell-only fixtures may omit the bootstrap entirely; if present, accept
+    # exactly one known form and reject duplicates or altered variants.
     dev_imports = (
         "await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());",
         "try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }",
     )
-    live_imports = (
-        "import './lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}';",
-        "try{{ await import('/local/house-status/lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}'); }} catch(error) {{ console.warn('House Status Doorbell module load failed',error); }}",
-    )
-    import_normalized = text
-    for old, new in (dev_imports, live_imports):
-        occurrences = import_normalized.count(old) + import_normalized.count(new)
-        if occurrences != 2:
-            return None
-        import_normalized = import_normalized.replace(old, "__DOORBELL_IMPORT_BOUNDARY__", 2)
-        import_normalized = import_normalized.replace(new, "__DOORBELL_IMPORT_BOUNDARY__", 2)
-    text = import_normalized
+    dev_count = sum(text.count(value) for value in dev_imports)
+    if dev_count not in (0, 1):
+        return None
+    if dev_count:
+        for value in dev_imports:
+            text = text.replace(value, "__DOORBELL_IMPORT_BOUNDARY__", 1)
     # This selector appears only in the unreachable legacy post-render Doorbell fallback;
     # normalize its old/new host markers after stripping the active early-return branch.
     legacy_selectors = ("querySelector('[data-doorbell-card]')",
@@ -95,7 +90,27 @@ def doorbell_shell_only_app_change(old_app: str, new_app: str) -> bool:
 
 
 def _builder_without_doorbell_functions(source: str) -> str:
-    tree = ast.parse(source)
+    # The packager contains one import mapping in each direction. Permit only the
+    # exact guarded/unguarded spelling change for that boundary, in exactly two
+    # occurrences per source template. Any drift fails closed.
+    pairs = (
+        (
+            "await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());",
+            "try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }",
+        ),
+        (
+            "import './lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}';",
+            "try{{ await import('/local/house-status/lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}'); }} catch(error) {{ console.warn('House Status Doorbell module load failed',error); }}",
+        ),
+    )
+    normalized = source
+    for variants in pairs:
+        occurrences = sum(normalized.count(value) for value in variants)
+        if occurrences != 2:
+            raise ValueError("unexpected Doorbell import template count")
+        for value in variants:
+            normalized = normalized.replace(value, "__DOORBELL_IMPORT_BOUNDARY__")
+    tree = ast.parse(normalized)
     tree.body = [
         node for node in tree.body
         if not (
