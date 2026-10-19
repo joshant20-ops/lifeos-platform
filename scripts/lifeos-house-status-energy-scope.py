@@ -43,9 +43,12 @@ def _without_doorbell_shell(source: str) -> str | None:
         block = text[start:end]
         required = ("this.dataset.module='doorbell'", "doorbell?.render(this._hass)",
                     "doorbell?.mount?.(this._doorbellHost,this._hass)", "this._doorbellHost", "return;")
+        doorbell_path = block.split("    const moduleOwner=", 1)[0]
         forbidden = ("LifeOSEnergyModule", "LifeOSHouseModule", "sensor.", "event.",
                      "this._hass.states", "fetch(", "periodWindow(", "_loadEnergyHistory", "_history")
-        if any(token not in block for token in required) or any(token in block for token in forbidden):
+        if (any(token not in block for token in required)
+                or any(token in doorbell_path for token in forbidden)
+                or doorbell_path.rfind("return;") < 0):
             return None
         text = text[:start] + text[end:]
     owner_blocks = (
