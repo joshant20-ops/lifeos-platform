@@ -1,6 +1,7 @@
 """Privacy-safe, bounded read-only precondition audit for Paperless."""
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import subprocess
