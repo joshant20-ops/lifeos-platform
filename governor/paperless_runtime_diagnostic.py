@@ -173,7 +173,7 @@ def compose_config_state() -> str:
 def container_summary() -> dict[str, int] | None:
     result = run([
         "docker", "ps", "--all", "--filter", "label=com.docker.compose.project=paperless",
-        "--format", "{{.State}}|{{.Health}}",
+        "--format", "{{.State}}|{{.Status}}",
     ], timeout=5)
     if result is None or result.returncode != 0:
         return None
@@ -183,9 +183,17 @@ def container_summary() -> dict[str, int] | None:
     if len(lines) > 99:
         return None
     for line in lines:
-        state, sep, health = line.partition("|")
+        state, sep, status = line.partition("|")
         state = state.strip().lower()
-        health = health.strip().lower() if sep and health.strip() else "none"
+        status = status.strip().lower() if sep else ""
+        if "(unhealthy)" in status:
+            health = "unhealthy"
+        elif "(healthy)" in status:
+            health = "healthy"
+        elif "(health: starting)" in status:
+            health = "starting"
+        else:
+            health = "none"
         counts[f"state_{state if state in STATES[:-1] else 'unknown'}"] += 1
         counts[f"health_{health if health in HEALTHS[:-1] else 'unknown'}"] += 1
     counts["total"] = len(lines)
@@ -228,9 +236,15 @@ def main() -> int:
         enabled, active = mount_unit_states(target)
         print(f"PAPERLESS_MOUNT_UNIT_{label}_ENABLED={enabled}")
         print(f"PAPERLESS_MOUNT_UNIT_{label}_ACTIVE={active}")
+    print("PAPERLESS_SYNOLOGY_PATH_EXISTS=" + path_presence("/mnt/synology"))
+    print("PAPERLESS_SYNOLOGY_MOUNT=" + mount_state("/mnt/synology"))
     for label, path in NAS_PATHS.items():
         print(label.replace("_MOUNT", "_PATH_EXISTS") + "=" + path_presence(path))
         print(f"{label}=" + mount_state(path))
+    print("PAPERLESS_DOCKER_SERVICE_ACTIVE=" + _active_state(run(["systemctl", "is-active", "docker.service"], timeout=3)))
+    print("PAPERLESS_CONTAINERD_SERVICE_ACTIVE=" + _active_state(run(["systemctl", "is-active", "containerd.service"], timeout=3)))
+    print("PAPERLESS_RECONCILER_SERVICE_ACTIVE=" + _active_state(run(["systemctl", "is-active", "lifeos-task-reconciler.service"], timeout=3)))
+    print("PAPERLESS_ASSISTANT_SERVICE_ACTIVE=" + _active_state(run(["systemctl", "is-active", "lifeos-assistant.service"], timeout=3)))
     print("PAPERLESS_REDIS_VOLUME=" + resource_state("volume", "paperless_redis_data"))
     print("PAPERLESS_REVERSE_PROXY_NETWORK=" + resource_state("network", "reverse_proxy"))
     print("PAPERLESS_COMPOSE_CONFIG=" + compose_config_state())
