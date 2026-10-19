@@ -182,10 +182,11 @@ def test_attention_timeline_projection_exposes_only_bounded_summary_fields():
             "observed_at": 100,
             "title": "Claim update",
             "status": "WAITING",
+            "event_kind": "information",
             "body": "private body must not be published",
         },
     ])
-    assert projected == [{"observed_at": 100, "title": "Claim update", "status": "WAITING"}]
+    assert projected == [{"observed_at": 100, "title": "Claim update", "status": "WAITING", "event_kind": "information"}]
     assert "message_id" not in str(projected)
     assert "private body" not in str(projected)
 
@@ -337,3 +338,69 @@ def test_paperless_diagnostic_reports_fixed_unreachable_status(tmp_path):
     assert fields["PAPERLESS_API_REACHABILITY"] == "UNREACHABLE"
     assert fields["PAPERLESS_CONTAINER_SUMMARY"] == "UNKNOWN"
     assert "private transport detail" not in result.stdout + result.stderr
+
+
+def test_informational_event_updates_only_an_existing_matter_and_is_idempotent():
+    task_id = "acme-claim-12345"
+    task = {
+        "id": task_id,
+        "status": "WAITING",
+        "due_date": "2026-11-01",
+        "severity": "high",
+        "user_comments": [{"text": "synthetic user note"}],
+        "source_message_ids": ["<claim-open@example.test>"],
+        "case_reference_ids": ["UKHB12345"],
+        "timeline_events": [],
+    }
+    tasks = {task_id: task}
+    message = {
+        "message_id": "<claim-received@example.test>",
+        "source_ref": "<claim-received@example.test>",
+        "subject": "Claim reference UK-HB-12345 update",
+    }
+    decision = {
+        "relevant": True,
+        "actionable": False,
+        "title": "Documents received",
+        "status": "NONE",
+        "counterparty": "Acme",
+        "topic": "claim",
+    }
+
+    resolved_id = reconciler.resolve_task_id(decision, message, tasks)
+    assert resolved_id == task_id
+    assert reconciler.reconcile_information_event(
+        tasks, resolved_id, message, decision, 200
+    )
+    assert reconciler.reconcile_information_event(
+        tasks, resolved_id, message, decision, 200
+    )
+    assert list(tasks) == [task_id]
+    assert task["status"] == "WAITING"
+    assert task["due_date"] == "2026-11-01"
+    assert task["severity"] == "high"
+    assert task["user_comments"] == [{"text": "synthetic user note"}]
+    assert task["source_message_ids"] == [
+        "<claim-open@example.test>",
+        "<claim-received@example.test>",
+    ]
+    assert len(task["timeline_events"]) == 1
+    assert task["timeline_events"][0]["event_kind"] == "information"
+
+
+def test_informational_event_without_a_matched_matter_creates_no_obligation():
+    tasks = {}
+    message = {"message_id": "<fyi@example.test>", "source_ref": "<fyi@example.test>"}
+    decision = {
+        "relevant": True,
+        "actionable": False,
+        "title": "General account update",
+        "status": "NONE",
+        "counterparty": "Acme",
+        "topic": "general update",
+    }
+    task_id = reconciler.resolve_task_id(decision, message, tasks)
+    assert not reconciler.reconcile_information_event(
+        tasks, task_id, message, decision, 200
+    )
+    assert tasks == {}
