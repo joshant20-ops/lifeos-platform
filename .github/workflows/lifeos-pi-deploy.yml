@@ -94,7 +94,8 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: inspect-tower-network' ||
         github.event.issue.title == 'LifeOS Deploy: capture-tower-wol' ||
         github.event.issue.title == 'LifeOS Deploy: controlled-tower-shutdown-proof' ||
-        github.event.issue.title == 'LifeOS Deploy: audit-paperless-runtime'
+        github.event.issue.title == 'LifeOS Deploy: audit-paperless-runtime' ||
+        github.event.issue.title == 'LifeOS Deploy: restore-paperless'
       ))
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
@@ -127,6 +128,7 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: capture-tower-wol' && 'capture-tower-wol' ||
         github.event.issue.title == 'LifeOS Deploy: controlled-tower-shutdown-proof' && 'controlled-tower-shutdown-proof' ||
         github.event.issue.title == 'LifeOS Deploy: audit-paperless-runtime' && 'audit-paperless-runtime' ||
+        github.event.issue.title == 'LifeOS Deploy: restore-paperless' && 'restore-paperless' ||
         'deploy-ha-control-bridge') || inputs.operation }}
     steps:
       - name: Checkout exact main commit
@@ -307,7 +309,7 @@ jobs:
             const ok = gatewayOk && jobOk;
             const fs = require('fs');
             let evidence = '';
-            if (['discover-house-status', 'audit-p0-platform-recovery', 'inspect-tower-wol', 'inspect-tower-network', 'capture-tower-wol', 'controlled-tower-shutdown-proof', 'audit-paperless-runtime'].includes(process.env.LIFEOS_OPERATION)) {
+            if (['discover-house-status', 'audit-p0-platform-recovery', 'inspect-tower-wol', 'inspect-tower-network', 'capture-tower-wol', 'controlled-tower-shutdown-proof', 'audit-paperless-runtime', 'restore-paperless'].includes(process.env.LIFEOS_OPERATION)) {
               const p = process.env.RUNNER_TEMP + '/lifeos-evidence/gateway.log';
               if (fs.existsSync(p)) evidence = fs.readFileSync(p, 'utf8').slice(0, 60000);
             }
