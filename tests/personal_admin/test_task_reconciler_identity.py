@@ -212,6 +212,8 @@ def test_failure_diagnostic_uses_only_fixed_stages_and_buckets():
 
 
 def test_failure_exception_types_map_to_safe_buckets():
+    import errno
+    import http.client
     import imaplib
     import json
     import socket
@@ -222,9 +224,13 @@ def test_failure_exception_types_map_to_safe_buckets():
         (ssl.SSLError("secret"), "TLS"),
         (imaplib.IMAP4.error("secret"), "IMAP"),
         (HTTPError("https://private.invalid", 500, "secret", {}, None), "HTTP"),
+        (http.client.HTTPException("private protocol detail"), "HTTP"),
         (URLError("private host"), "NETWORK"),
         (json.JSONDecodeError("private content", "sensitive", 0), "JSON"),
         (socket.timeout("secret"), "NETWORK"),
+        (socket.gaierror(-2, "private lookup"), "NETWORK"),
+        (ConnectionError("private endpoint"), "NETWORK"),
+        (OSError(errno.ECONNREFUSED, "private endpoint"), "NETWORK"),
         (PermissionError("private path"), "FILESYSTEM"),
         (OSError("private details"), "IO"),
         (ValueError("private email"), "DATA"),

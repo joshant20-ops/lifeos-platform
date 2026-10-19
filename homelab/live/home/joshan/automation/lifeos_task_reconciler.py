@@ -6,11 +6,12 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, hashlib, imaplib, json, os, re, socket, ssl, sys, time
+import email, errno, hashlib, imaplib, json, os, re, socket, ssl, sys, time
 from email.utils import parsedate_to_datetime
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlencode
+import http.client
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -197,17 +198,22 @@ def safe_error_bucket(exc):
         return "TLS"
     if isinstance(exc, imaplib.IMAP4.error):
         return "IMAP"
-    if isinstance(exc, HTTPError):
+    if isinstance(exc, (HTTPError, http.client.HTTPException)):
         return "HTTP"
     if isinstance(exc, URLError):
         return "NETWORK"
     if isinstance(exc, json.JSONDecodeError):
         return "JSON"
-    if isinstance(exc, (socket.timeout, TimeoutError, ConnectionError)):
+    if isinstance(exc, (socket.timeout, socket.gaierror, socket.herror, TimeoutError, ConnectionError)):
         return "NETWORK"
     if isinstance(exc, (FileNotFoundError, PermissionError)):
         return "FILESYSTEM"
     if isinstance(exc, OSError):
+        if exc.errno in {
+            errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET,
+            errno.EHOSTUNREACH, errno.ENETUNREACH, errno.ETIMEDOUT, errno.EPIPE,
+        }:
+            return "NETWORK"
         return "IO"
     if isinstance(exc, (ValueError, TypeError, KeyError, AssertionError)):
         return "DATA"
