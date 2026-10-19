@@ -96,15 +96,39 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             self.assertIsNone(audit.fstab_targets(pathlib.Path(temp) / "missing"))
 
     def test_mount_unit_state_normalizes_only_fixed_values(self):
+        expected_units = {
+            "/mnt/synology": "mnt-synology.mount",
+            "/mnt/synology/Joshan/paperless_media": "mnt-synology-Joshan-paperless_media.mount",
+            "/mnt/synology/Joshan/paperless_export": "mnt-synology-Joshan-paperless_export.mount",
+            "/mnt/synology/Joshan/Intake": "mnt-synology-Joshan-Intake.mount",
+        }
+        calls = []
+
         def fake_run(args, timeout=4):
             if args[0] == "systemd-escape":
-                return subprocess.CompletedProcess(args, 0, "mnt-synology.mount\n", "")
+                return subprocess.CompletedProcess(args, 0, expected_units[args[-1]] + "\\n", "")
+            calls.append(args)
             if args[1] == "is-enabled":
-                return subprocess.CompletedProcess(args, 0, "generated\n", "private unit details")
-            return subprocess.CompletedProcess(args, 0, "active\n", "private runtime details")
+                return subprocess.CompletedProcess(args, 0, "generated\\n", "private unit details")
+            return subprocess.CompletedProcess(args, 0, "active\\n", "private runtime details")
 
         with patch.object(audit, "run", side_effect=fake_run):
-            self.assertEqual(audit.mount_unit_states("/mnt/synology"), ("YES", "YES"))
+            for target in expected_units:
+                with self.subTest(target=target):
+                    self.assertEqual(audit.mount_unit_states(target), ("YES", "YES"))
+        self.assertEqual([call[2] for call in calls if call[1] == "is-enabled"], list(expected_units.values()))
+        self.assertEqual([call[2] for call in calls if call[1] == "is-active"], list(expected_units.values()))
+
+    def test_mount_unit_rejects_unexpected_escaped_unit_before_systemctl(self):
+        calls = []
+
+        def fake_run(args, timeout=4):
+            calls.append(args)
+            return subprocess.CompletedProcess(args, 0, "private/path.mount\\n", "")
+
+        with patch.object(audit, "run", side_effect=fake_run):
+            self.assertEqual(audit.mount_unit_states("/mnt/synology"), ("UNKNOWN", "UNKNOWN"))
+        self.assertEqual(len(calls), 1)
 
     def test_command_errors_are_sanitized(self):
         with patch.object(audit.subprocess, "run", side_effect=FileNotFoundError("sensitive command path")):
