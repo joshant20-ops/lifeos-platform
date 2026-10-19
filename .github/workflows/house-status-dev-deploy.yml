@@ -45,11 +45,12 @@ jobs:
       - name: Validate development dashboard bundle
         run: |
           set -Eeuo pipefail
-          node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
+          node --input-type=module --check < homeassistant/www/house-status-dev/lifeos-house-status-dev.js
           node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
           node --input-type=module --check < homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js
           TZ=Europe/London node homeassistant/www/house-status-dev/test-isolation.js
           node homeassistant/www/house-status-dev/test-doorbell-bootstrap.js
+          node homeassistant/www/house-status-dev/test-doorbell-shell-isolation.js
           bash -n scripts/lifeos-deploy-house-status-dev-dashboard.sh
           python3 -m py_compile homeassistant/verify-house-status-dev-dashboard.py
           python3 homeassistant/verify-house-status-dev-dashboard.py --source-only
@@ -109,6 +110,7 @@ jobs:
           [[ -n "$NODE_BIN" ]] || { echo HOUSE_STATUS_DEV_RUNTIME_NODE=FAIL; exit 1; }
           TZ=Europe/London HOUSE_STATUS_DEV_ASSET=/tmp/house-status-dev-served-bundle.js "$NODE_BIN" homeassistant/www/house-status-dev/test-isolation.js
           HOUSE_STATUS_DOORBELL_ASSET=/tmp/house-status-dev-doorbell-served.js "$NODE_BIN" homeassistant/www/house-status-dev/test-doorbell-bootstrap.js
+          HOUSE_STATUS_DEV_ASSET=/tmp/house-status-dev-served-bundle.js "$NODE_BIN" homeassistant/www/house-status-dev/test-doorbell-shell-isolation.js
           sudo -n python3 /home/joshan/lifeos-platform/homeassistant/verify-house-status-dev-dashboard.py
           CANDIDATE_RELEASE=$(python3 -c 'import json;print(json.load(open("homeassistant/releases/house-status/live/approved-release.json"))["next_candidate_release"])')
           echo HOUSE_STATUS_DEV_RELEASE_CANDIDATE=$CANDIDATE_RELEASE:$(sha256sum "/tmp/house-status-$CANDIDATE_RELEASE-candidate/lifeos-house-status-$CANDIDATE_RELEASE.js" | cut -d" " -f1)
