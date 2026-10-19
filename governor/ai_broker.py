@@ -136,11 +136,21 @@ def _ollama_once(prompt: str, model: str, response_format=None) -> str:
     payload = {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}
     if response_format is not None:
         payload["format"] = response_format
-        payload["think"] = False
     result = _post_json(OLLAMA_URL, payload, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
     text = str(result.get("response", "")).strip()
     if not text:
-        raise BrokerError("ollama returned empty response")
+        metadata = []
+        done_reason = result.get("done_reason")
+        if done_reason in {"stop", "length", "unload", "error"}:
+            metadata.append("done_reason=" + done_reason)
+        thinking = result.get("thinking")
+        if isinstance(thinking, str):
+            metadata.append("thinking_length=" + str(min(len(thinking), 1000000)))
+        eval_count = result.get("eval_count")
+        if isinstance(eval_count, int) and 0 <= eval_count <= 1000000:
+            metadata.append("eval_count=" + str(eval_count))
+        suffix = "; " + "; ".join(metadata) if metadata else ""
+        raise BrokerError("ollama returned empty response" + suffix)
     return text
 
 
@@ -590,7 +600,15 @@ def safe_provider_failure_category(exc: Exception) -> str:
             code = message[len(prefix):len(prefix) + 3]
             if len(code) == 3 and code.isdigit():
                 return "HTTP_" + code
-        if message == "ollama returned empty response":
+        if message.startswith("ollama returned empty response"):
+            if "thinking_length=" in message:
+                raw_length = message.split("thinking_length=", 1)[1].split(";", 1)[0]
+                if raw_length.isdigit() and int(raw_length) > 0:
+                    return "EMPTY_RESPONSE_WITH_THINKING"
+            if "done_reason=length" in message:
+                return "EMPTY_RESPONSE_LENGTH"
+            if "done_reason=stop" in message:
+                return "EMPTY_RESPONSE_STOP"
             return "EMPTY_RESPONSE"
         if message.startswith("provider request failed:"):
             return "REQUEST_FAILED"
