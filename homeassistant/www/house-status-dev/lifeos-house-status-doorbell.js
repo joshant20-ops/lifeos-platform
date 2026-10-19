@@ -78,7 +78,7 @@ async function mountCamera(host,hass){
       const code=(typeof error?.message==='string'&&/^[a-z0-9_]+$/.test(error.message))?error.message:(error?.name||'unknown');
       fallback.dataset.errorCode=code;
       host.replaceChildren(fallback);
-      console.error('LifeOS Doorbell camera card failed to mount',code);
+      console.error('LifeOS Doorbell DEV camera card failed to mount',code);
     }finally{
       host.__lifeosCameraMount=null;
     }
