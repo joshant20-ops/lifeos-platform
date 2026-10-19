@@ -57,7 +57,7 @@ class PaperlessReadOnlyAuditTriggerTests(unittest.TestCase):
             "exec python3 /home/joshan/lifeos-platform/governor/paperless_runtime_diagnostic.py",
             wrapper,
         )
-        self.assertIn('PAPERLESS_AUDIT_MUTATIONS=" + "NONE', DIAGNOSTIC.read_text())
+        self.assertIn('PAPERLESS_AUDIT_MUTATIONS=NONE', DIAGNOSTIC.read_text())
 
     def test_audit_is_serialized_and_uses_existing_pi_runner(self):
         workflow = WORKFLOW.read_text()
