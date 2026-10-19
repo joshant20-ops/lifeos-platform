@@ -6,11 +6,12 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, hashlib, imaplib, json, os, re, ssl, sys, time
+import email, hashlib, imaplib, json, os, re, socket, ssl, sys, time
 from email.utils import parsedate_to_datetime
 from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urlencode
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 REPO=Path(os.getenv("LIFEOS_PLATFORM_REPO","/home/joshan/lifeos-platform"))
@@ -175,11 +176,60 @@ def message_time(date_value):
     try:return int(parsedate_to_datetime(str(date_value or "")).timestamp())
     except Exception:return int(time.time())
 
+
+_FAILURE_STAGES = frozenset({
+    "startup", "state_load", "credential_load", "mailbox_connect",
+    "mailbox_search", "mailbox_fetch", "classification", "paperless_lookup",
+    "reconcile", "persist_publish", "complete",
+})
+_FAILURE_STAGE = "startup"
+
+
+def set_failure_stage(stage):
+    """Set a fixed diagnostic stage; never retain arbitrary caller text."""
+    global _FAILURE_STAGE
+    _FAILURE_STAGE = stage if stage in _FAILURE_STAGES else "startup"
+
+
+def safe_error_bucket(exc):
+    """Map exceptions to fixed labels without inspecting messages or reprs."""
+    if isinstance(exc, ssl.SSLError):
+        return "TLS"
+    if isinstance(exc, imaplib.IMAP4.error):
+        return "IMAP"
+    if isinstance(exc, HTTPError):
+        return "HTTP"
+    if isinstance(exc, URLError):
+        return "NETWORK"
+    if isinstance(exc, json.JSONDecodeError):
+        return "JSON"
+    if isinstance(exc, (socket.timeout, TimeoutError, ConnectionError)):
+        return "NETWORK"
+    if isinstance(exc, (FileNotFoundError, PermissionError)):
+        return "FILESYSTEM"
+    if isinstance(exc, OSError):
+        return "IO"
+    if isinstance(exc, (ValueError, TypeError, KeyError, AssertionError)):
+        return "DATA"
+    return "OTHER"
+
+
+def safe_failure_diagnostic(exc, stage=None):
+    """Return fixed-format markers; never include exception text."""
+    stage = stage if stage in _FAILURE_STAGES else _FAILURE_STAGE
+    return (
+        f"TASK_RECONCILER_FAILURE_STAGE={stage}\n"
+        f"TASK_RECONCILER_FAILURE_BUCKET={safe_error_bucket(exc)}"
+    )
+
 def _run_reconciler():
+    set_failure_stage("state_load")
     previous=load_previous()
     scan=load_scan_state()
+    set_failure_stage("credential_load")
     user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
     password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
+    set_failure_stage("mailbox_connect")
     c=imaplib.IMAP4_SSL(os.getenv("LIFEOS_IMAP_HOST","imap.gmail.com"),int(os.getenv("LIFEOS_IMAP_PORT","993")),ssl_context=ssl.create_default_context())
     c.login(user,password);c.select("INBOX",readonly=True)
     try:
@@ -189,6 +239,7 @@ def _run_reconciler():
         uidvalidity=""
     if scan.get("uidvalidity")!=uidvalidity:
         scan={}
+    set_failure_stage("mailbox_search")
     status,rows=c.uid("search",None,"SINCE",time.strftime("%d-%b-%Y",time.localtime(time.time()-LOOKBACK_DAYS*86400)))
     all_ids=sorted({int(x) for x in (rows[0].split() if status=="OK" and rows else [])})
     cursor=int(scan.get("before_uid") or 0)
@@ -197,6 +248,7 @@ def _run_reconciler():
         candidates=all_ids
     ids=candidates[-MAX_MESSAGES:]
     next_cursor=ids[0] if ids else 0
+    set_failure_stage("mailbox_fetch")
     fetched=[];errors=0;fetch_errors=0;fetch_error_types=set()
     for uid in ids:
         try:
@@ -232,6 +284,7 @@ def _run_reconciler():
         else:
             new_fetched.append(compact)
     print("TASK_SCAN_FETCHED="+str(len(fetched)),flush=True)
+    set_failure_stage("classification")
     observations=[]
     classification_attempts=0;classification_errors=0;classification_error_types=set()
     for index,compact in enumerate(new_fetched,1):
@@ -249,6 +302,7 @@ def _run_reconciler():
             errors+=1;classification_errors+=1;classification_error_types.add(type(exc).__name__)
     # Reconcile chronologically so a later completion/update wins over an older
     # request. Preserve prior state when a task is outside this bounded scan.
+    set_failure_stage("reconcile")
     tasks=dict(previous)
     for observed,k,d,msg in sorted(observations,key=lambda x:x[0]):
         task_id=resolve_task_id(d,msg,tasks)
@@ -262,6 +316,7 @@ def _run_reconciler():
         source_ids=set(old.get("source_message_ids") or [])
         if msg.get("message_id"):source_ids.add(str(msg["message_id"])[:300])
         status=effective_status(old,d["status"])
+        set_failure_stage("paperless_lookup")
         evidence=paperless_search(d.get("evidence_query") or d.get("topic") or d.get("title"))
         tasks[task_id]={
             "id":task_id,"identity_semantic":key(d),"thread_root_id":thread_root(msg),
@@ -285,6 +340,7 @@ def _run_reconciler():
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
     payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     payload=apply_user_state(payload,read_user_state())
+    set_failure_stage("persist_publish")
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
     tmp=STATE.with_suffix(".tmp");tmp.write_text(json.dumps(payload,indent=2)+"\n");tmp.replace(STATE)
     outtmp=OUT.with_suffix(".tmp");outtmp.write_text(json.dumps(payload,indent=2)+"\n");outtmp.replace(OUT)
@@ -294,27 +350,11 @@ def _run_reconciler():
     print('TASK_FETCH_ERROR_TYPES='+(','.join(sorted(fetch_error_types)) or 'NONE'),flush=True)
     print('TASK_CLASSIFICATION_ERRORS='+str(classification_errors),flush=True)
     print('TASK_CLASSIFICATION_ERROR_TYPES='+(','.join(sorted(classification_error_types)) or 'NONE'),flush=True)
+    set_failure_stage("complete")
     print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"classified":classification_attempts,"reused":messages_reused,"errors":errors}))
 
-_FAILURE_CLASSES = {
-    "AssertionError", "ConnectionError", "FileNotFoundError", "KeyError",
-    "OSError", "PermissionError", "RuntimeError", "TimeoutError", "TypeError",
-    "ValueError", "HTTPError",
-}
-
-
-def safe_failure_diagnostic(exc):
-    """Return fixed-format failure markers; never include exception text."""
-    error_class = type(exc).__name__
-    if error_class not in _FAILURE_CLASSES:
-        error_class = "Other"
-    return (
-        "TASK_RECONCILER_FAILURE_STAGE=execution\n"
-        f"TASK_RECONCILER_FAILURE_CLASS={error_class}"
-    )
-
-
 def main():
+    set_failure_stage("startup")
     try:
         _run_reconciler()
     except Exception as exc:
