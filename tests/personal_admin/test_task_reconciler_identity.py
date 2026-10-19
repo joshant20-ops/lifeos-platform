@@ -259,3 +259,99 @@ def test_deploy_failure_diagnostics_filter_journal_to_fixed_markers():
     deploy = (REPO / "governor/scripts/deploy-pa-task-reconciler.sh").read_text()
     assert "grep -E '^TASK_RECONCILER_FAILURE_(STAGE|BUCKET)=[A-Za-z0-9_]+$'" in deploy
     assert "journalctl -u lifeos-task-reconciler.service -n 60 --no-pager;" not in deploy
+
+
+
+def test_paperless_diagnostic_probe_is_bounded_body_free_and_allowlisted(tmp_path):
+    import os
+    import re
+    import subprocess
+
+    deploy = (REPO / "governor/scripts/deploy-pa-task-reconciler.sh").read_text()
+    function = re.search(
+        r"(?ms)^paperless_runtime_diagnostic\(\) \{\n.*?^\}\n", deploy
+    )
+    assert function, "bounded Paperless diagnostic function missing"
+    assert deploy.count("  paperless_runtime_diagnostic\n") == 2
+    assert "--output /dev/null --write-out '%{http_code}' --connect-timeout 2 --max-time 5" in function.group(0)
+    assert "timeout 3 docker ps -aq --filter publish=8010" in function.group(0)
+    assert "timeout 3 docker inspect --format" in function.group(0)
+    assert "2>/dev/null" in function.group(0)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$1\" = ps ]; then printf '%s\\n' 'private-container-id'; "
+        "elif [ \"$1\" = inspect ]; then printf '%s\\n' 'running healthy'; fi\n"
+    )
+    curl = bin_dir / "curl"
+    curl.write_text(
+        "#!/bin/sh\n"
+        "printf '%s\\n' 'PRIVATE RESPONSE BODY' >&2\n"
+        "printf '%s' 204\n"
+    )
+    docker.chmod(0o755)
+    curl.chmod(0o755)
+    env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}
+    result = subprocess.run(
+        ["bash", "-c", function.group(0) + "\npaperless_runtime_diagnostic"],
+        text=True, capture_output=True, timeout=3, env=env, check=True,
+    )
+    fields = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    allowed = {
+        "PAPERLESS_8010_PUBLISHED": {"YES", "NO", "UNKNOWN"},
+        "PAPERLESS_CONTAINER_STATUS": {
+            "running", "exited", "created", "restarting", "paused",
+            "dead", "removing", "none", "multiple", "unknown",
+        },
+        "PAPERLESS_CONTAINER_HEALTH": {
+            "healthy", "unhealthy", "starting", "none", "multiple", "unknown",
+        },
+        "PAPERLESS_API_HTTP_STATUS": {"204", "000"},
+        "PAPERLESS_API_REACHABILITY": {"REACHABLE", "UNREACHABLE"},
+    }
+    assert set(fields) == set(allowed)
+    assert fields == {
+        "PAPERLESS_8010_PUBLISHED": "YES",
+        "PAPERLESS_CONTAINER_STATUS": "running",
+        "PAPERLESS_CONTAINER_HEALTH": "healthy",
+        "PAPERLESS_API_HTTP_STATUS": "204",
+        "PAPERLESS_API_REACHABILITY": "REACHABLE",
+    }
+    assert all(fields[key] in values for key, values in allowed.items())
+    assert "private-container-id" not in result.stdout
+    assert "PRIVATE RESPONSE BODY" not in result.stdout + result.stderr
+
+
+def test_paperless_diagnostic_reports_fixed_unreachable_status(tmp_path):
+    import os
+    import re
+    import subprocess
+
+    deploy = (REPO / "governor/scripts/deploy-pa-task-reconciler.sh").read_text()
+    function = re.search(
+        r"(?ms)^paperless_runtime_diagnostic\(\) \{\n.*?^\}\n", deploy
+    )
+    assert function
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text("#!/bin/sh\nexit 1\n")
+    curl = bin_dir / "curl"
+    curl.write_text("#!/bin/sh\nprintf 'private transport detail' >&2\nexit 7\n")
+    docker.chmod(0o755)
+    curl.chmod(0o755)
+    env = {**os.environ, "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"]}
+    result = subprocess.run(
+        ["bash", "-c", function.group(0) + "\npaperless_runtime_diagnostic"],
+        text=True, capture_output=True, timeout=3, env=env, check=True,
+    )
+    fields = dict(line.split("=", 1) for line in result.stdout.splitlines())
+    assert fields["PAPERLESS_8010_PUBLISHED"] == "UNKNOWN"
+    assert fields["PAPERLESS_CONTAINER_STATUS"] == "unknown"
+    assert fields["PAPERLESS_CONTAINER_HEALTH"] == "unknown"
+    assert fields["PAPERLESS_API_HTTP_STATUS"] == "000"
+    assert fields["PAPERLESS_API_REACHABILITY"] == "UNREACHABLE"
+    assert "private transport detail" not in result.stdout + result.stderr
