@@ -71,7 +71,12 @@ print('MESSAGES_CONSIDERED='+str(j.get('messages_considered')))
 print('ERRORS='+str(j.get('errors')))
 PY
 
-HA_CONFIG=/opt/stacks/homeassistant/config
+# Forward only the reconciler's numeric fetch/classification error counters.
+# Never forward arbitrary journal lines or message/document content into Actions logs.
+journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
+  grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$' |
+  tail -n 2 || true
+
 HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"
 HA_SENSOR="$HA_CONFIG/scripts/lifeos_pa_task_attention_sensor.py"
 HA_USER_MODULE="$HA_CONFIG/scripts/lifeos_pa_user_state.py"
