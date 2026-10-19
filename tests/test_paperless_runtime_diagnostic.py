@@ -43,6 +43,8 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, value, "")
                 if args[:2] == ["systemctl", "is-active"]:
                     return subprocess.CompletedProcess(args, 0, "active\n", "")
+                if args[:2] == ["docker", "inspect"]:
+                    return subprocess.CompletedProcess(args, 0, "db|exited|1|false|0|NO|unless-stopped\n", "")
                 if args[:3] in (["docker", "volume", "inspect"], ["docker", "network", "inspect"]):
                     return subprocess.CompletedProcess(args, 0, args[3] + "\n", "")
                 if args[:2] == ["docker", "compose"]:
@@ -86,6 +88,9 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_API_HTTP_STATUS=200", output)
         self.assertIn("PAPERLESS_8010_PUBLISHED=YES", output)
         self.assertIn("PAPERLESS_CONTAINER_STATE_UNKNOWN=1", output)
+        self.assertIn("PAPERLESS_CONTAINER_EXIT_EVIDENCE=AVAILABLE", output)
+        self.assertIn("PAPERLESS_CONTAINER_DB_EXIT_CODE=1", output)
+        self.assertIn("PAPERLESS_CONTAINER_DB_RESTART_POLICY=UNLESS_STOPPED", output)
         self.assertIn("PAPERLESS_CONTAINER_HEALTH_NONE=2", output)
         self.assertIn("PAPERLESS_CONTAINER_HEALTH_UNKNOWN=0", output)
         for private in ("do-not-print-this-secret", "16-secret-value", "private source path", "hidden compose diagnostics", "container details", "container-id", "sensitive response body", "/dev/disk/by-id", "credentials=/private/secret"):
