@@ -33,7 +33,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             def fake_run(args, timeout=4):
                 calls.append((args, timeout))
                 if args[0] == "findmnt":
-                    return subprocess.CompletedProcess(args, 0, "/mnt/synology\n", "private source path")
+                    return subprocess.CompletedProcess(args, 0, "/mnt/synology nfs4\n", "private source path")
                 if args[0] == "systemd-escape":
                     return subprocess.CompletedProcess(args, 0, "mnt-synology.mount\n", "")
                 if args[:2] == ["systemctl", "is-enabled"]:
@@ -112,16 +112,16 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             self.assertEqual(audit.mountinfo_state("/mnt/synology", mountinfo), "UNKNOWN")
 
     def test_mount_check_accepts_synology_parent_mount_only(self):
-        result = subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")
+        result = subprocess.CompletedProcess([], 0, "/mnt/synology nfs4\n", "")
         with patch.object(audit, "run", return_value=result):
             self.assertEqual(audit.mount_state("/mnt/synology/Joshan/paperless_media"), "MOUNTED")
-        root_mount = subprocess.CompletedProcess([], 0, "/\n", "")
+        root_mount = subprocess.CompletedProcess([], 0, "/ ext4\n", "")
         with patch.object(audit, "run", return_value=root_mount):
             self.assertEqual(audit.mount_state("/mnt/synology/Joshan/Intake"), "UNMOUNTED")
 
     def test_compose_consume_mount_uses_exact_canonical_intake_path(self):
         self.assertEqual(audit.NAS_PATHS["PAPERLESS_INTAKE_MOUNT"], "/mnt/synology/Joshan/Intake")
-        with patch.object(audit, "run", return_value=subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")) as mocked:
+        with patch.object(audit, "run", return_value=subprocess.CompletedProcess([], 0, "/mnt/synology nfs4\n", "")) as mocked:
             self.assertEqual(audit.mount_state(audit.NAS_PATHS["PAPERLESS_INTAKE_MOUNT"]), "MOUNTED")
         self.assertEqual(mocked.call_args.args[0][4], "/mnt/synology/Joshan/Intake")
 
