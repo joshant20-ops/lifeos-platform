@@ -59,6 +59,24 @@ def _without_doorbell_shell(source: str) -> str | None:
     )
     for owner_block in owner_blocks:
         text = text.replace(owner_block, "", 1)
+    # The app bootstrap is shared, so normalize only the exact Doorbell import boundary;
+    # unknown changes to the import statement remain Energy-scoped by default.
+    dev_imports = (
+        "await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());",
+        "try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }",
+    )
+    live_imports = (
+        "import './lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}';",
+        "try{{ await import('/local/house-status/lifeos-house-status-doorbell-{release}.js?v={doorbell_hash[:12]}'); }} catch(error) {{ console.warn('House Status Doorbell module load failed',error); }}",
+    )
+    import_normalized = text
+    for old, new in (dev_imports, live_imports):
+        occurrences = import_normalized.count(old) + import_normalized.count(new)
+        if occurrences != 2:
+            return None
+        import_normalized = import_normalized.replace(old, "__DOORBELL_IMPORT_BOUNDARY__", 2)
+        import_normalized = import_normalized.replace(new, "__DOORBELL_IMPORT_BOUNDARY__", 2)
+    text = import_normalized
     # This selector appears only in the unreachable legacy post-render Doorbell fallback;
     # normalize its old/new host markers after stripping the active early-return branch.
     legacy_selectors = ("querySelector('[data-doorbell-card]')",
