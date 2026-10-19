@@ -1,4 +1,4 @@
-await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());
+try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }
 class LifeOSEnergyModule {
   static owns(mode){ return mode==='domestic'||mode==='flow'; }
 }
