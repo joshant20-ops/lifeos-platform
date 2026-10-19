@@ -145,6 +145,13 @@ def _ollama_once(prompt: str, model: str, response_format=None) -> str:
 
 def _ollama(prompt: str, model: str, response_format=None) -> str:
     # The stable endpoint owns the Tower lease, wake, readiness, and retry bound.
+    # A single empty completion can occur transiently; retry only that exact
+    # response once. HTTP, timeout, and malformed-output failures stay closed.
+    try:
+        return _ollama_once(prompt, model, response_format=response_format)
+    except BrokerError as exc:
+        if str(exc) != "ollama returned empty response":
+            raise
     return _ollama_once(prompt, model, response_format=response_format)
 
 
