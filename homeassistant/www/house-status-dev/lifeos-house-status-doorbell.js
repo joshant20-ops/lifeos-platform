@@ -1,4 +1,4 @@
-window.LifeOSHouseStatusDevModules=window.LifeOSHouseStatusDevModules||{};
+const doorbellModules=window.LifeOSHouseStatusDevModules=window.LifeOSHouseStatusDevModules||{};
 
 const cameraConfig={
   type:'picture-entity',
@@ -78,7 +78,7 @@ async function mountCamera(host,hass){
       const code=(typeof error?.message==='string'&&/^[a-z0-9_]+$/.test(error.message))?error.message:(error?.name||'unknown');
       fallback.dataset.errorCode=code;
       host.replaceChildren(fallback);
-      console.error('LifeOS Doorbell DEV camera card failed to mount',code);
+      console.error('LifeOS Doorbell camera card failed to mount',code);
     }finally{
       host.__lifeosCameraMount=null;
     }
@@ -115,12 +115,14 @@ class LifeOSDoorbellCamera extends HTMLElement{
   }
   get hass(){return this._hass;}
 }
-if(!customElements.get('lifeos-doorbell-camera-dev'))customElements.define('lifeos-doorbell-camera-dev',LifeOSDoorbellCamera);
-
-window.LifeOSHouseStatusDevModules.doorbell={
+doorbellModules.doorbell={
   mount(host,hass){
     if(host&&'hass' in host){host.hass=hass;return host.__lifeosCameraHost?.__lifeosCameraMount;}
     return mountCamera(host,hass);
   },
-  render(){return '<lifeos-doorbell-camera-dev></lifeos-doorbell-camera-dev>';}
+  render(){return '<'+doorbellElementName+' data-lifeos-doorbell-camera></'+doorbellElementName+'>';}
 };
+const registeredDoorbellKey=doorbellModules.doorbell?'doorbell':Object.keys(doorbellModules).filter(key=>/^doorbellV\d+$/.test(key)).at(-1);
+if(!registeredDoorbellKey)throw new Error('doorbell_module_identity_unavailable');
+const doorbellElementName='lifeos-doorbell-camera-'+(registeredDoorbellKey==='doorbell'?'dev':registeredDoorbellKey.slice(8).toLowerCase());
+if(!customElements.get(doorbellElementName))customElements.define(doorbellElementName,LifeOSDoorbellCamera);
