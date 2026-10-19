@@ -19,6 +19,8 @@ class PaperlessGovernedRestoreTests(unittest.TestCase):
         self.assertIn('audit.compose_config_state() != "VALID"', source)
         self.assertIn('audit.resource_state("volume", "paperless_redis_data") != "PRESENT"', source)
         self.assertIn('audit.resource_state("network", "reverse_proxy") != "PRESENT"', source)
+        self.assertIn('label=com.docker.compose.project=paperless', source)
+        self.assertIn('labels.get("com.docker.compose.service") == service', source)
         self.assertIn('compose("start", "db", "redis"', source)
         self.assertIn('compose("start", "paperless"', source)
         self.assertNotIn('compose("up"', source)
