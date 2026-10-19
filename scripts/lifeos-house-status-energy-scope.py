@@ -59,6 +59,15 @@ def _without_doorbell_shell(source: str) -> str | None:
     )
     for owner_block in owner_blocks:
         text = text.replace(owner_block, "", 1)
+    # This selector appears only in the unreachable legacy post-render Doorbell fallback;
+    # normalize its old/new host markers after stripping the active early-return branch.
+    legacy_selectors = ("querySelector('[data-doorbell-card]')",
+                        "querySelector('[data-lifeos-doorbell-camera]')")
+    legacy_count = sum(text.count(selector) for selector in legacy_selectors)
+    if legacy_count > 1:
+        return None
+    for selector in legacy_selectors:
+        text = text.replace(selector, "querySelector('[isolated-doorbell-host]')", 1)
     return text
 
 def doorbell_shell_only_app_change(old_app: str, new_app: str) -> bool:
