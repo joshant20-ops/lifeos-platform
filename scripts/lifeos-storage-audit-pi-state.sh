@@ -8,6 +8,9 @@ SSD=/mnt/docker-data
 STACK=/opt/stacks
 SSD_STACK=/mnt/docker-data/opt-stacks
 ROLLBACK=/opt/stacks.sd-rollback-20261017
+ROLLBACK_ARCHIVE=/mnt/docker-data/rollback/opt-stacks-pre-migration
+STAGE_MARKER=/mnt/docker-data/.lifeos-opt-stacks-stage
+PARTIAL_MARKER=/mnt/docker-data/.lifeos-opt-stacks-stage.partial
 MIGRATION_STATE=/var/lib/lifeos-storage-migration
 EXPECTED_UUID=a53fd6a0-c498-4b76-a496-0e5d9233447f
 DOCKER_READY=NO
@@ -127,12 +130,25 @@ section 'migration paths and rollback state'
 path_state ACTIVE_STACK "$STACK"
 path_state SSD_STACK "$SSD_STACK"
 path_state SD_ROLLBACK "$ROLLBACK"
+path_state SSD_ROLLBACK_ARCHIVE "$ROLLBACK_ARCHIVE"
 path_state MIGRATION_STATE "$MIGRATION_STATE"
 if [[ -d "$MIGRATION_STATE" ]]; then
   find "$MIGRATION_STATE" -maxdepth 2 -type f -printf 'MIGRATION_STATE_FILE=%P bytes=%s mtime=%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | sort || true
 fi
 if [[ -d "$ROLLBACK" ]]; then
   find "$ROLLBACK" -mindepth 1 -maxdepth 1 -printf 'ROLLBACK_TOP_LEVEL=%f type=%y\n' 2>/dev/null | sort || true
+fi
+for marker in "$STAGE_MARKER" "$PARTIAL_MARKER" "$MIGRATION_STATE/active-manifest" "$MIGRATION_STATE/boot-validation.pass"; do
+  if [[ -f "$marker" && ! -L "$marker" ]]; then printf 'MIGRATION_MARKER=%s PRESENT bytes=%s\n' "${marker##*/}" "$(stat -c %s "$marker" 2>/dev/null || echo UNKNOWN)"; else printf 'MIGRATION_MARKER=%s ABSENT\n' "${marker##*/}"; fi
+done
+if [[ -f "$MIGRATION_STATE/active-containers.before" && "$DOCKER_READY" == YES ]]; then
+  while IFS= read -r id; do
+    [[ -n "$id" ]] || continue
+    detail=$(docker inspect --format '{{.Name}} {{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' "$id" 2>/dev/null || true)
+    if [[ -n "$detail" ]]; then printf 'PRE_CUTOVER_CONTAINER=%s\n' "${detail#/}"; else echo 'PRE_CUTOVER_CONTAINER=NOT_FOUND'; fi
+  done < "$MIGRATION_STATE/active-containers.before"
+else
+  echo 'PRE_CUTOVER_CONTAINER_BASELINE=UNAVAILABLE'
 fi
 
 section 'process references to active, staged, or rollback stack paths'
