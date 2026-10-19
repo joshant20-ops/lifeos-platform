@@ -8,7 +8,7 @@ const sourcePath=process.env.HOUSE_STATUS_DOORBELL_ASSET||path.join(base,'lifeos
 const source=fs.readFileSync(sourcePath,'utf8');
 const app=fs.readFileSync(path.join(base,'lifeos-house-status-dev.js'),'utf8');
 assert.doesNotMatch(source,/LifeOSEnergyModule|LifeOSHouseStatusCard|lifeos-house-status-dev\.js/,'Doorbell source has no Energy implementation dependency');
-assert.match(app,/await import\('\/local\/house-status-dev\/lifeos-house-status-doorbell\.js\?dev='\+Date\.now\(\)\);/,'the app awaits its separate Doorbell module before registration');
+assert.match(app,/try\{ await import\('\/local\/house-status-dev\/lifeos-house-status-doorbell\.js\?dev='\+Date\.now\(\)\); \} catch\(error\) \{ console\.warn\('House Status Doorbell module load failed',error\); \}/,'a Doorbell load/parse failure is contained and the app still registers Energy');
 assert.match(app,/host\.hass=hass/,'HA state updates are delivered to the isolated Doorbell element');
 
 function environment({failCreate=false}={}){
