@@ -245,7 +245,7 @@ class ReleaseGovernance(unittest.TestCase):
         self.assertTrue(energy_scope.energy_acceptance_required(
             paths|{energy_scope.APP_INPUT},builder_source,builder_source,old_app,new_app),
             'a Doorbell shell change without its regression test fails closed')
-        legacy_old=old_app+"\\n    this._doorbellHost=null; if(mode==='doorbell'){const host=this.querySelector('[data-doorbell-card]');}\\n"
+        legacy_old=old_app+"\n    this._doorbellHost=null; if(mode==='doorbell'){const host=this.querySelector('[data-doorbell-card]');}\n"
         legacy_new=legacy_old.replace("querySelector('[data-doorbell-card]')","querySelector('[data-lifeos-doorbell-camera]')",1)
         self.assertFalse(energy_scope.energy_acceptance_required(
             changed_paths,builder_source,builder_source,legacy_old,legacy_new),
