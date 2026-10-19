@@ -154,6 +154,51 @@ def mount_unit_states(target: str) -> tuple[str, str]:
     return _enabled_state(enabled), _active_state(active)
 
 
+def mount_unit_diagnostic(target: str) -> tuple[str, str]:
+    escaped = run(["systemd-escape", "--path", "--suffix=mount", target], timeout=3)
+    if escaped is None or escaped.returncode != 0:
+        return "UNKNOWN", "UNKNOWN"
+    unit = escaped.stdout.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.mount", unit):
+        return "UNKNOWN", "UNKNOWN"
+    sub = run(["systemctl", "show", "--property=SubState", "--value", unit], timeout=3)
+    result = run(["systemctl", "show", "--property=Result", "--value", unit], timeout=3)
+    if sub is None or sub.returncode != 0:
+        substate = "UNKNOWN"
+    else:
+        raw = sub.stdout.strip().lower()
+        substate = {
+            "mounted": "MOUNTED",
+            "mounting": "TRANSITION",
+            "remounting": "TRANSITION",
+            "unmounting": "TRANSITION",
+            "dead": "UNMOUNTED",
+            "failed": "FAILED",
+        }.get(raw, "UNKNOWN")
+    if result is None or result.returncode != 0:
+        unit_result = "UNKNOWN"
+    else:
+        raw = result.stdout.strip().lower()
+        unit_result = "SUCCESS" if raw == "success" else (
+            "FAILURE" if raw in {
+                "resources", "timeout", "exit-code", "signal", "core-dump",
+                "watchdog", "protocol", "start-limit-hit", "dependency",
+                "trigger-limit-hit", "oom-kill",
+            } else "UNKNOWN"
+        )
+    return substate, unit_result
+
+
+def mount_consistency(mount: str, substate: str) -> str:
+    if mount == "MOUNTED" and substate == "MOUNTED":
+        return "CONSISTENT"
+    if mount == "UNMOUNTED" and substate == "UNMOUNTED":
+        return "CONSISTENT"
+    if mount in {"MOUNTED", "UNMOUNTED"} and substate in {"MOUNTED", "UNMOUNTED", "FAILED"}:
+        return "INCONSISTENT"
+    return "UNKNOWN"
+
+
 def resource_state(kind: str, name: str) -> str:
     result = run(["docker", kind, "inspect", name, "--format", "{{.Name}}"])
     if result is None:
@@ -237,7 +282,12 @@ def main() -> int:
         print(f"PAPERLESS_MOUNT_UNIT_{label}_ENABLED={enabled}")
         print(f"PAPERLESS_MOUNT_UNIT_{label}_ACTIVE={active}")
     print("PAPERLESS_SYNOLOGY_PATH_EXISTS=" + path_presence("/mnt/synology"))
-    print("PAPERLESS_SYNOLOGY_MOUNT=" + mount_state("/mnt/synology"))
+    root_mount_state = mount_state("/mnt/synology")
+    print("PAPERLESS_SYNOLOGY_MOUNT=" + root_mount_state)
+    mount_substate, mount_result = mount_unit_diagnostic("/mnt/synology")
+    print("PAPERLESS_SYNOLOGY_UNIT_SUBSTATE=" + mount_substate)
+    print("PAPERLESS_SYNOLOGY_UNIT_RESULT=" + mount_result)
+    print("PAPERLESS_SYNOLOGY_MOUNT_CONSISTENCY=" + mount_consistency(root_mount_state, mount_substate))
     for label, path in NAS_PATHS.items():
         print(label.replace("_MOUNT", "_PATH_EXISTS") + "=" + path_presence(path))
         print(f"{label}=" + mount_state(path))
