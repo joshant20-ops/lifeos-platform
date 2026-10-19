@@ -20,6 +20,17 @@ def test_assess_returns_earliest_unmet_solution_neutral_objective():
     assert "how" not in module.recovery_message(result).lower()
 
 
+def test_incomplete_recovery_uses_active_context_and_a_focused_action():
+    result = module.assess({})
+    message = module.recovery_message(result)
+
+    assert "explicit task context in this conversation" in message
+    assert "repository-wide backlog items" in message
+    assert "one focused tool action" in message
+    assert "available workspace tools" in message
+    assert "do not stop before the branch, PR, and CI cycle is complete" in message
+
+
 def test_repeated_actions_trigger_stall_recovery():
     result = module.assess({"repeated_action_count": 3})
     message = module.recovery_message(result)
