@@ -73,7 +73,8 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_API_HTTP_STATUS=200", output)
         self.assertIn("PAPERLESS_8010_PUBLISHED=YES", output)
         self.assertIn("PAPERLESS_CONTAINER_STATE_UNKNOWN=1", output)
-        self.assertIn("PAPERLESS_CONTAINER_HEALTH_UNKNOWN=1", output)
+        self.assertIn("PAPERLESS_CONTAINER_HEALTH_NONE=2", output)
+        self.assertIn("PAPERLESS_CONTAINER_HEALTH_UNKNOWN=0", output)
         for private in ("do-not-print-this-secret", "16-secret-value", "private source path", "hidden compose diagnostics", "container details", "container-id", "sensitive response body", "/dev/disk/by-id", "credentials=/private/secret"):
             self.assertNotIn(private, output)
         self.assertTrue(all(timeout <= 8 for _, timeout in calls))
