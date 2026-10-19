@@ -48,8 +48,12 @@ def recovery_message(result: dict) -> str:
     return (
         prefix
         + f"Earliest unmet objective: {unmet['objective']}. "
-        + "Select a genuine tool action that advances this objective. "
-        + "Do not change tasks, merely describe commands, or stop before the branch, PR, and CI cycle is complete."
+        + "Use the explicit task context in this conversation as the source of truth. "
+        + "Do not switch to repository-wide backlog items, list the whole repository, "
+        + "or reread task trackers unless the task requires it. "
+        + "Take one focused tool action that directly advances this objective. "
+        + "If a dedicated tool is unavailable, continue with the supplied context and available workspace tools. "
+        + "Do not repeat a prior action unless it produces new evidence, and do not stop before the branch, PR, and CI cycle is complete."
     )
 
 
