@@ -1,9 +1,12 @@
 """Privacy-safe, bounded read-only precondition audit for Paperless."""
 from __future__ import annotations
 
+import json
 import pathlib
 import re
 import subprocess
+import urllib.error
+import urllib.request
 
 PROJECT = pathlib.Path("/home/joshan/paperless")
 COMPOSE = PROJECT / "docker-compose.yml"
@@ -26,6 +29,7 @@ MOUNT_UNIT_TARGETS = {
 STATES = ("running", "exited", "created", "restarting", "paused", "dead", "removing", "unknown")
 HEALTHS = ("healthy", "unhealthy", "starting", "none", "unknown")
 MAX_ENV_BYTES = 65536
+PAPERLESS_API_TOKEN = pathlib.Path("/etc/lifeos/secrets/paperless-api-token")
 
 
 def run(args: list[str], timeout: int = 4) -> subprocess.CompletedProcess[str] | None:
@@ -360,6 +364,53 @@ def container_exit_evidence() -> list[tuple[str, str, str, str, str, str, str]] 
     return rows
 
 
+def paperless_document_media_probe(token_path: pathlib.Path | None = None) -> tuple[str, str]:
+    """Prove authenticated document listing and one-byte media retrieval without emitting content."""
+    token_path = token_path or PAPERLESS_API_TOKEN
+    try:
+        if token_path.is_symlink() or not token_path.is_file() or token_path.stat().st_size > 4096:
+            return "UNKNOWN", "UNKNOWN"
+        token = token_path.read_text(encoding="utf-8", errors="strict").strip()
+        if not token or any(char in token for char in "\r\n"):
+            return "UNKNOWN", "UNKNOWN"
+    except (OSError, UnicodeError):
+        return "UNKNOWN", "UNKNOWN"
+
+    list_request = urllib.request.Request(
+        "http://127.0.0.1:8010/api/documents/?page_size=1",
+        headers={"Authorization": "Token " + token, "Accept": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(list_request, timeout=6) as response:
+            if response.status != 200:
+                return "FAILED", "UNKNOWN"
+            raw = response.read(65537)
+        if len(raw) > 65536:
+            return "UNKNOWN", "UNKNOWN"
+        payload = json.loads(raw.decode("utf-8"))
+        results = payload.get("results") if isinstance(payload, dict) else None
+        count = payload.get("count") if isinstance(payload, dict) else None
+        if not isinstance(count, int) or count < 1 or not isinstance(results, list) or not results:
+            return "EMPTY", "UNKNOWN"
+        document_id = results[0].get("id")
+        if not isinstance(document_id, int) or document_id < 1:
+            return "UNKNOWN", "UNKNOWN"
+    except (OSError, UnicodeError, ValueError, urllib.error.URLError, TimeoutError):
+        return "FAILED", "UNKNOWN"
+
+    media_request = urllib.request.Request(
+        f"http://127.0.0.1:8010/api/documents/{document_id}/download/",
+        headers={"Authorization": "Token " + token, "Range": "bytes=0-0"},
+    )
+    try:
+        with urllib.request.urlopen(media_request, timeout=8) as response:
+            first_byte = response.read(1)
+            media_ok = response.status in {200, 206} and len(first_byte) == 1
+        return "PASS", "PASS" if media_ok else "FAILED"
+    except (OSError, urllib.error.URLError, TimeoutError):
+        return "PASS", "FAILED"
+
+
 def api_http_status() -> str:
     result = run([
         "curl", "--silent", "--output", "/dev/null", "--write-out", "%{http_code}",
@@ -429,6 +480,9 @@ def main() -> int:
     print("PAPERLESS_8010_PUBLISHED=" + published_state())
     print("PAPERLESS_API_HTTP_STATUS=" + http_status)
     print("PAPERLESS_API_REACHABILITY=" + ("REACHABLE" if http_status != "000" else "UNREACHABLE"))
+    document_probe, media_probe = paperless_document_media_probe()
+    print("PAPERLESS_AUTHENTICATED_DOCUMENT_LIST=" + document_probe)
+    print("PAPERLESS_MEDIA_DOWNLOAD_SAMPLE=" + media_probe)
     counts = container_summary()
     if counts is None:
         print("PAPERLESS_CONTAINER_SUMMARY=UNKNOWN")
