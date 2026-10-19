@@ -76,8 +76,100 @@ HA_CONFIG=/opt/stacks/homeassistant/config
 # Forward only the reconciler's numeric fetch/classification error counters.
 # Never forward arbitrary journal lines or message/document content into Actions logs.
 journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
-  grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$' |
-  tail -n 2 || true
+  grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$|^TASK_CLASSIFICATION_ERROR_CATEGORIES=[A-Z0-9_,=]+
+HA_SENSOR="$HA_CONFIG/scripts/lifeos_pa_task_attention_sensor.py"
+HA_USER_MODULE="$HA_CONFIG/scripts/lifeos_pa_user_state.py"
+HA_ACTION="$HA_CONFIG/scripts/lifeos_pa_user_action.py"
+HA_ACTIONS="$HA_CONFIG/packages/lifeos_actions.yaml"
+PA_STATE_DIR="$HA_CONFIG/lifeos-pa-state"
+PA_USER_STATE="$PA_STATE_DIR/user_state.json"
+BACKUP_DIR=/home/joshan/automation/backups
+STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+mkdir -p "$BACKUP_DIR"
+HA_CHANGED=0
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml" "$HA_PACKAGE"; then
+  cp -a "$HA_PACKAGE" "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP"
+  install -o root -g root -m 0644 "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml" "$HA_PACKAGE"
+  HA_CHANGED=1
+fi
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py" "$HA_SENSOR"; then
+  install -d -o root -g root -m 0755 "$HA_CONFIG/scripts"
+  install -o root -g root -m 0755 "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py" "$HA_SENSOR"
+  HA_CHANGED=1
+fi
+if ! cmp -s "$REPO/governor/pa_user_state.py" "$HA_USER_MODULE"; then
+  install -o root -g root -m 0644 "$REPO/governor/pa_user_state.py" "$HA_USER_MODULE"
+  HA_CHANGED=1
+fi
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py" "$HA_ACTION"; then
+  install -o root -g root -m 0755 "$REPO/homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py" "$HA_ACTION"
+  HA_CHANGED=1
+fi
+if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_actions.yaml" "$HA_ACTIONS"; then
+  cp -a "$HA_ACTIONS" "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP"
+  install -o root -g root -m 0644 "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_actions.yaml" "$HA_ACTIONS"
+  HA_CHANGED=1
+fi
+install -d -o joshan -g joshan -m 0700 "$PA_STATE_DIR"
+if [[ ! -e "$PA_USER_STATE" ]]; then
+  install -o joshan -g joshan -m 0600 /dev/null "$PA_USER_STATE"
+  sudo -u joshan sh -c 'printf "%s\n" "{\"schema\":\"lifeos_pa_user_state_v1\",\"revision\":0,\"obligations\":{}}" > "$1"' sh "$PA_USER_STATE"
+fi
+chown joshan:joshan "$PA_USER_STATE"
+chmod 0600 "$PA_USER_STATE"
+if ! python3 "$REPO/homeassistant/deploy-lifeos-dashboard.py" --check >/dev/null 2>&1; then
+  python3 "$REPO/homeassistant/deploy-lifeos-dashboard.py"
+  HA_CHANGED=1
+fi
+if [ "$HA_CHANGED" -eq 1 ]; then
+  if ! docker exec homeassistant python -m homeassistant --script check_config --config /config; then
+    if [ -f "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" ]; then
+      cp -a "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" "$HA_PACKAGE"
+    fi
+    if [ -f "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP" ]; then
+      cp -a "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP" "$HA_ACTIONS"
+    fi
+    echo 'HA_CONFIG_VALIDATION=FAIL'
+    exit 1
+  fi
+  echo 'HA_CONFIG_VALIDATION=PASS'
+  docker restart homeassistant >/dev/null
+  ready=0
+  for _ in $(seq 1 60); do
+    if curl -fsS --max-time 3 http://127.0.0.1:8123/ >/dev/null; then ready=1; break; fi
+    sleep 2
+  done
+  if [ "$ready" -ne 1 ]; then
+    if [ -f "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" ]; then
+      cp -a "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" "$HA_PACKAGE"
+      docker restart homeassistant >/dev/null || true
+    fi
+    echo 'HA_CORE_RESTART=FAIL'
+    exit 1
+  fi
+  echo 'HA_CORE_RESTART=PASS'
+else
+  echo 'HA_CONFIG_CHANGE=NONE'
+fi
+docker exec homeassistant python3 /config/scripts/lifeos_pa_task_attention_sensor.py | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("state") in {"attention","clear"}; print("PA_ATTENTION_SENSOR=PASS"); print("NEEDS_ME="+str(d.get("needs_me",0))); print("WAITING="+str(d.get("waiting_on_others",0))); print("DUE_OR_OVERDUE="+str(int(d.get("overdue",0))+int(d.get("upcoming",0))))'
+ |
+  tail -n 3 || true
+
+ERROR_COUNT=$(python3 - <<'PY'
+import json,pathlib
+j=json.loads(pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json').read_text())
+print(int(j.get('errors',0)))
+PY
+)
+if [[ ! "$ERROR_COUNT" =~ ^[0-9]+$ ]]; then
+  echo 'TASK_RECONCILER_ERROR_GATE=INVALID'
+  exit 1
+fi
+if (( ERROR_COUNT != 0 )); then
+  echo 'TASK_RECONCILER_ERROR_GATE=FAIL'
+  exit 1
+fi
+echo 'TASK_RECONCILER_ERROR_GATE=PASS'
 
 HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"
 HA_SENSOR="$HA_CONFIG/scripts/lifeos_pa_task_attention_sensor.py"
