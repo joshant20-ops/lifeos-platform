@@ -29,10 +29,14 @@ def project_timeline_events(events):
         status = str(event.get("status") or "NONE").upper()
         if status not in {"OPEN", "WAITING", "DONE", "NONE"}:
             status = "NONE"
+        event_kind = str(event.get("event_kind") or "obligation").lower()
+        if event_kind not in {"obligation", "information"}:
+            event_kind = "obligation"
         projected.append({
             "observed_at": observed_at,
             "title": title,
             "status": status,
+            "event_kind": event_kind,
         })
     return projected[-20:]
 
