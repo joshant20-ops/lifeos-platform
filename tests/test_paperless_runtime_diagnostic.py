@@ -106,11 +106,11 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
 
         def fake_run(args, timeout=4):
             if args[0] == "systemd-escape":
-                return subprocess.CompletedProcess(args, 0, expected_units[args[-1]] + "\\n", "")
+                return subprocess.CompletedProcess(args, 0, expected_units[args[-1]] + "\n", "")
             calls.append(args)
             if args[1] == "is-enabled":
-                return subprocess.CompletedProcess(args, 0, "generated\\n", "private unit details")
-            return subprocess.CompletedProcess(args, 0, "active\\n", "private runtime details")
+                return subprocess.CompletedProcess(args, 0, "generated\n", "private unit details")
+            return subprocess.CompletedProcess(args, 0, "active\n", "private runtime details")
 
         with patch.object(audit, "run", side_effect=fake_run):
             for target in expected_units:
@@ -124,7 +124,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
 
         def fake_run(args, timeout=4):
             calls.append(args)
-            return subprocess.CompletedProcess(args, 0, "private/path.mount\\n", "")
+            return subprocess.CompletedProcess(args, 0, "private/path.mount\n", "")
 
         with patch.object(audit, "run", side_effect=fake_run):
             self.assertEqual(audit.mount_unit_states("/mnt/synology"), ("UNKNOWN", "UNKNOWN"))
