@@ -133,17 +133,32 @@ def _wake_local_ai() -> bool:
 
 
 def _ollama_once(prompt: str, model: str, response_format=None) -> str:
-    payload = {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}
-    if response_format is not None:
+    payload = {
+        "model": model,
+        "stream": False,
+        "keep_alive": "30m",
+        "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH},
+    }
+    if response_format is None:
+        payload["prompt"] = prompt
+        url = OLLAMA_URL
+        result = _post_json(url, payload, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
+        text = str(result.get("response", "")).strip()
+    else:
+        # Ollama's native structured-output contract is exposed on /api/chat.
+        payload["messages"] = [{"role": "user", "content": prompt}]
         payload["format"] = response_format
-    result = _post_json(OLLAMA_URL, payload, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
-    text = str(result.get("response", "")).strip()
+        url = OLLAMA_URL.rsplit("/api/", 1)[0] + "/api/chat"
+        result = _post_json(url, payload, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
+        message = result.get("message")
+        text = str(message.get("content", "") if isinstance(message, dict) else "").strip()
     if not text:
         metadata = []
         done_reason = result.get("done_reason")
         if done_reason in {"stop", "length", "unload", "error"}:
             metadata.append("done_reason=" + done_reason)
-        thinking = result.get("thinking")
+        message = result.get("message")
+        thinking = message.get("thinking") if isinstance(message, dict) else result.get("thinking")
         if isinstance(thinking, str):
             metadata.append("thinking_length=" + str(min(len(thinking), 1000000)))
         eval_count = result.get("eval_count")
@@ -152,7 +167,6 @@ def _ollama_once(prompt: str, model: str, response_format=None) -> str:
         suffix = "; " + "; ".join(metadata) if metadata else ""
         raise BrokerError("ollama returned empty response" + suffix)
     return text
-
 
 def _ollama(prompt: str, model: str, response_format=None) -> str:
     # The stable endpoint owns the Tower lease, wake, readiness, and retry bound.
