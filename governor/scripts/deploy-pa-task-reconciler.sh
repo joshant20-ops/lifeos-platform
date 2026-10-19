@@ -64,7 +64,7 @@ j=json.loads(p.read_text())
 assert j.get('schema')=='lifeos_tasks_v3'
 assert isinstance(j.get('tasks'),list) and isinstance(j.get('resolved'),list)
 assert time.time()-float(j.get('generated_time',0)) < 3600
-print('TASK_RECONCILER=PASS')
+print('TASK_RECONCILER=PASS' if int(j.get('errors',0))==0 else 'TASK_RECONCILER=FAIL')
 print('OPEN_TASKS='+str(len(j['tasks'])))
 print('RESOLVED_TASKS='+str(len(j['resolved'])))
 print('MESSAGES_CONSIDERED='+str(j.get('messages_considered')))
