@@ -1,22 +1,22 @@
 {
   "schema_version": 1,
   "approved_production": {
-    "release": "v34",
-    "artifact_sha256": "9ec4c52ddc7d102a157f368d17992a11b534b190690beadac1843dd418eded6b"
+    "release": "v35",
+    "artifact_sha256": "cf567e2275242a387b9b1b6117b9ad933d2737068470194882e63171754b1162"
   },
-  "previous_production_release": "v32",
-  "previous_production_artifact_sha256": "81c1280c015d8ea06fb12f0e70123f613c6d157a43ecba4905a25f8e7bfb5d57",
+  "previous_production_release": "v34",
+  "previous_production_artifact_sha256": "9ec4c52ddc7d102a157f368d17992a11b534b190690beadac1843dd418eded6b",
   "promotion_candidate": {
-    "release": "v34",
-    "artifact_sha256": "9ec4c52ddc7d102a157f368d17992a11b534b190690beadac1843dd418eded6b",
-    "source_commit": "311590c4211cec632466b24529347847895ea473",
-    "packager_commit": "311590c4211cec632466b24529347847895ea473",
+    "release": "v35",
+    "artifact_sha256": "cf567e2275242a387b9b1b6117b9ad933d2737068470194882e63171754b1162",
+    "source_commit": "a2d3d211fdbef18d297a85579c3491451824e1aa",
+    "packager_commit": "a2d3d211fdbef18d297a85579c3491451824e1aa",
     "packager_version": 1,
-    "dev_acceptance_run_id": 39226084150,
+    "dev_acceptance_run_id": 39232875298,
     "dev_acceptance_run_attempt": 1,
-    "dev_app_sha256": "c0f094360951e9a884cb19a31760e0b59eb356eb1767b351920c1a12488107fe",
+    "dev_app_sha256": "e86aa93098a14d792824b6c2f6401038ad8714e37dfd22c8a3999f6faecf7726",
     "dev_doorbell_sha256": "1450418c1339936de30c14b1d3567f678ee7b1fb60ca26f202770a8fad68c4d5",
-    "doorbell_sha256": "d581325db681232a6d358a61d285e8ace3a6fd18b03a588ec83ecb222f896bfd"
+    "doorbell_sha256": "74f593bcf9255aaae71f379168cbcc68fc3fde5a5eff175a7e0be354872d2c48"
   },
-  "next_candidate_release": "v35"
+  "next_candidate_release": "v36"
 }
