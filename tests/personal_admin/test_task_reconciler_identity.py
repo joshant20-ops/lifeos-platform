@@ -188,3 +188,32 @@ def test_attention_timeline_projection_exposes_only_bounded_summary_fields():
     assert projected == [{"observed_at": 100, "title": "Claim update", "status": "WAITING"}]
     assert "message_id" not in str(projected)
     assert "private body" not in str(projected)
+
+
+
+
+def test_failure_diagnostic_contains_only_allowlisted_markers():
+    diagnostic = reconciler.safe_failure_diagnostic(
+        RuntimeError("private email subject and body must not appear")
+    )
+    assert diagnostic == (
+        "TASK_RECONCILER_FAILURE_STAGE=execution\n"
+        "TASK_RECONCILER_FAILURE_CLASS=RuntimeError"
+    )
+    assert "private email" not in diagnostic
+
+
+def test_failure_diagnostic_normalizes_unknown_exception_classes():
+    class PrivateErrorName(Exception):
+        pass
+
+    assert reconciler.safe_failure_diagnostic(PrivateErrorName("secret")) == (
+        "TASK_RECONCILER_FAILURE_STAGE=execution\n"
+        "TASK_RECONCILER_FAILURE_CLASS=Other"
+    )
+
+
+def test_deploy_failure_diagnostics_filter_journal_to_fixed_markers():
+    deploy = (REPO / "governor/scripts/deploy-pa-task-reconciler.sh").read_text()
+    assert "grep -E '^TASK_RECONCILER_FAILURE_(STAGE|CLASS)=[A-Za-z0-9_]+$'" in deploy
+    assert "journalctl -u lifeos-task-reconciler.service -n 60 --no-pager;" not in deploy

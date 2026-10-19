@@ -175,7 +175,7 @@ def message_time(date_value):
     try:return int(parsedate_to_datetime(str(date_value or "")).timestamp())
     except Exception:return int(time.time())
 
-def main():
+def _run_reconciler():
     previous=load_previous()
     scan=load_scan_state()
     user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
@@ -295,4 +295,30 @@ def main():
     print('TASK_CLASSIFICATION_ERRORS='+str(classification_errors),flush=True)
     print('TASK_CLASSIFICATION_ERROR_TYPES='+(','.join(sorted(classification_error_types)) or 'NONE'),flush=True)
     print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"classified":classification_attempts,"reused":messages_reused,"errors":errors}))
+
+_FAILURE_CLASSES = {
+    "AssertionError", "ConnectionError", "FileNotFoundError", "KeyError",
+    "OSError", "PermissionError", "RuntimeError", "TimeoutError", "TypeError",
+    "ValueError", "HTTPError",
+}
+
+
+def safe_failure_diagnostic(exc):
+    """Return fixed-format failure markers; never include exception text."""
+    error_class = type(exc).__name__
+    if error_class not in _FAILURE_CLASSES:
+        error_class = "Other"
+    return (
+        "TASK_RECONCILER_FAILURE_STAGE=execution\n"
+        f"TASK_RECONCILER_FAILURE_CLASS={error_class}"
+    )
+
+
+def main():
+    try:
+        _run_reconciler()
+    except Exception as exc:
+        print(safe_failure_diagnostic(exc), flush=True)
+        raise SystemExit(1)
+
 if __name__=="__main__":main()
