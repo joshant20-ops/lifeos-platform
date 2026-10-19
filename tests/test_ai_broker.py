@@ -244,6 +244,17 @@ def test_local_json_mode_uses_ollama_format_parameter(monkeypatch):
     assert calls[0]["format"] == "json"
 
 
+def test_unstructured_ollama_calls_keep_default_request_format(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        BROKER,
+        "_post_json",
+        lambda url, payload, **kwargs: calls.append(payload) or {"response": "plain text"},
+    )
+    assert BROKER._ollama_once("plain prompt", "current-model") == "plain text"
+    assert "format" not in calls[0]
+
+
 def test_structured_output_is_restricted_to_local_only(monkeypatch):
     monkeypatch.setattr(BROKER, "candidates", lambda **_: ([{"id": "ollama", "api_model": "local"}], []))
     monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
