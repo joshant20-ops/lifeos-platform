@@ -347,6 +347,8 @@ def test_informational_event_updates_only_an_existing_matter_and_is_idempotent()
         "status": "WAITING",
         "due_date": "2026-11-01",
         "severity": "high",
+        "counterparty": "Acme",
+        "identity_semantic": "acme-claim",
         "user_comments": [{"text": "synthetic user note"}],
         "source_message_ids": ["<claim-open@example.test>"],
         "case_reference_ids": ["UKHB12345"],
