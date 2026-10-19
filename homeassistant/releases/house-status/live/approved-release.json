@@ -16,7 +16,7 @@
     "dev_acceptance_run_attempt": 1,
     "dev_app_sha256": "1d71bd456950257bdc86eca4af635a2f64ae5626706252d878b30e7ca9859654",
     "dev_doorbell_sha256": "2bcd6e0273d6ea9edf0a5517d8eccb9eebfbf56d1f1402b1345283f1c129a172",
-    "doorbell_sha256": "db0a1571369ed11db755cb14046c1d093dd90aa0da88fe6e1a0e6a9ab74437"
+    "doorbell_sha256": "db0a1571369ed11db755cb14046c1d093dd90aa0da88fe6e6a1e0e6a9ab74437"
   },
   "next_candidate_release": "v34"
 }
