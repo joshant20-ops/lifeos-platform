@@ -51,7 +51,7 @@ function environment({failCreate=false}={}){
   const doorbell=env.window.LifeOSHouseStatusDevModules?.doorbell;
   assert.equal(typeof doorbell?.render,'function','Doorbell module registration succeeds without Energy');
   assert.equal(typeof doorbell?.mount,'function');
-  assert.match(doorbell.render(),/<lifeos-doorbell-camera-dev><\/lifeos-doorbell-camera-dev>/,'Doorbell renders its independently registered element');
+  assert.match(doorbell.render(),/data-lifeos-doorbell-camera/,'Doorbell renders its independently registered element');
   const CameraElement=env.registry.get('lifeos-doorbell-camera-dev');
   assert.equal(typeof CameraElement,'function','Doorbell registers its own custom element without Energy');
   const host=new CameraElement();
@@ -70,13 +70,13 @@ function environment({failCreate=false}={}){
   assert.equal(host.__lifeosCameraHost.children.length,0,'the async card creation Promise is not mounted as an element');
   env.release();
   await mounting;
-  assert.equal(host.__cameraHost.children.length,1);
-  const card=host.__cameraHost.children[0];
+  assert.equal(host.__lifeosCameraHost.children.length,1);
+  const card=host.__lifeosCameraHost.children[0];
   assert.equal(typeof card.then,'undefined');
   assert.equal(card.hass,hass,'the current HA camera state is assigned before mount');
   const updatedHass={states:{'camera.front_door_live_view':{state:'streaming'}}};
   await doorbell.mount(host,updatedHass);
-  assert.equal(host.__cameraHost.children[0],card,'HA updates reuse the mounted native camera card');
+  assert.equal(host.__lifeosCameraHost.children[0],card,'HA updates reuse the mounted native camera card');
   assert.equal(card.hass,updatedHass);
   assert.equal(env.routeLoads,1);
   assert.equal(env.createCalls,1);
