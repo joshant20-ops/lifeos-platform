@@ -37,7 +37,7 @@ class PaperlessGovernedRestoreTests(unittest.TestCase):
         finally:
             restore.audit.mount_state = original
         self.assertFalse(result)
-        self.assertIn("PAPERLESS_RESTORE_BLOCKED=MOUNT_PRECONDITION", "\n".join(captured.output))
+        self.assertIn("PAPERLESS_RESTORE_BLOCKED=MOUNT_PRECONDITION", captured.getvalue())
 
 
 if __name__ == "__main__":
