@@ -115,7 +115,7 @@ class LifeOSDoorbellCamera extends HTMLElement{
   }
   get hass(){return this._hass;}
 }
-doorbellModules.doorbell={
+window.LifeOSHouseStatusDevModules.doorbell={
   mount(host,hass){
     if(host&&'hass' in host){host.hass=hass;return host.__lifeosCameraHost?.__lifeosCameraMount;}
     return mountCamera(host,hass);
