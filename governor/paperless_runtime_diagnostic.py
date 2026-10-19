@@ -106,25 +106,33 @@ def mountinfo_state(target: str, path: pathlib.Path | None = None) -> str:
         return "UNKNOWN"
 
 
-def mount_state(path: str) -> str:
+def mount_state_diagnostic(path: str) -> tuple[str, str]:
     result = run(["findmnt", "--noheadings", "--raw", "--target", path, "--output", "TARGET"])
     if result is None:
-        return "UNKNOWN"
+        return "UNKNOWN", "COMMAND_UNAVAILABLE"
     if result.returncode != 0:
-        # A failed findmnt invocation (for example, an unsupported option) does
-        # not prove the mount is absent. Keep the result unknown for safety.
-        return "UNKNOWN"
+        return "UNKNOWN", "COMMAND_FAILED"
     raw_target = result.stdout.strip()
     if not raw_target:
-        return "UNKNOWN"
+        return "UNKNOWN", "EMPTY_OUTPUT"
     target = raw_target.rstrip("/") or "/"
     requested = path.rstrip("/") or "/"
     synology_root = "/mnt/synology"
+    if target == "/":
+        return "UNMOUNTED", "HOST_ROOT"
     if target != synology_root and not target.startswith(synology_root + "/"):
-        return "UNMOUNTED"
-    # The reported mountpoint must be an ancestor of the requested path.
-    # A nested mount cannot establish that the parent path is mounted.
-    return "MOUNTED" if requested == target or requested.startswith(target.rstrip("/") + "/") else "UNMOUNTED"
+        return "UNMOUNTED", "OUTSIDE_SYNOLOGY_TREE"
+    if requested == target:
+        return "MOUNTED", "EXACT"
+    if requested.startswith(target.rstrip("/") + "/"):
+        return "MOUNTED", "ANCESTOR"
+    if target.startswith(requested.rstrip("/") + "/"):
+        return "UNMOUNTED", "DESCENDANT"
+    return "UNMOUNTED", "NO_ANCESTOR"
+
+
+def mount_state(path: str) -> str:
+    return mount_state_diagnostic(path)[0]
 
 
 def fstab_targets(path: pathlib.Path | None = None) -> set[str] | None:
@@ -316,8 +324,9 @@ def main() -> int:
         print(f"PAPERLESS_MOUNT_UNIT_{label}_ENABLED={enabled}")
         print(f"PAPERLESS_MOUNT_UNIT_{label}_ACTIVE={active}")
     print("PAPERLESS_SYNOLOGY_PATH_EXISTS=" + path_presence("/mnt/synology"))
-    root_mount_state = mount_state("/mnt/synology")
+    root_mount_state, root_findmnt_relation = mount_state_diagnostic("/mnt/synology")
     print("PAPERLESS_SYNOLOGY_MOUNT=" + root_mount_state)
+    print("PAPERLESS_SYNOLOGY_FINDMNT_RELATION=" + root_findmnt_relation)
     root_mountinfo_state = mountinfo_state("/mnt/synology")
     print("PAPERLESS_SYNOLOGY_PROC_MOUNTINFO=" + root_mountinfo_state)
     mount_substate, mount_result = mount_unit_diagnostic("/mnt/synology")
@@ -333,7 +342,9 @@ def main() -> int:
     print("PAPERLESS_SYNOLOGY_KERNEL_MOUNT_CONSISTENCY=" + kernel_mount_state)
     for label, path in NAS_PATHS.items():
         print(label.replace("_MOUNT", "_PATH_EXISTS") + "=" + path_presence(path))
-        print(f"{label}=" + mount_state(path))
+        child_mount_state, child_findmnt_relation = mount_state_diagnostic(path)
+        print(f"{label}=" + child_mount_state)
+        print(label.replace("_MOUNT", "") + "_FINDMNT_RELATION=" + child_findmnt_relation)
     print("PAPERLESS_DOCKER_SERVICE_ACTIVE=" + _active_state(run(["systemctl", "is-active", "docker.service"], timeout=3)))
     print("PAPERLESS_CONTAINERD_SERVICE_ACTIVE=" + _active_state(run(["systemctl", "is-active", "containerd.service"], timeout=3)))
     print("PAPERLESS_RECONCILER_SERVICE_ACTIVE=" + _active_state(run(["systemctl", "is-active", "lifeos-task-reconciler.service"], timeout=3)))
