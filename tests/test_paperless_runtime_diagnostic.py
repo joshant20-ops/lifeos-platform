@@ -35,6 +35,9 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, "mnt-synology.mount\n", "")
                 if args[:2] == ["systemctl", "is-enabled"]:
                     return subprocess.CompletedProcess(args, 0, "generated\n", "")
+                if args[:2] == ["systemctl", "show"]:
+                    value = "mounted\\n" if "--property=SubState" in args else "success\\n"
+                    return subprocess.CompletedProcess(args, 0, value, "")
                 if args[:2] == ["systemctl", "is-active"]:
                     return subprocess.CompletedProcess(args, 0, "active\n", "")
                 if args[:3] in (["docker", "volume", "inspect"], ["docker", "network", "inspect"]):
@@ -61,6 +64,9 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_REVERSE_PROXY_NETWORK=PRESENT", output)
         self.assertIn("PAPERLESS_FSTAB_SYNOLOGY=YES", output)
         self.assertIn("PAPERLESS_SYNOLOGY_MOUNT=MOUNTED", output)
+        self.assertIn("PAPERLESS_SYNOLOGY_UNIT_SUBSTATE=MOUNTED", output)
+        self.assertIn("PAPERLESS_SYNOLOGY_UNIT_RESULT=SUCCESS", output)
+        self.assertIn("PAPERLESS_SYNOLOGY_MOUNT_CONSISTENCY=CONSISTENT", output)
         self.assertIn("PAPERLESS_DOCKER_SERVICE_ACTIVE=YES", output)
         self.assertIn("PAPERLESS_CONTAINERD_SERVICE_ACTIVE=YES", output)
         self.assertIn("PAPERLESS_RECONCILER_SERVICE_ACTIVE=YES", output)
@@ -79,6 +85,13 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             self.assertNotIn(private, output)
         self.assertTrue(all(timeout <= 8 for _, timeout in calls))
         self.assertFalse(any(args[1] in {"up", "down", "start", "stop", "restart", "rm", "pull"} for args, _ in calls if args[0] == "docker"))
+
+    def test_mount_consistency_detects_unit_mount_table_mismatch(self):
+        self.assertEqual(audit.mount_consistency("UNMOUNTED", "MOUNTED"), "INCONSISTENT")
+        self.assertEqual(audit.mount_consistency("MOUNTED", "UNMOUNTED"), "INCONSISTENT")
+        self.assertEqual(audit.mount_consistency("MOUNTED", "MOUNTED"), "CONSISTENT")
+        self.assertEqual(audit.mount_consistency("UNMOUNTED", "UNMOUNTED"), "CONSISTENT")
+        self.assertEqual(audit.mount_consistency("UNKNOWN", "UNKNOWN"), "UNKNOWN")
 
     def test_mount_check_accepts_synology_parent_mount_only(self):
         result = subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")
