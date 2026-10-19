@@ -114,10 +114,10 @@ def mount_state(path: str) -> str:
         # A failed findmnt invocation (for example, an unsupported option) does
         # not prove the mount is absent. Keep the result unknown for safety.
         return "UNKNOWN"
-    target = result.stdout.strip().rstrip("/") or ""
-    if not target:
+    raw_target = result.stdout.strip()
+    if not raw_target:
         return "UNKNOWN"
-    target = target or "/"
+    target = raw_target.rstrip("/") or "/"
     requested = path.rstrip("/") or "/"
     synology_root = "/mnt/synology"
     if target != synology_root and not target.startswith(synology_root + "/"):
