@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/lifeos-pa-deploy.yml'
       - 'governor/assistant_bridge.py'
+      - 'governor/ai_broker.py'
       - 'governor/assistant_ui.html'
       - 'governor/pa_user_state.py'
       - 'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
