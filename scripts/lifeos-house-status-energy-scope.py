@@ -41,7 +41,7 @@ def _without_doorbell_shell(source: str) -> str | None:
         if end < 0:
             return None
         block = text[start:end]
-        required = ("this.dataset.module='doorbell'", "doorbell?.render(this._hass)",
+        required = ("this.dataset.module='doorbell'", "doorbell?.render", "doorbell.render(this._hass)",
                     "doorbell?.mount?.(this._doorbellHost,this._hass)", "this._doorbellHost", "return;")
         doorbell_path = block.split("    const moduleOwner=", 1)[0]
         forbidden = ("LifeOSEnergyModule", "LifeOSHouseModule", "sensor.", "event.",
