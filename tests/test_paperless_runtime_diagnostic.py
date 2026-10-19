@@ -36,7 +36,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                 if args[:2] == ["systemctl", "is-enabled"]:
                     return subprocess.CompletedProcess(args, 0, "generated\n", "")
                 if args[:2] == ["systemctl", "show"]:
-                    value = "mounted\\n" if "--property=SubState" in args else "success\\n"
+                    value = "mounted\n" if "--property=SubState" in args else "success\n"
                     return subprocess.CompletedProcess(args, 0, value, "")
                 if args[:2] == ["systemctl", "is-active"]:
                     return subprocess.CompletedProcess(args, 0, "active\n", "")
