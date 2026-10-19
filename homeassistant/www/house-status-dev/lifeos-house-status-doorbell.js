@@ -119,7 +119,7 @@ if(!customElements.get('lifeos-doorbell-camera-dev'))customElements.define('life
 
 window.LifeOSHouseStatusDevModules.doorbell={
   mount(host,hass){
-    if(host&&'hass' in host){host.hass=hass;return;}
+    if(host&&'hass' in host){host.hass=hass;return host.__lifeosCameraHost?.__lifeosCameraMount;}
     return mountCamera(host,hass);
   },
   render(){return '<lifeos-doorbell-camera-dev></lifeos-doorbell-camera-dev>';}
