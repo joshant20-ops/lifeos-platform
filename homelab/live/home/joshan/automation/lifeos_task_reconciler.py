@@ -51,7 +51,7 @@ def classify(compact):
 Mark relevant=true for a meaningful update to an existing matter, including informational updates that do not create an obligation. Mark relevant=false for junk, marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not create obligations from informative events. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
 EMAIL:
 """+json.dumps(compact,ensure_ascii=False)
-    d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL))
+    d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL,response_format="json"))
     if not isinstance(d,dict) or not isinstance(d.get("actionable"),bool): raise ValueError("invalid schema")
     if "relevant" not in d:d["relevant"]=bool(d["actionable"])
     if not isinstance(d.get("relevant"),bool): raise ValueError("invalid relevance")

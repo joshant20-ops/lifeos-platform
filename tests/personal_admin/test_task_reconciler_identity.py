@@ -406,3 +406,26 @@ def test_informational_event_without_a_matched_matter_creates_no_obligation():
         tasks, task_id, message, decision, 200
     )
     assert tasks == {}
+
+
+def test_reconciler_classification_requests_native_local_json(monkeypatch):
+    calls = []
+    response = {
+        "actionable": True,
+        "title": "Synthetic renewal",
+        "status": "OPEN",
+        "due_date": None,
+        "counterparty": "Acme",
+        "topic": "renewal",
+        "severity": "NORMAL",
+        "evidence_query": "renewal",
+        "reason": "synthetic test",
+    }
+    monkeypatch.setattr(
+        reconciler.ai_broker,
+        "_ollama",
+        lambda prompt, model, **kwargs: calls.append(kwargs) or __import__("json").dumps(response),
+    )
+    result = reconciler.classify({"subject": "Synthetic renewal"})
+    assert result["actionable"] is True
+    assert calls == [{"response_format": "json"}]

@@ -132,17 +132,20 @@ def _wake_local_ai() -> bool:
     return True
 
 
-def _ollama_once(prompt: str, model: str) -> str:
-    result = _post_json(OLLAMA_URL, {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
+def _ollama_once(prompt: str, model: str, response_format=None) -> str:
+    payload = {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}
+    if response_format is not None:
+        payload["format"] = response_format
+    result = _post_json(OLLAMA_URL, payload, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
     text = str(result.get("response", "")).strip()
     if not text:
         raise BrokerError("ollama returned empty response")
     return text
 
 
-def _ollama(prompt: str, model: str) -> str:
+def _ollama(prompt: str, model: str, response_format=None) -> str:
     # The stable endpoint owns the Tower lease, wake, readiness, and retry bound.
-    return _ollama_once(prompt, model)
+    return _ollama_once(prompt, model, response_format=response_format)
 
 
 def _ollama_tool_call_from_content(content, tools: list[dict]) -> dict | None:
@@ -507,10 +510,10 @@ def _cloudflare(prompt: str, provider: dict, secrets: dict[str, str]) -> str:
     return text
 
 
-def _invoke(provider: dict, prompt: str, secrets: dict[str, str]) -> str:
+def _invoke(provider: dict, prompt: str, secrets: dict[str, str], response_format=None) -> str:
     pid = provider["id"]
     if pid == "ollama":
-        return _ollama(prompt, _provider_model(provider))
+        return _ollama(prompt, _provider_model(provider), response_format=response_format)
     if pid == "gemini":
         return _gemini(prompt, provider, secrets)
     if pid == "groq":
@@ -570,9 +573,11 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
     raise BrokerError("tool-capable providers exhausted: " + " | ".join(failures))
 
 
-def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None) -> dict:
+def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None, response_format=None) -> dict:
     if privacy not in {"normal", "local-only"}:
         raise BrokerError("unsupported privacy class")
+    if response_format is not None and (privacy != "local-only" or response_format != "json"):
+        raise BrokerError("structured output format is restricted to local JSON mode")
     prompt = str(prompt)
     if not prompt.strip():
         raise BrokerError("prompt required")
@@ -586,7 +591,10 @@ def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal"
     for provider in eligible:
         pid = provider["id"]
         try:
-            text = _invoke(provider, prompt, secrets)
+            if response_format is None:
+                text = _invoke(provider, prompt, secrets)
+            else:
+                text = _invoke(provider, prompt, secrets, response_format=response_format)
             return {"provider": pid, "model": _provider_model(provider), "privacy": privacy, "text": text, "considered": considered}
         except (BrokerError, KeyError) as exc:
             failures.append(f"{pid}:{type(exc).__name__}")
