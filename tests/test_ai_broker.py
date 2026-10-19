@@ -267,6 +267,30 @@ def test_unstructured_ollama_calls_keep_default_request_format(monkeypatch):
     assert "format" not in calls[0]
 
 
+def test_local_provider_failure_exposes_only_fixed_safe_category(monkeypatch):
+    monkeypatch.setattr(
+        BROKER,
+        "candidates",
+        lambda **_: ([{"id": "ollama", "api_model": "local"}], []),
+    )
+    monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
+
+    def fail_with_private_body(*args, **kwargs):
+        raise BROKER.BrokerError("provider HTTP 400: private prompt content")
+
+    monkeypatch.setattr(BROKER, "_invoke", fail_with_private_body)
+    with pytest.raises(BROKER.BrokerError) as error:
+        BROKER.generate("private prompt", privacy="local-only", response_format="json")
+    assert str(error.value) == "eligible providers exhausted: ollama:HTTP_400"
+    assert "private" not in str(error.value)
+
+
+def test_unknown_provider_error_is_fixed_category():
+    assert BROKER.safe_provider_failure_category(
+        BROKER.BrokerError("sensitive upstream detail")
+    ) == "BROKER_ERROR"
+
+
 def test_structured_output_is_restricted_to_local_only(monkeypatch):
     monkeypatch.setattr(BROKER, "candidates", lambda **_: ([{"id": "ollama", "api_model": "local"}], []))
     monkeypatch.setattr(BROKER, "_strict_env", lambda _: {})
