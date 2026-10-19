@@ -12,7 +12,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
   static getStubConfig(){ return {mode:'domestic'}; }
   static getConfigElement(){ return document.createElement('lifeos-house-status-dev-editor-v2'); }
   setConfig(config){ this.config=config||{}; this.render(); }
-  set hass(hass){ this._hass=hass; const mode=this._mode||this.config?.mode||'domestic'; const host=this._doorbellHost; if(mode==='doorbell'&&host?.isConnected){host.__lifeosDoorbellHass=hass;try{if(host.__lifeosCameraCard)host.__lifeosCameraCard.hass=hass;}catch(error){console.warn('House Status Doorbell camera update failed',error);}return;} this.render(); if(mode!=='doorbell')this._loadEnergyHistory(); }
+  set hass(hass){ this._hass=hass; const mode=this._mode||this.config?.mode||'domestic'; const host=this._doorbellHost; if(mode==='doorbell'&&host?.isConnected){try{host.hass=hass;}catch(error){console.warn('House Status Doorbell update failed',error);}return;} this.render(); if(mode!=='doorbell')this._loadEnergyHistory(); }
   period(){return this._period||'today';}
   anchor(){return this._anchor||new Date();}
   londonParts(value){return Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(value).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]));}
@@ -49,9 +49,9 @@ class LifeOSHouseStatusCard extends HTMLElement {
       let body='<div class="panel"><div class="heading">Doorbell</div><div class="floor">DOORBELL MODULE UNAVAILABLE</div></div>';
       try{if(doorbell?.render)body=doorbell.render(this._hass);}catch(error){console.warn('House Status Doorbell render failed',error);}
       this.innerHTML=css+`<div class="app">${nav}${body}</div>`;
-      this._doorbellHost=this.querySelector('[data-doorbell-card]');
+      this._doorbellHost=this.querySelector('[data-lifeos-doorbell-camera]');
       if(this._doorbellHost){
-        this._doorbellHost.__lifeosDoorbellHass=this._hass;
+        this._doorbellHost.hass=this._hass;
         try{Promise.resolve(doorbell?.mount?.(this._doorbellHost,this._hass)).catch(error=>console.warn('House Status Doorbell mount failed',error));}catch(error){console.warn('House Status Doorbell mount failed',error);}
       }
       const menu=this.querySelector('.hamb');
@@ -174,7 +174,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
       body=`<div class="status"><div class="secure">⚪ Security sensors not installed</div><div class="leave">⌂ Leave House<br><span class="small">Automation pending</span></div></div><div class="panel"><div class="heading">Ground Floor</div><div class="floor">Replaceable ground-floor plan · overlays dormant until mapped</div></div><div class="panel"><div class="heading">First Floor</div><div class="floor">Replaceable first-floor plan · overlays dormant until mapped</div></div><div class="panel legend">🟩 Window open　🟥 Window closed　🟩 External door open　🟥 External door closed　🟢 Light off　🔴 Light on　🟩 TV on　🟥 TV off　⚪ ! unavailable</div>`;
     }
     else { const doorbell=window.LifeOSHouseStatusDevModules?.doorbell; body=doorbell?.render?doorbell.render(this._hass):'<div class="panel"><div class="heading">Doorbell</div><div class="floor">DOORBELL MODULE UNAVAILABLE</div></div>'; }
-    this.innerHTML=css+`<div class="app">${nav}${body}</div>`; this._doorbellHost=null; if(mode==='doorbell'){const host=this.querySelector('[data-doorbell-card]');this._doorbellHost=host;if(host)host.__lifeosDoorbellHass=this._hass;const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;doorbell?.mount?.(host,this._hass);}
+    this.innerHTML=css+`<div class="app">${nav}${body}</div>`; this._doorbellHost=null; if(mode==='doorbell'){const host=this.querySelector('[data-lifeos-doorbell-camera]');this._doorbellHost=host;if(host)host.__lifeosDoorbellHass=this._hass;const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;doorbell?.mount?.(host,this._hass);}
     const menu=this.querySelector('.hamb');if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
     this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this._mode=el.dataset.mode;this.render();});
     this.querySelectorAll('[data-period]').forEach(el=>el.onclick=()=>{const p=el.dataset.period;this._energyHistoryKey=null;if(p==='range'){this._period='range';this.render();const picker=this.querySelector('[data-date-picker]');if(picker?.showPicker)picker.showPicker();else picker?.click();return;}this._period=p;this._energyHistory=[];this._energyCoverage=null;this.render();this._loadEnergyHistory();});
