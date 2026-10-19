@@ -25,6 +25,9 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                 "/dev/disk/by-id/private /mnt/synology nfs credentials=/private/secret 0 0\n"
                 "/dev/disk/by-id/private-nested /mnt/synology/Joshan/Intake nfs credentials=/private/secret 0 0\n"
             )
+            (root / "mountinfo").write_text(
+                "36 25 0:32 / /mnt/synology rw,relatime - nfs server:/private rw\\n"
+            )
             calls = []
 
             def fake_run(args, timeout=4):
@@ -52,7 +55,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, "200", "sensitive response body")
                 raise AssertionError(args)
 
-            with patch.object(audit, "PROJECT", root), patch.object(audit, "COMPOSE", root / "docker-compose.yml"), patch.object(audit, "DB_VERSION", root / "data/db/PG_VERSION"), patch.object(audit, "APP_DATA", root / "data/data"), patch.object(audit, "FSTAB", fstab), patch.object(audit, "run", side_effect=fake_run):
+            with patch.object(audit, "PROJECT", root), patch.object(audit, "COMPOSE", root / "docker-compose.yml"), patch.object(audit, "DB_VERSION", root / "data/db/PG_VERSION"), patch.object(audit, "APP_DATA", root / "data/data"), patch.object(audit, "FSTAB", fstab), patch.object(audit, "MOUNTINFO", root / "mountinfo"), patch.object(audit, "run", side_effect=fake_run):
                 with patch("sys.stdout") as stdout:
                     audit.main()
                     output = "".join(call.args[0] for call in stdout.write.call_args_list)
@@ -64,6 +67,8 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_REVERSE_PROXY_NETWORK=PRESENT", output)
         self.assertIn("PAPERLESS_FSTAB_SYNOLOGY=YES", output)
         self.assertIn("PAPERLESS_SYNOLOGY_MOUNT=MOUNTED", output)
+        self.assertIn("PAPERLESS_SYNOLOGY_PROC_MOUNTINFO=MOUNTED", output)
+        self.assertIn("PAPERLESS_SYNOLOGY_KERNEL_MOUNT_CONSISTENCY=CONSISTENT", output)
         self.assertIn("PAPERLESS_SYNOLOGY_UNIT_SUBSTATE=MOUNTED", output)
         self.assertIn("PAPERLESS_SYNOLOGY_UNIT_RESULT=SUCCESS", output)
         self.assertIn("PAPERLESS_SYNOLOGY_MOUNT_CONSISTENCY=CONSISTENT", output)
@@ -93,6 +98,16 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertEqual(audit.mount_consistency("UNMOUNTED", "UNMOUNTED"), "CONSISTENT")
         self.assertEqual(audit.mount_consistency("UNMOUNTED", "FAILED"), "CONSISTENT")
         self.assertEqual(audit.mount_consistency("UNKNOWN", "UNKNOWN"), "UNKNOWN")
+
+    def test_mountinfo_state_uses_exact_canonical_targets_and_redacts_sources(self):
+        with tempfile.TemporaryDirectory() as temp:
+            mountinfo = pathlib.Path(temp) / "mountinfo"
+            mountinfo.write_text("36 25 0:32 / /mnt/synology rw - nfs server:/private rw\\n")
+            self.assertEqual(audit.mountinfo_state("/mnt/synology", mountinfo), "MOUNTED")
+            self.assertEqual(audit.mountinfo_state("/mnt/synology/Joshan/Intake", mountinfo), "UNMOUNTED")
+            self.assertEqual(audit.mountinfo_state("/etc", mountinfo), "UNKNOWN")
+            mountinfo.write_text("invalid\\n")
+            self.assertEqual(audit.mountinfo_state("/mnt/synology", mountinfo), "UNKNOWN")
 
     def test_mount_check_accepts_synology_parent_mount_only(self):
         result = subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")
