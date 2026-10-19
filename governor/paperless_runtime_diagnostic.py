@@ -316,6 +316,50 @@ def container_summary() -> dict[str, int] | None:
     return counts
 
 
+def container_exit_evidence() -> list[tuple[str, str, str, str, str, str, str]] | None:
+    """Return fixed, non-sensitive stop metadata for Paperless Compose containers."""
+    listing = run([
+        "docker", "ps", "--all", "--quiet",
+        "--filter", "label=com.docker.compose.project=paperless",
+    ], timeout=5)
+    if listing is None or listing.returncode != 0:
+        return None
+    ids = [line.strip() for line in listing.stdout.splitlines() if line.strip()]
+    if len(ids) > 10:
+        return None
+    rows = []
+    template = (
+        '{{index .Config.Labels "com.docker.compose.service"}}|'
+        '{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|'
+        '{{.RestartCount}}|{{if .State.Error}}YES{{else}}NO{{end}}|'
+        '{{.HostConfig.RestartPolicy.Name}}'
+    )
+    for container_id in ids:
+        inspected = run(["docker", "inspect", "--format", template, container_id], timeout=5)
+        if inspected is None or inspected.returncode != 0:
+            return None
+        fields = inspected.stdout.strip().split("|")
+        if len(fields) != 7:
+            return None
+        service, state, exit_code, oom, restart_count, error, restart_policy = fields
+        if service not in {"db", "redis", "paperless"}:
+            return None
+        if state not in STATES:
+            state = "unknown"
+        if not re.fullmatch(r"-?[0-9]+", exit_code):
+            exit_code = "UNKNOWN"
+        if oom not in {"true", "false"}:
+            oom = "unknown"
+        if not re.fullmatch(r"[0-9]+", restart_count):
+            restart_count = "UNKNOWN"
+        if error not in {"YES", "NO"}:
+            error = "UNKNOWN"
+        if restart_policy not in {"no", "always", "unless-stopped", "on-failure"}:
+            restart_policy = "UNKNOWN"
+        rows.append((service, state, exit_code, oom.upper(), restart_count, error, restart_policy))
+    return rows
+
+
 def api_http_status() -> str:
     result = run([
         "curl", "--silent", "--output", "/dev/null", "--write-out", "%{http_code}",
@@ -395,6 +439,19 @@ def main() -> int:
     for health in HEALTHS:
         print(f"PAPERLESS_CONTAINER_HEALTH_{health.upper()}={counts[f'health_{health}']}")
     print("PAPERLESS_CONTAINER_SUMMARY=PASS")
+    exit_evidence = container_exit_evidence()
+    if exit_evidence is None:
+        print("PAPERLESS_CONTAINER_EXIT_EVIDENCE=UNKNOWN")
+    else:
+        print("PAPERLESS_CONTAINER_EXIT_EVIDENCE=AVAILABLE")
+        for service, state, exit_code, oom, restart_count, error, restart_policy in sorted(exit_evidence):
+            prefix = "PAPERLESS_CONTAINER_" + service.upper()
+            print(f"{prefix}_STATE={state.upper()}")
+            print(f"{prefix}_EXIT_CODE={exit_code}")
+            print(f"{prefix}_OOM_KILLED={oom}")
+            print(f"{prefix}_RESTART_COUNT={restart_count}")
+            print(f"{prefix}_DOCKER_ERROR_PRESENT={error}")
+            print(f"{prefix}_RESTART_POLICY={restart_policy.upper().replace('-', '_')}")
     return 0
 
 
