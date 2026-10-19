@@ -1,8 +1,8 @@
 """Privacy-safe, bounded read-only precondition audit for Paperless."""
 from __future__ import annotations
 
-import json
 import pathlib
+import re
 import subprocess
 
 PROJECT = pathlib.Path("/home/joshan/paperless")
@@ -16,6 +16,7 @@ NAS_PATHS = {
 }
 STATES = ("running", "exited", "created", "restarting", "paused", "dead", "removing", "unknown")
 HEALTHS = ("healthy", "unhealthy", "starting", "none", "unknown")
+MAX_ENV_BYTES = 65536
 
 
 def run(args: list[str], timeout: int = 4) -> subprocess.CompletedProcess[str] | None:
@@ -54,6 +55,8 @@ def secret_present(path: pathlib.Path) -> str:
     if present(path) != "YES":
         return "NO"
     try:
+        if path.stat().st_size > MAX_ENV_BYTES:
+            return "UNKNOWN"
         for raw in path.read_text(errors="replace").splitlines():
             line = raw.strip()
             if line.startswith("export "):
@@ -64,6 +67,14 @@ def secret_present(path: pathlib.Path) -> str:
     except OSError:
         return "UNKNOWN"
     return "NO"
+
+
+def path_presence(path: str) -> str:
+    try:
+        target = pathlib.Path(path)
+        return "YES" if target.is_dir() and not target.is_symlink() else "NO"
+    except OSError:
+        return "UNKNOWN"
 
 
 def mount_state(path: str) -> str:
@@ -114,6 +125,25 @@ def container_summary() -> dict[str, int] | None:
     return counts
 
 
+def api_http_status() -> str:
+    result = run([
+        "curl", "--silent", "--output", "/dev/null", "--write-out", "%{http_code}",
+        "--connect-timeout", "2", "--max-time", "5", "http://127.0.0.1:8010/api/",
+    ], timeout=6)
+    if result is None:
+        return "000"
+    status = result.stdout.strip()
+    return status if re.fullmatch(r"[1-5][0-9]{2}", status) else "000"
+
+
+def published_state() -> str:
+    result = run(["docker", "ps", "--all", "--filter", "publish=8010", "--quiet"], timeout=5)
+    if result is None or result.returncode != 0:
+        return "UNKNOWN"
+    count = len(result.stdout.splitlines())
+    return "NO" if count == 0 else ("YES" if count == 1 else "MULTIPLE")
+
+
 def main() -> int:
     print("PAPERLESS_AUDIT_VERSION=1")
     print("PAPERLESS_AUDIT_MUTATIONS=NONE")
@@ -125,10 +155,15 @@ def main() -> int:
     print("PAPERLESS_DB_PG_VERSION=" + present(DB_VERSION))
     print("PAPERLESS_APP_DATA_DIR=" + directory_state(APP_DATA))
     for label, path in NAS_PATHS.items():
+        print(label.replace("_MOUNT", "_PATH_EXISTS") + "=" + path_presence(path))
         print(f"{label}=" + mount_state(path))
     print("PAPERLESS_REDIS_VOLUME=" + resource_state("volume", "paperless_redis_data"))
     print("PAPERLESS_REVERSE_PROXY_NETWORK=" + resource_state("network", "reverse_proxy"))
     print("PAPERLESS_COMPOSE_CONFIG=" + compose_config_state())
+    http_status = api_http_status()
+    print("PAPERLESS_8010_PUBLISHED=" + published_state())
+    print("PAPERLESS_API_HTTP_STATUS=" + http_status)
+    print("PAPERLESS_API_REACHABILITY=" + ("REACHABLE" if http_status != "000" else "UNREACHABLE"))
     counts = container_summary()
     if counts is None:
         print("PAPERLESS_CONTAINER_SUMMARY=UNKNOWN")
