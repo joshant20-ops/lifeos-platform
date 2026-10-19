@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import pathlib
-import re
 import subprocess
 import sys
 
@@ -35,7 +34,7 @@ def _without_doorbell_shell(source: str) -> str | None:
         return None
     text = text.replace(OLD_DOORBELL_SETTER, "  set hass(hass){/* isolated Doorbell dispatch */}", 1)
     text = text.replace(NEW_DOORBELL_SETTER, "  set hass(hass){/* isolated Doorbell dispatch */}", 1)
-    branch_start = "    if(mode==='doorbell'){\\n"
+    branch_start = "    if(mode==='doorbell'){\n"
     if branch_start in text:
         start = text.index(branch_start)
         end = text.find("    const stamp=o=>", start)
@@ -49,10 +48,12 @@ def _without_doorbell_shell(source: str) -> str | None:
         if any(token not in block for token in required) or any(token in block for token in forbidden):
             return None
         text = text[:start] + text[end:]
-    owner = re.compile(r"(?m)^    const moduleOwner=LifeOSEnergyModule\\.owns\\(mode\\)\\?'energy':LifeOSHouseModule\\.owns\\(mode\\)\\?'house':(?:LifeOSDoorbellModule\\.owns\\(mode\\)\\?'doorbell':)?'energy';\\n    this\\.dataset\\.module=moduleOwner;\\n")
-    text, count = owner.subn("", text)
-    if count > 1:
-        return None
+    owner_blocks = (
+        "    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':LifeOSDoorbellModule.owns(mode)?'doorbell':'energy';\n    this.dataset.module=moduleOwner;\n",
+        "    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':'energy';\n    this.dataset.module=moduleOwner;\n",
+    )
+    for owner_block in owner_blocks:
+        text = text.replace(owner_block, "", 1)
     return text
 
 def doorbell_shell_only_app_change(old_app: str, new_app: str) -> bool:
