@@ -240,6 +240,29 @@ def safe_failure_diagnostic(exc, stage=None):
         f"TASK_RECONCILER_FAILURE_BUCKET={safe_error_bucket(exc)}"
     )
 
+def safe_classification_error_category(exc):
+    """Emit only a fixed category; never expose model, message, or document content."""
+    if isinstance(exc, ai_broker.BrokerError):
+        message = str(exc)
+        match = re.match(r"^provider HTTP ([1-5][0-9][0-9]):", message)
+        if match:
+            return "UPSTREAM_HTTP_" + match.group(1)
+        if message.startswith("provider request failed:"):
+            return "PROVIDER_REQUEST_FAILED"
+        if message == "ollama returned empty response":
+            return "EMPTY_RESPONSE"
+        if message.startswith("Tower compute lease unavailable:"):
+            return "COMPUTE_LEASE"
+        if message.startswith("eligible providers exhausted:"):
+            return "PROVIDER_EXHAUSTED"
+        return "BROKER_OTHER"
+    if isinstance(exc, json.JSONDecodeError):
+        return "JSON_RESPONSE"
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return "TIMEOUT"
+    return "OTHER"
+
+
 def _run_reconciler():
     set_failure_stage("state_load")
     previous=load_previous()
@@ -304,7 +327,7 @@ def _run_reconciler():
     print("TASK_SCAN_FETCHED="+str(len(fetched)),flush=True)
     set_failure_stage("classification")
     observations=[]
-    classification_attempts=0;classification_errors=0;classification_error_types=set()
+    classification_attempts=0;classification_errors=0;classification_error_types=set();classification_error_categories={}
     for index,compact in enumerate(new_fetched,1):
         print("TASK_CLASSIFICATION_PROGRESS="+str(index)+"/"+str(len(new_fetched)),flush=True)
         try:
@@ -318,6 +341,8 @@ def _run_reconciler():
             observations.append((message_time(compact.get("date")),k,d,compact))
         except Exception as exc:
             errors+=1;classification_errors+=1;classification_error_types.add(type(exc).__name__)
+            category=safe_classification_error_category(exc)
+            classification_error_categories[category]=classification_error_categories.get(category,0)+1
     # Reconcile chronologically so a later completion/update wins over an older
     # request. Preserve prior state when a task is outside this bounded scan.
     set_failure_stage("reconcile")
@@ -371,6 +396,7 @@ def _run_reconciler():
     print('TASK_FETCH_ERROR_TYPES='+(','.join(sorted(fetch_error_types)) or 'NONE'),flush=True)
     print('TASK_CLASSIFICATION_ERRORS='+str(classification_errors),flush=True)
     print('TASK_CLASSIFICATION_ERROR_TYPES='+(','.join(sorted(classification_error_types)) or 'NONE'),flush=True)
+    print('TASK_CLASSIFICATION_ERROR_CATEGORIES='+(','.join(f"{k}={v}" for k,v in sorted(classification_error_categories.items())) or 'NONE'),flush=True)
     set_failure_stage("complete")
     print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"classified":classification_attempts,"reused":messages_reused,"errors":errors}))
 
