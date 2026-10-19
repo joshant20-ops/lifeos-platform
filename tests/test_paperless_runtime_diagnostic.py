@@ -27,7 +27,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                 if args[0] == "findmnt":
                     return subprocess.CompletedProcess(args, 0, "/mnt/synology\n", "private source path")
                 if args[:3] in (["docker", "volume", "inspect"], ["docker", "network", "inspect"]):
-                    return subprocess.CompletedProcess(args, 0, args[2] + "\n", "")
+                    return subprocess.CompletedProcess(args, 0, args[3] + "\n", "")
                 if args[:2] == ["docker", "compose"]:
                     return subprocess.CompletedProcess(args, 0, "", "hidden compose diagnostics")
                 if args[:2] == ["docker", "ps"] and "--quiet" in args:
@@ -46,6 +46,8 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_AUDIT_MUTATIONS=NONE", output)
         self.assertIn("PAPERLESS_SECRET_KEY_PRESENT=YES", output)
         self.assertIn("PAPERLESS_DB_PG_VERSION=YES", output)
+        self.assertIn("PAPERLESS_REDIS_VOLUME=PRESENT", output)
+        self.assertIn("PAPERLESS_REVERSE_PROXY_NETWORK=PRESENT", output)
         self.assertIn("PAPERLESS_CONTAINER_COUNT=3", output)
         self.assertIn("PAPERLESS_API_HTTP_STATUS=200", output)
         self.assertIn("PAPERLESS_8010_PUBLISHED=YES", output)
