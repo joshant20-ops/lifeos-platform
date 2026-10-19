@@ -255,7 +255,7 @@ jobs:
                       if not p.endswith("README.md") and p!="/projects/lifeos-platform"
                   ]
                   snapshot={
-                      "task_understood":True,
+                      "task_understood":bool(evidence.get("issue_935_inspected",False)),
                       "implementation_inspected":bool(inspected),
                       "defect_established":activity.get("tests_executed",False),
                       "implementation_changed":dirty or head!=baseline,
