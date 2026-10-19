@@ -45,7 +45,7 @@ jobs:
       - name: Validate development dashboard bundle
         run: |
           set -Eeuo pipefail
-          node --check homeassistant/www/house-status-dev/lifeos-house-status-dev.js
+          node --input-type=module --check < homeassistant/www/house-status-dev/lifeos-house-status-dev.js
           node --check homeassistant/www/house-status-dev/lifeos-house-status-doorbell.js
           node --input-type=module --check < homeassistant/www/house-status-dev/lifeos-house-status-dev-loader.js
           TZ=Europe/London node homeassistant/www/house-status-dev/test-isolation.js
