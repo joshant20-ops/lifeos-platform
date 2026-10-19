@@ -15,6 +15,7 @@ NAS_PATHS = {
     "PAPERLESS_INTAKE_MOUNT": "/mnt/synology/Joshan/Intake",
 }
 FSTAB = pathlib.Path("/etc/fstab")
+MOUNTINFO = pathlib.Path("/proc/self/mountinfo")
 FSTAB_MAX_BYTES = 262144
 MOUNT_UNIT_TARGETS = {
     "SYNOLOGY": "/mnt/synology",
@@ -81,6 +82,22 @@ def path_presence(path: str) -> str:
     try:
         target = pathlib.Path(path)
         return "YES" if target.is_dir() and not target.is_symlink() else "NO"
+    except OSError:
+        return "UNKNOWN"
+
+
+def mountinfo_state(target: str, path: pathlib.Path | None = None) -> str:
+    if target not in MOUNT_UNIT_TARGETS.values():
+        return "UNKNOWN"
+    path = path or MOUNTINFO
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 1048576:
+            return "UNKNOWN"
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            fields = line.split()
+            if len(fields) >= 5 and fields[4] == target:
+                return "MOUNTED"
+        return "UNMOUNTED"
     except OSError:
         return "UNKNOWN"
 
@@ -286,10 +303,19 @@ def main() -> int:
     print("PAPERLESS_SYNOLOGY_PATH_EXISTS=" + path_presence("/mnt/synology"))
     root_mount_state = mount_state("/mnt/synology")
     print("PAPERLESS_SYNOLOGY_MOUNT=" + root_mount_state)
+    root_mountinfo_state = mountinfo_state("/mnt/synology")
+    print("PAPERLESS_SYNOLOGY_PROC_MOUNTINFO=" + root_mountinfo_state)
     mount_substate, mount_result = mount_unit_diagnostic("/mnt/synology")
     print("PAPERLESS_SYNOLOGY_UNIT_SUBSTATE=" + mount_substate)
     print("PAPERLESS_SYNOLOGY_UNIT_RESULT=" + mount_result)
     print("PAPERLESS_SYNOLOGY_MOUNT_CONSISTENCY=" + mount_consistency(root_mount_state, mount_substate))
+    if root_mountinfo_state == "UNKNOWN":
+        kernel_mount_state = "UNKNOWN"
+    elif root_mountinfo_state == root_mount_state:
+        kernel_mount_state = "CONSISTENT"
+    else:
+        kernel_mount_state = "INCONSISTENT"
+    print("PAPERLESS_SYNOLOGY_KERNEL_MOUNT_CONSISTENCY=" + kernel_mount_state)
     for label, path in NAS_PATHS.items():
         print(label.replace("_MOUNT", "_PATH_EXISTS") + "=" + path_presence(path))
         print(f"{label}=" + mount_state(path))
