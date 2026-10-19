@@ -12,7 +12,7 @@ class LifeOSHouseStatusCard extends HTMLElement {
   static getStubConfig(){ return {mode:'domestic'}; }
   static getConfigElement(){ return document.createElement('lifeos-house-status-dev-editor-v2'); }
   setConfig(config){ this.config=config||{}; this.render(); }
-  set hass(hass){ this._hass=hass; const host=this._doorbellHost; if(this._mode==='doorbell'&&host?.isConnected){host.__lifeosDoorbellHass=hass;if(host.__lifeosCameraCard)host.__lifeosCameraCard.hass=hass;return;} this.render(); if(this._mode!=='doorbell')this._loadEnergyHistory(); }
+  set hass(hass){ this._hass=hass; const mode=this._mode||this.config?.mode||'domestic'; const host=this._doorbellHost; if(mode==='doorbell'&&host?.isConnected){host.__lifeosDoorbellHass=hass;try{if(host.__lifeosCameraCard)host.__lifeosCameraCard.hass=hass;}catch(error){console.warn('House Status Doorbell camera update failed',error);}return;} this.render(); if(mode!=='doorbell')this._loadEnergyHistory(); }
   period(){return this._period||'today';}
   anchor(){return this._anchor||new Date();}
   londonParts(value){return Object.fromEntries(new Intl.DateTimeFormat('en-GB',{timeZone:'Europe/London',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(value).filter(p=>p.type!=='literal').map(p=>[p.type,Number(p.value)]));}
@@ -45,6 +45,24 @@ class LifeOSHouseStatusCard extends HTMLElement {
     const moduleVersion=mode==='doorbell'?'Doorbell DEV':(mode==='home'?'House DEV':'Energy DEV');
     const anchorParts=this.londonParts(this.anchor());
     const nav=`<div class="hanav"><div class="hamb" role="button" tabindex="0" aria-label="Open Home Assistant menu">☰</div><div class="haitem ${mode==='domestic'?'active':''}" data-mode="domestic">⌂</div><div class="haitem ${mode==='flow'?'active':''}" data-mode="flow">⚡</div><div class="haitem ${mode==='home'?'active':''}" data-mode="home">▣</div><div class="haitem ${mode==='doorbell'?'active':''}" data-mode="doorbell">▥</div></div><div class="top"><div class="title">⌂ House Status DEV <span style="font-size:10px;opacity:.55;font-weight:400;margin-left:6px">${moduleVersion}</span></div><div class="controls">${mode!=='home'&&mode!=='doorbell'?'<div class="period"><div class="p '+(this.period()==='today'?'active':'')+'" data-period="today">Today</div><div class="p '+(this.period()==='day'?'active':'')+'" data-period="day">Day</div><div class="p '+(this.period()==='week'?'active':'')+'" data-period="week">Week</div><div class="p '+(this.period()==='month'?'active':'')+'" data-period="month">Month</div><div class="p '+(this.period()==='year'?'active':'')+'" data-period="year">Year</div><div class="p '+(this.period()==='range'?'active':'')+'" data-period="range">Date range</div></div>':''}<div class="datewrap"><div class="arrow" data-shift="-1">‹</div><label class="date">▣ ${this.anchor().toLocaleDateString('en-GB',{weekday:'short',day:'2-digit',month:'short',year:'numeric',timeZone:'Europe/London'})}<input class="dateinput" data-date-picker type="date" value="${anchorParts.year}-${String(anchorParts.month).padStart(2,'0')}-${String(anchorParts.day).padStart(2,'0')}"></label><div class="arrow" data-shift="1">›</div></div></div></div>`;
+    if(mode==='doorbell'){
+      this.dataset.module='doorbell';
+      const doorbell=window.LifeOSHouseStatusDevModules?.doorbell;
+      let body='<div class="panel"><div class="heading">Doorbell</div><div class="floor">DOORBELL MODULE UNAVAILABLE</div></div>';
+      try{if(doorbell?.render)body=doorbell.render(this._hass);}catch(error){console.warn('House Status Doorbell render failed',error);}
+      this.innerHTML=css+`<div class="app">${nav}${body}</div>`;
+      this._doorbellHost=this.querySelector('[data-doorbell-card]');
+      if(this._doorbellHost){
+        this._doorbellHost.__lifeosDoorbellHass=this._hass;
+        try{Promise.resolve(doorbell?.mount?.(this._doorbellHost,this._hass)).catch(error=>console.warn('House Status Doorbell mount failed',error));}catch(error){console.warn('House Status Doorbell mount failed',error);}
+      }
+      const menu=this.querySelector('.hamb');
+      if(menu){const openMenu=()=>this.dispatchEvent(new CustomEvent('hass-toggle-menu',{bubbles:true,composed:true}));menu.onclick=openMenu;menu.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openMenu();}};}
+      this.querySelectorAll('[data-mode]').forEach(el=>el.onclick=()=>{this._mode=el.dataset.mode;this.render();});
+      return;
+    }
+    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':'energy';
+    this.dataset.module=moduleOwner;
     const stamp=o=>new Date(o.valid_from||o.local_from||o.start||0).getTime();
     const liveReport=this._hass.states['sensor.lifeos_energy_report']?.attributes?.intervals||[];
     const historicalReport=this._energyHistory||[];
