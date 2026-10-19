@@ -100,3 +100,35 @@ def test_targeted_needs_me_searches_full_task_title_beyond_card_truncation(monke
     )
     assert result["result_ids"] == ["task-open"]
     assert result["result_count"] == 1
+
+
+def test_assistant_model_conversation_uses_native_local_json_mode(monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    governor = repo / "governor"
+    sys.path.insert(0, str(governor))
+    spec = importlib.util.spec_from_file_location(
+        "lifeos_assistant_bridge_json_test", governor / "assistant_bridge.py"
+    )
+    bridge = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bridge)
+    calls = []
+    monkeypatch.setattr(bridge, "process_pa_action", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bridge, "pa_structured_answer", lambda _question: None)
+    monkeypatch.setattr(
+        bridge,
+        "generate",
+        lambda prompt, **kwargs: calls.append(kwargs)
+        or {"text": '{"reply":"ok"}', "provider": "ollama"},
+    )
+
+    result = bridge.analyse(
+        [{"role": "user", "content": "Check overall health, read-only."}],
+        privacy_domain="personal-administration",
+    )
+    assert result["reply"] == "ok"
+    assert result["privacy"] == "local-only"
+    assert calls == [{"privacy": "local-only", "task_class": "normal", "response_format": "json"}]
