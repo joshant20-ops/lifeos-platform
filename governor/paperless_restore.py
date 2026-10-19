@@ -42,16 +42,29 @@ def compose(*args: str, timeout: int = 8) -> str | None:
 
 
 def inspect_service(service: str) -> dict | None:
-    raw_id = compose("ps", "--all", "--quiet", service)
-    ids = raw_id.splitlines() if raw_id else []
-    if len(ids) != 1:
+    raw_ids = command([
+        "docker", "ps", "--all", "--quiet",
+        "--filter", "label=com.docker.compose.project=paperless",
+    ], timeout=5)
+    ids = raw_ids.splitlines() if raw_ids else []
+    if not ids or len(ids) > 10:
         return None
-    raw = command(["docker", "inspect", ids[0]], timeout=8)
-    try:
-        value = json.loads(raw or "")
-        return value[0] if len(value) == 1 else None
-    except (json.JSONDecodeError, TypeError, IndexError):
-        return None
+    matches = []
+    for container_id in ids:
+        raw = command(["docker", "inspect", container_id], timeout=8)
+        try:
+            value = json.loads(raw or "")
+            if len(value) != 1:
+                return None
+            container = value[0]
+        except (json.JSONDecodeError, TypeError, IndexError):
+            return None
+        labels = container.get("Config", {}).get("Labels", {})
+        if labels.get("com.docker.compose.project") != "paperless":
+            continue
+        if labels.get("com.docker.compose.service") == service:
+            matches.append(container)
+    return matches[0] if len(matches) == 1 else None
 
 
 def safe_preflight() -> bool:
