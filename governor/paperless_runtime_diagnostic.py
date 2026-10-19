@@ -93,11 +93,15 @@ def mountinfo_state(target: str, path: pathlib.Path | None = None) -> str:
     try:
         if path.is_symlink() or not path.is_file() or path.stat().st_size > 1048576:
             return "UNKNOWN"
+        valid_records = 0
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             fields = line.split()
-            if len(fields) >= 5 and fields[4] == target:
+            if len(fields) < 10 or "-" not in fields[6:]:
+                continue
+            valid_records += 1
+            if fields[4] == target:
                 return "MOUNTED"
-        return "UNMOUNTED"
+        return "UNMOUNTED" if valid_records else "UNKNOWN"
     except OSError:
         return "UNKNOWN"
 
