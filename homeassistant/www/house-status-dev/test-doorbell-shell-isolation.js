@@ -5,7 +5,7 @@ const vm=require('node:vm');
 
 const base=__dirname;
 const sourcePath=process.env.HOUSE_STATUS_DEV_ASSET||path.join(base,'lifeos-house-status-dev.js');
-const source=fs.readFileSync(sourcePath,'utf8').replace(/^await import\([^\n]+\);\n/,'');
+const source=fs.readFileSync(sourcePath,'utf8').replace(/^try\{ await import\([^\n]+\); \} catch\(error\) \{ console\.warn\([^\n]+\); \}\n/,'');
 assert.match(source,/if\(mode==='doorbell'\)\{[\s\S]*?return;\s*\}\s*const moduleOwner=/,'Doorbell returns through its dedicated shell path before Energy ownership or rendering');
 assert.match(source,/const mode=this\._mode\|\|this\.config\?\.mode\|\|'domestic'; const host=this\._doorbellHost; if\(mode==='doorbell'&&host\?\.isConnected\)\{try\{host\.hass=hass/,'Doorbell mode is resolved from config and forwarded to its isolated element before Energy');
 assert.equal(source.split("querySelector('[data-lifeos-doorbell-camera]')").length-1,1,'only the active Doorbell branch targets the isolated element');
