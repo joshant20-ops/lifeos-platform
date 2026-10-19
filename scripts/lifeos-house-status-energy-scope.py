@@ -72,7 +72,7 @@ def _without_doorbell_shell(source: str) -> str | None:
     if dev_count not in (0, 1):
         return None
     if dev_count:
-        for value in dev_imports:
+        for value in sorted(dev_imports, key=len, reverse=True):
             text = text.replace(value, "__DOORBELL_IMPORT_BOUNDARY__", 1)
     # This selector appears only in the unreachable legacy post-render Doorbell fallback;
     # normalize its old/new host markers after stripping the active early-return branch.
@@ -114,7 +114,7 @@ def _builder_without_doorbell_functions(source: str) -> str:
             occurrences = sum(normalized.count(value) for value in variants)
         if occurrences != 2:
             raise ValueError("unexpected Doorbell import template count")
-        for value in variants:
+        for value in sorted(variants, key=len, reverse=True):
             normalized = normalized.replace(value, "__DOORBELL_IMPORT_BOUNDARY__")
     tree = ast.parse(normalized)
     tree.body = [
