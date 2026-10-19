@@ -26,6 +26,23 @@ STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
 SCAN_STATE=Path("/home/joshan/automation/state/lifeos_personal_task_scan.json")
 OUT=HA/"www/lifeos_tasks.json"
 MAX_MESSAGES=int(os.getenv("LIFEOS_TASK_EMAIL_LIMIT","6"))
+TASK_CLASSIFICATION_SCHEMA={
+    "type":"object",
+    "properties":{
+        "relevant":{"type":"boolean"},
+        "actionable":{"type":"boolean"},
+        "title":{"type":"string"},
+        "status":{"type":"string","enum":["OPEN","WAITING","DONE","NONE"]},
+        "due_date":{"type":["string","null"]},
+        "counterparty":{"type":["string","null"]},
+        "topic":{"type":"string"},
+        "severity":{"type":"string","enum":["LOW","NORMAL","HIGH"]},
+        "evidence_query":{"type":"string"},
+        "reason":{"type":"string"}
+    },
+    "required":["relevant","actionable","title","status","due_date","counterparty","topic","severity","evidence_query","reason"],
+    "additionalProperties":False
+}
 LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))
 STALE_DAYS=int(os.getenv("LIFEOS_TASK_STALE_DAYS","180"))
 
@@ -51,7 +68,7 @@ def classify(compact):
 Mark relevant=true for a meaningful update to an existing matter, including informational updates that do not create an obligation. Mark relevant=false for junk, marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not create obligations from informative events. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
 EMAIL:
 """+json.dumps(compact,ensure_ascii=False)
-    d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL,response_format="json"))
+    d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL,response_format=TASK_CLASSIFICATION_SCHEMA))
     if not isinstance(d,dict) or not isinstance(d.get("actionable"),bool): raise ValueError("invalid schema")
     if "relevant" not in d:d["relevant"]=bool(d["actionable"])
     if not isinstance(d.get("relevant"),bool): raise ValueError("invalid relevance")
