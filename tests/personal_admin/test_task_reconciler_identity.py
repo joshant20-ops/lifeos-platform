@@ -428,7 +428,9 @@ def test_reconciler_classification_requests_native_local_json(monkeypatch):
     )
     result = reconciler.classify({"subject": "Synthetic renewal"})
     assert result["actionable"] is True
-    assert calls == [{"response_format": "json"}]
+    assert calls == [{"response_format": reconciler.TASK_CLASSIFICATION_SCHEMA}]
+    assert reconciler.TASK_CLASSIFICATION_SCHEMA["additionalProperties"] is False
+    assert "actionable" in reconciler.TASK_CLASSIFICATION_SCHEMA["required"]
 
 
 def test_inference_failure_category_redacts_upstream_body():
