@@ -282,7 +282,7 @@ def test_paperless_diagnostic_probe_is_bounded_body_free_and_allowlisted(tmp_pat
         "if [ \"$1\" = volume ] || [ \"$1\" = network ]; then printf '%s\\n' \"$3\"; "
         "elif [ \"$1\" = compose ]; then exit 0; "
         "elif [ \"$1\" = ps ]; then case \" $* \" in *' --quiet '*) printf '%s\\n' private-container-id;; "
-        "*) printf '%s\\n' 'running|healthy';; esac; fi\n"
+        "*) printf '%s\\n' 'running|Up 4 minutes (healthy)';; esac; fi\n"
     )
     findmnt = bin_dir / "findmnt"
     findmnt.write_text("#!/bin/sh\nprintf '%s\\n' /mnt/synology\n")
