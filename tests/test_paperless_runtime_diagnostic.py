@@ -107,7 +107,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             self.assertEqual(audit.mountinfo_state("/mnt/synology/Joshan/Intake", mountinfo), "UNMOUNTED")
             self.assertEqual(audit.mountinfo_state("/etc", mountinfo), "UNKNOWN")
             mountinfo.write_text("invalid\\n")
-            self.assertEqual(audit.mountinfo_state("/mnt/synology", mountinfo), "UNMOUNTED")
+            self.assertEqual(audit.mountinfo_state("/mnt/synology", mountinfo), "UNKNOWN")
 
     def test_mount_check_accepts_synology_parent_mount_only(self):
         result = subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")
