@@ -136,6 +136,7 @@ def _ollama_once(prompt: str, model: str, response_format=None) -> str:
     payload = {"model": model, "prompt": prompt, "stream": False, "keep_alive": "30m", "options": {"num_ctx": OLLAMA_CONTEXT_LENGTH}}
     if response_format is not None:
         payload["format"] = response_format
+        payload["think"] = False
     result = _post_json(OLLAMA_URL, payload, timeout=max(1200, (2 * WAKE_TIMEOUT) + 600))
     text = str(result.get("response", "")).strip()
     if not text:
