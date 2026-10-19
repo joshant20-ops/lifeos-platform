@@ -12,7 +12,15 @@ APP_DATA = PROJECT / "data/data"
 NAS_PATHS = {
     "PAPERLESS_MEDIA_MOUNT": "/mnt/synology/Joshan/paperless_media",
     "PAPERLESS_EXPORT_MOUNT": "/mnt/synology/Joshan/paperless_export",
-    "PAPERLESS_INTAKE_MOUNT": "/mnt/synology/Intake",
+    "PAPERLESS_INTAKE_MOUNT": "/mnt/synology/Joshan/Intake",
+}
+FSTAB = pathlib.Path("/etc/fstab")
+FSTAB_MAX_BYTES = 262144
+MOUNT_UNIT_TARGETS = {
+    "SYNOLOGY": "/mnt/synology",
+    "MEDIA": NAS_PATHS["PAPERLESS_MEDIA_MOUNT"],
+    "EXPORT": NAS_PATHS["PAPERLESS_EXPORT_MOUNT"],
+    "INTAKE": NAS_PATHS["PAPERLESS_INTAKE_MOUNT"],
 }
 STATES = ("running", "exited", "created", "restarting", "paused", "dead", "removing", "unknown")
 HEALTHS = ("healthy", "unhealthy", "starting", "none", "unknown")
@@ -87,6 +95,65 @@ def mount_state(path: str) -> str:
     return "MOUNTED" if target == "/mnt/synology" or target.startswith("/mnt/synology/") else "UNMOUNTED"
 
 
+def fstab_targets(path: pathlib.Path | None = None) -> set[str] | None:
+    """Read only canonical mount targets from fstab; never return source/options."""
+    path = path or FSTAB
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > FSTAB_MAX_BYTES:
+            return None
+        raw = path.read_bytes()
+        if len(raw) > FSTAB_MAX_BYTES:
+            return None
+        targets = set()
+        for line in raw.decode("utf-8", errors="replace").splitlines():
+            fields = line.split("#", 1)[0].split()
+            if len(fields) < 2:
+                continue
+            target = fields[1].replace("\\040", " ").replace("\\011", "\t").replace("\\134", "\\")
+            if target in MOUNT_UNIT_TARGETS.values():
+                targets.add(target)
+        return targets
+    except OSError:
+        return None
+
+
+def _enabled_state(result: subprocess.CompletedProcess[str] | None) -> str:
+    if result is None:
+        return "UNKNOWN"
+    value = result.stdout.strip().lower()
+    if result.returncode == 0 and value in {"enabled", "enabled-runtime", "generated", "transient", "linked", "linked-runtime", "alias"}:
+        return "YES"
+    if value in {"disabled", "masked", "static", "indirect", "not-found", "bad"}:
+        return "NO"
+    return "UNKNOWN"
+
+
+def _active_state(result: subprocess.CompletedProcess[str] | None) -> str:
+    if result is None:
+        return "UNKNOWN"
+    value = result.stdout.strip().lower()
+    if result.returncode == 0 and value == "active":
+        return "YES"
+    if value in {"inactive", "failed"}:
+        return "NO"
+    return "UNKNOWN"
+
+
+def mount_unit_states(target: str) -> tuple[str, str]:
+    escaped = run(["systemd-escape", "--path", "--suffix=mount", target], timeout=3)
+    if escaped is None or escaped.returncode != 0:
+        return "UNKNOWN", "UNKNOWN"
+    unit = escaped.stdout.strip()
+    # systemd-escape --path emits ASCII alphanumerics plus '.', '_' and '-'
+    # for the fixed canonical mount targets audited below. Reject anything
+    # outside that safe unit-name alphabet before passing it to systemctl.
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.mount", unit):
+        return "UNKNOWN", "UNKNOWN"
+    enabled = run(["systemctl", "is-enabled", unit], timeout=3)
+    active = run(["systemctl", "is-active", unit], timeout=3)
+    return _enabled_state(enabled), _active_state(active)
+
+
 def resource_state(kind: str, name: str) -> str:
     result = run(["docker", kind, "inspect", name, "--format", "{{.Name}}"])
     if result is None:
@@ -154,6 +221,13 @@ def main() -> int:
     print("PAPERLESS_DB_DIR=" + directory_state(PROJECT / "data/db"))
     print("PAPERLESS_DB_PG_VERSION=" + present(DB_VERSION))
     print("PAPERLESS_APP_DATA_DIR=" + directory_state(APP_DATA))
+    defined_mounts = fstab_targets()
+    for label, target in MOUNT_UNIT_TARGETS.items():
+        fstab_status = "UNKNOWN" if defined_mounts is None else ("YES" if target in defined_mounts else "NO")
+        print(f"PAPERLESS_FSTAB_{label}={fstab_status}")
+        enabled, active = mount_unit_states(target)
+        print(f"PAPERLESS_MOUNT_UNIT_{label}_ENABLED={enabled}")
+        print(f"PAPERLESS_MOUNT_UNIT_{label}_ACTIVE={active}")
     for label, path in NAS_PATHS.items():
         print(label.replace("_MOUNT", "_PATH_EXISTS") + "=" + path_presence(path))
         print(f"{label}=" + mount_state(path))
