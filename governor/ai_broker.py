@@ -573,6 +573,22 @@ def chat(messages: list[dict], *, tools: list[dict] | None = None, tool_choice=N
     raise BrokerError("tool-capable providers exhausted: " + " | ".join(failures))
 
 
+def safe_provider_failure_category(exc: Exception) -> str:
+    """Return fixed diagnostics; never expose upstream or prompt content."""
+    if isinstance(exc, BrokerError):
+        message = str(exc)
+        prefix = "provider HTTP "
+        if message.startswith(prefix):
+            code = message[len(prefix):len(prefix) + 3]
+            if len(code) == 3 and code.isdigit():
+                return "HTTP_" + code
+        if message == "ollama returned empty response":
+            return "EMPTY_RESPONSE"
+        if message.startswith("provider request failed:"):
+            return "REQUEST_FAILED"
+    return "BROKER_ERROR"
+
+
 def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal", force_provider: str | None = None, response_format=None) -> dict:
     if privacy not in {"normal", "local-only"}:
         raise BrokerError("unsupported privacy class")
@@ -600,7 +616,7 @@ def generate(prompt: str, *, privacy: str = "normal", task_class: str = "normal"
                 text = _invoke(provider, prompt, secrets, response_format=response_format)
             return {"provider": pid, "model": _provider_model(provider), "privacy": privacy, "text": text, "considered": considered}
         except (BrokerError, KeyError) as exc:
-            failures.append(f"{pid}:{type(exc).__name__}")
+            failures.append(f"{pid}:{safe_provider_failure_category(exc)}")
             if privacy == "local-only":
                 break
     raise BrokerError("eligible providers exhausted: " + ",".join(failures))
