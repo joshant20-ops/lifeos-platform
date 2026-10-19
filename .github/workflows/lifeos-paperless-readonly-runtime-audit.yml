@@ -63,7 +63,7 @@ jobs:
               'This reports audit execution only; it does not start or change Paperless or its mounts.',
               'Run: https://github.com/' + context.repo.owner + '/' + context.repo.repo + '/actions/runs/' + context.runId,
               'Inspect the sanitized paperless-runtime-audit-' + context.runId + ' artifact for results.'
-            ].join('\\n');
+            ].join('\n');
             await github.rest.issues.createComment({
               ...context.repo,
               issue_number: issue.number,
