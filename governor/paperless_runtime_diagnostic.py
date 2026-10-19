@@ -111,9 +111,20 @@ def mount_state(path: str) -> str:
     if result is None:
         return "UNKNOWN"
     if result.returncode != 0:
+        # A failed findmnt invocation (for example, an unsupported option) does
+        # not prove the mount is absent. Keep the result unknown for safety.
+        return "UNKNOWN"
+    target = result.stdout.strip().rstrip("/") or ""
+    if not target:
+        return "UNKNOWN"
+    target = target or "/"
+    requested = path.rstrip("/") or "/"
+    synology_root = "/mnt/synology"
+    if target != synology_root and not target.startswith(synology_root + "/"):
         return "UNMOUNTED"
-    target = result.stdout.strip().rstrip("/") or "/"
-    return "MOUNTED" if target == "/mnt/synology" or target.startswith("/mnt/synology/") else "UNMOUNTED"
+    # The reported mountpoint must be an ancestor of the requested path.
+    # A nested mount cannot establish that the parent path is mounted.
+    return "MOUNTED" if requested == target or requested.startswith(target.rstrip("/") + "/") else "UNMOUNTED"
 
 
 def fstab_targets(path: pathlib.Path | None = None) -> set[str] | None:
