@@ -47,12 +47,14 @@ def text_of(msg):
 
 def classify(compact):
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
-{"actionable":true|false,"title":"short task","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
-Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
+{"relevant":true|false,"actionable":true|false,"title":"short task or event","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short matter topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
+Mark relevant=true for a meaningful update to an existing matter, including informational updates that do not create an obligation. Mark relevant=false for junk, marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not create obligations from informative events. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
 EMAIL:
 """+json.dumps(compact,ensure_ascii=False)
     d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL))
     if not isinstance(d,dict) or not isinstance(d.get("actionable"),bool): raise ValueError("invalid schema")
+    if "relevant" not in d:d["relevant"]=bool(d["actionable"])
+    if not isinstance(d.get("relevant"),bool): raise ValueError("invalid relevance")
     if str(d.get("status")) not in {"OPEN","WAITING","DONE","NONE"}: raise ValueError("invalid status")
     severity=str(d.get("severity","normal")).lower()
     d["severity"]=severity if severity in {"low","normal","high"} else "normal"
@@ -88,7 +90,7 @@ def case_reference_ids(msg):
             values.add(normalized)
     return values
 
-def record_source_event(task,msg,decision,observed):
+def record_source_event(task,msg,decision,observed,actionable=True):
     message_id=str(msg.get("message_id") or msg.get("source_ref") or "")[:300]
     source_ids=set(task.get("source_message_ids") or [])
     if message_id:source_ids.add(message_id)
@@ -103,9 +105,19 @@ def record_source_event(task,msg,decision,observed):
             "date":str(msg.get("date") or "")[:100],
             "title":str(decision.get("title") or "Email update")[:120],
             "status":str(decision.get("status") or "NONE")[:16],
+            "event_kind":"obligation" if actionable else "information",
         })
     events.sort(key=lambda event:(int(event.get("observed_at") or 0),str(event.get("message_id") or "")))
     task["timeline_events"]=events[-20:]
+
+def reconcile_information_event(tasks,task_id,msg,decision,observed):
+    """Append evidence to a matched matter without creating or mutating its obligation."""
+    task=tasks.get(task_id)
+    if not isinstance(task,dict):
+        return False
+    record_source_event(task,msg,decision,observed,actionable=False)
+    return True
+
 
 def thread_root(msg):
     refs=re.findall(r"<[^<>]+>",str(msg.get("references","")))
@@ -300,7 +312,7 @@ def _run_reconciler():
             d=classify(compact)
             processed.add(compact["source_ref"])
             processed_order.append(compact["source_ref"])
-            if not d["actionable"] or d["status"]=="NONE":continue
+            if not d["relevant"] or (d["actionable"] and d["status"]=="NONE"):continue
             k=key(d)
             if not k:continue
             observations.append((message_time(compact.get("date")),k,d,compact))
@@ -314,6 +326,9 @@ def _run_reconciler():
         task_id=resolve_task_id(d,msg,tasks)
         if not task_id:continue
         old=tasks.get(task_id,{})
+        if not d["actionable"]:
+            reconcile_information_event(tasks,task_id,msg,d,observed)
+            continue
         if old:
             record_source_event(old,msg,d,observed)
         if old and not observation_is_newer(old,observed):
