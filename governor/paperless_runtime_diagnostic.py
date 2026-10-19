@@ -192,9 +192,11 @@ def mount_unit_diagnostic(target: str) -> tuple[str, str]:
 def mount_consistency(mount: str, substate: str) -> str:
     if mount == "MOUNTED" and substate == "MOUNTED":
         return "CONSISTENT"
-    if mount == "UNMOUNTED" and substate == "UNMOUNTED":
+    if mount == "UNMOUNTED" and substate in {"UNMOUNTED", "FAILED"}:
         return "CONSISTENT"
-    if mount in {"MOUNTED", "UNMOUNTED"} and substate in {"MOUNTED", "UNMOUNTED", "FAILED"}:
+    if mount == "MOUNTED" and substate in {"UNMOUNTED", "FAILED"}:
+        return "INCONSISTENT"
+    if mount == "UNMOUNTED" and substate == "MOUNTED":
         return "INCONSISTENT"
     return "UNKNOWN"
 
