@@ -266,6 +266,10 @@ class ReleaseGovernance(unittest.TestCase):
         self.assertFalse(energy_scope.energy_acceptance_required(
             doorbell_import_paths,old_builder,builder_source,old_app,current_app),
             'the exact Doorbell import failure guard is isolated from Energy')
+        altered_import=current_app.replace(guarded,"try{ await import('/local/other.js'); } catch(error) { console.warn(error); }",1)
+        self.assertTrue(energy_scope.energy_acceptance_required(
+            doorbell_import_paths,old_builder,builder_source,old_app,altered_import),
+            'an unrecognized import boundary remains Energy-scoped')
         altered_builder=builder_source.replace('def normalize_app(', 'def normalize_app_unrelated_change(', 1)
         self.assertTrue(energy_scope.energy_acceptance_required(
             doorbell_import_paths,builder_source,altered_builder,old_app,current_app),
