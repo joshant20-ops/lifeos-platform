@@ -10,7 +10,7 @@ SCRIPT = REPO / "governor/scripts/deploy-pa-task-reconciler.sh"
 
 def test_actions_summary_filter_accepts_only_bounded_reconciler_markers():
     script = SCRIPT.read_text()
-    match = re.search(r"grep -E '([^']+)'", script)
+    match = re.search(r"grep -E '(\^TASK_\(FETCH\|CLASSIFICATION\)[^']+)'", script)
     assert match, "summary filter should use an explicit fixed-field allow-list"
     pattern = match.group(1)
     sample = "\n".join(
