@@ -31,8 +31,6 @@ class LifeOSHouseStatusCard extends HTMLElement {
   render(){
     if(!this._hass) return;
     const mode=this._mode||this.config?.mode||'domestic';
-    const moduleOwner=LifeOSEnergyModule.owns(mode)?'energy':LifeOSHouseModule.owns(mode)?'house':LifeOSDoorbellModule.owns(mode)?'doorbell':'energy';
-    this.dataset.module=moduleOwner;
     const css=`<style>
       :host{display:block;border:2px solid #b568ff;--bg:#061720;--panel:#081c27;--line:#163747;--text:#f4f7f9;--muted:#b8c6ce;--blue:#a55cff}
       *{box-sizing:border-box}.app{background:linear-gradient(145deg,#061720,#031018);color:var(--text);border-radius:14px;padding:14px;font-family:var(--paper-font-body1_-_font-family,Arial,sans-serif)}
