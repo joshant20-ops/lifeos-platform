@@ -67,6 +67,8 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_REVERSE_PROXY_NETWORK=PRESENT", output)
         self.assertIn("PAPERLESS_FSTAB_SYNOLOGY=YES", output)
         self.assertIn("PAPERLESS_SYNOLOGY_MOUNT=MOUNTED", output)
+        self.assertIn("PAPERLESS_SYNOLOGY_FINDMNT_RELATION=EXACT", output)
+        self.assertIn("PAPERLESS_MEDIA_FINDMNT_RELATION=ANCESTOR", output)
         self.assertIn("PAPERLESS_SYNOLOGY_PROC_MOUNTINFO=MOUNTED", output)
         self.assertIn("PAPERLESS_SYNOLOGY_KERNEL_MOUNT_CONSISTENCY=CONSISTENT", output)
         self.assertIn("PAPERLESS_SYNOLOGY_UNIT_SUBSTATE=MOUNTED", output)
@@ -209,3 +211,18 @@ def test_mount_check_treats_empty_success_output_as_unknown():
     result = subprocess.CompletedProcess([], 0, "", "")
     with patch.object(audit, "run", return_value=result):
         assert audit.mount_state("/mnt/synology") == "UNKNOWN"
+
+
+def test_findmnt_relation_uses_fixed_categories_without_returning_paths():
+    cases = [
+        ("/mnt/synology", 0, "/mnt/synology\\n", ("MOUNTED", "EXACT")),
+        ("/mnt/synology/child", 0, "/mnt/synology\\n", ("MOUNTED", "ANCESTOR")),
+        ("/mnt/synology", 0, "/mnt/synology/child\\n", ("UNMOUNTED", "DESCENDANT")),
+        ("/mnt/synology", 0, "/\\n", ("UNMOUNTED", "HOST_ROOT")),
+        ("/mnt/synology", 1, "", ("UNKNOWN", "COMMAND_FAILED")),
+        ("/mnt/synology", 0, "", ("UNKNOWN", "EMPTY_OUTPUT")),
+    ]
+    for path, code, stdout, expected in cases:
+        result = subprocess.CompletedProcess([], code, stdout, "private details")
+        with patch.object(audit, "run", return_value=result):
+            assert audit.mount_state_diagnostic(path) == expected
