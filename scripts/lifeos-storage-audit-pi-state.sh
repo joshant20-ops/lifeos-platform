@@ -1,93 +1,190 @@
 #!/usr/bin/env bash
-# Fixed read-only audit of Pi storage topology and persistent-data placement.
-set -Eeuo pipefail
+# Fixed read-only audit of Pi storage topology, migration state, and runtime.
+# Every probe is bounded/best-effort so an inactive Docker daemon cannot hide
+# later safety evidence. No command in this script mutates host state.
+set -u -o pipefail
 
 SSD=/mnt/docker-data
+STACK=/opt/stacks
+SSD_STACK=/mnt/docker-data/opt-stacks
+ROLLBACK=/opt/stacks.sd-rollback-20261017
+MIGRATION_STATE=/var/lib/lifeos-storage-migration
 EXPECTED_UUID=a53fd6a0-c498-4b76-a496-0e5d9233447f
-echo "UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-echo "OPERATION=storage-audit-pi-state"
-echo "EXPECTED_SSD_UUID=$EXPECTED_UUID"
-echo "--- filesystem ---"
-df -hT / "$SSD" /opt/stacks 2>&1
-for p in "$SSD" /opt/stacks /home/joshan /home/joshan/lifeos-platform /home/joshan/automation /opt/actions-runner-lifeos /opt/actions-runner-lifeos/_work /var/mail/joshan /var/swap; do
-  [[ -e "$p" ]] || continue
-  echo "PATH=$p"
-  findmnt -n -o SOURCE,FSTYPE,UUID,TARGET,OPTIONS -T "$p" || true
-  stat -c 'STAT=dev:%d bytes:%s mode:%a owner:%U:%G' "$p" 2>/dev/null || true
-  if [[ -d "$p" ]]; then du -sx --block-size=1 "$p" 2>/dev/null || true; fi
-done
+DOCKER_READY=NO
 
-echo "--- fstab sanitized ---"
+section() { printf '\n--- %s ---\n' "$1"; }
+probe_state() {
+  local unit="$1" active enabled
+  active=$(systemctl is-active "$unit" 2>/dev/null || true)
+  enabled=$(systemctl is-enabled "$unit" 2>/dev/null || true)
+  printf 'UNIT_%s_ACTIVE=%s\n' "${unit//[^A-Za-z0-9]/_}" "${active:-unknown}"
+  printf 'UNIT_%s_ENABLED=%s\n' "${unit//[^A-Za-z0-9]/_}" "${enabled:-unknown}"
+}
+path_state() {
+  local label="$1" path="$2"
+  if [[ -e "$path" ]]; then
+    printf '%s=PRESENT\n' "$label"
+    timeout 20 du -sx --block-size=1 "$path" 2>/dev/null | awk -v k="$label" '{print k "_BYTES=" $1}' || printf '%s_BYTES=UNKNOWN\n' "$label"
+    stat -c "${label}_MODE=%a ${label}_OWNER=%U:%G ${label}_MTIME=%y" "$path" 2>/dev/null || true
+  else
+    printf '%s=ABSENT\n' "$label"
+  fi
+}
+
+printf 'UTC=%s\nOPERATION=storage-audit-pi-state\nEXPECTED_SSD_UUID=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$EXPECTED_UUID"
+
+section 'filesystem and UUIDs'
+for path in / "$SSD" "$STACK" "$SSD_STACK" "$ROLLBACK"; do
+  findmnt -n -o TARGET,SOURCE,FSTYPE,UUID,OPTIONS -T "$path" 2>/dev/null || printf 'FINDMNT_%s=UNAVAILABLE\n' "${path//\//_}"
+done
+df -hT / "$SSD" "$STACK" 2>&1 || true
+lsblk -o NAME,TYPE,FSTYPE,UUID,MOUNTPOINTS 2>/dev/null || true
+
+section 'fstab migration entries (credentials redacted)'
 python3 - <<'PY'
 from pathlib import Path
-for raw in Path('/etc/fstab').read_text(errors='replace').splitlines():
-    line=raw.strip()
-    if not line or line.startswith('#'):
-        continue
-    cols=line.split()
-    if len(cols) < 4:
-        print('FSTAB_MALFORMED=' + line[:240])
-        continue
-    options=[]
-    for item in cols[3].split(','):
-        key=item.split('=',1)[0]
-        options.append(key + ('=<redacted>' if key.lower() in {'password','passwd','credentials','username','user'} and '=' in item else ('='+item.split('=',1)[1] if '=' in item else '')))
-    print('FSTAB=' + ' '.join(cols[:3]) + ' ' + ','.join(options))
+wanted = {"/mnt/docker-data", "/mnt/docker-data/opt-stacks", "/opt/stacks"}
+try:
+    lines = Path('/etc/fstab').read_text(errors='replace').splitlines()
+except OSError:
+    print('FSTAB_READ=UNAVAILABLE')
+else:
+    count = 0
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith('#'):
+            continue
+        cols = line.split()
+        if len(cols) < 4 or cols[1].replace('\\040', ' ') not in wanted:
+            continue
+        opts = []
+        for item in cols[3].split(','):
+            key, sep, value = item.partition('=')
+            opts.append(key + ('=<redacted>' if sep and key.lower() in {'password','passwd','credentials','username','user'} else (sep + value if sep else '')))
+        print('FSTAB=' + ' '.join((cols[0], cols[1], cols[2], ','.join(opts))))
+        count += 1
+    print(f'FSTAB_MIGRATION_ENTRY_COUNT={count}')
 PY
 
-echo "--- docker ---"
-docker info --format 'DOCKER_ROOT={{.DockerRootDir}}'
-docker ps --format 'CONTAINER={{.Names}} STATUS={{.Status}}'
-docker ps -a --format 'CONTAINER_ALL={{.Names}} STATUS={{.Status}}'
-docker compose ls --all --format json 2>&1 | python3 -c '
-import json,sys
-raw=sys.stdin.read()
-try:
-    data=json.loads(raw)
-except Exception:
-    print("COMPOSE_PROJECTS_JSON_PARSE=FAILED")
-    print("COMPOSE_PROJECTS_RAW=" + raw[:3000])
-    raise SystemExit(0)
-for project in data:
-    print("COMPOSE_PROJECT=" + json.dumps({k:project.get(k) for k in ("Name","Status","ConfigFiles")}, sort_keys=True))
-'
-docker inspect $(docker ps -aq) | python3 -c '
-import json,sys
-items=json.load(sys.stdin)
-for c in items:
-    name=(c.get("Name") or "").lstrip("/")
-    state=c.get("State") or {}
-    health=((state.get("Health") or {}).get("Status") or "no-healthcheck")
-    labels=c.get("Config",{}).get("Labels") or {}
-    print(f"CONTAINER_DETAIL={name} state={state.get("Status")} health={health}")
-    print("COMPOSE_METADATA=" + json.dumps({k:labels.get(k) for k in ("com.docker.compose.project","com.docker.compose.project.working_dir","com.docker.compose.project.config_files")},sort_keys=True))
-    for m in c.get("Mounts",[]):
-        print("CONTAINER_MOUNT=" + json.dumps({k:m.get(k) for k in ("Type","Name","Source","Destination","RW")},sort_keys=True))
-' || { echo "DOCKER_INSPECT_AUDIT=FAIL"; exit 1; }
-
-echo "--- systemd and timers ---"
-systemctl --failed --no-legend --plain
-systemctl list-units --type=service --state=running --no-legend --plain
-systemctl list-timers --all --no-legend --plain
-systemctl show docker.service containerd.service -p Id -p ActiveState -p SubState -p Requires -p Wants -p After -p FragmentPath -p ExecStart
-
-echo "--- runner ---"
-systemctl list-units --all --type=service --no-legend --plain | grep -Ei 'runner|actions' || true
-ps -eo comm= | grep -Ei 'Runner|actions' || true
-
-echo "--- canonical stack manifests ---"
-find /opt/stacks -maxdepth 3 -type f \( -name docker-compose.yml -o -name compose.yml \) -print 2>/dev/null | sort
-echo "--- data footprint ---"
-du -x -d1 -h /opt/stacks /home/joshan /opt /var/mail /var 2>/dev/null | sort -h | tail -100 || true
-echo "--- swap and mail ---"
-swapon --show --bytes
-ls -ldh /var/swap /var/mail/joshan 2>/dev/null || true
-if [[ -f /var/mail/joshan ]]; then
-  echo "MAIL_SPOOL_BYTES=$(stat -c %s /var/mail/joshan)"
-  echo "MAIL_SPOOL_MTIME=$(stat -c %y /var/mail/joshan)"
-  echo "MAIL_SPOOL_MESSAGE_COUNT=$(grep -c '^From ' /var/mail/joshan || true)"
-  echo "MAIL_SPOOL_OWNER=$(stat -c %U:%G /var/mail/joshan)"
-elif [[ -d /var/mail/joshan ]]; then
-  find /var/mail/joshan -maxdepth 2 -type f -printf 'MAIL_FILE=%p bytes=%s mtime=%TY-%Tm-%TdT%TH:%TM:%TS\\n'
+section 'docker and containerd unit state/dependencies'
+probe_state docker.service
+probe_state containerd.service
+systemctl show docker.service containerd.service -p Id -p ActiveState -p SubState -p Requires -p Wants -p After -p BindsTo -p FragmentPath 2>/dev/null | sed -E 's#(/[^ ]*(docker|containerd)[^ ]*)#<path-redacted>#g' || true
+for dropin in /etc/systemd/system/docker.service.d/*.conf; do
+  [[ -f "$dropin" ]] || continue
+  printf 'DOCKER_DROPIN_PRESENT=%s\n' "$(basename "$dropin")"
+  sha256sum "$dropin" | awk '{print "DOCKER_DROPIN_SHA256=" $1}'
+  grep -E '^(RequiresMountsFor|BindsTo|After|Requires|ExecStartPre)=' "$dropin" 2>/dev/null | sed -E 's#(ExecStartPre=).*#\1<present>#' || true
+done
+guard=/usr/local/sbin/lifeos-require-opt-stacks-ssd
+if [[ -f "$guard" && ! -L "$guard" ]]; then
+  echo 'SSD_GUARD=PRESENT'
+  sha256sum "$guard" | awk '{print "SSD_GUARD_SHA256=" $1}'
+  for token in "$EXPECTED_UUID" '/opt/stacks' '/mnt/docker-data/opt-stacks'; do
+    if grep -Fq -- "$token" "$guard"; then printf 'SSD_GUARD_HAS_EXPECTED_TOKEN=YES\n'; else printf 'SSD_GUARD_HAS_EXPECTED_TOKEN=NO\n'; fi
+  done
+else
+  echo 'SSD_GUARD=ABSENT_OR_UNSAFE'
 fi
-echo "RESULT=PASS"
+
+section 'docker runtime (non-fatal if unavailable)'
+if root=$(docker info --format '{{.DockerRootDir}}' 2>/dev/null); then
+  DOCKER_READY=YES
+  printf 'DOCKER_STATE=AVAILABLE\nDOCKER_ROOT=%s\n' "${root:-UNKNOWN}"
+  docker ps --format 'RUNNING_CONTAINER={{.Names}} STATUS={{.Status}}' 2>/dev/null || echo 'DOCKER_PS_RUNNING=UNAVAILABLE'
+  docker ps -a --format 'ALL_CONTAINER={{.Names}} STATUS={{.Status}}' 2>/dev/null || echo 'DOCKER_PS_ALL=UNAVAILABLE'
+  docker compose ls --all --format json 2>/dev/null | python3 -c '
+import json,sys
+try: rows=json.load(sys.stdin)
+except Exception: print("COMPOSE_PROJECTS=UNAVAILABLE"); raise SystemExit
+for row in rows:
+ print("COMPOSE_PROJECT=" + json.dumps({k:row.get(k) for k in ("Name","Status","ConfigFiles")},sort_keys=True))
+' || true
+  ids=$(docker ps -aq 2>/dev/null || true)
+  if [[ -n "$ids" ]]; then
+    docker inspect $ids 2>/dev/null | python3 -c '
+import json,sys
+try: rows=json.load(sys.stdin)
+except Exception: print("DOCKER_INSPECT=UNAVAILABLE"); raise SystemExit
+for c in rows:
+ s=c.get("State") or {}; labels=(c.get("Config") or {}).get("Labels") or {}
+ n=(c.get("Name") or "").lstrip("/")
+ h=((s.get("Health") or {}).get("Status") or "no-healthcheck")
+ print("CONTAINER=" + json.dumps({"name":n,"state":s.get("Status"),"health":h,"compose_project":labels.get("com.docker.compose.project"),"compose_workdir":labels.get("com.docker.compose.project.working_dir"),"compose_files":labels.get("com.docker.compose.project.config_files")},sort_keys=True))
+ for m in c.get("Mounts",[]):
+  print("CONTAINER_MOUNT=" + json.dumps({k:m.get(k) for k in ("Type","Source","Destination","RW")},sort_keys=True))
+' || echo 'DOCKER_INSPECT=UNAVAILABLE'
+  else
+    echo 'CONTAINER_COUNT=0'
+  fi
+else
+  echo 'DOCKER_STATE=UNAVAILABLE'
+  echo 'DOCKER_ROOT=UNAVAILABLE'
+  echo 'CONTAINER_INVENTORY=UNAVAILABLE_DAEMON_STOPPED'
+  echo 'COMPOSE_PROJECT_INVENTORY=UNAVAILABLE_DAEMON_STOPPED'
+fi
+section 'migration paths and rollback state'
+path_state ACTIVE_STACK "$STACK"
+path_state SSD_STACK "$SSD_STACK"
+path_state SD_ROLLBACK "$ROLLBACK"
+path_state MIGRATION_STATE "$MIGRATION_STATE"
+if [[ -d "$MIGRATION_STATE" ]]; then
+  find "$MIGRATION_STATE" -maxdepth 2 -type f -printf 'MIGRATION_STATE_FILE=%P bytes=%s mtime=%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | sort || true
+fi
+if [[ -d "$ROLLBACK" ]]; then
+  find "$ROLLBACK" -mindepth 1 -maxdepth 1 -printf 'ROLLBACK_TOP_LEVEL=%f type=%y\n' 2>/dev/null | sort || true
+fi
+
+section 'process references to active, staged, or rollback stack paths'
+python3 - <<'PY'
+import os
+needles = (b'/opt/stacks', b'/mnt/docker-data/opt-stacks')
+count = 0
+for entry in os.scandir('/proc'):
+    if not entry.name.isdigit(): continue
+    pid = entry.name
+    try:
+        comm = open(f'/proc/{pid}/comm', 'rb').read(128).strip().decode(errors='replace')
+    except OSError: comm = 'unknown'
+    refs = []
+    for label, path in [('cwd', f'/proc/{pid}/cwd'), ('root', f'/proc/{pid}/root')]:
+        try:
+            target = os.readlink(path)
+            if any(n.decode() in target for n in needles): refs.append(label)
+        except OSError: pass
+    try:
+        for fd in os.scandir(f'/proc/{pid}/fd'):
+            try:
+                target = os.readlink(fd.path)
+                if any(n.decode() in target for n in needles): refs.append('fd'); break
+            except OSError: pass
+    except OSError: pass
+    if refs:
+        print(f'PROCESS_PATH_REFERENCE=pid:{pid} comm:{comm} via:{",".join(sorted(set(refs)))}')
+        count += 1
+print(f'PROCESS_PATH_REFERENCE_COUNT={count}')
+PY
+
+section 'running services, failed services, timers, runner'
+systemctl --failed --no-legend --plain 2>/dev/null | sed -E 's#(/[^ ]+)#<path-redacted>#g' || true
+systemctl list-units --type=service --state=running --no-legend --plain 2>/dev/null | awk '{print "RUNNING_SERVICE=" $1 " " $3 " " $4}' || true
+systemctl list-timers --all --no-legend --plain 2>/dev/null | awk '{print "TIMER=" $1 " " $2 " " $3 " " $4 " " $5 " " $6}' || true
+systemctl list-units --all --type=service --no-legend --plain 2>/dev/null | grep -Ei 'actions\.runner|runner' | awk '{print "RUNNER_UNIT=" $1 " " $3 " " $4}' || true
+
+section 'canonical stack manifests and storage footprint'
+find "$STACK" -maxdepth 4 -type f \( -name docker-compose.yml -o -name compose.yml \) -print 2>/dev/null | sort | sed 's#^#ACTIVE_STACK_MANIFEST=#' || true
+for p in /home/joshan /home/joshan/lifeos-platform /opt/actions-runner-lifeos /opt/actions-runner-lifeos/_work /var/mail/joshan /var/swap; do
+  [[ -e "$p" ]] || continue
+  printf 'FOOTPRINT_PATH=%s ' "$p"
+  findmnt -n -o SOURCE,UUID,TARGET -T "$p" 2>/dev/null | tr '\n' ' '
+  timeout 20 du -sx --block-size=1 "$p" 2>/dev/null | awk '{print "bytes=" $1}' || echo 'bytes=UNKNOWN'
+done
+if command -v swapon >/dev/null 2>&1; then swapon --show --bytes 2>/dev/null || true; fi
+if [[ -f /var/mail/joshan ]]; then
+  printf 'MAIL_SPOOL_BYTES=%s\n' "$(stat -c %s /var/mail/joshan 2>/dev/null || echo UNKNOWN)"
+  printf 'MAIL_SPOOL_MTIME=%s\n' "$(stat -c %y /var/mail/joshan 2>/dev/null || echo UNKNOWN)"
+  printf 'MAIL_SPOOL_MESSAGE_COUNT=%s\n' "$(grep -c '^From ' /var/mail/joshan 2>/dev/null || true)"
+fi
+
+echo 'AUDIT_MUTATIONS=NONE'
+echo 'RESULT=PASS'
