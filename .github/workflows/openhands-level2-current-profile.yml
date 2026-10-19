@@ -112,7 +112,7 @@ jobs:
           api_key="$(docker exec lifeos-agent-canvas cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
           test -n "$api_key"
           python3 - "$api_key" <<'PY'
-          import json, os, pathlib, subprocess, sys, time, urllib.request, uuid
+          import json, os, subprocess, sys, time, urllib.request, uuid
 
           key=sys.argv[1]
           token=os.environ["ACCEPTANCE_GITHUB_TOKEN"]
