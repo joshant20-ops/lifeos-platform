@@ -12,7 +12,7 @@ import re
 import subprocess
 import sys
 
-PACKAGER_VERSION = 1
+PACKAGER_VERSION = 2
 REPO = pathlib.Path(__file__).resolve().parents[1]
 DEFAULT_SOURCE = REPO / 'homeassistant' / 'www' / 'house-status-dev'
 
@@ -34,6 +34,7 @@ def normalize_app(dev: str, release: str, doorbell_hash: str) -> str:
         ('lifeos-house-status-dev-editor-v2', 'lifeos-house-status-editor', 3),
         ('LifeOS House Status Development v2', f'LifeOS House Status {release}', 1),
         ('lifeos-house-status-dev', f'lifeos-house-status-{release}', 3),
+        ('lifeos-doorbell-camera-dev', f'lifeos-doorbell-camera-v{n}', 2),
         ('LifeOSHouseStatusDevModules', 'LifeOSHouseStatusModules', 3),
         ('LifeOSHouseStatusModules?.doorbell', f'LifeOSHouseStatusModules?.doorbellV{n}', 3),
         ('House Status DEV', 'House Status', 2),
@@ -49,13 +50,15 @@ def normalize_app(dev: str, release: str, doorbell_hash: str) -> str:
 
 def normalize_doorbell(dev: str, release: str) -> str:
     n = int(release[1:])
-    out=replace_exact(dev, 'LifeOSHouseStatusDevModules', 'LifeOSHouseStatusModules', 3)
+    out=replace_exact(dev, 'lifeos-doorbell-camera-dev', f'lifeos-doorbell-camera-v{n}', 2)
+    out=replace_exact(out, 'LifeOSHouseStatusDevModules', 'LifeOSHouseStatusModules', 3)
     out=replace_exact(out, 'window.LifeOSHouseStatusModules.doorbell=', f'window.LifeOSHouseStatusModules.doorbellV{n}=', 1)
     return replace_exact(out, 'Doorbell DEV', f'Doorbell {release}', 1)
 
 def denormalize_doorbell(live: str, release: str) -> str:
     n = int(release[1:])
-    out=replace_exact(live, f'Doorbell {release}', 'Doorbell DEV', 1)
+    out=replace_exact(live, f'lifeos-doorbell-camera-v{n}', 'lifeos-doorbell-camera-dev', 2)
+    out=replace_exact(out, f'Doorbell {release}', 'Doorbell DEV', 1)
     out=replace_exact(out, f'window.LifeOSHouseStatusModules.doorbellV{n}=', 'window.LifeOSHouseStatusModules.doorbell=', 1)
     return replace_exact(out, 'LifeOSHouseStatusModules', 'LifeOSHouseStatusDevModules', 3)
 
@@ -66,6 +69,7 @@ def denormalize_app(live: str, release: str, doorbell_hash: str) -> str:
          "await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());", 1),
         ('lifeos-house-status-editor', 'lifeos-house-status-dev-editor-v2', 3),
         (f'LifeOS House Status {release}', 'LifeOS House Status Development v2', 1),
+        (f'lifeos-doorbell-camera-v{n}', 'lifeos-doorbell-camera-dev', 2),
         (f'lifeos-house-status-{release}', 'lifeos-house-status-dev', 3),
         (f'LifeOSHouseStatusModules?.doorbellV{n}', 'LifeOSHouseStatusDevModules?.doorbell', 3),
         (f'Doorbell {release}', 'Doorbell DEV', 1),
@@ -109,7 +113,7 @@ def main() -> int:
         raise SystemExit('HOUSE_STATUS_RELEASE_YEAR_POWER_DOWN=FAIL')
     if 'periodWindow(){return [this.periodStart(),this.periodEnd()];}' not in live_app:
         raise SystemExit('HOUSE_STATUS_RELEASE_ROLLING_PERIODS=FAIL')
-    if any(x in live_app + live_bell for x in ('/local/house-status-dev/', 'lifeos-house-status-dev', 'LifeOSHouseStatusDevModules', 'DEV source-backed')):
+    if any(x in live_app + live_bell for x in ('/local/house-status-dev/', 'lifeos-house-status-dev', 'LifeOSHouseStatusDevModules', 'lifeos-doorbell-camera-dev', 'DEV source-backed')):
         raise SystemExit('HOUSE_STATUS_RELEASE_ENVIRONMENT_ISOLATION=FAIL')
     app_bytes = live_app.encode()
     source_identity = args.source_commit or subprocess.check_output(['git','rev-parse','HEAD'],cwd=REPO,text=True).strip()
