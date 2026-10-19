@@ -5,6 +5,8 @@ on:
     workflows: ["OpenHands Native UI Deploy"]
     types: [completed]
   workflow_dispatch:
+  issues:
+    types: [opened]
 
 permissions:
   contents: read
@@ -15,7 +17,7 @@ concurrency:
 
 jobs:
   audit:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' || (github.event_name == 'issues' && github.event.issue.title == 'LifeOS Audit: OpenHands current profile')
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 10
     steps:
@@ -106,23 +108,31 @@ jobs:
             echo "OPENHANDS_GPT_OSS_STATE_${phase}=PASS"
           }
 
-          verify_persisted_state BEFORE_RESTART
+          EVENT_NAME="${{ github.event_name }}"
+          verify_persisted_state CURRENT
 
-          systemctl --user restart lifeos-openhands-ui.service
-          for _ in $(seq 1 60); do
-            curl -fsS --connect-timeout 2               http://127.0.0.1:18000/alive >/dev/null 2>&1 && break
-            sleep 2
-          done
-          curl -fsS http://127.0.0.1:18000/alive >/dev/null
-
-          verify_persisted_state AFTER_RESTART
+          if [[ "$EVENT_NAME" == "issues" ]]; then
+            echo "OPENHANDS_GPT_OSS_RESTART_TEST=SKIPPED_READ_ONLY"
+          else
+            systemctl --user restart lifeos-openhands-ui.service
+            for _ in $(seq 1 60); do
+              curl -fsS --connect-timeout 2 http://127.0.0.1:18000/alive >/dev/null 2>&1 && break
+              sleep 2
+            done
+            curl -fsS http://127.0.0.1:18000/alive >/dev/null
+            verify_persisted_state AFTER_RESTART
+          fi
 
           docker exec lifeos-agent-canvas test -d /projects/lifeos-platform/.git
           docker exec lifeos-agent-canvas             git -C /projects/lifeos-platform remote get-url origin |
             grep -qx 'https://github.com/joshant20-ops/lifeos-platform.git'
 
           echo "OPENHANDS_GPT_OSS_ACTIVE_PROFILE=PASS"
-          echo "OPENHANDS_GPT_OSS_PERSISTENCE=PASS"
+          if [[ "$EVENT_NAME" == "issues" ]]; then
+            echo "OPENHANDS_GPT_OSS_CURRENT_STATE_AUDIT=PASS"
+          else
+            echo "OPENHANDS_GPT_OSS_PERSISTENCE=PASS"
+          fi
           echo "OPENHANDS_SWITCH_LLM_DISABLED=PASS"
           echo "OPENHANDS_ACCEPTED_ARCHITECTURE_UNCHANGED=PASS"
           echo "OPENHANDS_UI_SETTINGS_AUDIT=PASS"
