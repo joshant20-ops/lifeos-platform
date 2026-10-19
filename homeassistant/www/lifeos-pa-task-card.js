@@ -40,6 +40,18 @@ class LifeOSPATaskCard extends HTMLElement {
           evidence.push('<a target="_blank" rel="noopener noreferrer" href="' + this._escape(paperlessBase + "/documents/" + encodeURIComponent(doc.document_id)) + '">Paperless #' + this._escape(doc.document_id) + '</a>');
         }
       }
+      const timelineEvents = (Array.isArray(task.timeline_events) ? task.timeline_events : []).slice(-4);
+      const timeline = timelineEvents.map((event) => {
+        const when = Number(event?.observed_at) > 0
+          ? new Date(Number(event.observed_at) * 1000).toLocaleDateString()
+          : "";
+        const state = String(event?.status || "").toUpperCase();
+        return '<div class="timeline-event">' +
+          (when ? '<time>' + this._escape(when) + '</time> · ' : '') +
+          this._escape(event?.title || "Email update") +
+          (state && state !== "NONE" ? ' · ' + this._escape(state) : '') +
+          '</div>';
+      }).join("");
       const notes = (task.user_comments || []).slice(-3).map((comment) =>
         '<div class="note"><strong>Your note</strong> · ' + this._escape(comment.text) + '</div>'
       ).join("");
@@ -59,6 +71,7 @@ class LifeOSPATaskCard extends HTMLElement {
       return '<article><div class="title">' + this._escape(task.title || "Untitled obligation") + '</div>' +
         '<div class="meta">' + this._escape(status) + ' · ' + this._escape(task.severity || "normal") + due + snooze + '</div>' +
         (evidence.length ? '<div class="evidence">' + evidence.join(" · ") + '</div>' : '<div class="evidence">No linked evidence reference</div>') +
+        (timeline ? '<div class="timeline"><strong>Recent timeline</strong>' + timeline + '</div>' : '') +
         notes + controls + '</article>';
     }).join("");
 
@@ -66,7 +79,7 @@ class LifeOSPATaskCard extends HTMLElement {
       ':host{display:block}ha-card{padding:16px}.summary{color:var(--secondary-text-color);margin:4px 0 12px}' +
       '.list{display:grid;gap:10px}article{border:1px solid var(--divider-color);border-radius:10px;padding:12px}' +
       '.title{font-weight:650}.meta,.evidence,.note{font-size:.85rem;color:var(--secondary-text-color);margin-top:5px}' +
-      '.evidence a{color:var(--primary-color)}.controls{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}' +
+      '.evidence a{color:var(--primary-color)}.timeline{font-size:.85rem;margin-top:8px}.timeline-event{color:var(--secondary-text-color);margin-top:3px}.timeline-event time{font-variant-numeric:tabular-nums}.controls{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}' +
       'button{border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:8px;padding:7px 10px;cursor:pointer}' +
       'button:disabled{opacity:.5}.empty{color:var(--secondary-text-color)}' +
       '</style><ha-card><h2>' + this._escape(this._config.title || "Personal Attention") + '</h2>' +

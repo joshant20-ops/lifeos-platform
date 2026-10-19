@@ -14,6 +14,23 @@ def safe_markdown(value):
     value=html.escape(str(value or "Untitled task")[:160],quote=False)
     return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])",r"\\\1",value)
 
+def project_timeline_events(events):
+    """Expose a short, content-free timeline while keeping message IDs in provenance."""
+    projected=[]
+    for event in events or []:
+        if not isinstance(event,dict):
+            continue
+        try:
+            observed_at=int(event.get("observed_at") or 0)
+        except (TypeError,ValueError):
+            continue
+        title=str(event.get("title") or "Email update")[:120]
+        status=str(event.get("status") or "NONE").upper()
+        if status not in {"OPEN","WAITING","DONE","NONE"}:
+            status="NONE"
+        projected.append({"observed_at":observed_at,"title":title,"status":status})
+    return projected[-20:]
+
 def main():
     try:
         payload = apply_user_state(json.loads(TASKS.read_text()), read_user_state())
@@ -35,7 +52,7 @@ def main():
         all_tasks = (payload.get("tasks") or []) + (payload.get("resolved") or [])
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "snoozed": x.get("id") in snoozed_ids}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ][:100]
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"

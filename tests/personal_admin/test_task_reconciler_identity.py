@@ -93,3 +93,98 @@ def test_briefing_is_bounded_and_uses_only_structured_projection():
     assert briefing["confidence"]=="structured_state_only"
     assert len(briefing["items"])==5
     assert briefing["summary"].startswith("Needs you: 8;")
+
+
+def test_exact_case_reference_groups_cross_thread_messages_and_preserves_timeline():
+    original = {
+        "message_id": "<case-open@example.test>",
+        "source_ref": "<case-open@example.test>",
+        "subject": "Case reference: UK-HB-42/AB12",
+        "date": "Mon, 19 Oct 2026 09:00:00 +0100",
+    }
+    update = {
+        "message_id": "<case-update@example.test>",
+        "source_ref": "<case-update@example.test>",
+        "subject": "Reference # UK_HB_42-AB12",
+        "date": "Mon, 19 Oct 2026 10:00:00 +0100",
+    }
+    first = decision("renewal request")
+    second = decision("documents received")
+    task_id = reconciler.resolve_task_id(first, original, {})
+    task = {
+        "id": task_id,
+        "identity_semantic": reconciler.key(first),
+        "thread_root_id": original["message_id"],
+        "counterparty": "Acme",
+        "case_reference_ids": sorted(reconciler.case_reference_ids(original)),
+        "source_message_ids": [],
+        "timeline_events": [],
+    }
+
+    assert reconciler.case_reference_ids(original) == {"UKHB42AB12"}
+    assert reconciler.case_reference_ids(update) == {"UKHB42AB12"}
+    assert reconciler.resolve_task_id(second, update, {task_id: task}) == task_id
+
+    reconciler.record_source_event(task, original, first, 100)
+    reconciler.record_source_event(task, update, second, 200)
+    reconciler.record_source_event(task, update, second, 200)
+    assert task["source_message_ids"] == sorted([original["message_id"], update["message_id"]])
+    assert [event["message_id"] for event in task["timeline_events"]] == [
+        original["message_id"], update["message_id"],
+    ]
+
+
+def test_case_reference_does_not_group_different_matters_for_same_counterparty():
+    first = {
+        "message_id": "<case-a@example.test>",
+        "subject": "Case reference: UK-10001",
+    }
+    second = {
+        "message_id": "<case-b@example.test>",
+        "subject": "Case reference: UK-20002",
+    }
+    item = decision("claim update")
+    first_id = reconciler.resolve_task_id(item, first, {})
+    existing = {
+        first_id: {
+            "id": first_id,
+            "identity_semantic": reconciler.key(item),
+            "thread_root_id": first["message_id"],
+            "counterparty": "Acme",
+            "case_reference_ids": sorted(reconciler.case_reference_ids(first)),
+            "source_message_ids": [first["message_id"]],
+        }
+    }
+    second_id = reconciler.resolve_task_id(item, second, existing)
+    assert second_id != first_id
+
+
+def test_no_reference_similar_topic_messages_remain_separate():
+    first = {"message_id": "<renewal-a@example.test>", "subject": "Renewal paperwork"}
+    second = {"message_id": "<renewal-b@example.test>", "subject": "Renewal paperwork"}
+    item = decision("renewal paperwork", counterparty="Acme")
+    first_id = reconciler.resolve_task_id(item, first, {})
+    second_id = reconciler.resolve_task_id(item, second, {})
+    assert first_id != second_id
+
+
+def test_attention_timeline_projection_exposes_only_bounded_summary_fields():
+    from pathlib import Path
+    import sys
+
+    scripts = REPO / "homelab/live/opt/stacks/homeassistant/config/scripts"
+    sys.path.insert(0, str(scripts))
+    import lifeos_pa_task_attention_sensor as sensor
+
+    projected = sensor.project_timeline_events([
+        {
+            "message_id": "<private@example.test>",
+            "observed_at": 100,
+            "title": "Claim update",
+            "status": "WAITING",
+            "body": "private body must not be published",
+        },
+    ])
+    assert projected == [{"observed_at": 100, "title": "Claim update", "status": "WAITING"}]
+    assert "message_id" not in str(projected)
+    assert "private body" not in str(projected)
