@@ -244,6 +244,18 @@ def test_local_json_mode_uses_ollama_format_parameter(monkeypatch):
     assert calls[0]["format"] == "json"
 
 
+def test_local_json_schema_is_forwarded_to_ollama_format(monkeypatch):
+    schema = {"type": "object", "required": ["answer"]}
+    calls = []
+    monkeypatch.setattr(
+        BROKER,
+        "_post_json",
+        lambda url, payload, **kwargs: calls.append(payload) or {"response": '{"answer":"ok"}'},
+    )
+    assert BROKER._ollama_once("structured prompt", "current-model", response_format=schema) == '{"answer":"ok"}'
+    assert calls[0]["format"] == schema
+
+
 def test_unstructured_ollama_calls_keep_default_request_format(monkeypatch):
     calls = []
     monkeypatch.setattr(
