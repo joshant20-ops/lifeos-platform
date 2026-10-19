@@ -244,6 +244,43 @@ def test_local_json_mode_uses_ollama_format_parameter(monkeypatch):
     assert calls[0]["format"] == "json"
 
 
+def test_ollama_retries_one_empty_completion_only(monkeypatch):
+    calls = []
+
+    def responses(*args, **kwargs):
+        calls.append((args, kwargs))
+        if len(calls) == 1:
+            raise BROKER.BrokerError("ollama returned empty response")
+        return '{"ok":true}'
+
+    monkeypatch.setattr(BROKER, "_ollama_once", responses)
+    assert BROKER._ollama("private prompt", "gpt-oss:20b", response_format="json") == '{"ok":true}'
+    assert len(calls) == 2
+    assert all(call[1]["response_format"] == "json" for call in calls)
+
+
+def test_ollama_does_not_retry_nonempty_failure_or_repeated_empty(monkeypatch):
+    calls = []
+
+    def fail(*args, **kwargs):
+        calls.append(1)
+        raise BROKER.BrokerError("provider HTTP 400: upstream details")
+
+    monkeypatch.setattr(BROKER, "_ollama_once", fail)
+    with pytest.raises(BROKER.BrokerError):
+        BROKER._ollama("private prompt", "gpt-oss:20b", response_format="json")
+    assert len(calls) == 1
+
+    calls.clear()
+    def empty(*args, **kwargs):
+        calls.append(1)
+        raise BROKER.BrokerError("ollama returned empty response")
+    monkeypatch.setattr(BROKER, "_ollama_once", empty)
+    with pytest.raises(BROKER.BrokerError, match="empty response"):
+        BROKER._ollama("private prompt", "gpt-oss:20b", response_format="json")
+    assert len(calls) == 2
+
+
 def test_local_json_schema_is_forwarded_to_ollama_format(monkeypatch):
     schema = {"type": "object", "required": ["answer"]}
     calls = []
