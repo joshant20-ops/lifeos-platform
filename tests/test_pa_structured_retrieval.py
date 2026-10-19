@@ -102,7 +102,7 @@ def test_targeted_needs_me_searches_full_task_title_beyond_card_truncation(monke
     assert result["result_count"] == 1
 
 
-def test_assistant_model_conversation_uses_native_local_json_mode(monkeypatch):
+def test_assistant_model_conversation_uses_native_local_json_schema(monkeypatch):
     import importlib.util
     import sys
     from pathlib import Path
@@ -131,4 +131,6 @@ def test_assistant_model_conversation_uses_native_local_json_mode(monkeypatch):
     )
     assert result["reply"] == "ok"
     assert result["privacy"] == "local-only"
-    assert calls == [{"privacy": "local-only", "task_class": "normal", "response_format": "json"}]
+    assert calls == [{"privacy": "local-only", "task_class": "normal", "response_format": bridge.ASSISTANT_RESPONSE_SCHEMA}]
+    assert bridge.ASSISTANT_RESPONSE_SCHEMA["additionalProperties"] is False
+    assert "reply" in bridge.ASSISTANT_RESPONSE_SCHEMA["required"]

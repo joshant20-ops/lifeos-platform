@@ -83,6 +83,21 @@ ready_to_run: boolean. True only when the engineering intent is sufficiently cle
 proposed_job: a complete self-contained engineering brief suitable for the LifeOS autonomous agent, or empty string when not ready.
 """
 
+ASSISTANT_RESPONSE_SCHEMA={
+    "type":"object",
+    "properties":{
+        "reply":{"type":"string"},
+        "understanding":{"type":"string"},
+        "needs_clarification":{"type":"boolean"},
+        "clarifying_question":{"type":"string"},
+        "improvements":{"type":"array","items":{"type":"string"},"maxItems":4},
+        "ready_to_run":{"type":"boolean"},
+        "proposed_job":{"type":"string"}
+    },
+    "required":["reply","understanding","needs_clarification","clarifying_question","improvements","ready_to_run","proposed_job"],
+    "additionalProperties":False
+}
+
 
 def _read_pa_task_state(now_ts=None):
     try:
@@ -405,7 +420,7 @@ def analyse(messages, privacy_domain=None, client_key="local"):
     # engineering brief may cross the sanitized engineering boundary.
     privacy = "local-only"
     prompt = SYSTEM + "\n\nConversation:\n" + "\n".join(history) + "\n\nReturn the JSON now."
-    routed = generate(prompt, privacy=privacy, task_class="normal", response_format="json")
+    routed = generate(prompt, privacy=privacy, task_class="normal", response_format=ASSISTANT_RESPONSE_SCHEMA)
     parsed = json.loads(routed["text"])
     return {
         "reply": str(parsed.get("reply", "")),
