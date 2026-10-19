@@ -84,6 +84,10 @@ OPS = {
         'script': 'scripts/lifeos-paperless-runtime-audit.sh',
         'privileged': True,
     },
+    'restore-paperless': {
+        'script': 'scripts/lifeos-paperless-restore.sh',
+        'privileged': True,
+    },
     'deploy-p0-resilience': {
         'script': 'scripts/lifeos-deploy-p0-resilience.sh',
         'privileged': True,
