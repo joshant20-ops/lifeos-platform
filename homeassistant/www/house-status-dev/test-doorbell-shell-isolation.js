@@ -38,7 +38,7 @@ querySelectorAll(selector){if(selector==='[data-mode]')return this.modeButtons;r
   const card=new Card();card.setConfig({mode:'doorbell'});
   const hass={states};card.hass=hass;
   assert.equal(card.dataset.module,'doorbell');
-  assert.match(card.innerHTML,/[data-lifeos-doorbell-camera]/);
+  assert.ok(card.innerHTML.includes('data-lifeos-doorbell-camera'));
   assert.equal(renderCalls.length,1);assert.equal(renderCalls[0],hass);
   assert.equal(mountCalls.length,1);assert.equal(mountCalls[0].hass,hass);
   assert.equal(card.doorbellHost.hass,hass);
