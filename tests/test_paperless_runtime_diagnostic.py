@@ -189,3 +189,23 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_mount_check_does_not_treat_nested_mount_as_parent_mount():
+    result = subprocess.CompletedProcess(
+        [], 0, "/mnt/synology/Joshan/paperless_media\\n", ""
+    )
+    with patch.object(audit, "run", return_value=result):
+        assert audit.mount_state("/mnt/synology") == "UNMOUNTED"
+
+
+def test_mount_check_treats_findmnt_command_failure_as_unknown():
+    result = subprocess.CompletedProcess([], 1, "", "private diagnostic")
+    with patch.object(audit, "run", return_value=result):
+        assert audit.mount_state("/mnt/synology") == "UNKNOWN"
+
+
+def test_mount_check_treats_empty_success_output_as_unknown():
+    result = subprocess.CompletedProcess([], 0, "", "")
+    with patch.object(audit, "run", return_value=result):
+        assert audit.mount_state("/mnt/synology") == "UNKNOWN"
