@@ -276,6 +276,29 @@ jobs:
                       "earliest_unmet":ledger["earliest_unmet"],
                       "stalled":ledger["stalled"],
                   },sort_keys=True),flush=True)
+
+                  # Persist a secret-safe checkpoint before any acceptance failure can exit.
+                  evidence_record={
+                      "schema_version":1,
+                      "workflow_run_id":os.environ.get("GITHUB_RUN_ID"),
+                      "run_attempt":os.environ.get("GITHUB_RUN_ATTEMPT"),
+                      "head_sha":os.environ.get("GITHUB_SHA"),
+                      "conversation_id":actual,
+                      "terminal_state":state,
+                      "recovery_round":recovery_round,
+                      "snapshot":snapshot,
+                      "ledger":{
+                          "complete":ledger.get("complete",False),
+                          "earliest_unmet":ledger.get("earliest_unmet"),
+                          "stalled":ledger.get("stalled",False),
+                      },
+                      "conversation_evidence":evidence,
+                  }
+                  evidence_path=pathlib.Path(os.environ["RUNNER_TEMP"])/"openhands-level2-evidence.json"
+                  temporary=evidence_path.with_suffix(".tmp")
+                  temporary.write_text(json.dumps(evidence_record,sort_keys=True)+"\\n")
+                  temporary.replace(evidence_path)
+                  print("OPENHANDS_LEVEL2_CURRENT_PROFILE_EVIDENCE="+json.dumps(evidence_record,sort_keys=True),flush=True)
                   if ledger["complete"]:
                       break
                   request("/api/conversations/"+actual+"/events","POST",{
@@ -359,3 +382,12 @@ jobs:
           print("OPENHANDS_LEVEL2_INDEPENDENT_INVENTORY_ASSERTION=PASS")
           PY
           echo OPENHANDS_LEVEL2_CURRENT_PROFILE=PASS
+
+      - name: Retain sanitized current-profile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhands-level2-evidence-${{ github.run_id }}
+          path: ${{ runner.temp }}/openhands-level2-evidence.json
+          if-no-files-found: ignore
+          retention-days: 30
