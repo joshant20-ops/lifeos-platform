@@ -32,7 +32,7 @@ class PaperlessReadOnlyAuditTriggerTests(unittest.TestCase):
             workflow,
         )
         self.assertIn(
-            '|| "$LIFEOS_OPERATION" == "audit-paperless-runtime" ]]; then',
+            '|| "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then',
             workflow,
         )
 
