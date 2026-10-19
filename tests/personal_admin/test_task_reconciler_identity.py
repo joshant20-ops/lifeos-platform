@@ -429,3 +429,26 @@ def test_reconciler_classification_requests_native_local_json(monkeypatch):
     result = reconciler.classify({"subject": "Synthetic renewal"})
     assert result["actionable"] is True
     assert calls == [{"response_format": "json"}]
+
+
+def test_inference_failure_category_redacts_upstream_body():
+    error = reconciler.ai_broker.BrokerError(
+        "provider HTTP 400: private model response and prompt data"
+    )
+    assert reconciler.safe_classification_error_category(error) == "UPSTREAM_HTTP_400"
+
+
+def test_unknown_inference_failure_category_is_fixed():
+    error = reconciler.ai_broker.BrokerError(
+        "provider HTTP response contained sensitive details"
+    )
+    assert reconciler.safe_classification_error_category(error) == "BROKER_OTHER"
+
+
+def test_pa_reconciler_deploy_fails_closed_on_nonzero_error_count():
+    script = (REPO / "governor/scripts/deploy-pa-task-reconciler.sh").read_text()
+    assert "TASK_CLASSIFICATION_ERROR_CATEGORIES=[A-Z0-9_,=]+" in script
+    assert "TASK_RECONCILER_ERROR_GATE=FAIL" in script
+    assert script.index("TASK_CLASSIFICATION_ERROR_CATEGORIES") < script.index(
+        "TASK_RECONCILER_ERROR_GATE=FAIL"
+    )
