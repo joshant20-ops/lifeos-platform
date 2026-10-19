@@ -177,7 +177,7 @@ class ReleaseGovernance(unittest.TestCase):
         proposed={'schema_version':1,'approved_production':{'release':'v30','artifact_sha256':'a'*64},'promotion_candidate':candidate,'previous_production_release':'v28','previous_production_artifact_sha256':self.manifest['approved_production']['artifact_sha256'],'next_candidate_release':'v31'}
         self.assertEqual(gate.select_release(proposed,'v30','a'*64)['release'],'v30')
         import json as _json
-        att={'packager_version':builder.PACKAGER_VERSION,'release':'v30','source_commit':'b'*40,'packager_commit':'b'*40,'dev_app_sha256':'c'*64,'dev_doorbell_sha256':'d'*64,'live_app_sha256':'a'*64,'live_doorbell_sha256':'e'*64}
+        att={'packager_version':1,'release':'v30','source_commit':'b'*40,'packager_commit':'b'*40,'dev_app_sha256':'c'*64,'dev_doorbell_sha256':'d'*64,'live_app_sha256':'a'*64,'live_doorbell_sha256':'e'*64}
         logs=('HOUSE_STATUS_DEV_SERVED_ASSET=PASS\nHOUSE_STATUS_DEV_SERVED_SHA256='+'c'*64+'\nHOUSE_STATUS_DEV_LIVE_ACCEPTANCE=PASS\nHOUSE_STATUS_DEV_ROLLING_WEEK_MONTH_YEAR=PASS\nYEAR_POWER_DOWN_RENDERING=HIDDEN\nHOUSE_STATUS_RELEASE_ATTESTATION='+_json.dumps(att))
         run={'name':'House Status Development Deploy','path':'.github/workflows/house-status-dev-deploy.yml','event':'push','head_branch':'main','head_sha':'b'*40,'status':'completed','conclusion':'success','run_attempt':1}
         gate.validate_dev_evidence(candidate,run,logs)
