@@ -50,14 +50,14 @@ def normalize_app(dev: str, release: str, doorbell_hash: str) -> str:
 
 def normalize_doorbell(dev: str, release: str) -> str:
     n = int(release[1:])
-    out=replace_exact(dev, 'lifeos-doorbell-camera-dev', f'lifeos-doorbell-camera-v{n}', 2)
+    out=replace_exact(dev, 'lifeos-doorbell-camera-dev', f'lifeos-doorbell-camera-v{n}', 4)
     out=replace_exact(out, 'LifeOSHouseStatusDevModules', 'LifeOSHouseStatusModules', 3)
     out=replace_exact(out, 'window.LifeOSHouseStatusModules.doorbell=', f'window.LifeOSHouseStatusModules.doorbellV{n}=', 1)
     return replace_exact(out, 'Doorbell DEV', f'Doorbell {release}', 1)
 
 def denormalize_doorbell(live: str, release: str) -> str:
     n = int(release[1:])
-    out=replace_exact(live, f'lifeos-doorbell-camera-v{n}', 'lifeos-doorbell-camera-dev', 2)
+    out=replace_exact(live, f'lifeos-doorbell-camera-v{n}', 'lifeos-doorbell-camera-dev', 4)
     out=replace_exact(out, f'Doorbell {release}', 'Doorbell DEV', 1)
     out=replace_exact(out, f'window.LifeOSHouseStatusModules.doorbellV{n}=', 'window.LifeOSHouseStatusModules.doorbell=', 1)
     return replace_exact(out, 'LifeOSHouseStatusModules', 'LifeOSHouseStatusDevModules', 3)
