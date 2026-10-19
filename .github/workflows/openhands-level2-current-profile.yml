@@ -154,6 +154,12 @@ jobs:
               "9. Create a pull request.\n"
               "10. Check CI and respond to failures.\n"
           )
+          ledger_objectives += (
+              "\nTask focus: the hydrated issue and comments immediately above are the active task's authoritative context. "
+              "Do not switch to repository-wide backlog items or list the whole repository. "
+              "Inspect files directly relevant to those acceptance criteria. "
+              "If dedicated GitHub tools are unavailable, use the supplied issue context and available repository tools."
+          )
           prompt=hydrated+"\n"+ledger_objectives+"\n"+(
               "Continue the staged OpenHands autonomous-engineering acceptance "
               "testing in joshant20-ops/lifeos-platform.\n\n"
