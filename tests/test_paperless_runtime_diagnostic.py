@@ -20,12 +20,23 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             (root / "data/db").mkdir(parents=True)
             (root / "data/db/PG_VERSION").write_text("16-secret-value\n")
             (root / "data/data").mkdir()
+            fstab = root / "fstab"
+            fstab.write_text(
+                "/dev/disk/by-id/private /mnt/synology nfs credentials=/private/secret 0 0\n"
+                "/dev/disk/by-id/private-nested /mnt/synology/Joshan/Intake nfs credentials=/private/secret 0 0\n"
+            )
             calls = []
 
             def fake_run(args, timeout=4):
                 calls.append((args, timeout))
                 if args[0] == "findmnt":
                     return subprocess.CompletedProcess(args, 0, "/mnt/synology\n", "private source path")
+                if args[0] == "systemd-escape":
+                    return subprocess.CompletedProcess(args, 0, "mnt-synology.mount\n", "")
+                if args[:2] == ["systemctl", "is-enabled"]:
+                    return subprocess.CompletedProcess(args, 0, "generated\n", "")
+                if args[:2] == ["systemctl", "is-active"]:
+                    return subprocess.CompletedProcess(args, 0, "active\n", "")
                 if args[:3] in (["docker", "volume", "inspect"], ["docker", "network", "inspect"]):
                     return subprocess.CompletedProcess(args, 0, args[3] + "\n", "")
                 if args[:2] == ["docker", "compose"]:
@@ -38,7 +49,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
                     return subprocess.CompletedProcess(args, 0, "200", "sensitive response body")
                 raise AssertionError(args)
 
-            with patch.object(audit, "PROJECT", root), patch.object(audit, "COMPOSE", root / "docker-compose.yml"), patch.object(audit, "DB_VERSION", root / "data/db/PG_VERSION"), patch.object(audit, "APP_DATA", root / "data/data"), patch.object(audit, "run", side_effect=fake_run):
+            with patch.object(audit, "PROJECT", root), patch.object(audit, "COMPOSE", root / "docker-compose.yml"), patch.object(audit, "DB_VERSION", root / "data/db/PG_VERSION"), patch.object(audit, "APP_DATA", root / "data/data"), patch.object(audit, "FSTAB", fstab), patch.object(audit, "run", side_effect=fake_run):
                 with patch("sys.stdout") as stdout:
                     audit.main()
                     output = "".join(call.args[0] for call in stdout.write.call_args_list)
@@ -48,12 +59,17 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
         self.assertIn("PAPERLESS_DB_PG_VERSION=YES", output)
         self.assertIn("PAPERLESS_REDIS_VOLUME=PRESENT", output)
         self.assertIn("PAPERLESS_REVERSE_PROXY_NETWORK=PRESENT", output)
+        self.assertIn("PAPERLESS_FSTAB_SYNOLOGY=YES", output)
+        self.assertIn("PAPERLESS_FSTAB_MEDIA=NO", output)
+        self.assertIn("PAPERLESS_FSTAB_INTAKE=YES", output)
+        self.assertIn("PAPERLESS_MOUNT_UNIT_SYNOLOGY_ENABLED=YES", output)
+        self.assertIn("PAPERLESS_MOUNT_UNIT_SYNOLOGY_ACTIVE=YES", output)
         self.assertIn("PAPERLESS_CONTAINER_COUNT=3", output)
         self.assertIn("PAPERLESS_API_HTTP_STATUS=200", output)
         self.assertIn("PAPERLESS_8010_PUBLISHED=YES", output)
         self.assertIn("PAPERLESS_CONTAINER_STATE_UNKNOWN=1", output)
         self.assertIn("PAPERLESS_CONTAINER_HEALTH_UNKNOWN=1", output)
-        for private in ("do-not-print-this-secret", "16-secret-value", "private source path", "hidden compose diagnostics", "container details", "container-id", "sensitive response body"):
+        for private in ("do-not-print-this-secret", "16-secret-value", "private source path", "hidden compose diagnostics", "container details", "container-id", "sensitive response body", "/dev/disk/by-id", "credentials=/private/secret"):
             self.assertNotIn(private, output)
         self.assertTrue(all(timeout <= 8 for _, timeout in calls))
         self.assertFalse(any(args[1] in {"up", "down", "start", "stop", "restart", "rm", "pull"} for args, _ in calls if args[0] == "docker"))
@@ -64,7 +80,31 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             self.assertEqual(audit.mount_state("/mnt/synology/Joshan/paperless_media"), "MOUNTED")
         root_mount = subprocess.CompletedProcess([], 0, "/\n", "")
         with patch.object(audit, "run", return_value=root_mount):
-            self.assertEqual(audit.mount_state("/mnt/synology/Intake"), "UNMOUNTED")
+            self.assertEqual(audit.mount_state("/mnt/synology/Joshan/Intake"), "UNMOUNTED")
+
+    def test_compose_consume_mount_uses_exact_canonical_intake_path(self):
+        self.assertEqual(audit.NAS_PATHS["PAPERLESS_INTAKE_MOUNT"], "/mnt/synology/Joshan/Intake")
+        with patch.object(audit, "run", return_value=subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")) as mocked:
+            self.assertEqual(audit.mount_state(audit.NAS_PATHS["PAPERLESS_INTAKE_MOUNT"]), "MOUNTED")
+        self.assertEqual(mocked.call_args.args[0][4], "/mnt/synology/Joshan/Intake")
+
+    def test_fstab_parser_returns_only_canonical_target_presence(self):
+        with tempfile.TemporaryDirectory() as temp:
+            fstab = pathlib.Path(temp) / "fstab"
+            fstab.write_text("server:/private /mnt/synology nfs secrets=hidden 0 0\n")
+            self.assertEqual(audit.fstab_targets(fstab), {"/mnt/synology"})
+            self.assertIsNone(audit.fstab_targets(pathlib.Path(temp) / "missing"))
+
+    def test_mount_unit_state_normalizes_only_fixed_values(self):
+        def fake_run(args, timeout=4):
+            if args[0] == "systemd-escape":
+                return subprocess.CompletedProcess(args, 0, "mnt-synology.mount\n", "")
+            if args[1] == "is-enabled":
+                return subprocess.CompletedProcess(args, 0, "generated\n", "private unit details")
+            return subprocess.CompletedProcess(args, 0, "active\n", "private runtime details")
+
+        with patch.object(audit, "run", side_effect=fake_run):
+            self.assertEqual(audit.mount_unit_states("/mnt/synology"), ("YES", "YES"))
 
     def test_command_errors_are_sanitized(self):
         with patch.object(audit.subprocess, "run", side_effect=FileNotFoundError("sensitive command path")):
