@@ -33,7 +33,7 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             def fake_run(args, timeout=4):
                 calls.append((args, timeout))
                 if args[0] == "findmnt":
-                    return subprocess.CompletedProcess(args, 0, "/mnt/synology\n", "private source path")
+                    return subprocess.CompletedProcess(args, 0, "/mnt/synology nfs4\n", "private source path")
                 if args[0] == "systemd-escape":
                     return subprocess.CompletedProcess(args, 0, "mnt-synology.mount\n", "")
                 if args[:2] == ["systemctl", "is-enabled"]:
@@ -112,16 +112,16 @@ class PaperlessRuntimeDiagnosticTests(unittest.TestCase):
             self.assertEqual(audit.mountinfo_state("/mnt/synology", mountinfo), "UNKNOWN")
 
     def test_mount_check_accepts_synology_parent_mount_only(self):
-        result = subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")
+        result = subprocess.CompletedProcess([], 0, "/mnt/synology nfs4\n", "")
         with patch.object(audit, "run", return_value=result):
             self.assertEqual(audit.mount_state("/mnt/synology/Joshan/paperless_media"), "MOUNTED")
-        root_mount = subprocess.CompletedProcess([], 0, "/\n", "")
+        root_mount = subprocess.CompletedProcess([], 0, "/ ext4\n", "")
         with patch.object(audit, "run", return_value=root_mount):
             self.assertEqual(audit.mount_state("/mnt/synology/Joshan/Intake"), "UNMOUNTED")
 
     def test_compose_consume_mount_uses_exact_canonical_intake_path(self):
         self.assertEqual(audit.NAS_PATHS["PAPERLESS_INTAKE_MOUNT"], "/mnt/synology/Joshan/Intake")
-        with patch.object(audit, "run", return_value=subprocess.CompletedProcess([], 0, "/mnt/synology\n", "")) as mocked:
+        with patch.object(audit, "run", return_value=subprocess.CompletedProcess([], 0, "/mnt/synology nfs4\n", "")) as mocked:
             self.assertEqual(audit.mount_state(audit.NAS_PATHS["PAPERLESS_INTAKE_MOUNT"]), "MOUNTED")
         self.assertEqual(mocked.call_args.args[0][4], "/mnt/synology/Joshan/Intake")
 
@@ -195,7 +195,7 @@ if __name__ == "__main__":
 
 def test_mount_check_does_not_treat_nested_mount_as_parent_mount():
     result = subprocess.CompletedProcess(
-        [], 0, "/mnt/synology/Joshan/paperless_media\\n", ""
+        [], 0, "/mnt/synology/Joshan/paperless_media nfs4\\n", ""
     )
     with patch.object(audit, "run", return_value=result):
         assert audit.mount_state("/mnt/synology") == "UNMOUNTED"
@@ -215,10 +215,10 @@ def test_mount_check_treats_empty_success_output_as_unknown():
 
 def test_findmnt_relation_uses_fixed_categories_without_returning_paths():
     cases = [
-        ("/mnt/synology", 0, "/mnt/synology\\n", ("MOUNTED", "EXACT")),
-        ("/mnt/synology/child", 0, "/mnt/synology\\n", ("MOUNTED", "ANCESTOR")),
-        ("/mnt/synology", 0, "/mnt/synology/child\\n", ("UNMOUNTED", "DESCENDANT")),
-        ("/mnt/synology", 0, "/\\n", ("UNMOUNTED", "HOST_ROOT")),
+        ("/mnt/synology", 0, "/mnt/synology nfs4\\n", ("MOUNTED", "EXACT")),
+        ("/mnt/synology/child", 0, "/mnt/synology nfs4\\n", ("MOUNTED", "ANCESTOR")),
+        ("/mnt/synology", 0, "/mnt/synology/child nfs4\\n", ("UNMOUNTED", "DESCENDANT")),
+        ("/mnt/synology", 0, "/ overlay\\n", ("UNMOUNTED", "HOST_ROOT")),
         ("/mnt/synology", 1, "", ("UNKNOWN", "COMMAND_FAILED")),
         ("/mnt/synology", 0, "", ("UNKNOWN", "EMPTY_OUTPUT")),
     ]
@@ -226,3 +226,25 @@ def test_findmnt_relation_uses_fixed_categories_without_returning_paths():
         result = subprocess.CompletedProcess([], code, stdout, "private details")
         with patch.object(audit, "run", return_value=result):
             assert audit.mount_state_diagnostic(path) == expected
+
+def test_findmnt_accepts_stacked_autofs_and_nfs4_rows():
+    result = subprocess.CompletedProcess(
+        [], 0, "/mnt/synology autofs\\n/mnt/synology nfs4\\n", ""
+    )
+    with patch.object(audit, "run", return_value=result) as mocked:
+        assert audit.mount_state_diagnostic("/mnt/synology") == ("MOUNTED", "EXACT")
+    assert mocked.call_args.args[0][-1] == "TARGET,FSTYPE"
+
+
+def test_findmnt_accepts_nfs4_parent_with_stacked_autofs_for_child():
+    result = subprocess.CompletedProcess(
+        [], 0, "/mnt/synology autofs\\n/mnt/synology nfs4\\n", ""
+    )
+    with patch.object(audit, "run", return_value=result):
+        assert audit.mount_state_diagnostic("/mnt/synology/Joshan/paperless_media") == ("MOUNTED", "ANCESTOR")
+
+
+def test_findmnt_autofs_alone_does_not_prove_nas_available():
+    result = subprocess.CompletedProcess([], 0, "/mnt/synology autofs\\n", "")
+    with patch.object(audit, "run", return_value=result):
+        assert audit.mount_state_diagnostic("/mnt/synology") == ("UNMOUNTED", "NFS_FILESYSTEM_MISSING")
