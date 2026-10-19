@@ -405,7 +405,7 @@ def analyse(messages, privacy_domain=None, client_key="local"):
     # engineering brief may cross the sanitized engineering boundary.
     privacy = "local-only"
     prompt = SYSTEM + "\n\nConversation:\n" + "\n".join(history) + "\n\nReturn the JSON now."
-    routed = generate(prompt, privacy=privacy, task_class="normal")
+    routed = generate(prompt, privacy=privacy, task_class="normal", response_format="json")
     parsed = json.loads(routed["text"])
     return {
         "reply": str(parsed.get("reply", "")),
