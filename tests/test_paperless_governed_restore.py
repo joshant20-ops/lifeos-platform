@@ -1,4 +1,6 @@
 import importlib.util
+import io
+from contextlib import redirect_stdout
 from pathlib import Path
 import unittest
 
@@ -29,7 +31,8 @@ class PaperlessGovernedRestoreTests(unittest.TestCase):
         original = restore.audit.mount_state
         try:
             restore.audit.mount_state = lambda path: "UNMOUNTED"
-            with self.assertLogs() as captured:
+            captured = io.StringIO()
+            with redirect_stdout(captured):
                 result = restore.safe_preflight()
         finally:
             restore.audit.mount_state = original
