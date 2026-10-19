@@ -39,7 +39,7 @@ systemctl enable --now lifeos-task-reconciler.timer >/dev/null
 if ! systemctl start lifeos-task-reconciler.service; then
   echo 'TASK_RECONCILER_SERVICE=FAIL'
   journalctl -u lifeos-task-reconciler.service -n 80 --no-pager -o cat |
-    grep -E '^TASK_RECONCILER_FAILURE_(STAGE|CLASS)=[A-Za-z0-9_]+$' |
+    grep -E '^TASK_RECONCILER_FAILURE_(STAGE|BUCKET)=[A-Za-z0-9_]+$' |
     tail -n 2 || true
   exit 1
 fi
@@ -47,7 +47,7 @@ systemctl is-active --quiet lifeos-task-reconciler.timer
 if systemctl is-failed --quiet lifeos-task-reconciler.service; then
   echo 'TASK_RECONCILER_SERVICE=FAIL'
   journalctl -u lifeos-task-reconciler.service -n 80 --no-pager -o cat |
-    grep -E '^TASK_RECONCILER_FAILURE_(STAGE|CLASS)=[A-Za-z0-9_]+$' |
+    grep -E '^TASK_RECONCILER_FAILURE_(STAGE|BUCKET)=[A-Za-z0-9_]+$' |
     tail -n 2 || true
   exit 1
 fi
