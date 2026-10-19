@@ -17,6 +17,13 @@ class OpenHandsLevel2FailureEvidenceTests(unittest.TestCase):
             self.workflow,
         )
 
+    def test_task_understanding_is_derived_from_issue_inspection_evidence(self):
+        self.assertIn(
+            '"task_understood":bool(evidence.get("issue_935_inspected",False))',
+            self.workflow,
+        )
+        self.assertNotIn('"task_understood":True', self.workflow)
+
     def test_sanitized_conversation_checkpoint_precedes_incomplete_gate(self):
         marker = 'print("OPENHANDS_LEVEL2_CURRENT_PROFILE_EVIDENCE="'
         marker_at = self.workflow.index(marker)
