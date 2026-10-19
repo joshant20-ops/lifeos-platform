@@ -238,10 +238,11 @@ def test_local_json_mode_uses_ollama_format_parameter(monkeypatch):
     monkeypatch.setattr(
         BROKER,
         "_post_json",
-        lambda url, payload, **kwargs: calls.append(payload) or {"response": "{}"},
+        lambda url, payload, **kwargs: calls.append((url, payload)) or {"message": {"content": "{}"}},
     )
     assert BROKER._ollama_once("structured prompt", "current-model", response_format="json") == "{}"
-    assert calls[0]["format"] == "json"
+    assert calls[0][0].endswith("/api/chat")
+    assert calls[0][1]["format"] == "json"
 
 
 def test_ollama_empty_response_reports_only_safe_metadata(monkeypatch):
@@ -249,9 +250,8 @@ def test_ollama_empty_response_reports_only_safe_metadata(monkeypatch):
         BROKER,
         "_post_json",
         lambda url, payload, **kwargs: {
-            "response": "",
+            "message": {"content": "", "thinking": "private chain of thought"},
             "done_reason": "stop",
-            "thinking": "private chain of thought",
             "eval_count": 42,
         },
     )
@@ -308,10 +308,11 @@ def test_local_json_schema_is_forwarded_to_ollama_format(monkeypatch):
     monkeypatch.setattr(
         BROKER,
         "_post_json",
-        lambda url, payload, **kwargs: calls.append(payload) or {"response": '{"answer":"ok"}'},
+        lambda url, payload, **kwargs: calls.append((url, payload)) or {"message": {"content": '{"answer":"ok"}'}},
     )
     assert BROKER._ollama_once("structured prompt", "current-model", response_format=schema) == '{"answer":"ok"}'
-    assert calls[0]["format"] == schema
+    assert calls[0][0].endswith("/api/chat")
+    assert calls[0][1]["format"] == schema
 
 
 def test_unstructured_ollama_calls_keep_default_request_format(monkeypatch):
@@ -319,10 +320,11 @@ def test_unstructured_ollama_calls_keep_default_request_format(monkeypatch):
     monkeypatch.setattr(
         BROKER,
         "_post_json",
-        lambda url, payload, **kwargs: calls.append(payload) or {"response": "plain text"},
+        lambda url, payload, **kwargs: calls.append((url, payload)) or {"response": "plain text"},
     )
     assert BROKER._ollama_once("plain prompt", "current-model") == "plain text"
-    assert "format" not in calls[0]
+    assert calls[0][0] == BROKER.OLLAMA_URL
+    assert "format" not in calls[0][1]
 
 
 def test_local_provider_failure_exposes_only_fixed_safe_category(monkeypatch):
