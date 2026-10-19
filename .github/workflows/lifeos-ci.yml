@@ -58,6 +58,7 @@ jobs:
             tests.test_step11_live_closure \
             tests.test_tower_metrics \
             tests.test_tower_wol_issue_trigger \
+            tests.test_openhands_level2_failure_evidence \
             tests.test_paperless_readonly_audit_trigger
 
       - name: Install focused Python contract dependency
