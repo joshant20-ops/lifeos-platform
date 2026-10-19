@@ -50,20 +50,74 @@ def inspect_service(service: str) -> dict | None:
     if not ids or len(ids) > 10:
         return None
     matches = []
+    metadata_template = (
+        '{{index .Config.Labels "com.docker.compose.project"}}|'
+        '{{index .Config.Labels "com.docker.compose.service"}}|'
+        '{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}|'
+        '{{.RestartCount}}|{{if .State.Error}}YES{{else}}NO{{end}}|'
+        '{{.HostConfig.RestartPolicy.Name}}|'
+        '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}'
+    )
     for container_id in ids:
-        raw = command(["docker", "inspect", container_id], timeout=8)
-        try:
-            value = json.loads(raw or "")
-            if len(value) != 1:
-                return None
-            container = value[0]
-        except (json.JSONDecodeError, TypeError, IndexError):
+        metadata = command(["docker", "inspect", "--format", metadata_template, container_id], timeout=5)
+        raw_mounts = command([
+            "docker", "inspect", "--format",
+            '{{range .Mounts}}{{.Type}}|{{.Name}}|{{.Source}}|{{.Destination}};{{end}}',
+            container_id,
+        ], timeout=5)
+        proxy = command([
+            "docker", "inspect", "--format",
+            '{{if index .NetworkSettings.Networks "reverse_proxy"}}YES{{else}}NO{{end}}',
+            container_id,
+        ], timeout=5)
+        if metadata is None or raw_mounts is None or proxy not in {"YES", "NO"}:
             return None
-        labels = container.get("Config", {}).get("Labels", {})
-        if labels.get("com.docker.compose.project") != "paperless":
+        fields = metadata.split("|")
+        if len(fields) != 9:
+            return None
+        project, current_service, status, exit_code, oom, restart_count, error, policy, health = fields
+        mounts = []
+        for entry in raw_mounts.split(";"):
+            if not entry:
+                continue
+            mount_fields = entry.split("|", 3)
+            if len(mount_fields) != 4:
+                return None
+            mount_type, name, source, destination = mount_fields
+            mounts.append({
+                "Type": mount_type, "Name": name, "Source": source,
+                "Destination": destination,
+            })
+        if project != "paperless" or current_service != service:
             continue
-        if labels.get("com.docker.compose.service") == service:
-            matches.append(container)
+        if status not in audit.STATES:
+            status = "unknown"
+        try:
+            exit_code = int(exit_code)
+            restart_count = int(restart_count)
+        except ValueError:
+            return None
+        if oom not in {"true", "false"} or error not in {"YES", "NO"}:
+            return None
+        if policy not in {"no", "always", "unless-stopped", "on-failure"}:
+            return None
+        if health not in {"healthy", "unhealthy", "starting", "none"}:
+            health = "unknown"
+        matches.append({
+            "Config": {"Labels": {
+                "com.docker.compose.project": project,
+                "com.docker.compose.service": current_service,
+            }},
+            "State": {
+                "Status": status, "ExitCode": exit_code,
+                "OOMKilled": oom == "true", "Error": "present" if error == "YES" else "",
+                "Health": {"Status": health},
+            },
+            "RestartCount": restart_count,
+            "HostConfig": {"RestartPolicy": {"Name": policy}},
+            "Mounts": mounts,
+            "NetworkSettings": {"Networks": {"reverse_proxy": {}} if proxy == "YES" else {}},
+        })
     return matches[0] if len(matches) == 1 else None
 
 
