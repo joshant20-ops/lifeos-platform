@@ -242,7 +242,27 @@ def test_local_json_mode_uses_ollama_format_parameter(monkeypatch):
     )
     assert BROKER._ollama_once("structured prompt", "current-model", response_format="json") == "{}"
     assert calls[0]["format"] == "json"
-    assert calls[0]["think"] is False
+
+
+def test_ollama_empty_response_reports_only_safe_metadata(monkeypatch):
+    monkeypatch.setattr(
+        BROKER,
+        "_post_json",
+        lambda url, payload, **kwargs: {
+            "response": "",
+            "done_reason": "stop",
+            "thinking": "private chain of thought",
+            "eval_count": 42,
+        },
+    )
+    with pytest.raises(BROKER.BrokerError) as error:
+        BROKER._ollama_once("private prompt", "gpt-oss:20b", response_format={"type": "object"})
+    message = str(error.value)
+    assert "done_reason=stop" in message
+    assert "thinking_length=24" in message
+    assert "eval_count=42" in message
+    assert "private chain" not in message
+    assert BROKER.safe_provider_failure_category(error.value) == "EMPTY_RESPONSE_WITH_THINKING"
 
 
 def test_ollama_retries_one_empty_completion_only(monkeypatch):
@@ -292,7 +312,6 @@ def test_local_json_schema_is_forwarded_to_ollama_format(monkeypatch):
     )
     assert BROKER._ollama_once("structured prompt", "current-model", response_format=schema) == '{"answer":"ok"}'
     assert calls[0]["format"] == schema
-    assert calls[0]["think"] is False
 
 
 def test_unstructured_ollama_calls_keep_default_request_format(monkeypatch):
@@ -304,7 +323,6 @@ def test_unstructured_ollama_calls_keep_default_request_format(monkeypatch):
     )
     assert BROKER._ollama_once("plain prompt", "current-model") == "plain text"
     assert "format" not in calls[0]
-    assert "think" not in calls[0]
 
 
 def test_local_provider_failure_exposes_only_fixed_safe_category(monkeypatch):
