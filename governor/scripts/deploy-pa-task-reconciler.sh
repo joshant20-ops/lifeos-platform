@@ -71,10 +71,13 @@ print('MESSAGES_CONSIDERED='+str(j.get('messages_considered')))
 print('ERRORS='+str(j.get('errors')))
 PY
 
-# Surface only the reconciler's fixed summary counters and known exception class names.
+# Forward only the reconciler's numeric fetch/classification error counters.
 # Never forward arbitrary journal lines or message/document content into Actions logs.
 journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
-  grep -E '^TASK_(FETCH|CLASSIFICATION)_(ERRORS=[0-9]+|ERROR_TYPES=(NONE|(SSLError|error|HTTPError|HTTPException|URLError|JSONDecodeError|timeout|TimeoutError|gaierror|herror|ConnectionError|FileNotFoundError|PermissionError|OSError|ValueError|TypeError|KeyError|AssertionError|Exception)(,(SSLError|error|HTTPError|HTTPException|URLError|JSONDecodeError|timeout|TimeoutError|gaierror|herror|ConnectionError|FileNotFoundError|PermissionError|OSError|ValueError|TypeError|KeyError|AssertionError|Exception))*)HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"
+  grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$' |
+  tail -n 2 || true
+
+HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"
 HA_SENSOR="$HA_CONFIG/scripts/lifeos_pa_task_attention_sensor.py"
 HA_USER_MODULE="$HA_CONFIG/scripts/lifeos_pa_user_state.py"
 HA_ACTION="$HA_CONFIG/scripts/lifeos_pa_user_action.py"
