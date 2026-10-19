@@ -371,7 +371,7 @@ def paperless_document_media_probe(token_path: pathlib.Path | None = None) -> tu
         if token_path.is_symlink() or not token_path.is_file() or token_path.stat().st_size > 4096:
             return "UNKNOWN", "UNKNOWN"
         token = token_path.read_text(encoding="utf-8", errors="strict").strip()
-        if not token or any(char in token for char in "\\r\\n"):
+        if not token or any(char in token for char in "\r\n"):
             return "UNKNOWN", "UNKNOWN"
     except (OSError, UnicodeError):
         return "UNKNOWN", "UNKNOWN"
