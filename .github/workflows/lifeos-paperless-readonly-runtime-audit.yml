@@ -39,7 +39,7 @@ jobs:
           set -Eeuo pipefail
           sudo -n python3 "$GITHUB_WORKSPACE/governor/paperless_runtime_diagnostic.py" | tee "$RUNNER_TEMP/paperless-runtime-audit.log"
           grep -Fxq 'PAPERLESS_AUDIT_MUTATIONS=NONE' "$RUNNER_TEMP/paperless-runtime-audit.log"
-          grep -E '^PAPERLESS_[A-Z0-9_]+=(YES|NO|UNKNOWN|MISSING|PRESENT|EMPTY|SYMLINK|NOT_DIRECTORY|UNMOUNTED|MOUNTED|VALID|INVALID|BLOCKED|REACHABLE|UNREACHABLE|000|[1-5][0-9]{2}|[0-9]+)$' "$RUNNER_TEMP/paperless-runtime-audit.log" > "$RUNNER_TEMP/paperless-runtime-audit.env"
+          grep -E '^PAPERLESS_[A-Z0-9_]+=(YES|NO|UNKNOWN|MISSING|PRESENT|EMPTY|SYMLINK|NOT_DIRECTORY|UNMOUNTED|MOUNTED|VALID|INVALID|BLOCKED|REACHABLE|UNREACHABLE|NONE|PASS|000|[1-5][0-9]{2}|[0-9]+)$' "$RUNNER_TEMP/paperless-runtime-audit.log" > "$RUNNER_TEMP/paperless-runtime-audit.env"
 
       - name: Retain sanitized audit evidence
         if: always()
