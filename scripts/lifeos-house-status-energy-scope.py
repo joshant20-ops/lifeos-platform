@@ -26,7 +26,7 @@ DOORBELL_ONLY_PATHS = {APP_INPUT, BUILDER, GOVERNANCE_TEST, DOORBELL_SHELL_TEST,
     ".github/workflows/house-status-dev-deploy.yml",
     "scripts/lifeos-house-status-energy-scope.py"}
 OLD_DOORBELL_SETTER = "  set hass(hass){ this._hass=hass; const host=this._doorbellHost; if(this._mode==='doorbell'&&host?.isConnected){host.__lifeosDoorbellHass=hass;if(host.__lifeosCameraCard)host.__lifeosCameraCard.hass=hass;return;} this.render(); if(this._mode!=='doorbell')this._loadEnergyHistory(); }"
-NEW_DOORBELL_SETTER = "  set hass(hass){ this._hass=hass; const mode=this._mode||this.config?.mode||'domestic'; const host=this._doorbellHost; if(mode==='doorbell'&&host?.isConnected){host.__lifeosDoorbellHass=hass;try{if(host.__lifeosCameraCard)host.__lifeosCameraCard.hass=hass;}catch(error){console.warn('House Status Doorbell camera update failed',error);}return;} this.render(); if(mode!=='doorbell')this._loadEnergyHistory(); }"
+NEW_DOORBELL_SETTER = "  set hass(hass){ this._hass=hass; const mode=this._mode||this.config?.mode||'domestic'; const host=this._doorbellHost; if(mode==='doorbell'&&host?.isConnected){try{host.hass=hass;}catch(error){console.warn('House Status Doorbell update failed',error);}return;} this.render(); if(mode!=='doorbell')this._loadEnergyHistory(); }"
 
 def _without_doorbell_shell(source: str) -> str | None:
     text = source
