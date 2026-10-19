@@ -66,7 +66,9 @@ def _without_doorbell_shell(source: str) -> str | None:
         "await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now());",
         "try{ await import('/local/house-status-dev/lifeos-house-status-doorbell.js?dev='+Date.now()); } catch(error) { console.warn('House Status Doorbell module load failed',error); }",
     )
-    dev_count = sum(text.count(value) for value in dev_imports)
+    guarded_dev_import = dev_imports[1]
+    unguarded_dev_import = dev_imports[0]
+    dev_count = text.count(guarded_dev_import) + text.replace(guarded_dev_import, "").count(unguarded_dev_import)
     if dev_count not in (0, 1):
         return None
     if dev_count:
@@ -104,8 +106,12 @@ def _builder_without_doorbell_functions(source: str) -> str:
         ),
     )
     normalized = source
-    for variants in pairs:
-        occurrences = sum(normalized.count(value) for value in variants)
+    for index, variants in enumerate(pairs):
+        if index == 0:
+            guarded, unguarded = variants[1], variants[0]
+            occurrences = normalized.count(guarded) + normalized.replace(guarded, "").count(unguarded)
+        else:
+            occurrences = sum(normalized.count(value) for value in variants)
         if occurrences != 2:
             raise ValueError("unexpected Doorbell import template count")
         for value in variants:
