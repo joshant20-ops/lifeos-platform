@@ -11,6 +11,12 @@ class OpenHandsLevel2FailureEvidenceTests(unittest.TestCase):
     def setUpClass(cls):
         cls.workflow = WORKFLOW.read_text()
 
+    def test_checkpoint_dependency_is_imported_in_embedded_script(self):
+        self.assertIn(
+            "import json, os, pathlib, subprocess, sys, time, urllib.request, uuid",
+            self.workflow,
+        )
+
     def test_sanitized_conversation_checkpoint_precedes_incomplete_gate(self):
         marker = 'print("OPENHANDS_LEVEL2_CURRENT_PROFILE_EVIDENCE="'
         marker_at = self.workflow.index(marker)
