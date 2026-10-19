@@ -73,10 +73,28 @@ PY
 
 HA_CONFIG=/opt/stacks/homeassistant/config
 
-# Forward only the reconciler's numeric fetch/classification error counters.
-# Never forward arbitrary journal lines or message/document content into Actions logs.
+# Forward only fixed counters and safe categories; never emit private source/model data.
 journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
-  grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$|^TASK_CLASSIFICATION_ERROR_CATEGORIES=[A-Z0-9_,=]+
+  grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$|^TASK_CLASSIFICATION_ERROR_CATEGORIES=[A-Z0-9_,=]+$' |
+  tail -n 3 || true
+
+ERROR_COUNT=$(python3 - <<'PY'
+import json,pathlib
+j=json.loads(pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json').read_text())
+print(int(j.get('errors',0)))
+PY
+)
+if [[ ! "$ERROR_COUNT" =~ ^[0-9]+$ ]]; then
+  echo 'TASK_RECONCILER_ERROR_GATE=INVALID'
+  exit 1
+fi
+if (( ERROR_COUNT != 0 )); then
+  echo 'TASK_RECONCILER_ERROR_GATE=FAIL'
+  exit 1
+fi
+echo 'TASK_RECONCILER_ERROR_GATE=PASS'
+
+HA_PACKAGE="$HA_CONFIG/packages/lifeos_attention.yaml"
 HA_SENSOR="$HA_CONFIG/scripts/lifeos_pa_task_attention_sensor.py"
 HA_USER_MODULE="$HA_CONFIG/scripts/lifeos_pa_user_state.py"
 HA_ACTION="$HA_CONFIG/scripts/lifeos_pa_user_action.py"
