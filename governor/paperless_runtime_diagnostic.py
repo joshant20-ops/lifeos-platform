@@ -144,7 +144,10 @@ def mount_unit_states(target: str) -> tuple[str, str]:
     if escaped is None or escaped.returncode != 0:
         return "UNKNOWN", "UNKNOWN"
     unit = escaped.stdout.strip()
-    if not re.fullmatch(r"[A-Za-z0-9_.\\x-]+\.mount", unit):
+    # systemd-escape --path emits ASCII alphanumerics plus '.', '_' and '-'
+    # for the fixed canonical mount targets audited below. Reject anything
+    # outside that safe unit-name alphabet before passing it to systemctl.
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+\.mount", unit):
         return "UNKNOWN", "UNKNOWN"
     enabled = run(["systemctl", "is-enabled", unit], timeout=3)
     active = run(["systemctl", "is-active", unit], timeout=3)
