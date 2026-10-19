@@ -49,6 +49,7 @@ class LifeOSPATaskCard extends HTMLElement {
         return '<div class="timeline-event">' +
           (when ? '<time>' + this._escape(when) + '</time> · ' : '') +
           this._escape(event?.title || "Email update") +
+          (event?.event_kind === "information" ? ' · Information' : '') +
           (state && state !== "NONE" ? ' · ' + this._escape(state) : '') +
           '</div>';
       }).join("");
