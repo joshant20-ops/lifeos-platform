@@ -198,3 +198,26 @@ def test_state_privilege_drop_rejects_group_or_world_access(tmp_path, monkeypatc
     with __import__("pytest").raises(PermissionError):
         user_state.drop_to_state_owner(state_dir / "user_state.json")
 
+def test_backlog_is_sorted_by_attention_priority_and_state():
+    now = 1792497600  # 2026-10-20 12:00 UTC
+    rows = [
+        {"id": "done", "status": "DONE", "severity": "high", "observed_at": now - 10},
+        {"id": "waiting-overdue", "status": "WAITING", "severity": "high", "due_date": "2026-10-19"},
+        {"id": "high-no-date", "status": "OPEN", "severity": "high"},
+        {"id": "snoozed-overdue", "status": "OPEN", "severity": "high", "due_date": "2026-10-19", "snoozed_until": "2026-10-25"},
+        {"id": "normal-due-soon", "status": "OPEN", "severity": "normal", "due_date": "2026-10-22"},
+        {"id": "normal-overdue", "status": "OPEN", "severity": "normal", "due_date": "2026-10-19"},
+    ]
+
+    ordered = user_state.order_tasks_for_attention(rows, now_ts=now)
+
+    assert [row["id"] for row in ordered] == [
+        "normal-overdue",
+        "normal-due-soon",
+        "high-no-date",
+        "waiting-overdue",
+        "snoozed-overdue",
+        "done",
+    ]
+    assert rows[0]["id"] == "done"  # ordering does not mutate the source rows
+
