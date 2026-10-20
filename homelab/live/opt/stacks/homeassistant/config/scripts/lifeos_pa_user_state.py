@@ -202,6 +202,16 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
         task_id = str(task.get("id") or "")
         entry = obligations.get(task_id)
         if not isinstance(entry, dict):
+            until = str(task.get("snoozed_until") or "")
+            try:
+                snooze_is_active = (
+                    task.get("status") in {"OPEN", "WAITING"}
+                    and date.fromisoformat(until) > projection_today
+                )
+            except (TypeError, ValueError):
+                snooze_is_active = False
+            if not snooze_is_active:
+                task.pop("snoozed_until", None)
             result.append(task)
             continue
         # Persist the machine view separately so each bounded Gmail replay starts
