@@ -60,16 +60,31 @@ jobs:
           sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-lifeos-assistant
           sudo -n python3 /home/joshan/lifeos-platform/scripts/accept-pa-governed-actions.py
       - name: Gate I — rebuild and verify the single control-dashboard authority
+        id: gate_i_bridge
         shell: bash
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge \
-            >"$RUNNER_TEMP/gate-i-control-bridge.log" 2>&1 || {
-              echo "GATE_I_CONTROL_BRIDGE=FAIL"
-              exit 1
-            }
-          echo "GATE_I_CONTROL_BRIDGE=PASS"
+          raw_log="$RUNNER_TEMP/gate-i-control-bridge.log"
+          sanitized_log="$RUNNER_TEMP/gate-i-control-bridge-sanitized.json"
+          if sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-ha-control-bridge >"$raw_log" 2>&1; then
+            echo "GATE_I_CONTROL_BRIDGE=PASS"
+          else
+            rc=$?
+            if ! python3 scripts/sanitize-gate-i-failure-evidence.py "$raw_log" "$sanitized_log" "$rc"; then
+              printf '{"schema_version":1,"operation":"deploy-ha-control-bridge","exit_code":%s,"diagnostics":["sanitizer_failed"],"gateway":{}}\n' "$rc" >"$sanitized_log"
+            fi
+            echo "GATE_I_CONTROL_BRIDGE=FAIL"
+            exit "$rc"
+          fi
+      - name: Retain sanitized Gate I failure diagnostics
+        if: failure() && steps.gate_i_bridge.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gate-i-control-bridge-failure-${{ github.run_id }}
+          path: ${{ runner.temp }}/gate-i-control-bridge-sanitized.json
+          if-no-files-found: error
+          retention-days: 30
       - name: Gate I — final live runtime consolidation acceptance
         shell: bash
         run: |
