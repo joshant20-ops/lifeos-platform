@@ -58,7 +58,7 @@ jobs:
             local unit="$1"
             echo "UNIT=$unit"
             if systemctl show "$unit" --no-pager \
-              --property=LoadState,ActiveState,SubState,UnitFileState,Result,ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp; then
+              --property=LoadState,ActiveState,SubState,UnitFileState,Result,ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp,InactiveExitTimestamp,ActiveEnterTimestamp,StateChangeTimestamp; then
               :
             else
               echo "UNIT_QUERY=UNAVAILABLE"
@@ -75,6 +75,97 @@ jobs:
               echo "UNIT_QUERY=UNAVAILABLE"
             fi
           }
+
+          report_forecast_readiness_summary() {
+            python3 - <<'PY'
+          import re
+          import subprocess
+
+          labels = {
+              "PREDICTED_PV": "Predbat solar forecast",
+              "PREDICTED_LOAD": "Predbat house forecast",
+              "PREDICTED_BATTERY": "Predbat battery forecast",
+              "PREDICTED_EXPORT": "Predbat export forecast",
+              "ACTUAL_PV": "Enphase actual solar",
+              "ACTUAL_LOAD": "Enphase actual house load",
+              "ACTUAL_BATTERY": "Enphase actual battery",
+              "ACTUAL_GRID": "Enphase actual grid",
+          }
+
+          try:
+              result = subprocess.run(
+                  [
+                      "journalctl",
+                      "--no-pager",
+                      "--unit=lifeos-energy-forecast.service",
+                      "--since=30 minutes ago",
+                      "--output=cat",
+                  ],
+                  capture_output=True,
+                  text=True,
+                  timeout=10,
+                  check=False,
+              )
+          except Exception:
+              print("ENERGY_READINESS_SUMMARY=UNAVAILABLE")
+              raise SystemExit(0)
+
+          if result.returncode != 0:
+              print("ENERGY_READINESS_SUMMARY=UNAVAILABLE")
+              raise SystemExit(0)
+
+          lines = result.stdout.splitlines()
+          checks = [
+              index
+              for index, line in enumerate(lines)
+              if line.strip().startswith("Readiness check ")
+              and " ready after " in line
+          ]
+          if not checks:
+              print("ENERGY_READINESS_SUMMARY=NO_RECENT_CHECK")
+              raise SystemExit(0)
+
+          index = checks[-1]
+          header = lines[index].strip()
+          match = re.search(r"(\d+)/8 ready", header)
+          block = []
+          for line in lines[index + 1:]:
+              if line.strip().startswith("Readiness check "):
+                  break
+              block.append(line.strip())
+
+          waiting_lines = [line for line in block if line.startswith("WAIT ")]
+          ready_count = int(match.group(1)) if match else None
+          print("ENERGY_READINESS_SUMMARY=AVAILABLE")
+          for field, label in labels.items():
+              if any(f"({label})" in line for line in waiting_lines):
+                  status = "WAITING"
+              elif ready_count == 8 or any(
+                  "All required Predbat and Enphase entities are ready." in line
+                  for line in block
+              ):
+                  status = "READY"
+              else:
+                  status = "UNKNOWN"
+              print(f"ENERGY_READINESS_{field}={status}")
+          PY
+          }
+
+          report_forecast_readiness_summary
+
+          forecast_activation="$(unit_value lifeos-energy-forecast.service InactiveExitTimestamp)"
+          forecast_timer_last="$(unit_value lifeos-energy-forecast.timer LastTriggerUSec)"
+          activation_epoch="$(date -d "$forecast_activation" +%s 2>/dev/null || true)"
+          timer_epoch="$(date -d "$forecast_timer_last" +%s 2>/dev/null || true)"
+          forecast_matches_timer="UNKNOWN"
+          if [[ "$activation_epoch" =~ ^[0-9]+$ && "$timer_epoch" =~ ^[0-9]+$ ]]; then
+            if (( activation_epoch + 5 >= timer_epoch )); then
+              forecast_matches_timer="YES"
+            else
+              forecast_matches_timer="NO"
+            fi
+          fi
+          echo "FORECAST_RUN_MATCHES_LAST_TIMER=$forecast_matches_timer"
 
           echo "DIAGNOSTIC_START=PASS"
 
