@@ -69,6 +69,28 @@ def test_snooze_and_severity_due_date_override_project_existing_attention(tmp_pa
     assert view["briefing"]["confidence"] == "structured_state_only"
 
 
+def test_expired_snooze_is_not_projected_but_remains_in_user_state(tmp_path):
+    path = tmp_path / "user_state.json"
+    now = 1792497600  # 2026-10-20 12:00 UTC
+    user_state.mutate_action(
+        "renewal-abc123", "snooze", until="2026-10-05",
+        path=path, now=now - 15 * 86400,
+    )
+    state = user_state.read_user_state(path)
+    payload = {
+        "schema": "lifeos_tasks_v3", "generated_time": now,
+        "tasks": [task()], "resolved": [],
+    }
+
+    view = user_state.apply_user_state(payload, state)
+
+    assert state["obligations"]["renewal-abc123"]["snoozed_until"] == "2026-10-05"
+    assert "snoozed_until" not in view["tasks"][0]
+    assert view["attention"]["counts"]["snoozed"] == 0
+    assert view["attention"]["counts"]["needs_me"] == 1
+    assert "snoozed_until" not in view["attention"]["needs_me"][0]
+
+
 def test_dismissed_is_resolved_but_not_completed(tmp_path):
     path = tmp_path / "user_state.json"
     user_state.mutate_action("renewal-abc123", "dismiss", path=path)
