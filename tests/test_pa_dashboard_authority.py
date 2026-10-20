@@ -71,11 +71,11 @@ SANITIZER_SPEC.loader.exec_module(SANITIZER)
 def test_gate_i_failure_evidence_retains_only_known_safe_diagnostics():
     private = "person@example.invalid 192.168.1.25 AA:BB:CC:DD:EE:FF Bearer secret-value"
     evidence = SANITIZER.build_evidence(
-        "ERROR=active_tower_lease_prevents_controller_restart:" + private + "\\n"
-        "GATEWAY_CHILD_RC=17\\n"
-        "GATEWAY_OPERATION=deploy-ha-control-bridge\\n"
-        "GATEWAY_PLATFORM_HEAD=" + "a" * 40 + "\\n"
-        "CONTROL_CURRENT_ISSUE=private title\\n"
+        "ERROR=active_tower_lease_prevents_controller_restart:" + private + "\n"
+        "GATEWAY_CHILD_RC=17\n"
+        "GATEWAY_OPERATION=deploy-ha-control-bridge\n"
+        "GATEWAY_PLATFORM_HEAD=" + "a" * 40 + "\n"
+        "CONTROL_CURRENT_ISSUE=private title\n"
         "ERROR=unexpected user content " + private,
         17,
     )
@@ -92,7 +92,7 @@ def test_gate_i_workflow_uploads_sanitized_evidence_only_on_failure():
     workflow = (ROOT / ".github" / "workflows" / "lifeos-pa-deploy.yml").read_text()
     gate = workflow[workflow.index("id: gate_i_bridge"):]
     gate = gate[:gate.index("Gate I — final live runtime consolidation acceptance")]
-    assert "exit \\"$rc\\"" in gate
+    assert 'exit "$rc"' in gate
     assert "sanitize-gate-i-failure-evidence.py" in gate
     assert "steps.gate_i_bridge.outcome == 'failure'" in gate
     upload = gate.split("uses: actions/upload-artifact@v4", 1)[-1]
