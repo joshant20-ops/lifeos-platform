@@ -55,7 +55,17 @@ class LifeOSPATaskCard extends HTMLElement {
       }).join("");
       const notes = (task.user_comments || []).slice(-3).map((comment) =>
         '<div class="note"><strong>Your note</strong> · ' + this._escape(comment.text) + '</div>'
-      ).join("");
+      );
+      const supporting = [];
+      if (evidence.length) {
+        supporting.push('<details class="supporting"><summary>Evidence (' + evidence.length + ')</summary><div class="evidence">' + evidence.join(" · ") + '</div></details>');
+      }
+      if (timeline) {
+        supporting.push('<details class="supporting"><summary>Timeline (' + timelineEvents.length + ')</summary><div class="timeline"><strong>Recent timeline</strong>' + timeline + '</div></details>');
+      }
+      if (notes.length) {
+        supporting.push('<details class="supporting"><summary>Your notes (' + notes.length + ')</summary>' + notes.join("") + '</details>');
+      }
       const due = task.due_date ? " · due " + this._escape(task.due_date) : "";
       const snooze = task.snoozed_until ? " · snoozed until " + this._escape(task.snoozed_until) : "";
       const buttons = closed
@@ -71,15 +81,14 @@ class LifeOSPATaskCard extends HTMLElement {
         '</div>';
       return '<article><div class="title">' + this._escape(task.title || "Untitled obligation") + '</div>' +
         '<div class="meta">' + this._escape(status) + ' · ' + this._escape(task.severity || "normal") + due + snooze + '</div>' +
-        (evidence.length ? '<div class="evidence">' + evidence.join(" · ") + '</div>' : '<div class="evidence">No linked evidence reference</div>') +
-        (timeline ? '<div class="timeline"><strong>Recent timeline</strong>' + timeline + '</div>' : '') +
-        notes + controls + '</article>';
+        supporting.join("") + controls + '</article>';
     }).join("");
 
     this.shadowRoot.innerHTML = '<style>' +
       ':host{display:block}ha-card{padding:16px}.summary{color:var(--secondary-text-color);margin:4px 0 12px}' +
       '.list{display:grid;gap:10px}article{border:1px solid var(--divider-color);border-radius:10px;padding:12px}' +
       '.title{font-weight:650}.meta,.evidence,.note{font-size:.85rem;color:var(--secondary-text-color);margin-top:5px}' +
+      '.supporting{margin-top:8px;font-size:.85rem}.supporting summary{cursor:pointer;color:var(--primary-color)}' +
       '.evidence a{color:var(--primary-color)}.timeline{font-size:.85rem;margin-top:8px}.timeline-event{color:var(--secondary-text-color);margin-top:3px}.timeline-event time{font-variant-numeric:tabular-nums}.controls{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}' +
       'button{border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:8px;padding:7px 10px;cursor:pointer}' +
       'button:disabled{opacity:.5}.empty{color:var(--secondary-text-color)}' +
