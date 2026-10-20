@@ -24,11 +24,24 @@ def test_incomplete_recovery_uses_active_context_and_a_focused_action():
     result = module.assess({})
     message = module.recovery_message(result)
 
-    assert "explicit task context in this conversation" in message
+    assert "repeated authoritative task context above" in message
     assert "repository-wide backlog items" in message
     assert "one focused tool action" in message
-    assert "available workspace tools" in message
+    assert "tools exposed in this session" in message
+    assert "declared argument schemas" in message
+    assert "follow the reported available tools and schema" in message
     assert "do not stop before the branch, PR, and CI cycle is complete" in message
+
+
+def test_recovery_repeats_authoritative_task_context_verbatim():
+    task_context = "Repository: example/project\nIssue: #123\nObjective: fix the accepted defect."
+    result = module.assess({})
+
+    message = module.recovery_message(result, task_context)
+
+    assert "Authoritative task context repeated from the original request" in message
+    assert task_context in message
+    assert message.index(task_context) < message.index("Earliest unmet objective")
 
 
 def test_repeated_actions_trigger_stall_recovery():
