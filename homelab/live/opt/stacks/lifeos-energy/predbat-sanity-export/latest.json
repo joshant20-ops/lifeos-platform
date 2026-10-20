@@ -80,7 +80,7 @@
   },
   "forecast_freshness": {
     "active_headline_count": 7,
-    "checked_at": "2026-10-20T01:36:19.977811+01:00",
+    "checked_at": "2026-10-20T02:06:20.282493+01:00",
     "fresh_active_headline_count": 0,
     "fresh_headline_count": 0,
     "headline_count": 8,
@@ -139,8 +139,8 @@
   "forecast_provenance": {
     "forecast_entity_count": 6,
     "live_api": {
-      "queried_at": "2026-10-20T01:36:19.789033+01:00",
-      "request_seconds": 0.0338,
+      "queried_at": "2026-10-20T02:06:20.076833+01:00",
+      "request_seconds": 0.0334,
       "source": "home_assistant_live_api",
       "state_count": 975,
       "status": "live_api_ok"
@@ -153,7 +153,7 @@
     "high_import_points_beyond_live_tariff_horizon": 0,
     "soc_points": 0
   },
-  "generated_at": "2026-10-20T01:36:19.977794+01:00",
+  "generated_at": "2026-10-20T02:06:20.282476+01:00",
   "sanity_assessment": {
     "fail_flags": [
       "predbat_forecast_active_headline_stale"
