@@ -25,14 +25,14 @@ def state(now):
         "schema":"lifeos_tasks_v3",
         "generated_time":now,
         "tasks":[
-            {"id":"task-open","title":"Synthetic home insurance renewal","status":"OPEN","topic":"insurance","due_date":"2025-01-16","observed_at":now,"paperless_evidence":[{"document_id":42,"title":"Synthetic policy schedule"}]},
+            {"id":"task-open","title":"Synthetic home insurance renewal","status":"OPEN","topic":"insurance","due_date":"2025-01-16","observed_at":now,"source_message_ids":["mail-935-test-01"],"paperless_evidence":[{"document_id":42,"title":"Synthetic policy schedule"}]},
             {"id":"task-wait","title":"Synthetic service reply","status":"WAITING","observed_at":now-3600,"paperless_evidence":[]},
         ],
         "resolved":[
             {"id":"task-done","title":"Synthetic completed request","status":"DONE","observed_at":now-1800,"paperless_evidence":[]}
         ],
         "attention":{
-            "needs_me":[{"id":"task-open","title":"Synthetic home insurance renewal","status":"OPEN","due_date":"2025-01-16","source_refs":["<synthetic@example.test>"]}],
+            "needs_me":[{"id":"task-open","title":"Synthetic home insurance renewal","status":"OPEN","due_date":"2025-01-16","source_refs":["mail-935-test-01"]}],
             "waiting_on_others":[{"id":"task-wait","title":"Synthetic service reply","status":"WAITING"}],
             "due_overdue":[{"id":"task-open","title":"Synthetic home insurance renewal","status":"OPEN","due_date":"2025-01-16"}],
             "upcoming":[],
@@ -47,6 +47,7 @@ def test_supported_queries_use_local_structured_state(monkeypatch,tmp_path):
     payload=state(now)
     cases={
         "What needs me?":"Synthetic home insurance renewal",
+        "What do I need to deal with?":"Synthetic home insurance renewal",
         "What am I waiting for?":"Synthetic service reply",
         "What changed?":"Synthetic home insurance renewal",
         "What is due soon?":"Synthetic home insurance renewal",
@@ -57,6 +58,15 @@ def test_supported_queries_use_local_structured_state(monkeypatch,tmp_path):
         assert result["route"]=="structured_pa_state"
         assert result["privacy"]=="local-only"
         assert expected in result["reply"]
+
+def test_deal_with_answer_shows_task_identity_and_source_provenance(monkeypatch,tmp_path):
+    mod=load_bridge(monkeypatch,tmp_path)
+    now=1736899200
+    result=mod.pa_structured_answer("What do I need to deal with?",payload=state(now),now_ts=now)
+    assert result["result_ids"] == ["task-open"]
+    assert "task ID: task-open" in result["reply"]
+    assert "source refs: mail-935-test-01" in result["reply"]
+    assert result["privacy"] == "local-only"
 
 def test_evidence_query_returns_paperless_reference_without_lookup(monkeypatch,tmp_path):
     mod=load_bridge(monkeypatch,tmp_path)
