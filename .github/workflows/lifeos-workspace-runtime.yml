@@ -151,6 +151,12 @@ jobs:
           PY
           }
 
+          echo "DIAGNOSTIC_START=PASS"
+
+          if wait_for_settle lifeos-energy-forecast.service 360 FORECAST; then
+            :
+          fi
+
           report_forecast_readiness_summary
 
           forecast_activation="$(unit_value lifeos-energy-forecast.service InactiveExitTimestamp)"
@@ -167,12 +173,6 @@ jobs:
           fi
           echo "FORECAST_RUN_MATCHES_LAST_TIMER=$forecast_matches_timer"
 
-          echo "DIAGNOSTIC_START=PASS"
-
-          if wait_for_settle lifeos-energy-forecast.service 360 FORECAST; then
-            :
-          fi
-
           forecast_state="$(unit_value lifeos-energy-forecast.service ActiveState)"
           forecast_substate="$(unit_value lifeos-energy-forecast.service SubState)"
           forecast_result="$(unit_value lifeos-energy-forecast.service Result)"
@@ -187,7 +187,7 @@ jobs:
           echo "FORECAST_SETTLED=$forecast_settled"
 
           shadow_started_after_forecast="UNKNOWN"
-          if [[ "$forecast_settled" == YES && "$forecast_result" == success && "$forecast_exit" == 0 ]]; then
+          if [[ "$forecast_settled" == YES && "$forecast_matches_timer" == YES && "$forecast_result" == success && "$forecast_exit" == 0 ]]; then
             if [[ "$forecast_exit_mono" =~ ^[0-9]+$ ]] && (( forecast_exit_mono > 0 )); then
               shadow_deadline=$((SECONDS + 60))
               shadow_start_mono="$(unit_value lifeos-energy-shadow-learning.service ExecMainStartTimestampMonotonic)"
