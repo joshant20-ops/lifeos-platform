@@ -77,9 +77,14 @@ jobs:
           }
 
           report_forecast_readiness_summary() {
-            python3 - <<'PY'
+            local activation="$1"
+            python3 - "$activation" <<'PY'
           import re
           import subprocess
+          import sys
+
+          activation = sys.argv[1].strip()
+          since = activation if activation else "30 minutes ago"
 
           labels = {
               "PREDICTED_PV": "Predbat solar forecast",
@@ -98,7 +103,7 @@ jobs:
                       "journalctl",
                       "--no-pager",
                       "--unit=lifeos-energy-forecast.service",
-                      "--since=30 minutes ago",
+                      "--since=" + since,
                       "--output=cat",
                   ],
                   capture_output=True,
@@ -157,10 +162,9 @@ jobs:
             :
           fi
 
-          report_forecast_readiness_summary
-
           forecast_activation="$(unit_value lifeos-energy-forecast.service InactiveExitTimestamp)"
           forecast_timer_last="$(unit_value lifeos-energy-forecast.timer LastTriggerUSec)"
+          report_forecast_readiness_summary "$forecast_activation"
           activation_epoch="$(date -d "$forecast_activation" +%s 2>/dev/null || true)"
           timer_epoch="$(date -d "$forecast_timer_last" +%s 2>/dev/null || true)"
           forecast_matches_timer="UNKNOWN"
