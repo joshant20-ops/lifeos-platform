@@ -25,14 +25,23 @@ jobs:
           echo "DIAGNOSTIC_START=PASS"
           for unit in \
             lifeos-energy-forecast.service \
-            lifeos-energy-forecast.timer \
             lifeos-energy-shadow-learning.service \
+            lifeos-predbat-sanity.service; do
+            echo "UNIT=$unit"
+            if systemctl show "$unit" --no-pager \
+              --property=LoadState,ActiveState,SubState,UnitFileState,Result,ExecMainStatus; then
+              :
+            else
+              echo "UNIT_QUERY=UNAVAILABLE"
+            fi
+          done
+          for unit in \
+            lifeos-energy-forecast.timer \
             lifeos-energy-shadow-learning.timer \
-            lifeos-predbat-sanity.service \
             lifeos-predbat-sanity.timer; do
             echo "UNIT=$unit"
             if systemctl show "$unit" --no-pager \
-              --property=LoadState,ActiveState,SubState,UnitFileState,Result,ExecMainStatus,LastTriggerUSec,NextElapseUSecRealtime; then
+              --property=LoadState,ActiveState,SubState,UnitFileState,LastTriggerUSec,NextElapseUSecRealtime; then
               :
             else
               echo "UNIT_QUERY=UNAVAILABLE"
