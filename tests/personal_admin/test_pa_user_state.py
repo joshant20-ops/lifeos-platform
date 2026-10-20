@@ -90,6 +90,15 @@ def test_expired_snooze_is_not_projected_but_remains_in_user_state(tmp_path):
     assert view["attention"]["counts"]["needs_me"] == 1
     assert "snoozed_until" not in view["attention"]["needs_me"][0]
 
+    legacy_payload = {
+        "schema": "lifeos_tasks_v3", "generated_time": now,
+        "tasks": [{**task(), "snoozed_until": "2026-10-05"}], "resolved": [],
+    }
+    legacy_view = user_state.apply_user_state(
+        legacy_payload, {"schema": user_state.SCHEMA, "revision": 0, "obligations": {}}
+    )
+    assert "snoozed_until" not in legacy_view["tasks"][0]
+
 
 def test_dismissed_is_resolved_but_not_completed(tmp_path):
     path = tmp_path / "user_state.json"
