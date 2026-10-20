@@ -147,25 +147,38 @@ def resolve_task_id(d,msg,tasks):
     refs=reference_ids(msg)
     case_refs=case_reference_ids(msg)
     counterparty=normalize_counterparty(d.get("counterparty"))
+    topic=re.sub(r"[^a-z0-9]+"," ",str(d.get("topic") or "").lower()).strip()
     ref_matches=[]
-    legacy_matches=[]
     case_matches=[]
+    topic_matches=[]
+    legacy_matches=[]
     for task_id,task in tasks.items():
         known=set(task.get("source_message_ids") or [])
         if task.get("email_message_id"):known.add(str(task["email_message_id"]))
         if refs & known:ref_matches.append((task_id,task))
         task_refs=set(task.get("case_reference_ids") or [])
-        task_counterparty=normalize_counterparty(task.get("counterparty"))
-        if case_refs and counterparty and case_refs & task_refs and counterparty==task_counterparty:
+        if case_refs and case_refs & task_refs:
             case_matches.append((task_id,task))
+        task_counterparty=normalize_counterparty(task.get("counterparty"))
+        task_topic=re.sub(r"[^a-z0-9]+"," ",str(task.get("topic") or "").lower()).strip()
+        # A stable labelled case reference is strong identity evidence even
+        # when sender-derived counterparty labels differ across messages.
+        # Without one, only a unique exact counterparty + topic match may join
+        # separate threads. Conflicting or one-sided case references block it.
+        references_compatible=(
+            not case_refs and not task_refs
+        ) or bool(case_refs & task_refs)
+        if counterparty and task_counterparty==counterparty and topic and task_topic==topic and references_compatible:
+            topic_matches.append((task_id,task))
         same_legacy_message=str(task.get("email_message_id") or "")==str(msg.get("message_id") or "")
         has_no_source_ref=not task.get("email_message_id") and not task.get("source_message_ids")
         if not task.get("thread_root_id") and task.get("identity_semantic",task_id)==semantic and (same_legacy_message or has_no_source_ref):
             legacy_matches.append((task_id,task))
-    semantic_matches=[x for x in ref_matches if x[1].get("identity_semantic")==semantic]
-    if len(semantic_matches)==1:return semantic_matches[0][0]
+    semantic_ref_matches=[x for x in ref_matches if x[1].get("identity_semantic")==semantic]
+    if len(semantic_ref_matches)==1:return semantic_ref_matches[0][0]
     if len(ref_matches)==1:return ref_matches[0][0]
     if len(case_matches)==1:return case_matches[0][0]
+    if len(topic_matches)==1:return topic_matches[0][0]
     if len(legacy_matches)==1:return legacy_matches[0][0]
     root=thread_root(msg)
     if not semantic or not root:return ""
