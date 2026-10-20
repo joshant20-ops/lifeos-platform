@@ -319,45 +319,6 @@ def _project_task(task, now_ts, today):
     return projected
 
 
-
-def order_tasks_for_attention(task_rows, now_ts=None):
-    """Return every current task in the same priority order used by PA attention."""
-    now_ts = int(now_ts if now_ts is not None else time.time())
-    today = datetime.fromtimestamp(now_ts).date()
-
-    def rank(task):
-        projected = _project_task(task, now_ts, today)
-        status = projected["status"]
-        if status == "OPEN" and not projected["snoozed"]:
-            bucket = 0
-        elif status == "WAITING" and not projected["snoozed"]:
-            bucket = 1
-        elif status in {"OPEN", "WAITING"}:
-            bucket = 2
-        elif status == "DONE":
-            bucket = 3
-        elif status == "DISMISSED":
-            bucket = 4
-        else:
-            bucket = 5
-        within_bucket = (
-            -int(projected["observed_at"] or 0)
-            if bucket == 3
-            else -int(projected["priority_score"])
-        )
-        return (
-            bucket,
-            within_bucket,
-            projected["due_date"] or "9999-99-99",
-            projected["title"].casefold(),
-            projected["id"],
-        )
-
-    return sorted(
-        (task for task in task_rows or [] if isinstance(task, dict)),
-        key=rank,
-    )
-
 def derive_attention(task_rows, now_ts=None, today=None):
     now_ts = int(now_ts if now_ts is not None else time.time())
     today = today or datetime.fromtimestamp(now_ts).date()
