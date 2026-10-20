@@ -158,6 +158,17 @@ def restore_state(original_bytes):
                 pass
 
 
+def task_provenance_matches(task_id: str, item: dict, reply: str) -> bool:
+    refs = item.get("source_refs") or item.get("source_message_ids") or []
+    if not isinstance(refs, list):
+        return False
+    return bool(
+        refs
+        and f"task ID: {task_id}" in reply
+        and any(str(ref) in reply for ref in refs[:3] if ref)
+    )
+
+
 def main():
     if subprocess.check_output(["hostname"], text=True).strip() != "Docker":
         raise RuntimeError("wrong_runtime_host")
@@ -281,8 +292,7 @@ def main():
         provenance_match = False
         for matched_id in matched_ids:
             item = visible_by_id[matched_id]
-            refs = item.get("source_refs") or []
-            if refs and f"task ID: {matched_id}" in deal_reply and any(str(ref) in deal_reply for ref in refs[:3]):
+            if task_provenance_matches(matched_id, item, deal_reply):
                 provenance_match = True
                 break
         assert provenance_match
