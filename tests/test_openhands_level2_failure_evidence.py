@@ -29,6 +29,11 @@ class OpenHandsLevel2FailureEvidenceTests(unittest.TestCase):
         self.assertIn('input=json.dumps({**snapshot,"task_context":prompt})', self.workflow)
         self.assertIn('"text":ledger["recovery_message"]', self.workflow)
 
+    def test_acceptance_runs_when_its_task_hydrator_changes(self):
+        trigger = self.workflow.split("    paths:\n", 1)[1].split("\n\npermissions:", 1)[0]
+        self.assertIn(".github/workflows/openhands-level2-current-profile.yml", trigger)
+        self.assertIn("governor/scripts/openhands-github-task-hydrate.py", trigger)
+
     def test_sanitized_conversation_checkpoint_precedes_incomplete_gate(self):
         marker = 'print("OPENHANDS_LEVEL2_CURRENT_PROFILE_EVIDENCE="'
         marker_at = self.workflow.index(marker)
