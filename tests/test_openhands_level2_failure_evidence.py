@@ -13,9 +13,14 @@ class OpenHandsLevel2FailureEvidenceTests(unittest.TestCase):
 
     def test_checkpoint_dependency_is_imported_in_embedded_script(self):
         self.assertIn(
-            "import json, os, pathlib, subprocess, sys, time, urllib.request, uuid",
+            "import hashlib, json, os, pathlib, subprocess, sys, time, urllib.request, uuid",
             self.workflow,
         )
+
+    def test_provided_context_fingerprint_is_compared_with_persisted_initial_message(self):
+        self.assertIn('hashlib.sha256(prompt.encode("utf-8")).hexdigest()', self.workflow)
+        self.assertIn('"context_matches_provided":(', self.workflow)
+        self.assertIn('evidence.get("initial_context",{}).get("sha256")', self.workflow)
 
     def test_task_understanding_is_derived_from_issue_inspection_evidence(self):
         self.assertIn(
@@ -32,6 +37,7 @@ class OpenHandsLevel2FailureEvidenceTests(unittest.TestCase):
     def test_acceptance_runs_when_its_task_hydrator_changes(self):
         trigger = self.workflow.split("    paths:\n", 1)[1].split("\n\npermissions:", 1)[0]
         self.assertIn(".github/workflows/openhands-level2-current-profile.yml", trigger)
+        self.assertIn("governor/scripts/openhands-level2-evidence.py", trigger)
         self.assertIn("governor/scripts/openhands-github-task-hydrate.py", trigger)
 
     def test_sanitized_conversation_checkpoint_precedes_incomplete_gate(self):
