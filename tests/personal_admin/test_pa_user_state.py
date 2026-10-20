@@ -88,7 +88,7 @@ def test_expired_snooze_is_not_projected_but_remains_in_user_state(tmp_path):
     assert "snoozed_until" not in view["tasks"][0]
     assert view["attention"]["counts"]["snoozed"] == 0
     assert view["attention"]["counts"]["needs_me"] == 1
-    assert "snoozed_until" not in view["attention"]["needs_me"][0]
+    assert view["attention"]["needs_me"][0]["snoozed_until"] is None
 
     legacy_payload = {
         "schema": "lifeos_tasks_v3", "generated_time": now,
