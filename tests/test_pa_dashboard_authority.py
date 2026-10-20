@@ -98,3 +98,27 @@ def test_gate_i_workflow_uploads_sanitized_evidence_only_on_failure():
     upload = gate.split("uses: actions/upload-artifact@v4", 1)[-1]
     assert "gate-i-control-bridge-sanitized.json" in upload
     assert "gate-i-control-bridge.log" not in upload
+
+
+ACCEPTANCE_SPEC = importlib.util.spec_from_file_location(
+    "pa_governed_acceptance",
+    ROOT / "scripts" / "accept-pa-governed-actions.py",
+)
+ACCEPTANCE = importlib.util.module_from_spec(ACCEPTANCE_SPEC)
+assert ACCEPTANCE_SPEC and ACCEPTANCE_SPEC.loader
+ACCEPTANCE_SPEC.loader.exec_module(ACCEPTANCE)
+
+
+def test_ask_lifeos_provenance_matches_existing_source_message_ids():
+    item = {"source_message_ids": ["message-1", "message-2"]}
+    reply = "task ID: task-1; source refs: message-1, message-2"
+    assert ACCEPTANCE.task_provenance_matches("task-1", item, reply)
+    assert not ACCEPTANCE.task_provenance_matches(
+        "task-2", item, reply
+    )
+    assert not ACCEPTANCE.task_provenance_matches(
+        "task-1", item, "task ID: task-1; source refs: message-9"
+    )
+    assert not ACCEPTANCE.task_provenance_matches(
+        "task-1", {"source_message_ids": []}, reply
+    )
