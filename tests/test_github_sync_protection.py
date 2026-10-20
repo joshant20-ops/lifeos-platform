@@ -22,6 +22,7 @@ class SnapshotProtectionTests(unittest.TestCase):
             "usr/local/sbin/lifeos-ansible-adopt",
             "usr/local/sbin/lifeos-gitleaks-gate",
             "opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py",
+            "opt/stacks/homeassistant/config/scripts/lifeos_pa_user_state.py",
         }
         self.assertTrue(required <= protected)
 
