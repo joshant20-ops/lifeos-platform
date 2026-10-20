@@ -2330,5 +2330,111 @@
       "export": "2026-10-20T23:00:00+01:00",
       "import": "2026-10-20T23:00:00+01:00"
     }
+  },
+  {
+    "anomaly_flags": [
+      "predbat_forecast_active_headline_stale"
+    ],
+    "forecast_freshness": {
+      "active_headline_count": 7,
+      "checked_at": "2026-10-20T11:06:28.866345+01:00",
+      "fresh_active_headline_count": 0,
+      "fresh_headline_count": 0,
+      "headline_count": 8,
+      "headline_entities": {
+        "predbat.best_export_energy": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        },
+        "predbat.best_import_energy": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        },
+        "predbat.best_import_energy_battery": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        },
+        "predbat.best_import_energy_house": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        },
+        "predbat.best_load_energy": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        },
+        "predbat.best_pv_energy": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        },
+        "predbat.best_soc_min_kwh": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        },
+        "predbat.soc_kw_best": {
+          "age_seconds": null,
+          "fresh_1h": false,
+          "source": "missing"
+        }
+      },
+      "stale_active_headlines": [
+        "predbat.best_load_energy",
+        "predbat.best_pv_energy",
+        "predbat.best_import_energy",
+        "predbat.best_import_energy_battery",
+        "predbat.best_export_energy",
+        "predbat.best_soc_min_kwh",
+        "predbat.soc_kw_best"
+      ]
+    },
+    "forecast_provenance": {
+      "forecast_entity_count": 6,
+      "live_api": {
+        "queried_at": "2026-10-20T11:06:28.533045+01:00",
+        "request_seconds": 0.0355,
+        "source": "home_assistant_live_api",
+        "state_count": 975,
+        "status": "live_api_ok"
+      },
+      "live_overlay_count": 0,
+      "source": "home_assistant_live_api"
+    },
+    "forecast_summary": {
+      "grid_points": 0,
+      "high_import_points_beyond_live_tariff_horizon": 0,
+      "soc_points": 0
+    },
+    "generated_at": "2026-10-20T11:06:28.866329+01:00",
+    "sanity_assessment": {
+      "fail_flags": [
+        "predbat_forecast_active_headline_stale"
+      ],
+      "level": "FAIL",
+      "other_flags": [],
+      "reason": "forecast_or_provenance_not_safe_to_trust",
+      "requires_operator_attention": true,
+      "watch_flags": []
+    },
+    "states": {
+      "predbat.rates": 29.68,
+      "predbat.rates_export": 16.3,
+      "predbat.status": "Demand",
+      "sensor.predbat_enphase_5731818_battery_power": 29,
+      "sensor.predbat_enphase_5731818_battery_reserve": 10,
+      "sensor.predbat_enphase_5731818_grid_power": -3228.4,
+      "sensor.predbat_enphase_5731818_load_power": 3529,
+      "sensor.predbat_enphase_5731818_pv_power": 271.6,
+      "sensor.predbat_enphase_5731818_soc_percent": 12
+    },
+    "tariff_horizon": {
+      "export": "2026-10-20T23:00:00+01:00",
+      "import": "2026-10-20T23:00:00+01:00"
+    }
   }
 ]
