@@ -13,32 +13,60 @@ permissions:
 jobs:
   diagnose:
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - name: Synchronize diagnostic checkout
         uses: actions/checkout@v4
 
-      - name: Report fixed Energy runtime status only
+      - name: Wait for bounded Energy startup and report fixed status only
         shell: bash
         run: |
           set -Eeuo pipefail
-          echo "DIAGNOSTIC_START=PASS"
-          for unit in \
-            lifeos-energy-forecast.service \
-            lifeos-energy-shadow-learning.service \
-            lifeos-predbat-sanity.service; do
+
+          unit_value() {
+            systemctl show "$1" --property="$2" --value 2>/dev/null || true
+          }
+
+          wait_for_settle() {
+            local unit="$1"
+            local limit_seconds="$2"
+            local label="$3"
+            local deadline=$((SECONDS + limit_seconds))
+            local state=""
+            local substate=""
+
+            while :; do
+              state="$(unit_value "$unit" ActiveState)"
+              substate="$(unit_value "$unit" SubState)"
+
+              if [[ "$state" == inactive || "$state" == failed ]] ||
+                 { [[ "$state" == active ]] && [[ "$substate" == exited ]]; }; then
+                echo "${label}_SETTLED=YES"
+                return 0
+              fi
+
+              if (( SECONDS >= deadline )); then
+                echo "${label}_SETTLED=NO"
+                return 1
+              fi
+
+              sleep 10
+            done
+          }
+
+          report_service() {
+            local unit="$1"
             echo "UNIT=$unit"
             if systemctl show "$unit" --no-pager \
-              --property=LoadState,ActiveState,SubState,UnitFileState,Result,ExecMainStatus; then
+              --property=LoadState,ActiveState,SubState,UnitFileState,Result,ExecMainStatus,ExecMainStartTimestamp,ExecMainExitTimestamp; then
               :
             else
               echo "UNIT_QUERY=UNAVAILABLE"
             fi
-          done
-          for unit in \
-            lifeos-energy-forecast.timer \
-            lifeos-energy-shadow-learning.timer \
-            lifeos-predbat-sanity.timer; do
+          }
+
+          report_timer() {
+            local unit="$1"
             echo "UNIT=$unit"
             if systemctl show "$unit" --no-pager \
               --property=LoadState,ActiveState,SubState,UnitFileState,LastTriggerUSec,NextElapseUSecRealtime; then
@@ -46,5 +74,59 @@ jobs:
             else
               echo "UNIT_QUERY=UNAVAILABLE"
             fi
-          done
+          }
+
+          echo "DIAGNOSTIC_START=PASS"
+
+          shadow_invocation_before="$(unit_value lifeos-energy-shadow-learning.service InvocationID)"
+          shadow_start_before="$(unit_value lifeos-energy-shadow-learning.service ExecMainStartTimestamp)"
+
+          if wait_for_settle lifeos-energy-forecast.service 360 FORECAST; then
+            :
+          fi
+
+          forecast_state="$(unit_value lifeos-energy-forecast.service ActiveState)"
+          forecast_result="$(unit_value lifeos-energy-forecast.service Result)"
+          forecast_exit="$(unit_value lifeos-energy-forecast.service ExecMainStatus)"
+
+          if [[ "$forecast_state" == inactive || "$forecast_state" == failed ]] ||
+             { [[ "$forecast_state" == active ]] && [[ "$(unit_value lifeos-energy-forecast.service SubState)" == exited ]]; }; then
+            if [[ "$forecast_result" == success && "$forecast_exit" == 0 ]]; then
+              shadow_observed="NO"
+              shadow_deadline=$((SECONDS + 60))
+
+              while (( SECONDS < shadow_deadline )); do
+                shadow_invocation_now="$(unit_value lifeos-energy-shadow-learning.service InvocationID)"
+                shadow_start_now="$(unit_value lifeos-energy-shadow-learning.service ExecMainStartTimestamp)"
+
+                if { [[ -n "$shadow_invocation_now" && "$shadow_invocation_now" != "$shadow_invocation_before" ]]; } ||
+                   { [[ -n "$shadow_start_now" && "$shadow_start_now" != "$shadow_start_before" ]]; }; then
+                  shadow_observed="YES"
+                  break
+                fi
+                sleep 5
+              done
+
+              echo "SHADOW_INVOCATION_OBSERVED=$shadow_observed"
+
+              if [[ "$shadow_observed" == YES ]]; then
+                if wait_for_settle lifeos-energy-shadow-learning.service 180 SHADOW; then
+                  :
+                fi
+              fi
+            else
+              echo "SHADOW_INVOCATION_OBSERVED=NOT_EXPECTED_FORECAST_NOT_SUCCESSFUL"
+            fi
+          else
+            echo "SHADOW_INVOCATION_OBSERVED=NOT_CHECKED_FORECAST_NOT_SETTLED"
+          fi
+
+          report_service lifeos-energy-forecast.service
+          report_service lifeos-energy-shadow-learning.service
+          report_service lifeos-predbat-sanity.service
+
+          report_timer lifeos-energy-forecast.timer
+          report_timer lifeos-energy-shadow-learning.timer
+          report_timer lifeos-predbat-sanity.timer
+
           echo "DIAGNOSTIC_END=PASS"
