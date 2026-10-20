@@ -117,7 +117,7 @@ def pa_structured_answer(question, payload=None, now_ts=None):
     payload=apply_user_state(payload) if isinstance(payload,dict) else payload
     route=None
     query_term=""
-    if any(x in q for x in ("what needs me","what needs my attention","what do i need to do","what should i do next")):
+    if any(x in q for x in ("what needs me","what needs my attention","what do i need to do","what should i do next","what do i need to deal with")):
         route="needs_me"
         targeted=re.search(r"what needs (?:me|my attention) (?:about|for) (.+)$",q)
         if targeted: query_term=targeted.group(1).strip(" ?.!")[:100]
@@ -205,7 +205,14 @@ def pa_structured_answer(question, payload=None, now_ts=None):
                 due=str(item.get("due_date") or "")
                 severity=str(item.get("severity") or "normal").lower()
                 suffix=("; due "+due) if due else ""
-                lines.append(f"- {title} ({status}; {severity}{suffix})")
+                task_id=str(item.get("id") or "")
+                refs=item.get("source_refs") or item.get("source_message_ids") or []
+                if not refs and item.get("email_message_id"):
+                    refs=[item["email_message_id"]]
+                refs=[str(ref)[:120] for ref in refs if ref][:3] if isinstance(refs,list) else []
+                identity=("; task ID: "+task_id) if task_id else "; task ID: unavailable"
+                provenance=("; source refs: "+", ".join(refs)) if refs else "; source refs: unavailable"
+                lines.append(f"- {title} ({status}; {severity}{suffix}{identity}{provenance})")
             reply=f"{label} ({len(unique)} shown):\n"+"\n".join(lines)
     reply+="\n\nSource: local structured PA state. Confidence: structured state only; source references are retained."
     return {"handled":True,"ok":True,"route":"structured_pa_state","source_schema":"lifeos_tasks_v3","privacy":"local-only","confidence":"structured_state_only","matched_view":route,"reply":reply,"result_count":len(unique),"result_ids":[str(x.get("id") or "") for x in unique[:20]]}
