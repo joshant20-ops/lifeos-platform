@@ -187,8 +187,12 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
         }
 
 
-def apply_user_annotations(tasks, state=None):
+def apply_user_annotations(tasks, state=None, *, now_ts=None):
     state = state if state is not None else read_user_state()
+    try:
+        projection_today = datetime.fromtimestamp(int(now_ts if now_ts is not None else time.time())).date()
+    except (TypeError, ValueError, OverflowError, OSError):
+        projection_today = datetime.now().date()
     obligations = state.get("obligations") or {}
     result = []
     for original in tasks or []:
@@ -198,6 +202,16 @@ def apply_user_annotations(tasks, state=None):
         task_id = str(task.get("id") or "")
         entry = obligations.get(task_id)
         if not isinstance(entry, dict):
+            until = str(task.get("snoozed_until") or "")
+            try:
+                snooze_is_active = (
+                    task.get("status") in {"OPEN", "WAITING"}
+                    and date.fromisoformat(until) > projection_today
+                )
+            except (TypeError, ValueError):
+                snooze_is_active = False
+            if not snooze_is_active:
+                task.pop("snoozed_until", None)
             result.append(task)
             continue
         # Persist the machine view separately so each bounded Gmail replay starts
@@ -222,8 +236,16 @@ def apply_user_annotations(tasks, state=None):
             if isinstance(x, dict) and x.get("source") == "user_comment"
         ][-100:]
         task["user_comment_count"] = len(task["user_comments"])
-        if entry.get("snoozed_until"):
-            task["snoozed_until"] = str(entry["snoozed_until"])
+        until = str(entry.get("snoozed_until") or "")
+        try:
+            snooze_is_active = (
+                task.get("status") in {"OPEN", "WAITING"}
+                and date.fromisoformat(until) > projection_today
+            )
+        except (TypeError, ValueError):
+            snooze_is_active = False
+        if snooze_is_active:
+            task["snoozed_until"] = until
         else:
             task.pop("snoozed_until", None)
         if entry.get("severity_override") in SEVERITIES:
@@ -372,6 +394,10 @@ def apply_user_state(payload, state=None):
         raise ValueError("task_view_schema_invalid")
     state = state if state is not None else read_user_state()
     result = dict(payload)
+    try:
+        generated = int(result.get("generated_time") or time.time())
+    except (TypeError, ValueError):
+        generated = int(time.time())
     all_rows = list(payload.get("tasks") or []) + list(payload.get("resolved") or [])
     # Recover the source-derived status before applying persistent user decisions.
     machine_rows = []
@@ -386,13 +412,9 @@ def apply_user_state(payload, state=None):
         base.pop("severity_source", None)
         base.pop("due_date_source", None)
         machine_rows.append(base)
-    effective = apply_user_annotations(machine_rows, state)
+    effective = apply_user_annotations(machine_rows, state, now_ts=generated)
     result["tasks"] = [x for x in effective if str(x.get("status") or "").upper() not in {"DONE", "DISMISSED"}]
     result["resolved"] = [x for x in effective if str(x.get("status") or "").upper() in {"DONE", "DISMISSED"}]
-    try:
-        generated = int(result.get("generated_time") or time.time())
-    except (TypeError, ValueError):
-        generated = int(time.time())
     attention = derive_attention(effective, now_ts=generated)
     result["attention"] = attention
     result["briefing"] = daily_briefing(attention)
