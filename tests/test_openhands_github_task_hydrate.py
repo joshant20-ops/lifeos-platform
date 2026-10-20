@@ -16,6 +16,10 @@ def test_render_task_is_solution_neutral_and_bounded():
     assert "Repository: owner/repo" in result
     assert "Persistent workspace: /projects/repo" in result
     assert "Issue: #935" in result
+    assert "Use only the tool names registered in this session" in result
+    assert "registered `terminal` tool with one string argument named `command`" in result
+    assert "Do not use `cmd`, `terminal.exec`, `container.exec`, `assistant.exec`, or `repo_browser.*` unless that exact tool is registered." in result
+    assert "After a tool error, use only the available tool names and argument schema reported by the error." in result
     assert "inspect this" in result
     assert "context only" in result
     assert "Independently inspect" in result
