@@ -24,6 +24,11 @@ class OpenHandsLevel2FailureEvidenceTests(unittest.TestCase):
         )
         self.assertNotIn('"task_understood":True', self.workflow)
 
+    def test_recovery_replays_authoritative_task_and_declared_tool_guidance(self):
+        self.assertIn('"Tool boundary: use only tools exposed in this session', self.workflow)
+        self.assertIn('input=json.dumps({**snapshot,"task_context":prompt})', self.workflow)
+        self.assertIn('"text":ledger["recovery_message"]', self.workflow)
+
     def test_sanitized_conversation_checkpoint_precedes_incomplete_gate(self):
         marker = 'print("OPENHANDS_LEVEL2_CURRENT_PROFILE_EVIDENCE="'
         marker_at = self.workflow.index(marker)

@@ -36,7 +36,7 @@ def assess(snapshot: dict) -> dict:
     return result
 
 
-def recovery_message(result: dict) -> str:
+def recovery_message(result: dict, task_context: str = "") -> str:
     unmet = result.get("earliest_unmet")
     if not unmet:
         return "All engineering objectives are complete. Perform a concise final completeness check."
@@ -45,14 +45,23 @@ def recovery_message(result: dict) -> str:
         if result.get("stalled")
         else "Deterministic progress check: the task is incomplete. "
     )
-    return (
+    context = (
+        "Authoritative task context repeated from the original request (retain its objective and constraints):\n"
+        + task_context.strip()
+        + "\n\n"
+        if task_context.strip()
+        else ""
+    )
+    return context + (
         prefix
         + f"Earliest unmet objective: {unmet['objective']}. "
-        + "Use the explicit task context in this conversation as the source of truth. "
+        + "Use the repeated authoritative task context above as the source of truth. "
         + "Do not switch to repository-wide backlog items, list the whole repository, "
         + "or reread task trackers unless the task requires it. "
         + "Take one focused tool action that directly advances this objective. "
-        + "If a dedicated tool is unavailable, continue with the supplied context and available workspace tools. "
+        + "Use only tools exposed in this session and their declared argument schemas. "
+        + "For shell work, use the supplied terminal tool with its declared command argument. "
+        + "After a tool error, follow the reported available tools and schema; do not retry unsupported aliases. "
         + "Do not repeat a prior action unless it produces new evidence, and do not stop before the branch, PR, and CI cycle is complete."
     )
 
@@ -60,7 +69,7 @@ def recovery_message(result: dict) -> str:
 def main() -> int:
     snapshot = json.load(sys.stdin)
     result = assess(snapshot)
-    result["recovery_message"] = recovery_message(result)
+    result["recovery_message"] = recovery_message(result, str(snapshot.get("task_context") or ""))
     print(json.dumps(result, sort_keys=True))
     return 0
 
