@@ -263,6 +263,31 @@ def main():
         assert "high" in reply.lower()
         print("GATE_H_REOPEN_OVERRIDES_HA_AND_CONVERSATIONAL_RETRIEVAL=PASS")
 
+        deal_answer = assistant_query("What do I need to deal with?")
+        deal_reply = str(deal_answer.get("reply", ""))
+        deal_ids = deal_answer.get("result_ids", [])
+        visible_by_id = {
+            str(item.get("id")): item
+            for item in (view.get("items") or [])
+            if isinstance(item, dict) and item.get("id") and item.get("status") == "OPEN" and not item.get("snoozed")
+        }
+        matched_ids = [str(item_id) for item_id in deal_ids if str(item_id) in visible_by_id]
+        assert deal_answer.get("provider") == "structured_local_state"
+        assert deal_answer.get("route") == "structured_pa_state"
+        assert deal_answer.get("source_schema") == "lifeos_tasks_v3"
+        assert deal_answer.get("privacy") == "local-only"
+        assert matched_ids
+        print("GATE_H_DEAL_WITH_CURRENT_TASK_MATCH=PASS")
+        provenance_match = False
+        for matched_id in matched_ids:
+            item = visible_by_id[matched_id]
+            refs = item.get("source_refs") or []
+            if refs and f"task ID: {matched_id}" in deal_reply and any(str(ref) in deal_reply for ref in refs[:3]):
+                provenance_match = True
+                break
+        assert provenance_match
+        print("GATE_H_DEAL_WITH_TASK_PROVENANCE=PASS")
+
         dashboard = read_json(DASHBOARD)
         overview = next(v for v in dashboard["data"]["config"]["views"] if v.get("path") == "overview")
         card = next(c for c in overview.get("cards", []) if c.get("type") == "custom:lifeos-pa-task-card")
