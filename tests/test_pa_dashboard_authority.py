@@ -1,5 +1,6 @@
 from pathlib import Path
 import importlib.util
+import json
 
 ROOT=Path(__file__).resolve().parents[1]
 SPEC=importlib.util.spec_from_file_location(
@@ -57,3 +58,43 @@ def test_only_one_active_owner_deploys_each_lifeos_dashboard_role():
     assert (ROOT/"archive"/"superseded-dashboard-owners"/"deploy-homelab-default-view.py").is_file()
 
 
+
+SANITIZER_SPEC = importlib.util.spec_from_file_location(
+    "gate_i_failure_evidence",
+    ROOT / "scripts" / "sanitize-gate-i-failure-evidence.py",
+)
+SANITIZER = importlib.util.module_from_spec(SANITIZER_SPEC)
+assert SANITIZER_SPEC and SANITIZER_SPEC.loader
+SANITIZER_SPEC.loader.exec_module(SANITIZER)
+
+
+def test_gate_i_failure_evidence_retains_only_known_safe_diagnostics():
+    private = "person@example.invalid 192.168.1.25 AA:BB:CC:DD:EE:FF Bearer secret-value"
+    evidence = SANITIZER.build_evidence(
+        "ERROR=active_tower_lease_prevents_controller_restart:" + private + "\\n"
+        "GATEWAY_CHILD_RC=17\\n"
+        "GATEWAY_OPERATION=deploy-ha-control-bridge\\n"
+        "GATEWAY_PLATFORM_HEAD=" + "a" * 40 + "\\n"
+        "CONTROL_CURRENT_ISSUE=private title\\n"
+        "ERROR=unexpected user content " + private,
+        17,
+    )
+    rendered = json.dumps(evidence)
+    assert evidence["diagnostics"] == ["active_tower_lease_prevents_controller_restart"]
+    assert evidence["exit_code"] == 17
+    assert evidence["gateway"]["GATEWAY_CHILD_RC"] == 17
+    assert evidence["gateway"]["GATEWAY_OPERATION"] == "deploy-ha-control-bridge"
+    for secret in ("person@", "192.168.", "AA:BB:CC", "secret-value", "private title"):
+        assert secret not in rendered
+
+
+def test_gate_i_workflow_uploads_sanitized_evidence_only_on_failure():
+    workflow = (ROOT / ".github" / "workflows" / "lifeos-pa-deploy.yml").read_text()
+    gate = workflow[workflow.index("id: gate_i_bridge"):]
+    gate = gate[:gate.index("Gate I — final live runtime consolidation acceptance")]
+    assert "exit \\"$rc\\"" in gate
+    assert "sanitize-gate-i-failure-evidence.py" in gate
+    assert "steps.gate_i_bridge.outcome == 'failure'" in gate
+    upload = gate.split("uses: actions/upload-artifact@v4", 1)[-1]
+    assert "gate-i-control-bridge-sanitized.json" in upload
+    assert "gate-i-control-bridge.log" not in upload
