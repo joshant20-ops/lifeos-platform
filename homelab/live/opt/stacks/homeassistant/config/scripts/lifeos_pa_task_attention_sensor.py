@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from lifeos_pa_user_state import apply_user_state, read_user_state
+from lifeos_pa_user_state import apply_user_state, order_tasks_for_attention, read_user_state
 
 TASKS = Path("/config/www/lifeos_tasks.json")
 def safe_markdown(value):
@@ -59,6 +59,7 @@ def main():
         if not generated or time.time() - generated > 7 * 3600:
             raise ValueError("stale")
         all_tasks = (payload.get("tasks") or []) + (payload.get("resolved") or [])
+        all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         items = [
             {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids}
