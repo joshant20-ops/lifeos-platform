@@ -25,6 +25,25 @@ class SnapshotProtectionTests(unittest.TestCase):
         }
         self.assertTrue(required <= protected)
 
+    def test_predbat_runtime_exports_stay_local(self):
+        latest = "opt/stacks/lifeos-energy/predbat-sanity-export/latest.json"
+        daily = "opt/stacks/lifeos-energy/predbat-sanity-export/daily.json"
+        protected = {
+            line.strip()
+            for line in POLICY.read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        }
+        self.assertTrue({latest, daily} <= protected)
+        sync = SYNC.read_text()
+        self.assertIn("/opt/stacks/lifeos-energy/predbat-sanity-export/*.json", sync)
+        self.assertNotIn("LIFEOS_PREDBAT_SANITY_RUNTIME_EXPORT_V1", sync)
+
+        import json
+        latest_stub = json.loads((ROOT / "homelab/live" / latest).read_text())
+        daily_stub = json.loads((ROOT / "homelab/live" / daily).read_text())
+        self.assertEqual(latest_stub, {"schema": "lifeos.predbat_sanity_public_stub.v1", "runtime_data": "local_only"})
+        self.assertEqual(daily_stub, [])
+
     def test_canonical_copy_is_seeded_before_live_scan(self):
         text = SYNC.read_text()
         seed = text.index("# Seed protected files from the just-pulled canonical repository snapshot.")
