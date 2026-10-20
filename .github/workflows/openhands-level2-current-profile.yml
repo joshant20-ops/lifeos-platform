@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/openhands-level2-current-profile.yml'
+      - 'governor/scripts/openhands-level2-evidence.py'
       - 'governor/scripts/openhands-github-task-hydrate.py'
 
 permissions:
@@ -113,7 +114,7 @@ jobs:
           api_key="$(docker exec lifeos-agent-canvas cat /home/openhands/.openhands/agent-canvas/api-key.txt)"
           test -n "$api_key"
           python3 - "$api_key" <<'PY'
-          import json, os, pathlib, subprocess, sys, time, urllib.request, uuid
+          import hashlib, json, os, pathlib, subprocess, sys, time, urllib.request, uuid
 
           key=sys.argv[1]
           token=os.environ["ACCEPTANCE_GITHUB_TOKEN"]
@@ -182,6 +183,11 @@ jobs:
               "OpenHands architecture. Finish with concise evidence: diagnosis, "
               "changed paths, tests, commit/branch, PR URL, and CI state."
           )
+          provided_context={
+              "sha256":hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+              "characters":len(prompt),
+          }
+          print("OPENHANDS_LEVEL2_PROVIDED_CONTEXT="+json.dumps(provided_context,sort_keys=True),flush=True)
           cid=uuid.uuid4().hex
           try:
               _,profiles=request("/api/profiles")
@@ -290,7 +296,7 @@ jobs:
 
                   # Persist a secret-safe checkpoint before any acceptance failure can exit.
                   evidence_record={
-                      "schema_version":1,
+                      "schema_version":2,
                       "workflow_run_id":os.environ.get("GITHUB_RUN_ID"),
                       "run_attempt":os.environ.get("GITHUB_RUN_ATTEMPT"),
                       "head_sha":os.environ.get("GITHUB_SHA"),
@@ -298,6 +304,11 @@ jobs:
                       "terminal_state":state,
                       "recovery_round":recovery_round,
                       "snapshot":snapshot,
+                      "provided_context":provided_context,
+                      "context_matches_provided":(
+                          evidence.get("initial_context",{}).get("sha256")==provided_context["sha256"]
+                          and evidence.get("initial_context",{}).get("characters")==provided_context["characters"]
+                      ),
                       "ledger":{
                           "complete":ledger.get("complete",False),
                           "earliest_unmet":ledger.get("earliest_unmet"),
