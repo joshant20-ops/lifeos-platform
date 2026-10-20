@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/openhands-level2-current-profile.yml'
+      - 'governor/scripts/openhands-github-task-hydrate.py'
 
 permissions:
   contents: write
