@@ -159,7 +159,75 @@ def test_case_reference_does_not_group_different_matters_for_same_counterparty()
     assert second_id != first_id
 
 
-def test_no_reference_similar_topic_messages_remain_separate():
+def test_same_counterparty_stable_topic_groups_across_threads():
+    first = {
+        "message_id": "<renewal-a@example.test>",
+        "source_ref": "<renewal-a@example.test>",
+    }
+    second = {
+        "message_id": "<renewal-b@example.test>",
+        "source_ref": "<renewal-b@example.test>",
+    }
+    item = decision("renewal paperwork", counterparty="Acme")
+    task_id = reconciler.resolve_task_id(item, first, {})
+    existing = {
+        task_id: {
+            "id": task_id,
+            "identity_semantic": reconciler.key(item),
+            "thread_root_id": first["message_id"],
+            "counterparty": "Acme",
+            "topic": "renewal paperwork",
+            "case_reference_ids": [],
+            "source_message_ids": [first["message_id"]],
+        }
+    }
+    assert reconciler.resolve_task_id(item, second, existing) == task_id
+
+
+def test_ambiguous_or_conflicting_case_references_do_not_topic_merge():
+    first_id = "acme-renewal-case-a"
+    second_id = "acme-renewal-case-b"
+    item = decision("renewal paperwork", counterparty="Acme")
+    tasks = {
+        first_id: {
+            "id": first_id, "identity_semantic": reconciler.key(item),
+            "thread_root_id": "<case-a@example.test>", "counterparty": "Acme",
+            "topic": "renewal paperwork", "case_reference_ids": ["UK10001"],
+            "source_message_ids": ["<case-a@example.test>"],
+        },
+        second_id: {
+            "id": second_id, "identity_semantic": reconciler.key(item),
+            "thread_root_id": "<case-b@example.test>", "counterparty": "Acme",
+            "topic": "renewal paperwork", "case_reference_ids": ["UK20002"],
+            "source_message_ids": ["<case-b@example.test>"],
+        },
+    }
+    no_reference = {"message_id": "<new@example.test>", "source_ref": "<new@example.test>"}
+    result = reconciler.resolve_task_id(item, no_reference, tasks)
+    assert result not in {first_id, second_id}
+
+
+def test_case_reference_groups_across_different_counterparty_labels():
+    first = {"message_id": "<case-a@example.test>", "subject": "Case reference: UK-10001"}
+    update = {"message_id": "<case-b@example.test>", "subject": "Reference # UK_10001"}
+    first_decision = decision("claim update", counterparty="Acme Support")
+    second_decision = decision("claim update", counterparty="Insurer Services")
+    task_id = reconciler.resolve_task_id(first_decision, first, {})
+    existing = {
+        task_id: {
+            "id": task_id,
+            "identity_semantic": reconciler.key(first_decision),
+            "thread_root_id": first["message_id"],
+            "counterparty": "Acme Support",
+            "topic": "claim update",
+            "case_reference_ids": sorted(reconciler.case_reference_ids(first)),
+            "source_message_ids": [first["message_id"]],
+        }
+    }
+    assert reconciler.resolve_task_id(second_decision, update, existing) == task_id
+
+
+def test_independent_roots_are_distinct_without_existing_matter_evidence():
     first = {"message_id": "<renewal-a@example.test>", "subject": "Renewal paperwork"}
     second = {"message_id": "<renewal-b@example.test>", "subject": "Renewal paperwork"}
     item = decision("renewal paperwork", counterparty="Acme")
