@@ -139,6 +139,12 @@ excluded() {
             return 0
             ;;
 
+        # Live Predbat telemetry is host-local; canonical protected placeholders seed GitHub.
+        /opt/stacks/lifeos-energy/predbat-sanity-export/*.json)
+
+            return 0
+            ;;
+
         # Z-Wave JS downloaded DB + runtime state
         /opt/stacks/zwave/store/*)
 
@@ -240,15 +246,6 @@ excluded() {
 
 source_file() {
     local f="$1"
-
-    # LIFEOS_PREDBAT_SANITY_RUNTIME_EXPORT_V1
-    # Deliberately sanitised compact runtime evidence only.
-    case "$f" in
-        /opt/stacks/lifeos-energy/predbat-sanity-export/latest.json|\
-        /opt/stacks/lifeos-energy/predbat-sanity-export/daily.json)
-            return 0
-            ;;
-    esac
 
     local b
     b="$(basename "$f")"
