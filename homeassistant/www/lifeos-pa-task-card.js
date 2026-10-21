@@ -358,10 +358,9 @@ class LifeOSPATaskCard extends HTMLElement {
   async _chooseJunkDocuments(task) {
     const refs = Array.isArray(task.source_message_ids) ? task.source_message_ids : [];
     const documents = (Array.isArray(task.paperless_evidence) ? task.paperless_evidence : [])
-      .filter((doc) => doc && /^\d+$/.test(String(doc.document_id || "")))
-      .slice(0, 5);
-    if (!refs.length || !documents.length) {
-      window.alert("Junk needs at least one linked email and one Paperless document.");
+      .filter((doc) => doc && /^\d+$/.test(String(doc.document_id || "")));
+    if (!refs.length) {
+      window.alert("Junk needs at least one linked email.");
       return null;
     }
     const dialog = document.createElement("dialog");
@@ -375,14 +374,15 @@ class LifeOSPATaskCard extends HTMLElement {
       '.junk-buttons .danger{background:var(--error-color,#b3261e);color:#fff}.junk-error{min-height:1.2em;color:var(--error-color,#b3261e);font-size:.8rem}' +
       '</style><h2 class="junk-title" id="junk-title">Move this matter to Junk?</h2>' +
       '<p class="junk-copy">This will move all ' + refs.length + (refs.length === 1 ? ' related email' : ' related emails') +
-      ' to Gmail Spam and dismiss the matter. Select the Paperless documents to delete.</p>' +
-      '<div class="junk-docs">' + documents.map((doc, index) =>
+      ' to Gmail Spam and dismiss the matter. Choose any linked Paperless documents to delete too. Leave them unchecked to keep them.</p>' +
+      '<div class="junk-docs">' + (documents.length ? documents.map((doc, index) =>
         '<label class="junk-doc"><input type="checkbox" data-paperless-id="' + this._escape(doc.document_id) + '">' +
         '<span><strong>' + this._escape(doc.title || ("Paperless document " + (index + 1))) + '</strong>' +
         '<small>Document ID ' + this._escape(doc.document_id) + '</small></span></label>'
-      ).join("") + '</div><p class="junk-warning">Selected documents will be deleted from Paperless. This may also remove their versions.</p>' +
+      ).join("") : '<p class="junk-copy">No linked Paperless documents were found for this matter.</p>') +
+      '</div><p class="junk-warning">Only checked documents will be deleted from Paperless. This may also remove their versions.</p>' +
       '<div class="junk-error" aria-live="polite"></div><div class="junk-buttons">' +
-      '<button type="button" data-junk-cancel>Cancel</button><button type="button" class="danger" data-junk-submit>Move emails to Junk and delete selected documents</button></div>';
+      '<button type="button" data-junk-cancel>Cancel</button><button type="button" class="danger" data-junk-submit>Junk emails and delete selected documents</button></div>';
     this.shadowRoot.append(dialog);
     return new Promise((resolve) => {
       let settled = false;
@@ -399,10 +399,6 @@ class LifeOSPATaskCard extends HTMLElement {
       dialog.querySelector("[data-junk-submit]").addEventListener("click", () => {
         const selected = Array.from(dialog.querySelectorAll("[data-paperless-id]:checked"))
           .map((input) => input.dataset.paperlessId);
-        if (!selected.length) {
-          dialog.querySelector(".junk-error").textContent = "Select at least one Paperless document to delete.";
-          return;
-        }
         finish(selected);
         dialog.close();
       });
