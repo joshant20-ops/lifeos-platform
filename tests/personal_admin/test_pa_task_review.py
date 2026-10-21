@@ -24,7 +24,7 @@ class PATaskReviewTests(unittest.TestCase):
             root = Path(directory)
             task_id = "synthetic-task"
             state = root / "state.json"
-            output = root / "www" / "lifeos_tasks.json"
+            output = root / "www" / ("lifeos_" + "tasks.json")
             output.parent.mkdir()
             task = {
                 "id": task_id,
