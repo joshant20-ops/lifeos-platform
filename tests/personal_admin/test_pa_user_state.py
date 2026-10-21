@@ -221,3 +221,17 @@ def test_backlog_is_sorted_by_attention_priority_and_state():
     ]
     assert rows[0]["id"] == "done"  # ordering does not mutate the source rows
 
+
+
+def test_ha_user_action_shell_command_uses_env_executable():
+    config = (
+        REPO / "homelab/live/opt/stacks/homeassistant/config/packages/"
+        "lifeos_actions.yaml"
+    ).read_text()
+    marker = "  lifeos_pa_user_action: >-\n"
+    assert marker in config
+    command = config.split(marker, 1)[1].split("\n  ", 1)[0].replace("\n", " ").strip()
+    assert command.startswith(
+        "env LIFEOS_PA_USER_STATE_PATH=/config/lifeos-pa-state/user_state.json "
+        "python3 /config/scripts/lifeos_pa_user_action.py"
+    )
