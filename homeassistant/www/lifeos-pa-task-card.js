@@ -208,12 +208,23 @@ class LifeOSPATaskCard extends HTMLElement {
     const needs = Number(attrs.needs_me || 0);
     const waiting = Number(attrs.waiting_on_others || 0);
     const overdue = Number(attrs.overdue || 0);
+    const activeFilter = this._countFilter || "";
+    const filterNames = { needs: "Need action", waiting: "Waiting", overdue: "Overdue" };
+    const filteredItems = activeFilter ? items.filter((task) => {
+      const status = String(task.status || "OPEN").toUpperCase();
+      const active = ["OPEN", "WAITING"].includes(status) && !task.snoozed;
+      const due = this._taskDate(task.due_date);
+      if (activeFilter === "needs") return status === "OPEN" && !task.snoozed;
+      if (activeFilter === "waiting") return status === "WAITING" && !task.snoozed;
+      if (activeFilter === "overdue") return active && due && due < this._dateKey(new Date());
+      return false;
+    }) : [];
     const style = [
       ':host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}',
       '.summary{color:var(--secondary-text-color);margin:4px 0 12px;line-height:1.45}',
       '.count-row{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 0}',
       '.page-head>.page-copy{min-width:0}.page-head>.count-row{justify-content:flex-end;flex:0 0 auto}',
-      '.count{border:1px solid var(--divider-color);border-radius:9px;padding:7px 10px;background:var(--secondary-background-color);min-width:76px}',
+      '.count{border:1px solid var(--divider-color);border-radius:9px;padding:7px 10px;background:var(--secondary-background-color);min-width:76px;text-align:left;color:var(--primary-text-color);font:inherit;cursor:pointer}.count[aria-pressed="true"]{border-color:var(--primary-color);box-shadow:inset 0 0 0 1px var(--primary-color)}.count:hover{background:var(--card-background-color)}',
       '.count strong{display:block;font-size:1.15rem;color:var(--primary-text-color)}.count span{font-size:.78rem;color:var(--secondary-text-color)}',
       '.open-link{display:inline-flex;align-items:center;margin-top:4px;color:var(--primary-color);font-weight:600;text-decoration:none}',
       '.page-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px}',
@@ -231,7 +242,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '.no-date-row{display:flex;justify-content:center;margin:0 0 18px}',
       '.no-date{border:0;background:transparent;color:var(--primary-color);font:inherit;font-size:.82rem;text-decoration:underline;text-underline-offset:3px;padding:7px 10px}',
       '.no-date.selected{font-weight:650}',
-      '.task-summary{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}',
+      '.task-summary{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}.clear-filter{margin:12px 0 4px;padding:8px 12px;border:1px solid var(--divider-color);border-radius:8px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit;cursor:pointer}',
       '.summary-chip{border-radius:20px;background:var(--secondary-background-color);padding:6px 10px;font-size:.77rem;color:var(--secondary-text-color)}',
       '.summary-chip.urgent{color:var(--error-color,var(--primary-text-color));font-weight:600}',
       '.group{margin:17px 0 20px}.group-heading{display:flex;gap:9px;align-items:baseline}.group-heading h2{font-size:1.02rem;margin:0;font-weight:650}.group-heading span{font-size:.75rem;color:var(--secondary-text-color)}',
@@ -285,16 +296,32 @@ class LifeOSPATaskCard extends HTMLElement {
     this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card>' +
       '<div class="page-head"><div class="page-copy"><div class="page-kicker">LifeOS · Personal Assistant</div><h1>' +
       this._escape(this._config.title || "Your matters") + '</h1><p>Follow each task from the first message to the next step.</p></div>' +
-      '<div class="count-row"><div class="count"><strong>' + needs + '</strong><span>Need action</span></div>' +
-      '<div class="count"><strong>' + waiting + '</strong><span>Waiting</span></div>' +
-      '<div class="count"><strong>' + overdue + '</strong><span>Overdue</span></div></div></div>' +
-      this._weekStrip(items) +
+      '<div class="count-row"><button class="count" type="button" data-filter="needs" aria-pressed="' + (activeFilter === "needs") + '"><strong>' + needs + '</strong><span>Need action</span></button>' +
+      '<button class="count" type="button" data-filter="waiting" aria-pressed="' + (activeFilter === "waiting") + '"><strong>' + waiting + '</strong><span>Waiting</span></button>' +
+      '<button class="count" type="button" data-filter="overdue" aria-pressed="' + (activeFilter === "overdue") + '"><strong>' + overdue + '</strong><span>Overdue</span></button></div></div>' +
+      (activeFilter
+        ? '<section class="count-results"><div class="task-summary"><span class="summary-chip">Showing ' + this._escape(filterNames[activeFilter]) + '</span><span class="summary-chip">' + filteredItems.length + ' matters listed</span></div><div class="task-grid">' +
+          (filteredItems.map((task) => this._taskCard(task, false)).join("") || '<div class="empty"><strong>No matching matters in the current task view</strong></div>') +
+          '</div><button class="clear-filter" type="button" data-clear-filter>Back to date view</button></section>'
+        : this._weekStrip(items)) +
       '<div class="no-date-row"><button class="no-date' + (this._selectedDate === "no-date" ? " selected" : "") +
       '" type="button" data-day="no-date" aria-pressed="' + (this._selectedDate === "no-date") + '">' +
       "Show matters with no due date" + '</button></div>' +
       '<div class="task-summary"><span class="summary-chip">Showing ' + this._escape(selectedDateLabel) + '</span>' +
       '<span class="summary-chip">' + shownItems.length + (shownItems.length === 1 ? " open matter" : " open matters") + '</span>' +
       '</div>' + this._actionSections(shownItems) + '</ha-card>';
+    this.shadowRoot.querySelectorAll("button[data-filter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._countFilter = this._countFilter === button.dataset.filter ? "" : button.dataset.filter;
+        this._render();
+      });
+    });
+    this.shadowRoot.querySelectorAll("button[data-clear-filter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._countFilter = "";
+        this._render();
+      });
+    });
     this.shadowRoot.querySelectorAll("button[data-day]").forEach((button) => {
       button.addEventListener("click", () => {
         this._selectedDate = button.dataset.day;
