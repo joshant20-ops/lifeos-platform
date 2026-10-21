@@ -62,6 +62,8 @@ def main():
         refs = task.get("source_message_ids") or []
         if not refs:
             raise ValueError("source_email_unavailable")
+        if str(task.get("status") or "").upper() not in {"OPEN", "WAITING"}:
+            raise ValueError("task_not_open")
         _ACTION_STAGE = "state_owner_privilege_drop"
         lifeos_pa_user_state.drop_to_state_owner()
         _ACTION_STAGE = "junk_request_enqueue"
@@ -75,7 +77,7 @@ def main():
             "paperless_document_ids": [int(x) for x in ids],
             "requested_at": int(time.time()),
         }
-        request_path = queue_dir / (request["request_id"] + ".json")
+        request_path = queue_dir / (args.task_id + ".json")
         fd = os.open(request_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(request, stream, separators=(",", ":"))
