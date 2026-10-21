@@ -378,6 +378,31 @@ def reverify_saved_task_paperless_evidence(task):
     )
     return task["paperless_evidence"]
 
+def verified_source_email_requires_no_action(task):
+    """Find a verified Paperless OCR copy of a task's sole source email that says no action is required."""
+    source_ids=task_source_message_ids(task)
+    if len(source_ids)!=1:
+        return ""
+    source_id=source_ids[0].casefold()
+    verified=verified_message_documents(
+        task.get("paperless_evidence") or [],
+        source_ids,
+        task.get("case_reference_ids") or [],
+        _paperless_document,
+    )
+    for item in verified:
+        document=_paperless_document(item["document_id"])
+        if not isinstance(document,dict):
+            continue
+        content=str(document.get("content") or "")
+        # Require the exact email identity in the OCR. A related policy or
+        # courier document must never suppress the task just because it has
+        # similar wording.
+        if source_id in content.casefold() and has_explicit_no_action_required({"body":content}):
+            return source_ids[0]
+    return ""
+
+
 def record_source_event(task,msg,decision,observed,actionable=True):
     message_id=str(msg.get("message_id") or msg.get("source_ref") or "")[:300]
     source_ids=set(task.get("source_message_ids") or [])
@@ -1144,6 +1169,10 @@ def _run_reconciler():
         source=fetched_by_message_id.get(source_message)
         if source and has_explicit_no_action_required(source):
             discard_single_source_no_action_task(tasks,source)
+            continue
+        source_message_id=verified_source_email_requires_no_action(task)
+        if source_message_id:
+            discard_single_source_no_action_task(tasks,{"message_id":source_message_id})
     for observed,k,d,msg in sorted(observations,key=lambda x:x[0]):
         if has_explicit_no_action_required(msg) and discard_single_source_no_action_task(tasks,msg):
             continue
