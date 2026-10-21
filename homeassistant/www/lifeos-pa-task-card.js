@@ -189,7 +189,22 @@ class LifeOSPATaskCard extends HTMLElement {
     const sensor = this._hass.states[this._entity()];
     const attrs = sensor?.attributes || {};
     const items = Array.isArray(attrs.items) ? attrs.items.filter((x) => x && x.id) : [];
-    if (!this._selectedDate) this._selectedDate = this._dateKey(new Date());
+    if (!this._selectedDate) {
+      const today = this._dateKey(new Date());
+      const weekStart = this._startOfWeek();
+      const weekDates = Array.from({ length: 7 }, (_, index) => {
+        const date = new Date(weekStart);
+        date.setDate(weekStart.getDate() + index);
+        return this._dateKey(date);
+      });
+      const weekSet = new Set(weekDates);
+      const active = items.filter((task) =>
+        ["OPEN", "WAITING"].includes(String(task.status || "").toUpperCase()) && !task.snoozed
+      );
+      const dated = [...new Set(active.map((task) => this._taskDate(task.due_date)).filter((date) => weekSet.has(date)))].sort();
+      this._selectedDate = dated.find((date) => date >= today) || dated[0] ||
+        (active.some((task) => !this._taskDate(task.due_date)) ? "no-date" : today);
+    }
     const needs = Number(attrs.needs_me || 0);
     const waiting = Number(attrs.waiting_on_others || 0);
     const overdue = Number(attrs.overdue || 0);
