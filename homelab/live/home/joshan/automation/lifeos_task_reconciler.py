@@ -129,6 +129,7 @@ def case_reference_ids(msg):
         r"|consignment(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
         r"|parcel\s+tracking(?:\s*(?:id|no\.?|number|code|ref(?:erence)?))?"
         r"|parcel(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
+        r"|policy\s*(?:id|no\.?|number|ref(?:erence)?)"
         r"|reference|ref"
     )
     pattern=rf"\b(?:{labels})\s*(?:(?:is|number)\s*){{0,2}}[:#=-]?\s*([A-Z0-9][A-Z0-9/_-]{{2,39}})\b"
@@ -259,6 +260,79 @@ def refresh_task_paperless_evidence(task):
     combined.update({str(item["document_id"]):item for item in evidence})
     task["paperless_evidence"]=list(combined.values())[:10]
     return task["paperless_evidence"]
+
+def insurance_matter(task):
+    label=" ".join(str(task.get(field) or "") for field in ("title","topic","counterparty"))
+    return bool(re.search(r"\b(?:car|vehicle|motor)?\s*(?:insurance|insurer|policy)\b|\brenew(?:al|ing)\b",label,re.I))
+
+
+def _parse_policy_date(value):
+    value=str(value or "").strip()
+    for fmt in ("%Y-%m-%d","%d/%m/%Y","%d-%m-%Y","%d %B %Y","%d %b %Y"):
+        try:return datetime.strptime(value,fmt).date().isoformat()
+        except ValueError:pass
+    return ""
+
+
+def policy_renewal_dates(content):
+    """Extract dates only when OCR places them beside an explicit policy end/renewal label."""
+    text=str(content or "")
+    date_pattern=r"(?:20\d{2}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]20\d{2}|\d{1,2}\s+[A-Za-z]{3,9}\s+20\d{2})"
+    label_pattern=re.compile(
+        r"\b(?:renewal\s+(?:date|due)|renew(?:s|al)?\s+on|"
+        r"policy\s+expires|cover\s+expires|expires\s+on|expiry\s+date|"
+        r"end\s+date\s+of\s+(?:the\s+)?cover)\b",
+        re.I,
+    )
+    dates=set()
+    for label in label_pattern.finditer(text):
+        window=text[label.end():label.end()+180]
+        for match in re.finditer(date_pattern,window,re.I):
+            parsed=_parse_policy_date(match.group(0))
+            if parsed:dates.add(parsed)
+    # Policy schedules commonly express the cover period as a start/end range.
+    for match in re.finditer(
+        rf"\bperiod\s+of\s+(?:insurance|cover)\b[^\n]{{0,100}}?({date_pattern})\s*(?:to|through|[-–])\s*({date_pattern})",
+        text,re.I,
+    ):
+        parsed=_parse_policy_date(match.group(2))
+        if parsed:dates.add(parsed)
+    return dates
+
+
+def reconcile_insurance_policy_due_date(task):
+    """Use a verified policy document as the renewal-date authority.
+
+    For insurance tasks, discard an email/model-derived due date unless a verified
+    Paperless document explicitly identifies one unambiguous renewal or cover end
+    date. This prevents the reminder's arrival date becoming an overdue renewal.
+    """
+    if not insurance_matter(task):
+        return False
+    message_ids=task_source_message_ids(task)
+    references=task.get("case_reference_ids") or []
+    verified=verified_message_documents(
+        task.get("paperless_evidence") or [],message_ids,references,_paperless_document,
+    )
+    dates=set()
+    for item in verified:
+        document=_paperless_document(item["document_id"])
+        if not isinstance(document,dict):
+            continue
+        content=str(document.get("content") or "")
+        if re.search(r"\b(?:insurance|policy|cover|renewal)\b",content,re.I):
+            dates.update(policy_renewal_dates(content))
+    # Require one clear date. If evidence is absent, unreadable, or conflicting,
+    # keep the matter open without falsely labeling the reminder overdue.
+    if len(dates)==1:
+        task["due_date"]=next(iter(dates))
+        task["due_date_source"]="paperless_policy"
+    else:
+        task["due_date"]=None
+        task["due_date_source"]="unverified_insurance_policy"
+    task["paperless_evidence"]=verified
+    return True
+
 
 def persist_task_paperless_evidence(task):
     """Publish refreshed verified document metadata without replacing task state."""
@@ -1055,6 +1129,13 @@ def _run_reconciler():
         str(message.get("message_id") or ""):message
         for message in fetched if message.get("message_id")
     }
+    for task in tasks.values():
+        if insurance_matter(task):
+            source=fetched_by_message_id.get(str(task.get("email_message_id") or "").strip())
+            if source:
+                task["case_reference_ids"]=sorted(set(task.get("case_reference_ids") or []) | case_reference_ids(source))
+                refresh_task_paperless_evidence(task)
+            reconcile_insurance_policy_due_date(task)
     for task_id,task in list(tasks.items()):
         source_message=str(task.get("email_message_id") or "").strip()
         source=fetched_by_message_id.get(source_message)
@@ -1098,6 +1179,7 @@ def _run_reconciler():
             "reason":str(d.get("reason") or "")[:300]
         }
         record_source_event(tasks[task_id],msg,d,observed)
+        reconcile_insurance_policy_due_date(tasks[task_id])
     cutoff=int(time.time())-STALE_DAYS*86400
     tasks={k:v for k,v in tasks.items() if has_valid_source_email(v) and (int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE")}
     open_tasks=[x for x in tasks.values() if x.get("status")!="DONE"]
