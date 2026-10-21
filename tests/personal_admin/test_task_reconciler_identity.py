@@ -55,6 +55,26 @@ def test_replay_and_legacy_migration_are_idempotent():
     assert reconciler.resolve_task_id(item, unrelated, legacy) != reconciler.key(item)
 
 
+def test_order_and_tracking_references_are_normalized_across_company_emails():
+    order=reconciler.case_reference_ids({"subject":"Order number: ORD-123456"})
+    courier=reconciler.case_reference_ids({"subject":"Your parcel tracking number is ORD123456"})
+    assert order=={"ORD123456"}
+    assert courier==order
+
+    order_message={"message_id":"<order@shop.test>","subject":"Order number ORD-123456"}
+    delivery_message={"message_id":"<delivery@courier.test>","subject":"Tracking number ORD123456"}
+    first=decision("purchase order",counterparty="Example Shop")
+    second=decision("delivery update",status="WAITING",counterparty="Example Courier")
+    task_id=reconciler.resolve_task_id(first,order_message,{})
+    existing={task_id:{
+        "id":task_id,"identity_semantic":reconciler.key(first),
+        "thread_root_id":order_message["message_id"],
+        "counterparty":"Example Shop","topic":"purchase order",
+        "case_reference_ids":sorted(order),"source_message_ids":[order_message["message_id"]],
+    }}
+    assert reconciler.resolve_task_id(second,delivery_message,existing)==task_id
+
+
 def test_done_state_is_not_regressed_by_later_classification_noise():
     assert reconciler.effective_status({"status": "DONE"}, "OPEN") == "DONE"
     assert reconciler.effective_status({"status": "WAITING"}, "DONE") == "DONE"
@@ -73,6 +93,7 @@ def test_paperless_candidates_require_exact_task_source_message_id():
             {"document_id":12,"title":"duplicate candidate"},
         ],
         ["<gemini@example.test>"],
+        [],
         lambda document_id:(loaded.append(document_id) or documents.get(document_id)),
     )
     assert result==[{
@@ -85,9 +106,26 @@ def test_paperless_search_results_without_source_identity_are_not_links():
     result=reconciler.verified_message_documents(
         [{"document_id":21,"title":"Unrelated email with matching keywords"}],
         ["<task@example.test>"],
+        [],
         lambda _document_id:{"title":"Unrelated email with matching keywords","content":"Subject: Interview confirmation"},
     )
     assert result==[]
+
+
+def test_cross_company_paperless_document_links_on_shared_order_reference():
+    result=reconciler.verified_message_documents(
+        [
+            {"document_id":31,"title":"Courier delivery update"},
+            {"document_id":32,"title":"Unrelated order email"},
+        ],
+        ["<shop-order@example.test>"],
+        ["ORD123456"],
+        lambda document_id:{
+            31:{"title":"Courier delivery update","content":"Tracking number: ORD-123456. Sent by Example Courier."},
+            32:{"title":"Unrelated order email","content":"Tracking details unavailable."},
+        }.get(document_id),
+    )
+    assert result==[{"document_id":31,"title":"Courier delivery update","created":""}]
 
 
 def test_out_of_order_observation_does_not_replace_newer_task_state():
@@ -438,7 +476,7 @@ def test_paperless_diagnostic_reports_fixed_unreachable_status(tmp_path):
     assert "private transport detail" not in result.stdout + result.stderr
 
 
-def test_informational_event_updates_only_an_existing_matter_and_is_idempotent():
+def test_informational_event_updates_only_an_existing_matter_and_is_idempotent(monkeypatch):
     task_id = "acme-claim-12345"
     task = {
         "id": task_id,
@@ -466,6 +504,14 @@ def test_informational_event_updates_only_an_existing_matter_and_is_idempotent()
         "counterparty": "Acme",
         "topic": "claim",
     }
+    lookups=[]
+    monkeypatch.setattr(
+        reconciler,"paperless_linked_documents",
+        lambda message_ids,reference_ids:(
+            lookups.append((list(message_ids),list(reference_ids)))
+            or ([{"document_id":42,"title":"Courier update","created":""}] if reference_ids else [])
+        ),
+    )
 
     resolved_id = reconciler.resolve_task_id(decision, message, tasks)
     assert resolved_id == task_id
@@ -486,6 +532,9 @@ def test_informational_event_updates_only_an_existing_matter_and_is_idempotent()
     ]
     assert len(task["timeline_events"]) == 1
     assert task["timeline_events"][0]["event_kind"] == "information"
+    assert len(lookups)==2
+    assert "UKHB12345" in lookups[-1][1]
+    assert task["paperless_evidence"]==[{"document_id":42,"title":"Courier update","created":""}]
 
 
 def test_informational_event_without_a_matched_matter_creates_no_obligation():
