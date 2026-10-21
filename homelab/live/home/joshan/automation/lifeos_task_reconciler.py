@@ -215,6 +215,14 @@ def task_source_message_ids(task):
         ordered=[value for value in ordered if value != primary]+[primary]
     return ordered[-20:]
 
+def task_cleanup_source_message_id(task):
+    """Choose the source ID to inspect when legacy rows lack a primary email ID."""
+    values=task_source_message_ids(task)
+    if len(values)==1:
+        return values[0]
+    return str(task.get("email_message_id") or "").strip()
+
+
 def has_valid_source_email(task):
     """Return whether a task retains at least one usable RFC822 Message-ID."""
     for value in task_source_message_ids(task):
@@ -1237,7 +1245,7 @@ def _run_reconciler():
                 refresh_task_paperless_evidence(task)
             reconcile_insurance_policy_due_date(task)
     for task_id,task in list(tasks.items()):
-        source_message=str(task.get("email_message_id") or "").strip()
+        source_message=task_cleanup_source_message_id(task)
         source=fetched_by_message_id.get(source_message)
         if source and has_explicit_no_action_required(source):
             discard_single_source_no_action_task(tasks,source)
