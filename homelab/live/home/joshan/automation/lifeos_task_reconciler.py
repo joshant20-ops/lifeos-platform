@@ -458,6 +458,9 @@ def process_junk_requests():
         try:
             _process_junk_request(path)
             path.unlink()
+            stale_failure = JUNK_FAILED / path.name
+            if stale_failure.exists():
+                stale_failure.unlink()
             print("PA_JUNK_ACTION=PASS", flush=True)
         except Exception as exc:
             try:
