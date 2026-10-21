@@ -6,7 +6,7 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, errno, hashlib, imaplib, json, os, re, socket, ssl, subprocess, sys, time
+import email, errno, hashlib, html, imaplib, json, os, re, socket, ssl, subprocess, sys, time
 from email.utils import parsedate_to_datetime
 from datetime import date, datetime
 from pathlib import Path
@@ -63,17 +63,21 @@ def text_of(msg):
     return "\n".join(chunks)[:12000]
 
 def has_explicit_no_action_required(compact):
-    """Detect clear no-action language in the email itself, not model output."""
+    """Detect clear no-action language in plain text or HTML email content."""
     text=" ".join(
         str(compact.get(field) or "")
         for field in ("subject","snippet","body","text")
     )
+    # Inline HTML can split a phrase across nodes, e.g. "No action <span>required</span>."
+    text=html.unescape(text)
+    text=re.sub(r"<[^>]*>", " ", text)
+    text=re.sub(r"[\u200b-\u200f\ufeff]", "", text)
+    text=re.sub(r"\s+", " ", text)
     return bool(re.search(
         r"\bno\s+(?:further\s+)?action\s+(?:is\s+)?required\b",
         text,
         re.IGNORECASE,
     ))
-
 
 def classify(compact):
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
@@ -1244,15 +1248,23 @@ def _run_reconciler():
                 task["case_reference_ids"]=sorted(set(task.get("case_reference_ids") or []) | case_reference_ids(source))
                 refresh_task_paperless_evidence(task)
             reconcile_insurance_policy_due_date(task)
+    no_action_source_emails=0
+    no_action_tasks_removed=0
     for task_id,task in list(tasks.items()):
         source_message=task_cleanup_source_message_id(task)
         source=fetched_by_message_id.get(source_message)
         if source and has_explicit_no_action_required(source):
-            discard_single_source_no_action_task(tasks,source)
+            no_action_source_emails+=1
+            if discard_single_source_no_action_task(tasks,source):
+                no_action_tasks_removed+=1
             continue
         source_message_id=verified_source_email_requires_no_action(task)
         if source_message_id:
-            discard_single_source_no_action_task(tasks,{"message_id":source_message_id})
+            no_action_source_emails+=1
+            if discard_single_source_no_action_task(tasks,{"message_id":source_message_id}):
+                no_action_tasks_removed+=1
+    print("TASK_NO_ACTION_SOURCE_EMAILS="+str(no_action_source_emails),flush=True)
+    print("TASK_NO_ACTION_TASKS_REMOVED="+str(no_action_tasks_removed),flush=True)
     for observed,k,d,msg in sorted(observations,key=lambda x:x[0]):
         if has_explicit_no_action_required(msg) and discard_single_source_no_action_task(tasks,msg):
             continue
