@@ -133,8 +133,9 @@ class LifeOSPATaskCard extends HTMLElement {
     const statusTag = '<span class="tag status-' + this._escape(status.toLowerCase()) + '">' + this._escape(status === "WAITING" ? "Waiting for reply" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") + '</span>';
     const closed = status === "DONE" || status === "DISMISSED";
     const primaryActions = closed
-      ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button>'
+      ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button><button data-action="review" data-id="' + id + '">Review</button>'
       : '<button class="primary" data-action="close" data-id="' + id + '">Mark done</button>' +
+        '<button data-action="review" data-id="' + id + '">Review</button>' +
         '<button data-action="comment" data-id="' + id + '">Add note</button>' +
         '<button data-action="snooze" data-id="' + id + '">Snooze</button>' +
         '<button data-action="due_date" data-id="' + id + '">Set due date</button>' +
@@ -196,6 +197,8 @@ class LifeOSPATaskCard extends HTMLElement {
     const attrs = sensor?.attributes || {};
     this._junkPendingTaskIds = new Set(Array.isArray(attrs.junk_action_pending_task_ids) ? attrs.junk_action_pending_task_ids.map(String) : []);
     this._junkFailedTaskIds = new Set(Array.isArray(attrs.junk_action_failed_task_ids) ? attrs.junk_action_failed_task_ids.map(String) : []);
+    this._reviewPendingTaskIds = new Set(Array.isArray(attrs.review_pending_task_ids) ? attrs.review_pending_task_ids.map(String) : []);
+    this._reviewFailedTaskIds = new Set(Array.isArray(attrs.review_failed_task_ids) ? attrs.review_failed_task_ids.map(String) : []);
     const items = Array.isArray(attrs.items) ? attrs.items.filter((x) => x && x.id) : [];
     if (!this._selectedDate) {
       const today = this._dateKey(new Date());
@@ -414,6 +417,104 @@ class LifeOSPATaskCard extends HTMLElement {
     return this._dateKey(date);
   }
 
+  _reviewDialogMarkup(task, busyText = "") {
+    const docs = (Array.isArray(task.paperless_evidence) ? task.paperless_evidence : [])
+      .filter((doc) => doc && /^\d+$/.test(String(doc.document_id || ""))).slice(0, 10);
+    const paperlessBase = String(this._config.paperless_base_url || (window.location.protocol + "//" + window.location.hostname + ":8010")).replace(/\/+$/, "");
+    const review = task.ai_review && typeof task.ai_review === "object" ? task.ai_review : null;
+    const documents = docs.length ? docs.map((doc, index) => {
+      const url = this._escape(paperlessBase + "/documents/" + encodeURIComponent(doc.document_id));
+      return '<section class="review-doc"><div class="review-doc-head"><strong>' + this._escape(doc.title || ("Document " + (index + 1))) +
+        '</strong><a target="_blank" rel="noopener noreferrer" href="' + url + '">Open in Paperless</a></div>' +
+        '<iframe loading="lazy" title="' + this._escape(doc.title || ("Linked document " + (index + 1))) + '" src="' + url + '"></iframe></section>';
+    }).join("") : '<p class="review-muted">No linked Paperless documents were found for this task.</p>';
+    const result = review
+      ? '<section class="review-analysis"><h3>AI analysis</h3><p>' + this._escape(review.analysis || "No analysis was returned.") + '</p>' +
+        '<h4>Recommended actions</h4>' + ((Array.isArray(review.recommended_actions) && review.recommended_actions.length)
+          ? '<ol>' + review.recommended_actions.map((item) => '<li>' + this._escape(item) + '</li>').join("") + '</ol>'
+          : '<p class="review-muted">No specific actions suggested.</p>') +
+        '<p class="review-confidence">Confidence: ' + this._escape(review.confidence || "unknown") + '</p>' +
+        ((review.response_body || review.response_subject) ? '<h4>Suggested response</h4>' +
+          (review.response_subject ? '<label>Subject<input readonly value="' + this._escape(review.response_subject) + '"></label>' : '') +
+          '<label>Draft<textarea readonly rows="6">' + this._escape(review.response_body || "") + '</textarea></label>' +
+          (review.response_body ? '<button type="button" data-review-copy>Copy response</button>' : '') : '') +
+        '<p class="review-muted">Draft only. It has not been sent.</p></section>'
+      : '<section class="review-analysis"><h3>AI analysis</h3><p class="review-muted">' + this._escape(busyText || "No analysis yet. Generate a local review when you are ready.") + '</p></section>';
+    return '<style>' +
+      'dialog{width:min(980px,calc(100vw - 28px));max-width:980px;max-height:92vh;overflow:auto;border:1px solid var(--divider-color);border-radius:14px;background:var(--card-background-color);color:var(--primary-text-color);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.4)}dialog::backdrop{background:rgba(0,0,0,.68)}' +
+      '.review-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.review-head h2{margin:0}.review-muted,.review-confidence{color:var(--secondary-text-color);font-size:.9rem}.review-docs{display:grid;gap:16px;margin:18px 0}.review-doc{border:1px solid var(--divider-color);border-radius:10px;overflow:hidden}.review-doc-head{display:flex;justify-content:space-between;gap:12px;padding:10px 12px}.review-doc-head strong{overflow-wrap:anywhere}.review-doc a{color:var(--primary-color);white-space:nowrap}.review-doc iframe{display:block;width:100%;height:min(52vh,560px);border:0;border-top:1px solid var(--divider-color);background:#fff}.review-analysis{border:1px solid var(--divider-color);border-radius:10px;padding:16px;margin-top:20px}.review-analysis h3{margin:0 0 10px}.review-analysis h4{margin-bottom:6px}.review-analysis li{margin:7px 0}.review-analysis label{display:block;font-size:.85rem;color:var(--secondary-text-color);margin:10px 0}.review-analysis input,.review-analysis textarea{display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:10px;border:1px solid var(--divider-color);border-radius:8px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}.review-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}.review-actions button,.review-analysis button{padding:9px 12px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}.review-actions .primary{background:var(--primary-color);color:var(--text-primary-color,#fff)}' +
+      '</style><div class="review-head"><div><p class="eyebrow">TASK REVIEW</p><h2 id="review-title">' + this._escape(task.title || "Untitled task") + '</h2></div><button type="button" data-review-close aria-label="Close">Close</button></div>' +
+      '<p class="review-muted">Scroll through the linked documents, then review the local AI suggestions below.</p><div class="review-docs">' + documents + '</div>' + result +
+      '<div class="review-actions"><span class="review-muted" aria-live="polite">' + this._escape(busyText) + '</span>' +
+      '<button type="button" data-review-refresh>' + (review ? 'Refresh analysis' : 'Analyze task') + '</button><button type="button" data-review-close>Close</button></div>';
+  }
+
+  _bindReviewDialog(dialog, taskId) {
+    dialog.querySelectorAll("[data-review-close]").forEach((button) => button.addEventListener("click", () => dialog.close()));
+    const refresh = dialog.querySelector("[data-review-refresh]");
+    if (refresh) refresh.addEventListener("click", () => this._requestTaskReview(dialog, taskId));
+    const copy = dialog.querySelector("[data-review-copy]");
+    if (copy) copy.addEventListener("click", async () => {
+      const body = dialog.querySelector(".review-analysis textarea")?.value || "";
+      try { await navigator.clipboard.writeText(body); copy.textContent = "Copied"; }
+      catch (_) { window.alert("Could not copy the response. You can select the draft text and copy it manually."); }
+    });
+  }
+
+  async _requestTaskReview(dialog, taskId) {
+    const task = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+    if (!task) return;
+    const refresh = dialog.querySelector("[data-review-refresh]");
+    const priorGeneratedAt = Number(task.ai_review?.generated_at || 0);
+    if (refresh) refresh.disabled = true;
+    try {
+      await this._hass.callService("shell_command", "lifeos_pa_user_action", {
+        action: "review", task_id: taskId, note: "", until: "", severity: "", due_date: "",
+      });
+      this._reviewPendingTaskIds.add(String(taskId));
+      dialog.innerHTML = this._reviewDialogMarkup(task, "Analysis queued. This runs on your local AI service.");
+      this._bindReviewDialog(dialog, taskId);
+      let attempts = 0;
+      const poll = async () => {
+        if (!dialog.open || attempts++ >= 60) return;
+        await this._hass.callService("homeassistant", "update_entity", { entity_id: this._entity() }).catch(() => {});
+        await new Promise((resolve) => window.setTimeout(resolve, 10000));
+        const latest = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+        if (!latest) return;
+        if (latest.ai_review && Number(latest.ai_review.generated_at || 0) > priorGeneratedAt) {
+          this._reviewPendingTaskIds.delete(String(taskId));
+          dialog.innerHTML = this._reviewDialogMarkup(latest);
+          this._bindReviewDialog(dialog, taskId);
+          return;
+        }
+        const pendingIds = new Set(this._hass.states[this._entity()]?.attributes?.review_pending_task_ids || []);
+        if (this._reviewFailedTaskIds?.has(String(taskId)) && !pendingIds.has(String(taskId))) {
+          this._reviewPendingTaskIds.delete(String(taskId));
+          dialog.innerHTML = this._reviewDialogMarkup(latest, "Local analysis failed. Check that Ollama is available, then retry.");
+          this._bindReviewDialog(dialog, taskId);
+          return;
+        }
+        dialog.innerHTML = this._reviewDialogMarkup(latest, "Analysis is still running locally…");
+        this._bindReviewDialog(dialog, taskId);
+        poll();
+      };
+      poll();
+    } catch (_) {
+      window.alert("LifeOS could not queue the local task analysis.");
+      if (refresh) refresh.disabled = false;
+    }
+  }
+
+  _showTaskReview(task) {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-labelledby", "review-title");
+    dialog.innerHTML = this._reviewDialogMarkup(task);
+    this.shadowRoot.append(dialog);
+    dialog.addEventListener("close", () => dialog.remove());
+    this._bindReviewDialog(dialog, String(task.id));
+    dialog.showModal();
+  }
+
   async _act(button) {
     const action = button.dataset.action;
     const taskId = button.dataset.id;
@@ -421,7 +522,10 @@ class LifeOSPATaskCard extends HTMLElement {
     if (!task) return;
     const label = task.title || taskId;
     const data = { action, task_id: taskId, note: "", until: "", severity: "", due_date: "" };
-    if (action === "junk") {
+    if (action === "review") {
+      this._showTaskReview(task);
+      return;
+    } else if (action === "junk") {
       const selected = await this._chooseJunkDocuments(task);
       if (!selected) return;
       data.paperless_ids = selected.join(",");
