@@ -47,7 +47,8 @@
             {
               "type": "custom:lifeos-pa-task-card",
               "title": "Personal Attention",
-              "entity": "sensor.lifeos_pa_task_attention"
+              "entity": "sensor.lifeos_pa_task_attention",
+              "compact": true
             },
             {
               "type": "entities",
@@ -494,6 +495,18 @@
                   "entity": "sensor.lifeos_action_processor_last_result"
                 }
               ]
+            }
+          ]
+        },
+        {
+          "title": "Personal Assistant",
+          "path": "personal-assistant",
+          "icon": "mdi:account-check-outline",
+          "cards": [
+            {
+              "type": "custom:lifeos-pa-task-card",
+              "title": "Personal Assistant",
+              "entity": "sensor.lifeos_pa_task_attention"
             }
           ]
         }
