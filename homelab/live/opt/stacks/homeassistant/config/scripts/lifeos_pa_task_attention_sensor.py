@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from lifeos_pa_user_state import apply_user_state, order_tasks_for_attention, read_user_state
 
 TASKS = Path("/config/www/lifeos_tasks.json")
+REVIEW_RESULTS = Path("/config/lifeos-pa-state/task-reviews")
 def safe_markdown(value):
     value=html.escape(str(value or "Untitled task")[:160],quote=False)
     return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])",r"\\\1",value)
@@ -56,6 +57,30 @@ def project_timeline_events(events):
         })
     return projected[-20:]
 
+
+def task_review(task_id):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}", str(task_id or "")):
+        return None
+    try:
+        result = json.loads((REVIEW_RESULTS / (task_id + ".json")).read_text(encoding="utf-8"))
+        if result.get("schema") != "lifeos_pa_task_review_v1":
+            return None
+        actions = result.get("recommended_actions")
+        if not isinstance(actions, list) or len(actions) > 6:
+            return None
+        if result.get("confidence") not in {"low", "medium", "high"}:
+            return None
+        return {
+            "analysis": str(result.get("analysis") or "")[:1600],
+            "recommended_actions": [str(x)[:400] for x in actions if isinstance(x, str)],
+            "response_subject": str(result.get("response_subject") or "")[:240],
+            "response_body": str(result.get("response_body") or "")[:3000],
+            "confidence": result["confidence"],
+            "generated_at": int(result.get("generated_at") or 0),
+        }
+    except Exception:
+        return None
+
 def main():
     try:
         payload = apply_user_state(json.loads(TASKS.read_text()), read_user_state())
@@ -78,7 +103,7 @@ def main():
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or ""))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ][:100]
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"
@@ -89,6 +114,8 @@ def main():
             "items": items,
             "junk_action_pending_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests"),
             "junk_action_failed_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests/failed"),
+            "review_pending_task_ids": junk_task_ids("/config/lifeos-pa-state/review-requests"),
+            "review_failed_task_ids": junk_task_ids("/config/lifeos-pa-state/review-requests/failed"),
             "source": "lifeos_tasks_v3",
             "generated_time": generated,
             "age_seconds": max(0, int(time.time() - generated)),
@@ -106,6 +133,8 @@ def main():
             "items": [],
             "junk_action_pending_task_ids": [],
             "junk_action_failed_task_ids": [],
+            "review_pending_task_ids": [],
+            "review_failed_task_ids": [],
             "source": "lifeos_tasks_v3",
         }
     print(json.dumps(out, ensure_ascii=False, separators=(",", ":")))
