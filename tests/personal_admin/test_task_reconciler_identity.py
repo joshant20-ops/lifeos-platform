@@ -653,3 +653,21 @@ def test_pa_reconciler_deploy_fails_closed_on_nonzero_error_count():
     assert script.index("TASK_CLASSIFICATION_ERROR_CATEGORIES") < script.index(
         "TASK_RECONCILER_ERROR_GATE=FAIL"
     )
+
+
+
+def test_tasks_require_a_valid_source_email_identity():
+    assert reconciler.has_valid_source_email({
+        "source_message_ids": ["<source@example.test>"],
+    })
+    assert reconciler.has_valid_source_email({
+        "email_message_id": "<legacy@example.test>",
+    })
+    assert reconciler.has_valid_source_email({
+        "timeline_events": [{"message_id": "<event@example.test>"}],
+    })
+    assert not reconciler.has_valid_source_email({"source_message_ids": []})
+    assert not reconciler.has_valid_source_email({
+        "source_message_ids": ["not-an-email-id"],
+        "email_message_id": "broken",
+    })

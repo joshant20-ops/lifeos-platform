@@ -425,6 +425,23 @@ class LifeOSPATaskCard extends HTMLElement {
       .filter((doc) => doc && /^\d+$/.test(String(doc.document_id || ""))).slice(0, 10);
     const paperlessBase = String(this._config.paperless_base_url || (window.location.protocol + "//" + window.location.hostname + ":8010")).replace(/\/+$/, "");
     const review = task.ai_review && typeof task.ai_review === "object" ? task.ai_review : null;
+    const sourceMessageIds = Array.from(new Set([
+      ...(Array.isArray(task.source_message_ids) ? task.source_message_ids : []),
+      task.email_message_id,
+      ...(Array.isArray(task.timeline_events) ? task.timeline_events.map((event) => event?.message_id) : []),
+    ].map((value) => String(value || "").trim()).filter((value) =>
+      value.length <= 300 && /^<[^<>\s]+@[^<>\s]+>$/.test(value)
+    )));
+    const sourceEmails = sourceMessageIds.map((messageId, index) => {
+      const event = (Array.isArray(task.timeline_events) ? task.timeline_events : [])
+        .find((item) => String(item?.message_id || "").trim() === messageId);
+      const query = encodeURIComponent("in:anywhere rfc822msgid:" + messageId.slice(1, -1));
+      return '<li><a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' +
+        query + '">' + this._escape(event?.title || ("Source email " + (index + 1))) + '</a></li>';
+    }).join("");
+    const sourceMarkup = sourceEmails
+      ? '<section class="review-sources"><h3>Source emails</h3><ul>' + sourceEmails + '</ul></section>'
+      : '<p class="review-muted">No valid source email is attached. This item should not be actionable.</p>';
     const reviewPending = this._reviewPendingTaskIds?.has(String(task.id)) || false;
     const previewById = new Map((Array.isArray(previews) ? previews : []).map((item) => [String(item.document_id), item]));
     const documents = docs.length ? docs.map((doc, index) => {
@@ -451,7 +468,7 @@ class LifeOSPATaskCard extends HTMLElement {
       'dialog{width:min(980px,calc(100vw - 28px));max-width:980px;max-height:92vh;overflow:auto;border:1px solid var(--divider-color);border-radius:14px;background:var(--card-background-color);color:var(--primary-text-color);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.4)}dialog::backdrop{background:rgba(0,0,0,.68)}' +
       '.review-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.review-head h2{margin:0}.review-muted,.review-confidence{color:var(--secondary-text-color);font-size:.9rem}.review-docs{display:grid;gap:16px;margin:18px 0}.review-doc{border:1px solid var(--divider-color);border-radius:10px;overflow:hidden}.review-doc-head{display:flex;justify-content:space-between;gap:12px;padding:10px 12px}.review-doc-head strong{overflow-wrap:anywhere}.review-doc a{color:var(--primary-color);white-space:nowrap}.review-doc-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:52vh;overflow:auto;margin:0;padding:16px;border-top:1px solid var(--divider-color);font:inherit;line-height:1.5;color:var(--primary-text-color)}.review-doc-unavailable{padding:4px 12px 12px}.review-analysis{border:1px solid var(--divider-color);border-radius:10px;padding:16px;margin-top:20px}.review-analysis h3{margin:0 0 10px}.review-analysis h4{margin-bottom:6px}.review-analysis li{margin:7px 0}.review-analysis label{display:block;font-size:.85rem;color:var(--secondary-text-color);margin:10px 0}.review-analysis input,.review-analysis textarea{display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:10px;border:1px solid var(--divider-color);border-radius:8px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}.review-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}.review-actions button,.review-analysis button{padding:9px 12px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}.review-actions .primary{background:var(--primary-color);color:var(--text-primary-color,#fff)}' +
       '</style><div class="review-head"><div><p class="eyebrow">TASK REVIEW</p><h2 id="review-title">' + this._escape(task.title || "Untitled task") + '</h2></div><button type="button" data-review-close aria-label="Close">Close</button></div>' +
-      '<p class="review-muted">Scroll through the linked documents, then review the local AI suggestions below.</p><div class="review-docs">' + documents + '</div>' + result +
+      '<p class="review-muted">Review the source email and any verified Paperless documents, then check the local AI suggestions below.</p>' + sourceMarkup + '<div class="review-docs">' + documents + '</div>' + result +
       '<div class="review-actions"><span class="review-muted" aria-live="polite">' + this._escape(busyText) + '</span>' +
       '<button type="button" data-review-refresh' + (reviewPending ? ' disabled' : '') + '>' + (reviewPending ? 'Analysis running…' : (review ? 'Refresh analysis' : 'Analyze task')) + '</button><button type="button" data-review-close>Close</button></div>';
   }
