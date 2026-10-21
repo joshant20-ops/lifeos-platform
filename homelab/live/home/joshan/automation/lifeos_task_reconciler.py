@@ -349,53 +349,75 @@ def _move_emails_to_junk(message_ids):
         capabilities = {x.upper() for x in client.capabilities}
         if b"MOVE" not in capabilities:
             raise RuntimeError("imap_move_unsupported")
-        junk_box = None
+        folders = {}
         status, boxes = client.list()
         if status == "OK":
             for row in boxes or []:
-                if bytes((92,)) + b"JUNK" not in row.upper():
-                    continue
                 parts = row.split(b'"')
                 if len(parts) < 3:
                     continue
                 candidate = parts[-2].decode("ascii", "strict")
-                if candidate in {"[Gmail]/Spam", "[GoogleMail]/Spam"}:
-                    junk_box = candidate
-                    break
+                if candidate not in {"[Gmail]/Spam", "[GoogleMail]/Spam", "[Gmail]/All Mail", "[GoogleMail]/All Mail"}:
+                    continue
+                if bytes((92,)) + b"JUNK" in row.upper():
+                    folders["junk"] = candidate
+                if bytes((92,)) + b"ALL" in row.upper():
+                    folders["all"] = candidate
+        junk_box = folders.get("junk")
+        all_box = folders.get("all")
         if not junk_box:
             raise RuntimeError("imap_junk_folder_unavailable")
         status, _ = client.select("INBOX", readonly=False)
         if status != "OK":
             raise RuntimeError("imap_inbox_unavailable")
-        pending = {}
+        inbox_matches = {}
         for message_id in message_ids:
             status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
             matches = rows[0].split() if status == "OK" and rows else []
             if len(matches) > 1:
                 raise RuntimeError("imap_message_ambiguous")
-            pending[message_id] = matches[0] if matches else None
+            inbox_matches[message_id] = matches[0] if matches else None
         status, _ = client.select(junk_box, readonly=True)
         if status != "OK":
             raise RuntimeError("imap_junk_folder_unavailable")
-        for message_id, uid in pending.items():
+        pending = {}
+        for message_id, inbox_uid in inbox_matches.items():
             status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
             matches = rows[0].split() if status == "OK" and rows else []
-            if uid is None and len(matches) != 1:
-                raise RuntimeError("imap_message_not_found")
-            if uid is not None and matches:
-                raise RuntimeError("imap_message_duplicate_across_folders")
-        for message_id, uid in pending.items():
-            if uid is None:
-                continue
-            status, _ = client.select("INBOX", readonly=False)
+            if len(matches) > 1 or (inbox_uid is not None and matches):
+                raise RuntimeError("imap_message_ambiguous")
+            if inbox_uid is not None:
+                pending[message_id] = ("INBOX", inbox_uid)
+            elif matches:
+                pending[message_id] = (None, None)
+            else:
+                pending[message_id] = ("", None)
+        missing = [message_id for message_id, (box, uid) in pending.items() if box == ""]
+        if missing:
+            if not all_box:
+                raise RuntimeError("imap_all_mail_folder_unavailable")
+            status, _ = client.select(all_box, readonly=True)
             if status != "OK":
-                raise RuntimeError("imap_inbox_unavailable")
+                raise RuntimeError("imap_all_mail_folder_unavailable")
+            for message_id in missing:
+                status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+                matches = rows[0].split() if status == "OK" and rows else []
+                if len(matches) != 1:
+                    raise RuntimeError("imap_message_not_found")
+                pending[message_id] = (all_box, matches[0])
+        for message_id, (source_box, uid) in pending.items():
+            if source_box is None:
+                continue
+            status, _ = client.select(source_box, readonly=False)
+            if status != "OK":
+                raise RuntimeError("imap_source_folder_unavailable")
             status, _ = client.uid("MOVE", uid, '"' + junk_box + '"')
             if status != "OK":
                 raise RuntimeError("imap_move_failed")
-            status, _ = client.select(junk_box, readonly=True)
-            if status != "OK":
-                raise RuntimeError("imap_junk_folder_unavailable")
+        status, _ = client.select(junk_box, readonly=True)
+        if status != "OK":
+            raise RuntimeError("imap_junk_folder_unavailable")
+        for message_id in message_ids:
             status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
             if status != "OK" or not rows or len(rows[0].split()) != 1:
                 raise RuntimeError("imap_move_unverified")
