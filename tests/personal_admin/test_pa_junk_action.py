@@ -4,7 +4,7 @@ import json
 import tempfile
 import sys
 import unittest
-from unittest.mock import patch, call
+from unittest.mock import patch
 from subprocess import CompletedProcess
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -63,7 +63,7 @@ class PAJunkActionTests(unittest.TestCase):
              patch.object(RECONCILER, "_move_emails_to_junk") as move, \
              patch.object(RECONCILER, "_paperless_delete") as delete:
             with self.assertRaisesRegex(ValueError, "paperless_selection_not_linked"):
-                RECONCILER._process_junk_request(self.request)
+                self.run_request(self.request)
         get_document.assert_not_called()
         move.assert_not_called()
         delete.assert_not_called()
