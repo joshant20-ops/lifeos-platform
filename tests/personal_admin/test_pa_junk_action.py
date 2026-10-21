@@ -56,6 +56,35 @@ class PAJunkActionTests(unittest.TestCase):
         delete.assert_called_once_with(41)
         self.assertEqual(dismiss.call_count, 1)
 
+    def test_all_ten_linked_documents_can_be_selected(self):
+        self.task["paperless_evidence"] = [
+            {"document_id": document_id, "title": "Record " + str(document_id)}
+            for document_id in range(41, 51)
+        ]
+        self.request["paperless_document_ids"] = list(range(41, 51))
+        with patch.object(RECONCILER, "load_previous", return_value={self.task["id"]: self.task}), \
+             patch.object(RECONCILER, "_paperless_document", side_effect=lambda doc_id: {"id": doc_id}), \
+             patch.object(RECONCILER, "_move_emails_to_junk") as move, \
+             patch.object(RECONCILER, "_paperless_delete") as delete, \
+             patch.object(RECONCILER.subprocess, "run", return_value=CompletedProcess([], 0, "PA_USER_ACTION=PASS", "")) as dismiss:
+            self.run_request(self.request)
+        move.assert_called_once()
+        self.assertEqual([call.args[0] for call in delete.call_args_list], list(range(41, 51)))
+        dismiss.assert_called_once()
+
+    def test_email_can_be_junked_without_deleting_paperless_documents(self):
+        self.request["paperless_document_ids"] = []
+        with patch.object(RECONCILER, "load_previous", return_value={self.task["id"]: self.task}), \
+             patch.object(RECONCILER, "_paperless_document") as get_document, \
+             patch.object(RECONCILER, "_move_emails_to_junk") as move, \
+             patch.object(RECONCILER, "_paperless_delete") as delete, \
+             patch.object(RECONCILER.subprocess, "run", return_value=CompletedProcess([], 0, "PA_USER_ACTION=PASS", "")) as dismiss:
+            self.run_request(self.request)
+        get_document.assert_not_called()
+        move.assert_called_once_with(["<latest@example.test>", "<older@example.test>"])
+        delete.assert_not_called()
+        dismiss.assert_called_once()
+
     def test_unselected_paperless_candidate_is_not_deleted(self):
         self.request["paperless_document_ids"] = [41, 999]
         with patch.object(RECONCILER, "load_previous", return_value={self.task["id"]: self.task}), \

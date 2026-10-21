@@ -453,7 +453,7 @@ def _process_junk_request(path):
         raise ValueError("junk_task_id_invalid")
     if path.name != task_id + ".json" or not re.fullmatch(r"[a-f0-9]{32}", request_id):
         raise ValueError("junk_request_identity_invalid")
-    if (not isinstance(document_ids, list) or not document_ids or len(document_ids) > 5
+    if (not isinstance(document_ids, list) or len(document_ids) > 10
             or any(not isinstance(x, int) or x <= 0 for x in document_ids)
             or len(set(document_ids)) != len(document_ids)):
         raise ValueError("paperless_selection_invalid")
