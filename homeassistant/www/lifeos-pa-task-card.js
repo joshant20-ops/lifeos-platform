@@ -117,6 +117,11 @@ class LifeOSPATaskCard extends HTMLElement {
     const noteMarkup = comments.map((comment) =>
       '<div class="note"><strong>Your note</strong><span>' + this._escape(comment.text || "") + '</span></div>'
     ).join("");
+    const junkNotice = this._junkFailedTaskIds?.has(String(task.id))
+      ? '<div class="junk-notice failed" role="alert">Junk action needs review. Check Gmail Spam and Paperless before retrying.</div>'
+      : this._junkPendingTaskIds?.has(String(task.id))
+        ? '<div class="junk-notice pending" role="status">Junk action is being processed.</div>'
+        : "";
     const supporting = [];
     if (evidence.length) supporting.push('<details><summary>Source messages and documents · ' + evidence.length + '</summary><div class="support-body">' + evidence.join(" · ") + '</div></details>');
     if (timeline && !featured) supporting.push('<details><summary>Full timeline · ' + timelineEvents.length + '</summary><div class="support-body timeline">' + timeline + '</div></details>');
@@ -148,7 +153,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
-      '</div>' + trailMarkup + supporting.join("") + controls + '</article>';
+      '</div>' + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
   }
 
   _actionSections(items) {
@@ -189,6 +194,8 @@ class LifeOSPATaskCard extends HTMLElement {
     if (!this.shadowRoot || !this._hass) return;
     const sensor = this._hass.states[this._entity()];
     const attrs = sensor?.attributes || {};
+    this._junkPendingTaskIds = new Set(Array.isArray(attrs.junk_action_pending_task_ids) ? attrs.junk_action_pending_task_ids.map(String) : []);
+    this._junkFailedTaskIds = new Set(Array.isArray(attrs.junk_action_failed_task_ids) ? attrs.junk_action_failed_task_ids.map(String) : []);
     const items = Array.isArray(attrs.items) ? attrs.items.filter((x) => x && x.id) : [];
     if (!this._selectedDate) {
       const today = this._dateKey(new Date());
@@ -258,6 +265,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '.activity{border-left:2px solid var(--primary-color);margin-top:11px;padding:1px 0 1px 9px;display:flex;flex-direction:column;gap:3px;min-width:0}',
       '.activity span{font-size:.68rem;color:var(--secondary-text-color)}.activity strong{font-size:.82rem;font-weight:550;overflow-wrap:anywhere}.activity em{font-style:normal;font-size:.68rem;color:var(--secondary-text-color)}',
       '.source-line{font-size:.72rem;color:var(--secondary-text-color);margin-top:10px}',
+      '.junk-notice{margin-top:10px;padding:9px 10px;border-radius:8px;font-size:.76rem;line-height:1.4;background:var(--secondary-background-color)}.junk-notice.failed{color:var(--error-color,var(--primary-text-color));border:1px solid var(--error-color,var(--divider-color))}.junk-notice.pending{color:var(--primary-color)}',
       'details{margin-top:8px;font-size:.78rem}summary{cursor:pointer;color:var(--primary-color);padding:3px 0}.support-body{margin:6px 0 3px;color:var(--secondary-text-color);line-height:1.5;overflow-wrap:anywhere}.support-body a{color:var(--primary-color)}',
       '.timeline-event{padding:5px 0;border-left:1px solid var(--divider-color);padding-left:9px;margin-left:3px;display:flex;flex-direction:column;gap:2px}.timeline-event span{font-size:.68rem}.timeline-event strong{font-size:.78rem;color:var(--primary-text-color);font-weight:500}.timeline-event em{font-size:.68rem;font-style:normal}',
       '.note{margin:6px 0}.note strong{display:block;color:var(--primary-text-color);font-weight:550}.note span{overflow-wrap:anywhere}',
