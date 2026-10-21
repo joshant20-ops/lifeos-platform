@@ -137,6 +137,33 @@ def test_saved_document_candidates_are_reverified_after_email_was_already_proces
     assert [item["document_id"] for item in verified]==[41]
 
 
+def test_refresh_uses_legacy_email_and_timeline_message_ids(monkeypatch):
+    task={
+        "id":"legacy-task",
+        "email_message_id":"<primary@example.test>",
+        "source_message_ids":[],
+        "timeline_events":[{"message_id":"<timeline@example.test>"}],
+        "case_reference_ids":[],
+        "paperless_evidence":[],
+    }
+    searches=[]
+    def search(query):
+        searches.append(query)
+        if query=="<primary@example.test>":
+            return [{"document_id":51,"title":"Verified legacy email"}]
+        return []
+    monkeypatch.setattr(reconciler,"paperless_search",search)
+    monkeypatch.setattr(reconciler,"_paperless_document",lambda document_id:{
+        "id":document_id,
+        "title":"Verified legacy email",
+        "content":"Message-ID: <primary@example.test>",
+    })
+    evidence=reconciler.refresh_task_paperless_evidence(task)
+    assert [item["document_id"] for item in evidence]==[51]
+    assert "<primary@example.test>" in searches
+    assert "<timeline@example.test>" in searches
+
+
 def test_cross_company_paperless_document_links_on_shared_order_reference():
     result=reconciler.verified_message_documents(
         [

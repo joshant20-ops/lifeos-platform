@@ -156,7 +156,7 @@ def verified_message_documents(candidates, message_ids, matter_reference_ids, do
 
 def paperless_linked_documents(message_ids, matter_reference_ids=None):
     """Find Paperless documents tied by exact email or labelled order/case IDs."""
-    ids=sorted({str(value).strip() for value in message_ids or [] if str(value or "").strip()})
+    ids=list(dict.fromkeys(str(value).strip() for value in message_ids or [] if str(value or "").strip()))
     matter_ids=sorted({str(value).strip() for value in matter_reference_ids or [] if str(value or "").strip()})
     candidates=[]
     seen=set()
@@ -177,9 +177,25 @@ def paperless_linked_documents(message_ids, matter_reference_ids=None):
             break
     return verified_message_documents(candidates,ids,matter_ids,_paperless_document)
 
+def task_source_message_ids(task):
+    """Collect known email identities, including records created before source lists existed."""
+    values={str(value).strip() for value in task.get("source_message_ids") or [] if str(value or "").strip()}
+    values.update(
+        str(event.get("message_id")).strip()
+        for event in task.get("timeline_events") or []
+        if isinstance(event,dict) and str(event.get("message_id") or "").strip()
+    )
+    primary=str(task.get("email_message_id") or "").strip()
+    if primary:
+        values.add(primary)
+    ordered=sorted(values)
+    if primary:
+        ordered=[value for value in ordered if value != primary]+[primary]
+    return ordered[-20:]
+
 def refresh_task_paperless_evidence(task):
     evidence=paperless_linked_documents(
-        task.get("source_message_ids") or [],
+        task_source_message_ids(task),
         task.get("case_reference_ids") or [],
     )
     combined={str(item.get("document_id")):item for item in (task.get("paperless_evidence") or []) if isinstance(item,dict) and str(item.get("document_id") or "").isdigit()}
@@ -219,9 +235,7 @@ def persist_task_paperless_evidence(task):
 
 def reverify_saved_task_paperless_evidence(task):
     """Retain only previously linked documents whose contents still prove identity."""
-    message_ids=set(task.get("source_message_ids") or [])
-    if task.get("email_message_id"):
-        message_ids.add(str(task["email_message_id"]))
+    message_ids=set(task_source_message_ids(task))
     task["paperless_evidence"]=verified_message_documents(
         task.get("paperless_evidence") or [],
         message_ids,
