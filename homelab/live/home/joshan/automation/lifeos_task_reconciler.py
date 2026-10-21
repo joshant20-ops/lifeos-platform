@@ -6,7 +6,7 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, errno, hashlib, imaplib, json, os, re, socket, ssl, sys, time
+import email, errno, hashlib, imaplib, json, os, re, socket, ssl, subprocess, sys, time
 from email.utils import parsedate_to_datetime
 from datetime import date, datetime
 from pathlib import Path
@@ -19,7 +19,7 @@ REPO=Path(os.getenv("LIFEOS_PLATFORM_REPO","/home/joshan/lifeos-platform"))
 sys.path.insert(0,str(REPO))
 from governor import ai_broker
 from lifeos_email_paperless_selective import secret, paperless_token
-from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, mutate_action, read_user_state
+from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state
 
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
@@ -436,8 +436,12 @@ def _process_junk_request(path):
     _move_emails_to_junk(message_ids)
     for document_id in document_ids:
         _paperless_delete(document_id)
-    result = mutate_action(task_id, "dismiss")
-    if not result.get("verified"):
+    result = subprocess.run(
+        ["docker", "exec", "homeassistant", "python3",
+         "/config/scripts/lifeos_pa_user_action.py", "--action", "dismiss", "--task-id", task_id],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    if "PA_USER_ACTION=PASS" not in result.stdout:
         raise RuntimeError("junk_task_dismiss_unverified")
 
 
