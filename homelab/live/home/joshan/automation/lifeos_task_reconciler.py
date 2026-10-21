@@ -62,6 +62,19 @@ def text_of(msg):
             except Exception: pass
     return "\n".join(chunks)[:12000]
 
+def has_explicit_no_action_required(compact):
+    """Detect clear no-action language in the email itself, not model output."""
+    text=" ".join(
+        str(compact.get(field) or "")
+        for field in ("subject","snippet","body","text")
+    )
+    return bool(re.search(
+        r"\bno\s+(?:further\s+)?action\s+(?:is\s+)?required\b",
+        text,
+        re.IGNORECASE,
+    ))
+
+
 def classify(compact):
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
 {"relevant":true|false,"actionable":true|false,"title":"short task or event","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short matter topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
@@ -75,6 +88,14 @@ EMAIL:
     if str(d.get("status")) not in {"OPEN","WAITING","DONE","NONE"}: raise ValueError("invalid status")
     severity=str(d.get("severity","normal")).lower()
     d["severity"]=severity if severity in {"low","normal","high"} else "normal"
+    explicit_no_action=has_explicit_no_action_required(compact)
+    if explicit_no_action:
+        # Explicit source wording outranks a model guess that an FYI notice
+        # creates work. Keep the source as an informational update only.
+        d["actionable"]=False
+        d["status"]="NONE"
+        d["relevant"]=True
+        d["reason"]="The email explicitly says no action is required."
     return d
 
 def paperless_search(query):
@@ -202,6 +223,31 @@ def has_valid_source_email(task):
                 and not any(ord(ch)<32 or ch in (chr(34),chr(92),"<",">") for ch in message_id[1:-1])):
             return True
     return False
+
+
+def discard_single_source_no_action_task(tasks,msg):
+    """Remove an old false-positive task sourced only from this no-action email."""
+    message_id=str(msg.get("message_id") or msg.get("source_ref") or "").strip()
+    if not message_id:
+        return False
+    matches=[]
+    for task_id,task in tasks.items():
+        if not isinstance(task,dict):
+            continue
+        primary=str(task.get("email_message_id") or "").strip()
+        source_ids=set(task_source_message_ids(task))
+        if primary==message_id and source_ids=={message_id}:
+            event_ids={
+                str(event.get("message_id") or "").strip()
+                for event in task.get("timeline_events") or []
+                if isinstance(event,dict) and event.get("message_id")
+            }
+            if event_ids.issubset({message_id}):
+                matches.append(task_id)
+    if len(matches)!=1:
+        return False
+    tasks.pop(matches[0],None)
+    return True
 
 
 def refresh_task_paperless_evidence(task):
@@ -1002,7 +1048,21 @@ def _run_reconciler():
     tasks=dict(previous)
     for task in tasks.values():
         reverify_saved_task_paperless_evidence(task)
+    # Recheck the source text for existing tasks as well as new messages. This
+    # removes historical false positives once their source email is revisited
+    # in the bounded mailbox scan, even though it was already marked processed.
+    fetched_by_message_id={
+        str(message.get("message_id") or ""):message
+        for message in fetched if message.get("message_id")
+    }
+    for task_id,task in list(tasks.items()):
+        source_message=str(task.get("email_message_id") or "").strip()
+        source=fetched_by_message_id.get(source_message)
+        if source and has_explicit_no_action_required(source):
+            discard_single_source_no_action_task(tasks,source)
     for observed,k,d,msg in sorted(observations,key=lambda x:x[0]):
+        if has_explicit_no_action_required(msg) and discard_single_source_no_action_task(tasks,msg):
+            continue
         task_id=resolve_task_id(d,msg,tasks)
         if not task_id:continue
         old=tasks.get(task_id,{})
