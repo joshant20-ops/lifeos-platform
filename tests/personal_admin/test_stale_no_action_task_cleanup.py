@@ -23,6 +23,24 @@ def test_verified_sole_source_email_with_no_action_notice_is_detected(monkeypatc
 
 
 
+
+def test_stale_cleanup_accepts_source_retained_only_in_timeline():
+    source_id = "<gemini@example.test>"
+    tasks = {
+        "legacy-gemini-task": {
+            "id": "legacy-gemini-task",
+            "source_message_ids": [],
+            "timeline_events": [{"message_id": source_id}],
+        }
+    }
+    assert reconciler.task_source_message_ids(tasks["legacy-gemini-task"]) == [source_id]
+    assert reconciler.discard_single_source_no_action_task(
+        tasks,
+        {"message_id": source_id},
+    )
+    assert tasks == {}
+
+
 def test_exact_source_lookup_fetches_only_unprocessed_single_source_tasks(monkeypatch):
     import email
 
