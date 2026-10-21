@@ -1,5 +1,7 @@
 from pathlib import Path
 import importlib.util
+import json
+import tempfile
 import sys
 import unittest
 from unittest.mock import patch, call
@@ -37,13 +39,19 @@ class PAJunkActionTests(unittest.TestCase):
             "requested_at": 1,
         }
 
+    def run_request(self, request):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / (request["task_id"] + ".json")
+            path.write_text(json.dumps(request), encoding="utf-8")
+            RECONCILER._process_junk_request(path)
+
     def test_only_explicitly_selected_linked_document_is_deleted(self):
         with patch.object(RECONCILER, "load_previous", return_value={self.task["id"]: self.task}), \
              patch.object(RECONCILER, "_paperless_document", return_value={"id": 41}), \
              patch.object(RECONCILER, "_move_emails_to_junk") as move, \
              patch.object(RECONCILER, "_paperless_delete") as delete, \
              patch.object(RECONCILER.subprocess, "run", return_value=CompletedProcess([], 0, "PA_USER_ACTION=PASS", "")) as dismiss:
-            RECONCILER._process_junk_request(self.request)
+            self.run_request(self.request)
         move.assert_called_once_with(["<latest@example.test>", "<older@example.test>"])
         delete.assert_called_once_with(41)
         self.assertEqual(dismiss.call_count, 1)
