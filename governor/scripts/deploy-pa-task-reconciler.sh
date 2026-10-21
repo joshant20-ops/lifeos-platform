@@ -46,6 +46,7 @@ UNIT
 systemctl daemon-reload
 systemctl enable --now lifeos-task-reconciler.timer >/dev/null
 install -d -o joshan -g joshan -m 0700 /opt/stacks/homeassistant/config/lifeos-pa-state/junk-requests
+install -d -o joshan -g joshan -m 0700 /opt/stacks/homeassistant/config/lifeos-pa-state/junk-requests/failed
 systemctl enable --now lifeos-task-reconciler.path >/dev/null
 paperless_runtime_diagnostic() {
   /usr/bin/python3 "$REPO/governor/paperless_runtime_diagnostic.py"
@@ -143,6 +144,7 @@ fi
 install -d -o joshan -g joshan -m 0700 "$PA_STATE_DIR"
 JUNK_QUEUE_DIR="$PA_STATE_DIR/junk-requests"
 install -d -o joshan -g joshan -m 0700 "$JUNK_QUEUE_DIR"
+install -d -o joshan -g joshan -m 0700 "$JUNK_QUEUE_DIR/failed"
 systemctl is-active --quiet lifeos-task-reconciler.path
 if [[ ! -e "$PA_USER_STATE" ]]; then
   install -o joshan -g joshan -m 0600 /dev/null "$PA_USER_STATE"
