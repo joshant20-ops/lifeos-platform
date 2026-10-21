@@ -234,6 +234,7 @@ class LifeOSPATaskCard extends HTMLElement {
       'button{cursor:pointer}button:focus-visible,a:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.empty{border:1px dashed var(--divider-color);border-radius:12px;padding:24px 16px;text-align:center;display:flex;flex-direction:column;gap:5px}.empty span{font-size:.82rem;color:var(--secondary-text-color)}',
       '@media(max-width:500px){ha-card{padding:12px}.page-head h1{font-size:1.25rem}.day{min-height:58px}.day-name,.day-count{font-size:.61rem}.task-grid{grid-template-columns:1fr}.count{flex:1;min-width:80px}}'
 
+,
       '.matter-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(240px,.85fr);gap:16px;align-items:start;margin-top:10px}',
       '.matter-main,.matter-rail{min-width:0}.matter-main .task{border-color:color-mix(in srgb,var(--primary-color) 38%,var(--divider-color));box-shadow:0 8px 24px rgba(0,0,0,.07)}',
       '.focus-label{display:flex;align-items:center;gap:8px;font-size:.73rem;text-transform:uppercase;letter-spacing:.09em;color:var(--primary-color);font-weight:700;margin:0 0 9px 3px}.focus-mark{width:8px;height:8px;border-radius:50%;background:var(--primary-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary-color) 15%,transparent)}',
