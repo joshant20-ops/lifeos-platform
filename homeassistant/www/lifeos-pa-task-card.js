@@ -73,7 +73,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '<div class="week-strip" role="group" aria-label="Tasks due this week">' + days.join("") + '</div>';
   }
 
-  _taskCard(task) {
+  _taskCard(task, featured = false) {
     const id = this._escape(task.id);
     const status = String(task.status || "OPEN").toUpperCase();
     const severity = String(task.severity || "normal").toLowerCase();
@@ -96,9 +96,13 @@ class LifeOSPATaskCard extends HTMLElement {
       const when = Number(event?.observed_at) > 0
         ? new Date(Number(event.observed_at) * 1000).toLocaleString()
         : "";
-      return '<div class="timeline-event"><span>' + this._escape(when || "Earlier") + '</span><strong>' +
+      const eventStatus = String(event?.status || "").toUpperCase();
+      return '<div class="timeline-event"><span class="event-dot"></span><div class="event-copy"><time>' +
+        this._escape(when || "Earlier") + '</time><strong>' +
         this._escape(event?.title || "Email update") + '</strong>' +
-        (event?.event_kind === "information" ? '<em>Information</em>' : "") + '</div>';
+        (event?.event_kind === "information" ? '<em>Information update</em>' : "") +
+        (eventStatus && eventStatus !== "NONE" ? '<span class="event-status">' + this._escape(eventStatus === "WAITING" ? "Waiting for reply" : eventStatus === "DONE" ? "Completed" : "Action needed") + '</span>' : "") +
+        '</div></div>';
     }).join("");
     const latest = timelineEvents[timelineEvents.length - 1];
     const latestPreview = latest
@@ -106,12 +110,16 @@ class LifeOSPATaskCard extends HTMLElement {
         '</span><strong>' + this._escape(latest.title || "Email update") + '</strong>' +
         (latest.event_kind === "information" ? '<em>Information only</em>' : "") + '</div>'
       : "";
+    const trailMarkup = featured
+      ? '<section class="trail"><div class="trail-heading"><div><span class="eyebrow">The story so far</span><h4>Updates</h4></div><span class="trail-count">' + timelineEvents.length + (timelineEvents.length === 1 ? " update" : " updates") + '</span></div>' +
+        (timeline ? '<div class="timeline">' + timeline + '</div>' : '<div class="trail-empty">No message updates have been recorded for this matter yet.</div>') + '</section>'
+      : "";
     const noteMarkup = comments.map((comment) =>
       '<div class="note"><strong>Your note</strong><span>' + this._escape(comment.text || "") + '</span></div>'
     ).join("");
     const supporting = [];
-    if (evidence.length) supporting.push('<details><summary>Evidence · ' + evidence.length + '</summary><div class="support-body">' + evidence.join(" · ") + '</div></details>');
-    if (timeline) supporting.push('<details><summary>Full timeline · ' + timelineEvents.length + '</summary><div class="support-body timeline">' + timeline + '</div></details>');
+    if (evidence.length) supporting.push('<details><summary>Source messages and documents · ' + evidence.length + '</summary><div class="support-body">' + evidence.join(" · ") + '</div></details>');
+    if (timeline && !featured) supporting.push('<details><summary>Full timeline · ' + timelineEvents.length + '</summary><div class="support-body timeline">' + timeline + '</div></details>');
     if (noteMarkup) supporting.push('<details><summary>Your notes · ' + (task.user_comment_count || comments.length) + '</summary><div class="support-body">' + noteMarkup + '</div></details>');
     const snooze = task.snoozed_until ? '<span class="tag muted">Snoozed until ' + this._escape(this._formatDate(task.snoozed_until)) + '</span>' : "";
     const dueTag = due ? '<span class="tag ' + (due < this._dateKey(new Date()) ? "overdue" : "") + '">' +
@@ -129,30 +137,48 @@ class LifeOSPATaskCard extends HTMLElement {
       '<button data-action="due_date" data-id="' + id + '">Set due date</button>' +
       (task.snoozed_until ? '<button data-action="unsnooze" data-id="' + id + '">Unsnooze</button>' : '') +
       '</div>';
-    return '<article class="task"><div class="task-top"><h3>' + this._escape(task.title || "Untitled obligation") + '</h3>' +
-      '<span class="severity severity-' + this._escape(severity) + '">' + this._escape(severity) + '</span></div>' +
-      '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + latestPreview +
+    return '<article class="task' + (featured ? ' featured' : '') + '"><div class="task-top"><div><span class="eyebrow">' +
+      (status === "WAITING" ? "Waiting on someone else" : status === "DONE" ? "Completed matter" : status === "DISMISSED" ? "Dismissed item" : "Your next step") +
+      '</span><h3>' + this._escape(task.title || "Untitled obligation") + '</h3></div><span class="severity severity-' + this._escape(severity) + '">' +
+      this._escape(severity) + '</span></div>' +
+      '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
-      '</div>' + supporting.join("") + controls + '</article>';
+      '</div>' + trailMarkup + supporting.join("") + controls + '</article>';
   }
 
   _actionSections(items) {
-    const groups = [
-      ["OPEN", "Needs your action", "Decisions, replies and confirmations that are yours to do."],
-      ["WAITING", "Waiting for a reply", "Follow-ups remain visible on the day they are due."],
-      ["DONE", "Completed", "Recently completed matters."],
-      ["DISMISSED", "Dismissed", "Items you marked as not a task."],
-    ];
-    const chunks = [];
-    for (const [status, title, description] of groups) {
-      const matching = items.filter((task) => String(task.status || "").toUpperCase() === status);
-      if (!matching.length) continue;
-      chunks.push('<section class="group"><div class="group-heading"><h2>' + title + '</h2><span>' +
-        matching.length + (matching.length === 1 ? " matter" : " matters") + '</span></div><p>' +
-        description + '</p><div class="task-grid">' + matching.map((task) => this._taskCard(task)).join("") + '</div></section>');
-    }
-    return chunks.join("") || '<div class="empty"><strong>No tasks for this day</strong><span>Choose another date above, or view matters with no due date.</span></div>';
+    const active = items.filter((task) => ["OPEN", "WAITING"].includes(String(task.status || "").toUpperCase()));
+    const selected = active.find((task) => task.id === this._selectedMatterId) || active[0] || items.find((task) => task.id === this._selectedMatterId) || items[0];
+    if (selected) this._selectedMatterId = selected.id;
+    const sideItems = items.filter((task) => task.id !== selected?.id);
+    const tile = (task) => {
+      const id = this._escape(task.id);
+      const status = String(task.status || "OPEN").toUpperCase();
+      const events = Array.isArray(task.timeline_events) ? task.timeline_events : [];
+      const latest = events[events.length - 1];
+      const when = latest && Number(latest.observed_at) > 0
+        ? new Date(Number(latest.observed_at) * 1000).toLocaleDateString()
+        : "";
+      return '<button class="matter-link' + (task.id === this._selectedMatterId ? " selected" : "") +
+        '" type="button" data-matter="' + id + '" aria-pressed="' + (task.id === this._selectedMatterId) + '">' +
+        '<span class="matter-link-top"><span class="matter-status status-' + this._escape(status.toLowerCase()) + '">' +
+        this._escape(status === "WAITING" ? "Waiting" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") +
+        '</span>' + (task.due_date ? '<span class="matter-date">' + this._escape(this._formatDate(task.due_date)) + '</span>' : "") + '</span>' +
+        '<strong>' + this._escape(task.title || "Untitled obligation") + '</strong>' +
+        (latest ? '<span class="matter-latest">' + (when ? this._escape(when) + " · " : "") + this._escape(latest.title || "Email update") + '</span>' : "") +
+        '<span class="matter-messages">' + (Array.isArray(task.source_message_ids) ? task.source_message_ids.length : 0) + ' related messages</span></button>';
+    };
+    const closed = sideItems.filter((task) => ["DONE", "DISMISSED"].includes(String(task.status || "").toUpperCase()));
+    const open = sideItems.filter((task) => !["DONE", "DISMISSED"].includes(String(task.status || "").toUpperCase()));
+    const rail = open.map(tile).join("") || '<div class="rail-empty">No other open matters for this day.</div>';
+    const resolved = closed.length
+      ? '<details class="resolved"><summary>Recently closed · ' + closed.length + '</summary><div class="resolved-items">' + closed.map(tile).join("") + '</div></details>'
+      : "";
+    if (!selected) return '<div class="empty"><strong>No tasks for this day</strong><span>Choose another date above, or view matters with no due date.</span></div>';
+    return '<div class="matter-layout"><section class="matter-main"><div class="focus-label"><span class="focus-mark"></span>Selected matter</div>' +
+      this._taskCard(selected, true) + '</section><aside class="matter-rail"><div class="rail-heading"><div><span class="eyebrow">Your day</span><h2>Other matters</h2></div><span class="rail-count">' + open.length + '</span></div>' +
+      rail + resolved + '</aside></div>';
   }
 
   _render() {
@@ -207,6 +233,16 @@ class LifeOSPATaskCard extends HTMLElement {
       '.controls button[data-action="close"]{background:var(--primary-color);border-color:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:600}',
       'button{cursor:pointer}button:focus-visible,a:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.empty{border:1px dashed var(--divider-color);border-radius:12px;padding:24px 16px;text-align:center;display:flex;flex-direction:column;gap:5px}.empty span{font-size:.82rem;color:var(--secondary-text-color)}',
       '@media(max-width:500px){ha-card{padding:12px}.page-head h1{font-size:1.25rem}.day{min-height:58px}.day-name,.day-count{font-size:.61rem}.task-grid{grid-template-columns:1fr}.count{flex:1;min-width:80px}}'
+
+      '.matter-layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(240px,.85fr);gap:16px;align-items:start;margin-top:10px}',
+      '.matter-main,.matter-rail{min-width:0}.matter-main .task{border-color:color-mix(in srgb,var(--primary-color) 38%,var(--divider-color));box-shadow:0 8px 24px rgba(0,0,0,.07)}',
+      '.focus-label{display:flex;align-items:center;gap:8px;font-size:.73rem;text-transform:uppercase;letter-spacing:.09em;color:var(--primary-color);font-weight:700;margin:0 0 9px 3px}.focus-mark{width:8px;height:8px;border-radius:50%;background:var(--primary-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary-color) 15%,transparent)}',
+      '.matter-rail{border:1px solid var(--divider-color);border-radius:14px;background:var(--secondary-background-color);padding:14px}.rail-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}.rail-heading h2{font-size:1.02rem;margin:3px 0 0}.rail-count,.trail-count{font-size:.72rem;color:var(--secondary-text-color);white-space:nowrap}',
+      '.eyebrow{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--secondary-text-color);font-weight:650;margin-bottom:5px}.task.featured{padding:19px;border-radius:14px}.task.featured h3{font-size:1.35rem;line-height:1.2;letter-spacing:-.025em}.task.featured .tags{margin-top:13px}',
+      '.matter-link{display:block;width:100%;text-align:left;padding:11px 10px;margin:7px 0;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}.matter-link.selected{border-color:var(--primary-color);box-shadow:inset 3px 0 0 var(--primary-color)}.matter-link strong{display:block;font-size:.84rem;line-height:1.32;margin:5px 0;overflow-wrap:anywhere}.matter-link-top{display:flex;justify-content:space-between;gap:6px;align-items:center}.matter-status,.matter-date{font-size:.66rem;color:var(--secondary-text-color)}.status-waiting{color:var(--primary-color);font-weight:600}.matter-latest{display:block;font-size:.72rem;color:var(--secondary-text-color);line-height:1.35;margin-top:3px}.matter-messages{display:block;font-size:.67rem;color:var(--secondary-text-color);margin-top:7px}',
+      '.trail{margin:18px 0 12px;padding:15px 15px 4px;border-radius:12px;background:var(--secondary-background-color)}.trail-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:13px}.trail-heading h4{font-size:1rem;margin:1px 0 0}.trail-heading .eyebrow{color:var(--primary-color)}.timeline{position:relative;padding:0 0 6px 5px}.timeline:before{content:"";position:absolute;top:7px;bottom:17px;left:9px;width:1px;background:var(--divider-color)}.timeline-event{position:relative;display:flex;gap:11px;padding:0 0 15px;min-width:0}.event-dot{position:relative;z-index:1;flex:0 0 9px;width:9px;height:9px;margin-top:5px;border:2px solid var(--primary-color);border-radius:50%;background:var(--card-background-color)}.timeline-event:last-child .event-dot{background:var(--primary-color)}.event-copy{display:grid;gap:3px;min-width:0}.event-copy time{font-size:.68rem;color:var(--secondary-text-color)}.event-copy strong{font-size:.85rem;line-height:1.35;font-weight:550;overflow-wrap:anywhere}.event-copy em,.event-status{font-style:normal;font-size:.68rem;color:var(--secondary-text-color)}.trail-empty{font-size:.82rem;color:var(--secondary-text-color);padding:4px 0 13px}',
+      '.resolved{margin-top:12px;border-top:1px solid var(--divider-color);padding-top:10px}.resolved summary{font-size:.76rem}.resolved-items{max-height:300px;overflow:auto}.rail-empty{padding:12px 8px;color:var(--secondary-text-color);font-size:.79rem;line-height:1.4}',
+      '@media(max-width:760px){.matter-layout{grid-template-columns:1fr}.matter-rail{order:2}.matter-main{order:1}}',
     ].join("");
     if (this._config.compact) {
       this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card><h2>' +
@@ -249,6 +285,12 @@ class LifeOSPATaskCard extends HTMLElement {
       button.addEventListener("click", () => {
         this._weekOffset = (this._weekOffset || 0) + Number(button.dataset.week);
         this._selectedDate = this._dateKey(this._startOfWeek(this._weekOffset));
+        this._render();
+      });
+    });
+    this.shadowRoot.querySelectorAll("button[data-matter]").forEach((button) => {
+      button.addEventListener("click", () => {
+        this._selectedMatterId = button.dataset.matter;
         this._render();
       });
     });
