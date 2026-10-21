@@ -54,3 +54,7 @@ command_line:
         - source
         - generated_time
         - age_seconds
+        - junk_action_pending_task_ids
+        - junk_action_failed_task_ids
+        - review_pending_task_ids
+        - review_failed_task_ids

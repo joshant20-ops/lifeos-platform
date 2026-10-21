@@ -13,7 +13,7 @@ import lifeos_pa_user_state
 from lifeos_pa_user_state import mutate_action
 
 STATE = Path("/config/www/lifeos_tasks.json")
-ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "junk"}
+ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "junk", "review"}
 _ACTION_STAGE = "startup"
 _SAFE_REASONS = {
     "task_view_unavailable_or_stale",
@@ -48,6 +48,42 @@ def main():
     task = next((row for row in rows if isinstance(row, dict) and row.get("id") == args.task_id), None)
     if task is None:
         raise ValueError("task_id_not_in_current_view")
+    if args.action == "review":
+        _ACTION_STAGE = "review_request_validate"
+        if str(task.get("status") or "").upper() not in {"OPEN", "WAITING", "DONE", "DISMISSED"}:
+            raise ValueError("task_status_invalid")
+        _ACTION_STAGE = "state_owner_privilege_drop"
+        lifeos_pa_user_state.drop_to_state_owner()
+        _ACTION_STAGE = "review_request_enqueue"
+        queue_dir = lifeos_pa_user_state.STATE_PATH.parent / "review-requests"
+        if not queue_dir.is_dir():
+            raise ValueError("review_queue_unavailable")
+        request = {
+            "schema": "lifeos_pa_review_request_v1",
+            "request_id": uuid.uuid4().hex,
+            "task_id": args.task_id,
+            "requested_at": int(time.time()),
+        }
+        request_path = queue_dir / (args.task_id + ".json")
+        stale_failure = queue_dir / "failed" / request_path.name
+        try:
+            stale_failure.unlink()
+        except FileNotFoundError:
+            pass
+        try:
+            fd = os.open(request_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            print("PA_USER_ACTION=QUEUED")
+            print("PA_USER_ACTION_KIND=review")
+            return
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(request, stream, separators=(",", ":"))
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        print("PA_USER_ACTION=QUEUED")
+        print("PA_USER_ACTION_KIND=review")
+        return
     if args.action == "junk":
         ids = sorted(set(x for x in args.paperless_ids.split(",") if x))
         if len(ids) > 10 or any(not x.isdigit() or int(x) <= 0 for x in ids):
