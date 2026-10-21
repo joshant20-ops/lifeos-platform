@@ -519,6 +519,69 @@ def message_time(date_value):
     try:return int(parsedate_to_datetime(str(date_value or "")).timestamp())
     except Exception:return int(time.time())
 
+def fetch_existing_task_source_emails(tasks, already_fetched=()):
+    """Fetch exact source emails for saved single-source tasks outside the current scan batch."""
+    known={str(value).strip() for value in already_fetched if str(value or "").strip()}
+    message_ids=set()
+    for task in tasks or []:
+        ids=task_source_message_ids(task)
+        if len(ids)!=1:
+            continue
+        message_id=ids[0]
+        if (message_id not in known and len(message_id)<=300 and message_id.startswith("<")
+                and message_id.endswith(">") and "@" in message_id
+                and not any(ord(ch)<32 or ch in (chr(34),chr(92),"<",">") for ch in message_id[1:-1])):
+            message_ids.add(message_id)
+    if not message_ids:
+        return {}
+    user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
+    password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
+    client=imaplib.IMAP4_SSL(
+        os.getenv("LIFEOS_IMAP_HOST","imap.gmail.com"),
+        int(os.getenv("LIFEOS_IMAP_PORT","993")),
+        ssl_context=ssl.create_default_context(),
+    )
+    result={}
+    try:
+        client.login(user,password)
+        selected=False
+        for mailbox in ("[Gmail]/All Mail","[GoogleMail]/All Mail","INBOX"):
+            status,_=client.select(mailbox,readonly=True)
+            if status=="OK":
+                selected=True
+                break
+        if not selected:
+            raise RuntimeError("imap_all_mail_unavailable")
+        for message_id in sorted(message_ids):
+            status,rows=client.uid("search",None,"HEADER","Message-ID",message_id)
+            matches=rows[0].split() if status=="OK" and rows else []
+            if len(matches)!=1:
+                continue
+            status,data=client.uid("fetch",matches[0],"(RFC822)")
+            if status!="OK" or not data:
+                continue
+            raw=next((row[1] for row in data if isinstance(row,tuple) and len(row)>1),None)
+            if not raw:
+                continue
+            message=email.message_from_bytes(raw)
+            actual_id=str(message.get("Message-ID","")).strip()
+            if actual_id.casefold()!=message_id.casefold():
+                continue
+            result[message_id]={
+                "from":str(message.get("From",""))[:300],
+                "subject":str(message.get("Subject",""))[:500],
+                "date":str(message.get("Date",""))[:100],
+                "message_id":actual_id[:300],
+                "in_reply_to":str(message.get("In-Reply-To",""))[:500],
+                "references":str(message.get("References",""))[:2000],
+                "source_ref":actual_id[:300],
+                "body":text_of(message),
+            }
+    finally:
+        try:client.logout()
+        except Exception:pass
+    return result
+
 
 _FAILURE_STAGES = frozenset({
     "startup", "state_load", "credential_load", "mailbox_connect",
@@ -1157,6 +1220,14 @@ def _run_reconciler():
         str(message.get("message_id") or ""):message
         for message in fetched if message.get("message_id")
     }
+    # Saved single-source tasks can outlive the bounded mailbox scan. Fetch only
+    # their exact Message-IDs so stale no-action tasks can be corrected promptly.
+    try:
+        extra_sources=fetch_existing_task_source_emails(tasks.values(),fetched_by_message_id)
+        fetched_by_message_id.update(extra_sources)
+        print("TASK_STALE_SOURCE_EMAILS_FETCHED="+str(len(extra_sources)),flush=True)
+    except Exception:
+        print("TASK_STALE_SOURCE_EMAILS_FETCHED=FAIL",flush=True)
     for task in tasks.values():
         if insurance_matter(task):
             source=fetched_by_message_id.get(str(task.get("email_message_id") or "").strip())
