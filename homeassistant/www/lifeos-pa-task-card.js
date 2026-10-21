@@ -126,16 +126,19 @@ class LifeOSPATaskCard extends HTMLElement {
       (due < this._dateKey(new Date()) ? "Overdue · " : "Due · ") + this._escape(this._formatDate(due)) + '</span>' :
       '<span class="tag muted">No due date</span>';
     const statusTag = '<span class="tag status-' + this._escape(status.toLowerCase()) + '">' + this._escape(status === "WAITING" ? "Waiting for reply" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") + '</span>';
-    const buttons = status === "DONE" || status === "DISMISSED"
-      ? '<button data-action="reopen" data-id="' + id + '">Reopen</button>'
-      : '<button data-action="comment" data-id="' + id + '">Add note</button>' +
+    const closed = status === "DONE" || status === "DISMISSED";
+    const primaryActions = closed
+      ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button>'
+      : '<button class="primary" data-action="close" data-id="' + id + '">Mark done</button>' +
+        '<button data-action="comment" data-id="' + id + '">Add note</button>' +
         '<button data-action="snooze" data-id="' + id + '">Snooze</button>' +
-        '<button data-action="close" data-id="' + id + '">Mark done</button>' +
-        '<button data-action="dismiss" data-id="' + id + '">Not a task</button>';
-    const controls = '<div class="controls">' + buttons +
+        '<button data-action="due_date" data-id="' + id + '">Set due date</button>';
+    const secondaryActions =
       '<button data-action="severity" data-id="' + id + '">Set severity</button>' +
-      '<button data-action="due_date" data-id="' + id + '">Set due date</button>' +
-      (task.snoozed_until ? '<button data-action="unsnooze" data-id="' + id + '">Unsnooze</button>' : '') +
+      (!closed ? '<button data-action="dismiss" data-id="' + id + '">Not a task</button>' : '') +
+      (task.snoozed_until ? '<button data-action="unsnooze" data-id="' + id + '">Unsnooze</button>' : '');
+    const controls = '<div class="controls"><div class="primary-controls">' + primaryActions + '</div>' +
+      (secondaryActions ? '<details class="more-actions"><summary>More actions</summary><div class="secondary-controls">' + secondaryActions + '</div></details>' : '') +
       '</div>';
     return '<article class="task' + (featured ? ' featured' : '') + '"><div class="task-top"><div><span class="eyebrow">' +
       (status === "WAITING" ? "Waiting on someone else" : status === "DONE" ? "Completed matter" : status === "DISMISSED" ? "Dismissed item" : "Your next step") +
@@ -193,8 +196,10 @@ class LifeOSPATaskCard extends HTMLElement {
     const style = [
       ':host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}',
       '.summary{color:var(--secondary-text-color);margin:4px 0 12px;line-height:1.45}',
-      '.count-row{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}',
-      '.count{border-radius:9px;padding:9px 12px;background:var(--secondary-background-color);min-width:90px}',
+      '.count-row{display:flex;gap:7px;flex-wrap:wrap;margin:4px 0 0}',
+      '.page-head>.page-copy{min-width:0}.page-head>.count-row{justify-content:flex-end;flex:0 0 auto}',
+      '@media(max-width:760px){.page-head{display:block}.page-head>.count-row{justify-content:flex-start;margin-top:12px}}',
+      '.count{border:1px solid var(--divider-color);border-radius:9px;padding:7px 10px;background:var(--secondary-background-color);min-width:76px}',
       '.count strong{display:block;font-size:1.15rem;color:var(--primary-text-color)}.count span{font-size:.78rem;color:var(--secondary-text-color)}',
       '.open-link{display:inline-flex;align-items:center;margin-top:4px;color:var(--primary-color);font-weight:600;text-decoration:none}',
       '.page-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;margin-bottom:14px}',
@@ -204,9 +209,10 @@ class LifeOSPATaskCard extends HTMLElement {
       '.week-heading{display:flex;align-items:center;justify-content:center;gap:10px;margin:18px 0 9px}',
       '.week-heading strong{font-size:.9rem;font-weight:600}',
       '.week-nav{width:36px;height:36px;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color);font-size:1.25rem}',
-      '.week-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;margin-bottom:16px}',
-      '.day{min-width:0;min-height:62px;padding:7px 3px;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}',
-      '.day.selected{border-color:var(--primary-color);background:var(--secondary-background-color);box-shadow:inset 0 0 0 1px var(--primary-color)}',
+      '.week-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px;margin-bottom:10px;padding:5px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color)}',
+      '.day{min-width:0;min-height:66px;padding:7px 3px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--primary-text-color);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}',
+      '.day:hover{background:var(--card-background-color)}',
+      '.day.selected{border-color:var(--primary-color);background:var(--card-background-color);box-shadow:inset 0 0 0 1px var(--primary-color)}',
       '.day-name,.day-count{font-size:.67rem;color:var(--secondary-text-color);white-space:nowrap}.day strong{font-size:.95rem;line-height:1.05}.day.selected .day-name,.day.selected .day-count{color:var(--primary-color)}',
       '.no-date-row{display:flex;justify-content:center;margin:0 0 18px}',
       '.no-date{border:0;background:transparent;color:var(--primary-color);font:inherit;font-size:.82rem;text-decoration:underline;text-underline-offset:3px;padding:7px 10px}',
@@ -229,8 +235,8 @@ class LifeOSPATaskCard extends HTMLElement {
       'details{margin-top:8px;font-size:.78rem}summary{cursor:pointer;color:var(--primary-color);padding:3px 0}.support-body{margin:6px 0 3px;color:var(--secondary-text-color);line-height:1.5;overflow-wrap:anywhere}.support-body a{color:var(--primary-color)}',
       '.timeline-event{padding:5px 0;border-left:1px solid var(--divider-color);padding-left:9px;margin-left:3px;display:flex;flex-direction:column;gap:2px}.timeline-event span{font-size:.68rem}.timeline-event strong{font-size:.78rem;color:var(--primary-text-color);font-weight:500}.timeline-event em{font-size:.68rem;font-style:normal}',
       '.note{margin:6px 0}.note strong{display:block;color:var(--primary-text-color);font-weight:550}.note span{overflow-wrap:anywhere}',
-      '.controls{display:flex;gap:6px;flex-wrap:wrap;margin-top:11px}.controls button{min-height:36px;border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:8px;padding:6px 9px;font:inherit;font-size:.76rem}',
-      '.controls button[data-action="close"]{background:var(--primary-color);border-color:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:600}',
+      '.controls{margin-top:15px;padding-top:13px;border-top:1px solid var(--divider-color)}.primary-controls,.secondary-controls{display:flex;gap:7px;flex-wrap:wrap}.controls button{min-height:38px;border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);border-radius:8px;padding:7px 11px;font:inherit;font-size:.78rem}.controls button[data-action="close"],.controls button.primary{background:var(--primary-color);border-color:var(--primary-color);color:var(--text-primary-color,#fff);font-weight:600}.more-actions{margin-top:8px}.more-actions summary{font-size:.75rem}.secondary-controls{padding:7px 0 2px}',
+
       'button{cursor:pointer}button:focus-visible,a:focus-visible{outline:2px solid var(--primary-color);outline-offset:2px}.empty{border:1px dashed var(--divider-color);border-radius:12px;padding:24px 16px;text-align:center;display:flex;flex-direction:column;gap:5px}.empty span{font-size:.82rem;color:var(--secondary-text-color)}',
       '@media(max-width:500px){ha-card{padding:12px}.page-head h1{font-size:1.25rem}.day{min-height:58px}.day-name,.day-count{font-size:.61rem}.task-grid{grid-template-columns:1fr}.count{flex:1;min-width:80px}}'
 
@@ -239,9 +245,9 @@ class LifeOSPATaskCard extends HTMLElement {
       '.matter-main,.matter-rail{min-width:0}.matter-main .task{border-color:color-mix(in srgb,var(--primary-color) 38%,var(--divider-color));box-shadow:0 8px 24px rgba(0,0,0,.07)}',
       '.focus-label{display:flex;align-items:center;gap:8px;font-size:.73rem;text-transform:uppercase;letter-spacing:.09em;color:var(--primary-color);font-weight:700;margin:0 0 9px 3px}.focus-mark{width:8px;height:8px;border-radius:50%;background:var(--primary-color);box-shadow:0 0 0 4px color-mix(in srgb,var(--primary-color) 15%,transparent)}',
       '.matter-rail{border:1px solid var(--divider-color);border-radius:14px;background:var(--secondary-background-color);padding:14px}.rail-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}.rail-heading h2{font-size:1.02rem;margin:3px 0 0}.rail-count,.trail-count{font-size:.72rem;color:var(--secondary-text-color);white-space:nowrap}',
-      '.eyebrow{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--secondary-text-color);font-weight:650;margin-bottom:5px}.task.featured{padding:19px;border-radius:14px}.task.featured h3{font-size:1.35rem;line-height:1.2;letter-spacing:-.025em}.task.featured .tags{margin-top:13px}',
+      '.eyebrow{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:var(--secondary-text-color);font-weight:650;margin-bottom:5px}.task.featured{padding:19px;border-radius:14px}.task.featured h3{font-size:1.35rem;line-height:1.2;letter-spacing:-.025em}.task.featured .tags{margin-top:13px}.task.featured .severity{border:1px solid var(--divider-color);border-radius:20px;padding:4px 9px;background:var(--secondary-background-color)}',
       '.matter-link{display:block;width:100%;text-align:left;padding:11px 10px;margin:7px 0;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}.matter-link.selected{border-color:var(--primary-color);box-shadow:inset 3px 0 0 var(--primary-color)}.matter-link strong{display:block;font-size:.84rem;line-height:1.32;margin:5px 0;overflow-wrap:anywhere}.matter-link-top{display:flex;justify-content:space-between;gap:6px;align-items:center}.matter-status,.matter-date{font-size:.66rem;color:var(--secondary-text-color)}.status-waiting{color:var(--primary-color);font-weight:600}.matter-latest{display:block;font-size:.72rem;color:var(--secondary-text-color);line-height:1.35;margin-top:3px}.matter-messages{display:block;font-size:.67rem;color:var(--secondary-text-color);margin-top:7px}',
-      '.trail{margin:18px 0 12px;padding:15px 15px 4px;border-radius:12px;background:var(--secondary-background-color)}.trail-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:13px}.trail-heading h4{font-size:1rem;margin:1px 0 0}.trail-heading .eyebrow{color:var(--primary-color)}.timeline{position:relative;padding:0 0 6px 5px}.timeline:before{content:"";position:absolute;top:7px;bottom:17px;left:9px;width:1px;background:var(--divider-color)}.timeline-event{position:relative;display:flex;gap:11px;padding:0 0 15px;min-width:0}.event-dot{position:relative;z-index:1;flex:0 0 9px;width:9px;height:9px;margin-top:5px;border:2px solid var(--primary-color);border-radius:50%;background:var(--card-background-color)}.timeline-event:last-child .event-dot{background:var(--primary-color)}.event-copy{display:grid;gap:3px;min-width:0}.event-copy time{font-size:.68rem;color:var(--secondary-text-color)}.event-copy strong{font-size:.85rem;line-height:1.35;font-weight:550;overflow-wrap:anywhere}.event-copy em,.event-status{font-style:normal;font-size:.68rem;color:var(--secondary-text-color)}.trail-empty{font-size:.82rem;color:var(--secondary-text-color);padding:4px 0 13px}',
+      '.trail{margin:18px 0 12px;padding:15px 0 0;border-top:1px solid var(--divider-color)}.trail-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:13px}.trail-heading h4{font-size:1rem;margin:1px 0 0}.trail-heading .eyebrow{color:var(--primary-color)}.timeline{position:relative;padding:0 0 6px 5px}.timeline:before{content:"";position:absolute;top:7px;bottom:17px;left:9px;width:1px;background:var(--divider-color)}.timeline-event{position:relative;display:flex;gap:11px;padding:0 0 15px;min-width:0}.event-dot{position:relative;z-index:1;flex:0 0 9px;width:9px;height:9px;margin-top:5px;border:2px solid var(--primary-color);border-radius:50%;background:var(--card-background-color)}.timeline-event:last-child .event-dot{background:var(--primary-color)}.event-copy{display:grid;gap:3px;min-width:0}.event-copy time{font-size:.72rem;color:var(--secondary-text-color)}.event-copy strong{font-size:.9rem;line-height:1.35;font-weight:550;overflow-wrap:anywhere}.event-copy em,.event-status{font-style:normal;font-size:.72rem;color:var(--secondary-text-color)}.trail-empty{font-size:.82rem;color:var(--secondary-text-color);padding:4px 0 13px}',
       '.resolved{margin-top:12px;border-top:1px solid var(--divider-color);padding-top:10px}.resolved summary{font-size:.76rem}.resolved-items{max-height:300px;overflow:auto}.rail-empty{padding:12px 8px;color:var(--secondary-text-color);font-size:.79rem;line-height:1.4}',
       '@media(max-width:760px){.matter-layout{grid-template-columns:1fr}.matter-rail{order:2}.matter-main{order:1}}',
     ].join("");
@@ -263,18 +269,17 @@ class LifeOSPATaskCard extends HTMLElement {
       ? "No due date"
       : this._formatDate(this._selectedDate, { weekday: "long", day: "numeric", month: "long" });
     this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card>' +
-      '<div class="page-head"><div><div class="page-kicker">LifeOS · Personal Assistant</div><h1>' +
-      this._escape(this._config.title || "Your matters") + '</h1><p>One view for what needs doing, what is waiting, and what happens next.</p></div>' +
-      '</div><div class="count-row"><div class="count"><strong>' + needs + '</strong><span>Need your action</span></div>' +
-      '<div class="count"><strong>' + waiting + '</strong><span>Waiting for a reply</span></div>' +
-      '<div class="count"><strong>' + overdue + '</strong><span>Overdue</span></div></div>' +
+      '<div class="page-head"><div class="page-copy"><div class="page-kicker">LifeOS · Personal Assistant</div><h1>' +
+      this._escape(this._config.title || "Your matters") + '</h1><p>Follow each task from the first message to the next step.</p></div>' +
+      '<div class="count-row"><div class="count"><strong>' + needs + '</strong><span>Need action</span></div>' +
+      '<div class="count"><strong>' + waiting + '</strong><span>Waiting</span></div>' +
+      '<div class="count"><strong>' + overdue + '</strong><span>Overdue</span></div></div></div>' +
       this._weekStrip(items) +
       '<div class="no-date-row"><button class="no-date' + (this._selectedDate === "no-date" ? " selected" : "") +
       '" type="button" data-day="no-date" aria-pressed="' + (this._selectedDate === "no-date") + '">' +
       "Show matters with no due date" + '</button></div>' +
       '<div class="task-summary"><span class="summary-chip">Showing ' + this._escape(selectedDateLabel) + '</span>' +
-      '<span class="summary-chip">' + shownItems.length + (shownItems.length === 1 ? " matter" : " matters") + '</span>' +
-      (overdue ? '<span class="summary-chip urgent">' + overdue + (overdue === 1 ? " overdue" : " overdue") + '</span>' : "") +
+      '<span class="summary-chip">' + shownItems.length + (shownItems.length === 1 ? " open matter" : " open matters") + '</span>' +
       '</div>' + this._actionSections(shownItems) + '</ha-card>';
     this.shadowRoot.querySelectorAll("button[data-day]").forEach((button) => {
       button.addEventListener("click", () => {
