@@ -229,30 +229,46 @@ else
   echo 'HA_CONFIG_CHANGE=NONE'
 fi
 docker exec homeassistant python3 /config/scripts/lifeos_pa_task_attention_sensor.py | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("state") in {"attention","clear"}; print("PA_ATTENTION_SENSOR=PASS"); print("NEEDS_ME="+str(d.get("needs_me",0))); print("WAITING="+str(d.get("waiting_on_others",0))); print("DUE_OR_OVERDUE="+str(int(d.get("overdue",0))+int(d.get("upcoming",0))))'
-review_api_status=$(python3 - <<'PYPROBE'
+python3 - <<'PYPROBE'
+import json
+import os
+import time
 import urllib.error
 import urllib.request
+import uuid
+from pathlib import Path
 
-request = urllib.request.Request(
-    "http://127.0.0.1:8123/api/lifeos_pa_review/runtime-check",
-    headers={"".join(("Author", "ization")): "Bearer invalid-lifeos-preview-probe"},
-)
+task_id = "runtime-auth-" + uuid.uuid4().hex
+marker = "LIFEOS_PRIVATE_PREVIEW_AUTH_PROBE_" + uuid.uuid4().hex
+preview_path = Path("/config/lifeos-pa-state/task-previews") / (task_id + ".json")
+preview_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+preview_path.write_text(json.dumps({
+    "schema": "lifeos_pa_task_previews_v1",
+    "task_id": task_id,
+    "generated_at": int(time.time()),
+    "documents": [{"document_id": "1", "title": "synthetic probe", "ocr_text": marker}],
+}), encoding="utf-8")
+os.chmod(preview_path, 0o600)
 try:
-    urllib.request.urlopen(request, timeout=5)
-except urllib.error.HTTPError as error:
-    print(error.code)
-except Exception:
-    print("000")
-else:
-    print("200")
+    request = urllib.request.Request(
+        "http://127.0.0.1:8123/api/lifeos_pa_review/" + task_id,
+        headers={"".join(("Author", "ization")): "Bearer invalid-lifeos-preview-probe"},
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            status = response.status
+            body = response.read(20000).decode("utf-8", "replace")
+    except urllib.error.HTTPError as error:
+        status = error.code
+        body = error.read(20000).decode("utf-8", "replace")
+    leaked = marker in body
+    print("PA_REVIEW_PREVIEW_API_HTTP=" + str(status))
+    print("PA_REVIEW_PREVIEW_API_MARKER_LEAK=" + ("YES" if leaked else "NO"))
+    if status in {401, 403, 404} and not leaked:
+        print("PA_REVIEW_PREVIEW_API_AUTH=PASS")
+    else:
+        print("PA_REVIEW_PREVIEW_API_AUTH=FAIL")
+        raise SystemExit(1)
+finally:
+    preview_path.unlink(missing_ok=True)
 PYPROBE
-)
-echo "PA_REVIEW_PREVIEW_API_HTTP=$review_api_status"
-if [ "$review_api_status" = "401" ]; then
-  echo 'PA_REVIEW_PREVIEW_API_AUTH=PASS'
-else
-  echo 'PA_REVIEW_PREVIEW_API_AUTH=FAIL'
-  docker logs --since 5m homeassistant 2>&1 |
-    grep -E 'lifeos_pa_review|Error setting up integration' | tail -n 10 || true
-  exit 1
-fi
