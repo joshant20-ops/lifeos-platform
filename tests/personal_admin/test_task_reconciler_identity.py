@@ -671,3 +671,50 @@ def test_tasks_require_a_valid_source_email_identity():
         "source_message_ids": ["not-an-email-id"],
         "email_message_id": "broken",
     })
+
+
+
+def test_explicit_no_action_email_is_not_an_open_task():
+    message = {
+        "message_id": "<notice@example.test>",
+        "source_ref": "<notice@example.test>",
+        "subject": "[Deprecation] Gemini model update",
+        "body": "No action required.",
+    }
+    assert reconciler.has_explicit_no_action_required(message)
+    task = {
+        "email_message_id": message["message_id"],
+        "source_message_ids": [message["message_id"]],
+        "timeline_events": [{"message_id": message["message_id"]}],
+    }
+    tasks = {"notice-task": task}
+    assert reconciler.discard_single_source_no_action_task(tasks, message)
+    assert tasks == {}
+
+
+def test_no_action_notice_does_not_remove_a_matter_with_other_source_emails():
+    message = {
+        "message_id": "<notice@example.test>",
+        "source_ref": "<notice@example.test>",
+        "subject": "Model update",
+        "body": "No action required.",
+    }
+    task = {
+        "email_message_id": message["message_id"],
+        "source_message_ids": [message["message_id"], "<request@example.test>"],
+        "timeline_events": [
+            {"message_id": message["message_id"]},
+            {"message_id": "<request@example.test>"},
+        ],
+    }
+    tasks = {"combined-matter": task}
+    assert reconciler.has_explicit_no_action_required(message)
+    assert not reconciler.discard_single_source_no_action_task(tasks, message)
+    assert "combined-matter" in tasks
+
+
+def test_no_action_detector_ignores_unrelated_email_text():
+    assert not reconciler.has_explicit_no_action_required({
+        "subject": "Please migrate your model config",
+        "body": "Update the API call before the deadline.",
+    })
