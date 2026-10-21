@@ -187,6 +187,36 @@ def refresh_task_paperless_evidence(task):
     task["paperless_evidence"]=list(combined.values())[:10]
     return task["paperless_evidence"]
 
+def persist_task_paperless_evidence(task):
+    """Publish refreshed verified document metadata without replacing task state."""
+    task_id=str(task.get("id") or "")
+    if not task_id:
+        return
+    for path in (STATE,OUT):
+        try:
+            payload=json.loads(path.read_text(encoding="utf-8"))
+        except (FileNotFoundError,json.JSONDecodeError,OSError):
+            continue
+        changed=False
+        for bucket in ("tasks","resolved"):
+            for row in payload.get(bucket) or []:
+                if isinstance(row,dict) and row.get("id")==task_id:
+                    row["paperless_evidence"]=list(task.get("paperless_evidence") or [])[:10]
+                    changed=True
+        if not changed:
+            continue
+        temp=path.with_suffix(".tmp")
+        temp.write_text(json.dumps(payload,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+        try:
+            metadata=path.stat()
+            os.chmod(temp,metadata.st_mode & 0o7777)
+            os.chown(temp,metadata.st_uid,metadata.st_gid)
+        except OSError:
+            temp.unlink(missing_ok=True)
+            raise
+        os.replace(temp,path)
+
+
 def reverify_saved_task_paperless_evidence(task):
     """Retain only previously linked documents whose contents still prove identity."""
     message_ids=set(task.get("source_message_ids") or [])
@@ -840,6 +870,9 @@ def process_task_review_requests():
             task = load_previous().get(task_id)
             if not task:
                 raise ValueError("review_task_unavailable")
+            reverify_saved_task_paperless_evidence(task)
+            refresh_task_paperless_evidence(task)
+            persist_task_paperless_evidence(task)
             context = _review_context(task)
             _save_task_previews(task_id, context)
             _save_task_review(task_id, _build_task_review(task, context))
