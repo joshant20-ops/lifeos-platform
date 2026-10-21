@@ -50,7 +50,7 @@ def main():
         raise ValueError("task_id_not_in_current_view")
     if args.action == "junk":
         ids = sorted(set(x for x in args.paperless_ids.split(",") if x))
-        if not ids or len(ids) > 5 or any(not x.isdigit() or int(x) <= 0 for x in ids):
+        if len(ids) > 10 or any(not x.isdigit() or int(x) <= 0 for x in ids):
             raise ValueError("paperless_selection_invalid")
         linked = {
             str(doc.get("document_id"))
