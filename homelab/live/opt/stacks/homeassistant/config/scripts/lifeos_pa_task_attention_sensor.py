@@ -15,6 +15,22 @@ def safe_markdown(value):
     return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])",r"\\\1",value)
 
 
+def junk_task_ids(folder):
+    try:
+        values = set()
+        for path in Path(folder).glob("*.json"):
+            try:
+                item = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            task_id = str(item.get("task_id") or "") if isinstance(item, dict) else ""
+            if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}", task_id):
+                values.add(task_id)
+        return sorted(values)[:100]
+    except Exception:
+        return []
+
+
 def project_timeline_events(events):
     """Expose bounded event summaries without message IDs or message bodies."""
     projected = []
@@ -71,6 +87,8 @@ def main():
             **counts,
             "briefing": str(briefing.get("summary") or "Briefing unavailable."),
             "items": items,
+            "junk_action_pending_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests"),
+            "junk_action_failed_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests/failed"),
             "source": "lifeos_tasks_v3",
             "generated_time": generated,
             "age_seconds": max(0, int(time.time() - generated)),
@@ -86,6 +104,8 @@ def main():
             "stale_no_progress": 0,
             "briefing": "Local PA attention is unavailable.",
             "items": [],
+            "junk_action_pending_task_ids": [],
+            "junk_action_failed_task_ids": [],
             "source": "lifeos_tasks_v3",
         }
     print(json.dumps(out, ensure_ascii=False, separators=(",", ":")))

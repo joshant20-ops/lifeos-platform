@@ -6,7 +6,7 @@ reconciles them against Paperless evidence. Private content never leaves the hos
 The published HA JSON contains only user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
-import email, errno, hashlib, imaplib, json, os, re, socket, ssl, sys, time
+import email, errno, hashlib, imaplib, json, os, re, socket, ssl, subprocess, sys, time
 from email.utils import parsedate_to_datetime
 from datetime import date, datetime
 from pathlib import Path
@@ -291,6 +291,221 @@ def safe_classification_error_category(exc):
     if isinstance(exc, (TimeoutError, socket.timeout)):
         return "TIMEOUT"
     return "OTHER"
+
+
+
+JUNK_REQUESTS = Path("/opt/stacks/homeassistant/config/lifeos-pa-state/junk-requests")
+JUNK_FAILED = JUNK_REQUESTS / "failed"
+
+
+def _paperless_document(document_id):
+    headers = {"Authorization": "Token " + paperless_token(), "Accept": "application/json; version=10"}
+    request = Request("http://127.0.0.1:8010/api/documents/" + str(document_id) + "/", headers=headers)
+    try:
+        with urlopen(request, timeout=30) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as exc:
+        if exc.code == 404:
+            return None
+        raise
+
+
+def _paperless_delete(document_id):
+    headers = {"Authorization": "Token " + paperless_token(), "Accept": "application/json; version=10"}
+    request = Request("http://127.0.0.1:8010/api/documents/" + str(document_id) + "/", method="DELETE", headers=headers)
+    try:
+        with urlopen(request, timeout=30) as response:
+            response.read()
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+    if _paperless_document(document_id) is not None:
+        raise RuntimeError("paperless_delete_unverified")
+
+
+def _junk_message_ids(task):
+    values = set(str(x) for x in (task.get("source_message_ids") or []) if x)
+    if task.get("email_message_id"):
+        values.add(str(task["email_message_id"]))
+    if not values or len(values) > 20:
+        raise ValueError("source_email_set_invalid")
+    for value in values:
+        if (len(value) > 300 or not value.startswith("<") or not value.endswith(">")
+                or any(ord(ch) < 32 or ch in (chr(34), chr(92)) for ch in value)):
+            raise ValueError("source_email_id_invalid")
+    return sorted(values)
+
+
+def _mark_imap_message_as_spam(client, uid):
+    status, _ = client.uid("STORE", uid, "+X-GM-LABELS", r"(\Spam)")
+    if status != "OK":
+        raise RuntimeError("imap_spam_label_failed")
+    status, _ = client.uid("STORE", uid, "-X-GM-LABELS", r"(\Inbox)")
+    if status != "OK":
+        raise RuntimeError("imap_inbox_label_remove_failed")
+
+
+def _move_emails_to_junk(message_ids):
+    user = secret("LIFEOS_IMAP_USER", ("gmail-imap-user", "imap-user", "gmail-user"))
+    password = secret("LIFEOS_IMAP_PASSWORD", ("gmail-imap-password", "imap-password", "gmail-app-password"))
+    client = imaplib.IMAP4_SSL(
+        os.getenv("LIFEOS_IMAP_HOST", "imap.gmail.com"),
+        int(os.getenv("LIFEOS_IMAP_PORT", "993")),
+        ssl_context=ssl.create_default_context(),
+    )
+    try:
+        client.login(user, password)
+        capabilities = {x.upper() for x in client.capabilities}
+        if b"X-GM-EXT-1" not in capabilities:
+            raise RuntimeError("imap_gmail_labels_unsupported")
+        folders = {}
+        status, boxes = client.list()
+        if status == "OK":
+            for row in boxes or []:
+                parts = row.split(b'"')
+                if len(parts) < 3:
+                    continue
+                candidate = parts[-2].decode("ascii", "strict")
+                if candidate not in {"[Gmail]/Spam", "[GoogleMail]/Spam", "[Gmail]/All Mail", "[GoogleMail]/All Mail"}:
+                    continue
+                if bytes((92,)) + b"JUNK" in row.upper():
+                    folders["junk"] = candidate
+                if bytes((92,)) + b"ALL" in row.upper():
+                    folders["all"] = candidate
+        junk_box = folders.get("junk")
+        all_box = folders.get("all")
+        if not junk_box:
+            raise RuntimeError("imap_junk_folder_unavailable")
+        status, _ = client.select("INBOX", readonly=False)
+        if status != "OK":
+            raise RuntimeError("imap_inbox_unavailable")
+        inbox_matches = {}
+        for message_id in message_ids:
+            status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+            matches = rows[0].split() if status == "OK" and rows else []
+            if len(matches) > 1:
+                raise RuntimeError("imap_message_ambiguous")
+            inbox_matches[message_id] = matches[0] if matches else None
+        status, _ = client.select(junk_box, readonly=True)
+        if status != "OK":
+            raise RuntimeError("imap_junk_folder_unavailable")
+        pending = {}
+        for message_id, inbox_uid in inbox_matches.items():
+            status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+            matches = rows[0].split() if status == "OK" and rows else []
+            if len(matches) > 1 or (inbox_uid is not None and matches):
+                raise RuntimeError("imap_message_ambiguous")
+            if inbox_uid is not None:
+                pending[message_id] = ("INBOX", inbox_uid)
+            elif matches:
+                pending[message_id] = (None, None)
+            else:
+                pending[message_id] = ("", None)
+        missing = [message_id for message_id, (box, uid) in pending.items() if box == ""]
+        if missing:
+            if not all_box:
+                raise RuntimeError("imap_all_mail_folder_unavailable")
+            status, _ = client.select(all_box, readonly=True)
+            if status != "OK":
+                raise RuntimeError("imap_all_mail_folder_unavailable")
+            for message_id in missing:
+                status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+                matches = rows[0].split() if status == "OK" and rows else []
+                if len(matches) != 1:
+                    raise RuntimeError("imap_message_not_found")
+                pending[message_id] = (all_box, matches[0])
+        for message_id, (source_box, uid) in pending.items():
+            if source_box is None:
+                continue
+            status, _ = client.select(source_box, readonly=False)
+            if status != "OK":
+                raise RuntimeError("imap_source_folder_unavailable")
+            _mark_imap_message_as_spam(client, uid)
+        status, _ = client.select(junk_box, readonly=True)
+        if status != "OK":
+            raise RuntimeError("imap_junk_folder_unavailable")
+        for message_id in message_ids:
+            status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+            if status != "OK" or not rows or len(rows[0].split()) != 1:
+                raise RuntimeError("imap_spam_unverified")
+            spam_uid = rows[0].split()[0]
+            status, rows = client.uid("fetch", spam_uid, "(X-GM-LABELS)")
+            if status != "OK" or not rows:
+                raise RuntimeError("imap_spam_unverified")
+            label_data = b" ".join(row for row in rows if isinstance(row, bytes)).upper()
+            if b"\\SPAM" not in label_data or b"\\INBOX" in label_data:
+                raise RuntimeError("imap_spam_unverified")
+    finally:
+        try:
+            client.logout()
+        except Exception:
+            pass
+
+
+def _process_junk_request(path):
+    request = json.loads(path.read_text(encoding="utf-8"))
+    if request.get("schema") != "lifeos_pa_junk_request_v1":
+        raise ValueError("junk_request_schema_invalid")
+    task_id = str(request.get("task_id") or "")
+    request_id = str(request.get("request_id") or "")
+    document_ids = request.get("paperless_document_ids")
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}", task_id):
+        raise ValueError("junk_task_id_invalid")
+    if path.name != task_id + ".json" or not re.fullmatch(r"[a-f0-9]{32}", request_id):
+        raise ValueError("junk_request_identity_invalid")
+    if (not isinstance(document_ids, list) or not document_ids or len(document_ids) > 5
+            or any(not isinstance(x, int) or x <= 0 for x in document_ids)
+            or len(set(document_ids)) != len(document_ids)):
+        raise ValueError("paperless_selection_invalid")
+    previous = load_previous()
+    task = previous.get(task_id)
+    if not task:
+        raise ValueError("junk_task_unavailable")
+    if str(task.get("status") or "").upper() not in {"OPEN", "WAITING"}:
+        raise ValueError("junk_task_not_open")
+    linked = {
+        int(doc["document_id"])
+        for doc in (task.get("paperless_evidence") or [])
+        if isinstance(doc, dict) and str(doc.get("document_id") or "").isdigit()
+    }
+    if not set(document_ids).issubset(linked):
+        raise ValueError("paperless_selection_not_linked")
+    message_ids = _junk_message_ids(task)
+    # Validate every Paperless target before moving any source email.
+    for document_id in document_ids:
+        _paperless_document(document_id)
+    _move_emails_to_junk(message_ids)
+    for document_id in document_ids:
+        _paperless_delete(document_id)
+    result = subprocess.run(
+        ["docker", "exec", "homeassistant", "python3",
+         "/config/scripts/lifeos_pa_user_action.py", "--action", "dismiss", "--task-id", task_id],
+        check=True, capture_output=True, text=True, timeout=30,
+    )
+    if "PA_USER_ACTION=PASS" not in result.stdout:
+        raise RuntimeError("junk_task_dismiss_unverified")
+
+
+def process_junk_requests():
+    if not JUNK_REQUESTS.is_dir():
+        return
+    JUNK_FAILED.mkdir(mode=0o700, exist_ok=True)
+    for path in sorted(JUNK_REQUESTS.glob("*.json")):
+        try:
+            _process_junk_request(path)
+            path.unlink()
+            stale_failure = JUNK_FAILED / path.name
+            if stale_failure.exists():
+                stale_failure.unlink()
+            print("PA_JUNK_ACTION=PASS", flush=True)
+        except Exception as exc:
+            try:
+                path.replace(JUNK_FAILED / path.name)
+            except Exception:
+                pass
+            print("PA_JUNK_ACTION=FAIL", flush=True)
+            print("PA_JUNK_ACTION_ERROR=" + type(exc).__name__, flush=True)
+
 
 
 def _run_reconciler():

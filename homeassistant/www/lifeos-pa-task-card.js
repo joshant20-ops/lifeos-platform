@@ -117,6 +117,11 @@ class LifeOSPATaskCard extends HTMLElement {
     const noteMarkup = comments.map((comment) =>
       '<div class="note"><strong>Your note</strong><span>' + this._escape(comment.text || "") + '</span></div>'
     ).join("");
+    const junkNotice = this._junkFailedTaskIds?.has(String(task.id))
+      ? '<div class="junk-notice failed" role="alert">Junk action needs review. Check Gmail Spam and Paperless before retrying.</div>'
+      : this._junkPendingTaskIds?.has(String(task.id))
+        ? '<div class="junk-notice pending" role="status">Junk action is being processed.</div>'
+        : "";
     const supporting = [];
     if (evidence.length) supporting.push('<details><summary>Source messages and documents · ' + evidence.length + '</summary><div class="support-body">' + evidence.join(" · ") + '</div></details>');
     if (timeline && !featured) supporting.push('<details><summary>Full timeline · ' + timelineEvents.length + '</summary><div class="support-body timeline">' + timeline + '</div></details>');
@@ -132,7 +137,8 @@ class LifeOSPATaskCard extends HTMLElement {
       : '<button class="primary" data-action="close" data-id="' + id + '">Mark done</button>' +
         '<button data-action="comment" data-id="' + id + '">Add note</button>' +
         '<button data-action="snooze" data-id="' + id + '">Snooze</button>' +
-        '<button data-action="due_date" data-id="' + id + '">Set due date</button>';
+        '<button data-action="due_date" data-id="' + id + '">Set due date</button>' +
+        '<button data-action="junk" data-id="' + id + '">Junk</button>';
     const secondaryActions =
       '<button data-action="severity" data-id="' + id + '">Set severity</button>' +
       (!closed ? '<button data-action="dismiss" data-id="' + id + '">Not a task</button>' : '<button data-action="due_date" data-id="' + id + '">Set due date</button>') +
@@ -147,7 +153,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
-      '</div>' + trailMarkup + supporting.join("") + controls + '</article>';
+      '</div>' + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
   }
 
   _actionSections(items) {
@@ -188,6 +194,8 @@ class LifeOSPATaskCard extends HTMLElement {
     if (!this.shadowRoot || !this._hass) return;
     const sensor = this._hass.states[this._entity()];
     const attrs = sensor?.attributes || {};
+    this._junkPendingTaskIds = new Set(Array.isArray(attrs.junk_action_pending_task_ids) ? attrs.junk_action_pending_task_ids.map(String) : []);
+    this._junkFailedTaskIds = new Set(Array.isArray(attrs.junk_action_failed_task_ids) ? attrs.junk_action_failed_task_ids.map(String) : []);
     const items = Array.isArray(attrs.items) ? attrs.items.filter((x) => x && x.id) : [];
     if (!this._selectedDate) {
       const today = this._dateKey(new Date());
@@ -257,6 +265,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '.activity{border-left:2px solid var(--primary-color);margin-top:11px;padding:1px 0 1px 9px;display:flex;flex-direction:column;gap:3px;min-width:0}',
       '.activity span{font-size:.68rem;color:var(--secondary-text-color)}.activity strong{font-size:.82rem;font-weight:550;overflow-wrap:anywhere}.activity em{font-style:normal;font-size:.68rem;color:var(--secondary-text-color)}',
       '.source-line{font-size:.72rem;color:var(--secondary-text-color);margin-top:10px}',
+      '.junk-notice{margin-top:10px;padding:9px 10px;border-radius:8px;font-size:.76rem;line-height:1.4;background:var(--secondary-background-color)}.junk-notice.failed{color:var(--error-color,var(--primary-text-color));border:1px solid var(--error-color,var(--divider-color))}.junk-notice.pending{color:var(--primary-color)}',
       'details{margin-top:8px;font-size:.78rem}summary{cursor:pointer;color:var(--primary-color);padding:3px 0}.support-body{margin:6px 0 3px;color:var(--secondary-text-color);line-height:1.5;overflow-wrap:anywhere}.support-body a{color:var(--primary-color)}',
       '.timeline-event{padding:5px 0;border-left:1px solid var(--divider-color);padding-left:9px;margin-left:3px;display:flex;flex-direction:column;gap:2px}.timeline-event span{font-size:.68rem}.timeline-event strong{font-size:.78rem;color:var(--primary-text-color);font-weight:500}.timeline-event em{font-size:.68rem;font-style:normal}',
       '.note{margin:6px 0}.note strong{display:block;color:var(--primary-text-color);font-weight:550}.note span{overflow-wrap:anywhere}',
@@ -346,6 +355,61 @@ class LifeOSPATaskCard extends HTMLElement {
     });
   }
 
+  async _chooseJunkDocuments(task) {
+    const refs = Array.isArray(task.source_message_ids) ? task.source_message_ids : [];
+    const documents = (Array.isArray(task.paperless_evidence) ? task.paperless_evidence : [])
+      .filter((doc) => doc && /^\d+$/.test(String(doc.document_id || "")))
+      .slice(0, 5);
+    if (!refs.length || !documents.length) {
+      window.alert("Junk needs at least one linked email and one Paperless document.");
+      return null;
+    }
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-labelledby", "junk-title");
+    dialog.innerHTML = '<style>' +
+      'dialog{max-width:min(520px,calc(100vw - 32px));max-height:80vh;overflow:auto;border:1px solid var(--divider-color);border-radius:14px;background:var(--card-background-color);color:var(--primary-text-color);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.4)}' +
+      'dialog::backdrop{background:rgba(0,0,0,.62)}.junk-title{font-size:1.15rem;margin:0 0 10px}.junk-copy{font-size:.86rem;line-height:1.45;color:var(--secondary-text-color)}' +
+      '.junk-docs{display:grid;gap:8px;margin:14px 0}.junk-doc{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--divider-color);border-radius:9px}' +
+      '.junk-doc strong{display:block;overflow-wrap:anywhere}.junk-doc small{color:var(--secondary-text-color)}.junk-warning{font-size:.77rem;color:var(--error-color,var(--secondary-text-color))}' +
+      '.junk-buttons{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}.junk-buttons button{padding:9px 12px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}' +
+      '.junk-buttons .danger{background:var(--error-color,#b3261e);color:#fff}.junk-error{min-height:1.2em;color:var(--error-color,#b3261e);font-size:.8rem}' +
+      '</style><h2 class="junk-title" id="junk-title">Move this matter to Junk?</h2>' +
+      '<p class="junk-copy">This will move all ' + refs.length + (refs.length === 1 ? ' related email' : ' related emails') +
+      ' to Gmail Spam and dismiss the matter. Select the Paperless documents to delete.</p>' +
+      '<div class="junk-docs">' + documents.map((doc, index) =>
+        '<label class="junk-doc"><input type="checkbox" data-paperless-id="' + this._escape(doc.document_id) + '">' +
+        '<span><strong>' + this._escape(doc.title || ("Paperless document " + (index + 1))) + '</strong>' +
+        '<small>Document ID ' + this._escape(doc.document_id) + '</small></span></label>'
+      ).join("") + '</div><p class="junk-warning">Selected documents will be deleted from Paperless. This may also remove their versions.</p>' +
+      '<div class="junk-error" aria-live="polite"></div><div class="junk-buttons">' +
+      '<button type="button" data-junk-cancel>Cancel</button><button type="button" class="danger" data-junk-submit>Move emails to Junk and delete selected documents</button></div>';
+    this.shadowRoot.append(dialog);
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      dialog.addEventListener("close", () => {
+        dialog.remove();
+        finish(null);
+      });
+      dialog.querySelector("[data-junk-cancel]").addEventListener("click", () => dialog.close());
+      dialog.querySelector("[data-junk-submit]").addEventListener("click", () => {
+        const selected = Array.from(dialog.querySelectorAll("[data-paperless-id]:checked"))
+          .map((input) => input.dataset.paperlessId);
+        if (!selected.length) {
+          dialog.querySelector(".junk-error").textContent = "Select at least one Paperless document to delete.";
+          return;
+        }
+        finish(selected);
+        dialog.close();
+      });
+      dialog.showModal();
+    });
+  }
+
   _datePlusOne() {
     const date = new Date();
     date.setDate(date.getDate() + 1);
@@ -359,7 +423,11 @@ class LifeOSPATaskCard extends HTMLElement {
     if (!task) return;
     const label = task.title || taskId;
     const data = { action, task_id: taskId, note: "", until: "", severity: "", due_date: "" };
-    if (action === "comment") {
+    if (action === "junk") {
+      const selected = await this._chooseJunkDocuments(task);
+      if (!selected) return;
+      data.paperless_ids = selected.join(",");
+    } else if (action === "comment") {
       data.note = window.prompt("Add a note to " + label + ":") || "";
       if (!data.note.trim()) return;
       if (!window.confirm("Add this user note to the obligation?")) return;
@@ -376,13 +444,16 @@ class LifeOSPATaskCard extends HTMLElement {
       data.due_date = window.prompt("Set due date (YYYY-MM-DD):", task.due_date || "") || "";
       if (!/^\d{4}-\d{2}-\d{2}$/.test(data.due_date)) return;
       if (!window.confirm("Override due date for " + label + " to " + data.due_date + "?")) return;
-    } else if (!window.confirm(action === "close" ? "Mark " + label + " complete?" :
+    } else if (action !== "junk" && !window.confirm(action === "close" ? "Mark " + label + " complete?" :
       action === "dismiss" ? "Dismiss " + label + " as not a task?" :
       action === "reopen" ? "Reopen " + label + "?" : "Unsnooze " + label + "?")) return;
 
     button.disabled = true;
     try {
       await this._hass.callService("shell_command", "lifeos_pa_user_action", data);
+      if (action === "junk") {
+        window.alert("Junk request queued. The matter will close after the email and selected Paperless documents are verified.");
+      }
       await this._hass.callService("homeassistant", "update_entity", { entity_id: this._entity() });
     } catch (error) {
       window.alert("LifeOS could not verify this action. The task view has not been confirmed updated.");

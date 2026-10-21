@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+import uuid
 from pathlib import Path
 from urllib.parse import unquote_plus
 
@@ -12,7 +13,7 @@ import lifeos_pa_user_state
 from lifeos_pa_user_state import mutate_action
 
 STATE = Path("/config/www/lifeos_tasks.json")
-ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze"}
+ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "junk"}
 _ACTION_STAGE = "startup"
 _SAFE_REASONS = {
     "task_view_unavailable_or_stale",
@@ -34,6 +35,7 @@ def main():
     parser.add_argument("--until", default="")
     parser.add_argument("--severity", default="")
     parser.add_argument("--due-date", default="")
+    parser.add_argument("--paperless-ids", default="")
     args = parser.parse_args()
     _ACTION_STAGE = "task_view_read"
     payload = json.loads(STATE.read_text())
@@ -43,8 +45,48 @@ def main():
         raise ValueError("task_view_unavailable_or_stale")
     _ACTION_STAGE = "task_identity_validate"
     rows = (payload.get("tasks") or []) + (payload.get("resolved") or [])
-    if not any(isinstance(row, dict) and row.get("id") == args.task_id for row in rows):
+    task = next((row for row in rows if isinstance(row, dict) and row.get("id") == args.task_id), None)
+    if task is None:
         raise ValueError("task_id_not_in_current_view")
+    if args.action == "junk":
+        ids = sorted(set(x for x in args.paperless_ids.split(",") if x))
+        if not ids or len(ids) > 5 or any(not x.isdigit() or int(x) <= 0 for x in ids):
+            raise ValueError("paperless_selection_invalid")
+        linked = {
+            str(doc.get("document_id"))
+            for doc in (task.get("paperless_evidence") or [])
+            if isinstance(doc, dict) and doc.get("document_id") is not None
+        }
+        if not set(ids).issubset(linked):
+            raise ValueError("paperless_selection_not_linked")
+        refs = task.get("source_message_ids") or []
+        if not refs:
+            raise ValueError("source_email_unavailable")
+        if str(task.get("status") or "").upper() not in {"OPEN", "WAITING"}:
+            raise ValueError("task_not_open")
+        _ACTION_STAGE = "state_owner_privilege_drop"
+        lifeos_pa_user_state.drop_to_state_owner()
+        _ACTION_STAGE = "junk_request_enqueue"
+        queue_dir = lifeos_pa_user_state.STATE_PATH.parent / "junk-requests"
+        if not queue_dir.is_dir():
+            raise ValueError("junk_queue_unavailable")
+        request = {
+            "schema": "lifeos_pa_junk_request_v1",
+            "request_id": uuid.uuid4().hex,
+            "task_id": args.task_id,
+            "paperless_document_ids": [int(x) for x in ids],
+            "requested_at": int(time.time()),
+        }
+        request_path = queue_dir / (args.task_id + ".json")
+        fd = os.open(request_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(request, stream, separators=(",", ":"))
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        print("PA_USER_ACTION=QUEUED")
+        print("PA_USER_ACTION_KIND=junk")
+        return
     _ACTION_STAGE = "state_owner_privilege_drop"
     lifeos_pa_user_state.drop_to_state_owner()
     _ACTION_STAGE = "overlay_mutation"

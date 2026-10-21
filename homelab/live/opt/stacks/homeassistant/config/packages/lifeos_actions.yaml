@@ -14,3 +14,4 @@ shell_command:
     --until '{{ until | regex_replace('[^0-9-]', '') }}'
     --severity '{{ severity | lower | regex_replace('[^a-z]', '') }}'
     --due-date '{{ due_date | regex_replace('[^0-9-]', '') }}'
+    --paperless-ids '{{ paperless_ids | regex_replace('[^0-9,]', '') }}'
