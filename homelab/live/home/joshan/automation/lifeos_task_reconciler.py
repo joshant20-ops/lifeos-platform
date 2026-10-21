@@ -336,6 +336,15 @@ def _junk_message_ids(task):
     return sorted(values)
 
 
+def _mark_imap_message_as_spam(client, uid):
+    status, _ = client.uid("STORE", uid, "+X-GM-LABELS", r"(\Spam)")
+    if status != "OK":
+        raise RuntimeError("imap_spam_label_failed")
+    status, _ = client.uid("STORE", uid, "-X-GM-LABELS", r"(\Inbox)")
+    if status != "OK":
+        raise RuntimeError("imap_inbox_label_remove_failed")
+
+
 def _move_emails_to_junk(message_ids):
     user = secret("LIFEOS_IMAP_USER", ("gmail-imap-user", "imap-user", "gmail-user"))
     password = secret("LIFEOS_IMAP_PASSWORD", ("gmail-imap-password", "imap-password", "gmail-app-password"))
@@ -347,8 +356,8 @@ def _move_emails_to_junk(message_ids):
     try:
         client.login(user, password)
         capabilities = {x.upper() for x in client.capabilities}
-        if b"MOVE" not in capabilities:
-            raise RuntimeError("imap_move_unsupported")
+        if b"X-GM-EXT-1" not in capabilities:
+            raise RuntimeError("imap_gmail_labels_unsupported")
         folders = {}
         status, boxes = client.list()
         if status == "OK":
@@ -411,16 +420,21 @@ def _move_emails_to_junk(message_ids):
             status, _ = client.select(source_box, readonly=False)
             if status != "OK":
                 raise RuntimeError("imap_source_folder_unavailable")
-            status, _ = client.uid("MOVE", uid, '"' + junk_box + '"')
-            if status != "OK":
-                raise RuntimeError("imap_move_failed")
+            _mark_imap_message_as_spam(client, uid)
         status, _ = client.select(junk_box, readonly=True)
         if status != "OK":
             raise RuntimeError("imap_junk_folder_unavailable")
         for message_id in message_ids:
             status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
             if status != "OK" or not rows or len(rows[0].split()) != 1:
-                raise RuntimeError("imap_move_unverified")
+                raise RuntimeError("imap_spam_unverified")
+            spam_uid = rows[0].split()[0]
+            status, rows = client.uid("fetch", spam_uid, "(X-GM-LABELS)")
+            if status != "OK" or not rows:
+                raise RuntimeError("imap_spam_unverified")
+            label_data = b" ".join(row for row in rows if isinstance(row, bytes)).upper()
+            if b"\\SPAM" not in label_data or b"\\INBOX" in label_data:
+                raise RuntimeError("imap_spam_unverified")
     finally:
         try:
             client.logout()
