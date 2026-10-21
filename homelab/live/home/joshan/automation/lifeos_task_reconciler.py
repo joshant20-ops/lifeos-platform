@@ -107,6 +107,54 @@ def case_reference_ids(msg):
             values.add(normalized)
     return values
 
+def verified_message_documents(candidates, message_ids, document_loader):
+    """Keep only documents that explicitly contain a task source Message-ID.
+
+    Paperless full-text search is a candidate finder, not proof of a relationship.
+    In particular, matching broad words from an AI-generated query can attach
+    unrelated mail to a task. Require the exact source email Message-ID in the
+    document text before exposing it as linked evidence.
+    """
+    source_ids={str(value).strip().casefold() for value in message_ids or [] if str(value or "").strip()}
+    verified=[]
+    seen=set()
+    for candidate in candidates or []:
+        if not isinstance(candidate,dict):
+            continue
+        document_id=candidate.get("document_id")
+        if not str(document_id or "").isdigit() or str(document_id) in seen:
+            continue
+        document=document_loader(int(document_id))
+        if not isinstance(document,dict):
+            continue
+        content=str(document.get("content") or "").casefold()
+        if not any(source_id in content for source_id in source_ids):
+            continue
+        seen.add(str(document_id))
+        verified.append({
+            "document_id":int(document_id),
+            "title":str(document.get("title") or candidate.get("title") or "Paperless document")[:200],
+            "created":str(document.get("created") or candidate.get("created") or "")[:40],
+        })
+        if len(verified)>=10:
+            break
+    return verified
+
+def paperless_linked_documents(message_ids):
+    """Find documents with an exact, verifiable source email reference."""
+    ids=sorted({str(value).strip() for value in message_ids or [] if str(value or "").strip()})
+    candidates=[]
+    seen=set()
+    for message_id in ids:
+        # Search is only a way to locate candidates. verified_message_documents
+        # checks the full document text before any result is called linked.
+        for candidate in paperless_search(message_id):
+            document_id=str(candidate.get("document_id") or "")
+            if document_id not in seen:
+                candidates.append(candidate)
+                seen.add(document_id)
+    return verified_message_documents(candidates,ids,_paperless_document)
+
 def record_source_event(task,msg,decision,observed,actionable=True):
     message_id=str(msg.get("message_id") or msg.get("source_ref") or "")[:300]
     source_ids=set(task.get("source_message_ids") or [])
@@ -201,6 +249,10 @@ def load_previous():
         for x in rows:
             if not isinstance(x,dict) or not x.get("id"): continue
             item=dict(x)
+            # Older state used broad full-text search results as if they were
+            # relationships. Rebuild evidence only when the source email ID is
+            # present in the Paperless document itself.
+            item["paperless_evidence"]=[]
             if str(item.get("machine_status") or "").upper() in {"OPEN","WAITING","DONE","DISMISSED"}:
                 item["status"]=item["machine_status"]
             item.pop("status_source",None); item.pop("status_set_at",None)
@@ -861,7 +913,10 @@ def _run_reconciler():
         if msg.get("message_id"):source_ids.add(str(msg["message_id"])[:300])
         status=effective_status(old,d["status"])
         set_failure_stage("paperless_lookup")
-        evidence=paperless_search(d.get("evidence_query") or d.get("topic") or d.get("title"))
+        source_message_ids=set(old.get("source_message_ids") or [])
+        if msg.get("message_id"):
+            source_message_ids.add(str(msg["message_id"])[:300])
+        evidence=paperless_linked_documents(source_message_ids)
         tasks[task_id]={
             "id":task_id,"identity_semantic":key(d),"thread_root_id":thread_root(msg),
             "title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
@@ -872,7 +927,7 @@ def _run_reconciler():
             "source_message_ids":sorted(source_ids),
             "case_reference_ids":sorted(set(old.get("case_reference_ids") or []) | case_reference_ids(msg)),
             "timeline_events":list(old.get("timeline_events") or []),
-            "paperless_evidence":evidence or old.get("paperless_evidence",[]),
+            "paperless_evidence":evidence,
             "updated_from_email":str(msg.get("date",""))[:100],"observed_at":observed,
             "reason":str(d.get("reason") or "")[:300]
         }

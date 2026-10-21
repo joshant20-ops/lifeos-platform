@@ -60,6 +60,36 @@ def test_done_state_is_not_regressed_by_later_classification_noise():
     assert reconciler.effective_status({"status": "WAITING"}, "DONE") == "DONE"
 
 
+def test_paperless_candidates_require_exact_task_source_message_id():
+    loaded=[]
+    documents={
+        11:{"id":11,"title":"Interview confirmation","content":"Subject: Interview Confirmation\nMessage-ID: <interview@example.test>"},
+        12:{"id":12,"title":"Gemini update","content":"Subject: Welcome to Gemini\nMessage-ID: <gemini@example.test>"},
+    }
+    result=reconciler.verified_message_documents(
+        [
+            {"document_id":11,"title":"Interview confirmation"},
+            {"document_id":12,"title":"Gemini update"},
+            {"document_id":12,"title":"duplicate candidate"},
+        ],
+        ["<gemini@example.test>"],
+        lambda document_id:(loaded.append(document_id) or documents.get(document_id)),
+    )
+    assert result==[{
+        "document_id":12,"title":"Gemini update","created":"",
+    }]
+    assert loaded==[11,12]
+
+
+def test_paperless_search_results_without_source_identity_are_not_links():
+    result=reconciler.verified_message_documents(
+        [{"document_id":21,"title":"Unrelated email with matching keywords"}],
+        ["<task@example.test>"],
+        lambda _document_id:{"title":"Unrelated email with matching keywords","content":"Subject: Interview confirmation"},
+    )
+    assert result==[]
+
+
 def test_out_of_order_observation_does_not_replace_newer_task_state():
     existing = {"observed_at": 200}
     assert not reconciler.observation_is_newer(existing, 100)
