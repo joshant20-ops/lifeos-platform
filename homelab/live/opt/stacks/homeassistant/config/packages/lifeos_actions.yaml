@@ -6,7 +6,7 @@ shell_command:
   lifeos_run_watchman_now: "python3 /config/scripts/lifeos_action_request.py request_run_watchman_pipeline"
 
   lifeos_pa_user_action: >-
-    LIFEOS_PA_USER_STATE_PATH=/config/lifeos-pa-state/user_state.json
+    env LIFEOS_PA_USER_STATE_PATH=/config/lifeos-pa-state/user_state.json
     python3 /config/scripts/lifeos_pa_user_action.py
     --action '{{ action | regex_replace('[^a-z_]', '') }}'
     --task-id '{{ task_id | regex_replace('[^a-z0-9-]', '') }}'
