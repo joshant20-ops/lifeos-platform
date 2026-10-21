@@ -235,9 +235,10 @@ def discard_single_source_no_action_task(tasks,msg):
     for task_id,task in tasks.items():
         if not isinstance(task,dict):
             continue
-        primary=str(task.get("email_message_id") or "").strip()
         source_ids=set(task_source_message_ids(task))
-        if primary==message_id and source_ids=={message_id}:
+        # The source may be retained only in source_message_ids or the timeline
+        # on legacy rows; the complete identity set is the authority here.
+        if source_ids=={message_id}:
             event_ids={
                 str(event.get("message_id") or "").strip()
                 for event in task.get("timeline_events") or []
