@@ -36,4 +36,12 @@ LifeOS coordinates mature products and adds only cross-system semantics/orchestr
 - Governor privacy/routing and Tower lifecycle orchestration;
 - thin HA read-model/adapters.
 
+## PA task review window
+
+The task review window is a user-invoked view over existing Gmail and Paperless authorities. It embeds each linked Paperless document in a scrollable review panel (with a direct Paperless link as fallback), followed by a local AI analysis, suggested next actions, and an optional response draft. The draft is advisory and is never sent automatically.
+
+When the user requests analysis, the reconciler fetches a bounded set of source messages and linked Paperless OCR for that request, passes the evidence only through Governor's `privacy="local-only"`, forced Ollama route, and verifies the returned provider. The review queue and generated result use private per-owner state directories. Only the bounded generated analysis is persisted for Home Assistant; raw email and document text are not added to the task projection, dashboard state, or logs. The task projection exposes no source text.
+
+If the review feature must be rolled back, remove the Review control and result projection, stop accepting review queue files, and remove only the `review-requests` and `task-reviews` runtime directories after preserving any required audit evidence. Gmail and Paperless remain authoritative and are not changed by analysis.
+
 Everything else should preferentially use the OTS owner above.
