@@ -287,7 +287,10 @@ def policy_renewal_dates(content):
     dates=set()
     for label in label_pattern.finditer(text):
         window=text[label.end():label.end()+180]
-        for match in re.finditer(date_pattern,window,re.I):
+        # The first date after a renewal/expiry label is its value; later
+        # dates in the paragraph may be issue or print dates.
+        match=re.search(date_pattern,window,re.I)
+        if match:
             parsed=_parse_policy_date(match.group(0))
             if parsed:dates.add(parsed)
     # Policy schedules commonly express the cover period as a start/end range.
