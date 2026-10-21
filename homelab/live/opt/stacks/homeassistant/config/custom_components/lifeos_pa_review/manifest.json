@@ -1,0 +1,10 @@
+{
+  "domain": "lifeos_pa_review",
+  "name": "LifeOS PA Review Preview",
+  "version": "1.0.0",
+  "documentation": "https://github.com/joshant20-ops/lifeos-platform",
+  "dependencies": [],
+  "codeowners": [],
+  "requirements": [],
+  "iot_class": "local_push"
+}

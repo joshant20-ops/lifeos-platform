@@ -118,10 +118,39 @@ HA_ACTION="$HA_CONFIG/scripts/lifeos_pa_user_action.py"
 HA_ACTIONS="$HA_CONFIG/packages/lifeos_actions.yaml"
 PA_STATE_DIR="$HA_CONFIG/lifeos-pa-state"
 PA_USER_STATE="$PA_STATE_DIR/user_state.json"
+HA_REVIEW_COMPONENT="$HA_CONFIG/custom_components/lifeos_pa_review"
 BACKUP_DIR=/home/joshan/automation/backups
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 mkdir -p "$BACKUP_DIR"
 HA_CHANGED=0
+REVIEW_COMPONENT_CHANGED=0
+REVIEW_COMPONENT_BACKUP="$BACKUP_DIR/lifeos_pa_review.pre.$STAMP"
+rollback_review_component() {
+  for file in __init__.py manifest.json; do
+    if [ -f "$REVIEW_COMPONENT_BACKUP/$file" ]; then
+      install -o root -g root -m 0644 "$REVIEW_COMPONENT_BACKUP/$file" "$HA_REVIEW_COMPONENT/$file"
+    elif [ -f "$REVIEW_COMPONENT_BACKUP/.new-$file" ]; then
+      rm -f "$HA_REVIEW_COMPONENT/$file"
+    fi
+  done
+  rmdir "$HA_REVIEW_COMPONENT" 2>/dev/null || true
+}
+install -d -o root -g root -m 0755 "$HA_CONFIG/custom_components" "$HA_REVIEW_COMPONENT"
+for file in __init__.py manifest.json; do
+  source_file="$REPO/homelab/live/opt/stacks/homeassistant/config/custom_components/lifeos_pa_review/$file"
+  target_file="$HA_REVIEW_COMPONENT/$file"
+  if ! cmp -s "$source_file" "$target_file"; then
+    install -d -o root -g root -m 0755 "$REVIEW_COMPONENT_BACKUP"
+    if [ -f "$target_file" ]; then
+      cp -a "$target_file" "$REVIEW_COMPONENT_BACKUP/$file"
+    else
+      touch "$REVIEW_COMPONENT_BACKUP/.new-$file"
+    fi
+    install -o root -g root -m 0644 "$source_file" "$target_file"
+    HA_CHANGED=1
+    REVIEW_COMPONENT_CHANGED=1
+  fi
+done
 if ! cmp -s "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml" "$HA_PACKAGE"; then
   cp -a "$HA_PACKAGE" "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP"
   install -o root -g root -m 0644 "$REPO/homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml" "$HA_PACKAGE"
@@ -152,6 +181,7 @@ install -d -o joshan -g joshan -m 0700 "$JUNK_QUEUE_DIR/failed"
 install -d -o joshan -g joshan -m 0700 "$PA_STATE_DIR/review-requests"
 install -d -o joshan -g joshan -m 0700 "$PA_STATE_DIR/review-requests/failed"
 install -d -o joshan -g joshan -m 0700 "$PA_STATE_DIR/task-reviews"
+install -d -o joshan -g joshan -m 0700 "$PA_STATE_DIR/task-previews"
 systemctl is-active --quiet lifeos-task-reconciler.path
 if [[ ! -e "$PA_USER_STATE" ]]; then
   install -o joshan -g joshan -m 0600 /dev/null "$PA_USER_STATE"
@@ -171,6 +201,7 @@ if [ "$HA_CHANGED" -eq 1 ]; then
     if [ -f "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP" ]; then
       cp -a "$BACKUP_DIR/lifeos_actions.yaml.pre-pa-user-actions.$STAMP" "$HA_ACTIONS"
     fi
+    if [ "$REVIEW_COMPONENT_CHANGED" -eq 1 ]; then rollback_review_component; fi
     echo 'HA_CONFIG_VALIDATION=FAIL'
     exit 1
   fi
@@ -186,6 +217,10 @@ if [ "$HA_CHANGED" -eq 1 ]; then
       cp -a "$BACKUP_DIR/lifeos_attention.yaml.pre-pa-attention.$STAMP" "$HA_PACKAGE"
       docker restart homeassistant >/dev/null || true
     fi
+    if [ "$REVIEW_COMPONENT_CHANGED" -eq 1 ]; then
+      rollback_review_component
+      docker restart homeassistant >/dev/null || true
+    fi
     echo 'HA_CORE_RESTART=FAIL'
     exit 1
   fi
@@ -194,3 +229,10 @@ else
   echo 'HA_CONFIG_CHANGE=NONE'
 fi
 docker exec homeassistant python3 /config/scripts/lifeos_pa_task_attention_sensor.py | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("state") in {"attention","clear"}; print("PA_ATTENTION_SENSOR=PASS"); print("NEEDS_ME="+str(d.get("needs_me",0))); print("WAITING="+str(d.get("waiting_on_others",0))); print("DUE_OR_OVERDUE="+str(int(d.get("overdue",0))+int(d.get("upcoming",0))))'
+review_api_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8123/api/lifeos_pa_review/runtime-check)
+if [ "$review_api_status" = "401" ]; then
+  echo 'PA_REVIEW_PREVIEW_API_AUTH=PASS'
+else
+  echo 'PA_REVIEW_PREVIEW_API_AUTH=FAIL'
+  exit 1
+fi

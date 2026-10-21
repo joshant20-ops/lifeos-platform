@@ -1,6 +1,7 @@
 """Privacy and queue checks for local task review."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import sys
 import tempfile
@@ -42,6 +43,22 @@ class PATaskReviewTests(unittest.TestCase):
              patch.object(RECONCILER.ai_broker, "generate", return_value={"provider": "remote", "privacy": "local-only", "text": json.dumps(answer)}):
             with self.assertRaisesRegex(RuntimeError, "review_provider_not_local"):
                 RECONCILER._build_task_review({"id": "synthetic-task"})
+
+    def test_document_text_preview_is_bounded_and_owner_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            previews = Path(directory)
+            with patch.object(RECONCILER, "REVIEW_PREVIEWS", previews):
+                RECONCILER._save_task_previews("synthetic-task", {
+                    "paperless_documents": [{
+                        "document_id": "42", "title": "Synthetic letter", "ocr_text": "private text",
+                    }],
+                })
+            path = previews / "synthetic-task.json"
+            saved = json.loads(path.read_text())
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+            self.assertEqual(saved["documents"][0]["ocr_text"], "private text")
+            self.assertLessEqual(len(saved["documents"][0]["ocr_text"]), 5000)
+            self.assertNotIn("source_emails", saved)
 
     def test_saved_review_contains_no_source_context(self):
         with tempfile.TemporaryDirectory() as directory:

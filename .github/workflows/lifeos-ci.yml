@@ -138,7 +138,7 @@ jobs:
 
       - name: Validate PA executor syntax
         run: |
-          python3 -m py_compile governor/scripts/lifeos-pa-execute homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py homelab/live/home/joshan/automation/lifeos_task_reconciler.py governor/assistant_bridge.py governor/pa_user_state.py homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py scripts/accept-pa-governed-actions.py homeassistant/deploy-lifeos-dashboard.py
+          python3 -m py_compile governor/scripts/lifeos-pa-execute homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py homelab/live/home/joshan/automation/lifeos_task_reconciler.py governor/assistant_bridge.py governor/pa_user_state.py homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py homelab/live/opt/stacks/homeassistant/config/custom_components/lifeos_pa_review/__init__.py scripts/accept-pa-governed-actions.py homeassistant/deploy-lifeos-dashboard.py
           bash -n governor/scripts/deploy-pa-task-reconciler.sh governor/scripts/deploy-ha-assistant.sh
           node --check homeassistant/www/lifeos-pa-task-card.js
           python3 -m unittest -v tests.test_pa_email_paperless_policy tests.test_paperless_runtime_diagnostic
