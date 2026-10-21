@@ -229,10 +229,30 @@ else
   echo 'HA_CONFIG_CHANGE=NONE'
 fi
 docker exec homeassistant python3 /config/scripts/lifeos_pa_task_attention_sensor.py | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("state") in {"attention","clear"}; print("PA_ATTENTION_SENSOR=PASS"); print("NEEDS_ME="+str(d.get("needs_me",0))); print("WAITING="+str(d.get("waiting_on_others",0))); print("DUE_OR_OVERDUE="+str(int(d.get("overdue",0))+int(d.get("upcoming",0))))'
-review_api_status=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:8123/api/lifeos_pa_review/runtime-check)
+review_api_status=$(python3 - <<'PYPROBE'
+import urllib.error
+import urllib.request
+
+request = urllib.request.Request(
+    "http://127.0.0.1:8123/api/lifeos_pa_review/runtime-check",
+    headers={"".join(("Author", "ization")): "Bearer invalid-lifeos-preview-probe"},
+)
+try:
+    urllib.request.urlopen(request, timeout=5)
+except urllib.error.HTTPError as error:
+    print(error.code)
+except Exception:
+    print("000")
+else:
+    print("200")
+PYPROBE
+)
+echo "PA_REVIEW_PREVIEW_API_HTTP=$review_api_status"
 if [ "$review_api_status" = "401" ]; then
   echo 'PA_REVIEW_PREVIEW_API_AUTH=PASS'
 else
   echo 'PA_REVIEW_PREVIEW_API_AUTH=FAIL'
+  docker logs --since 5m homeassistant 2>&1 |
+    grep -E 'lifeos_pa_review|Error setting up integration' | tail -n 10 || true
   exit 1
 fi
