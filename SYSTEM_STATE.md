@@ -33,6 +33,7 @@
 - `paperless-db-1` — `postgres:15`
 - `paperless-paperless-1` — `ghcr.io/paperless-ngx/paperless-ngx:latest`
 - `paperless-redis-1` — `redis:7`
+- `predbat` — `31413752bb3e`
 - `uptime-kuma` — `3d632903e6af`
 - `vaultwarden` — `094b5689ed81`
 - `zwave-js-ui` — `86f418050ce6`
