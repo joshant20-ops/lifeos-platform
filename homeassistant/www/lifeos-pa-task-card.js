@@ -425,6 +425,7 @@ class LifeOSPATaskCard extends HTMLElement {
       .filter((doc) => doc && /^\d+$/.test(String(doc.document_id || ""))).slice(0, 10);
     const paperlessBase = String(this._config.paperless_base_url || (window.location.protocol + "//" + window.location.hostname + ":8010")).replace(/\/+$/, "");
     const review = task.ai_review && typeof task.ai_review === "object" ? task.ai_review : null;
+    const reviewPending = this._reviewPendingTaskIds?.has(String(task.id)) || false;
     const previewById = new Map((Array.isArray(previews) ? previews : []).map((item) => [String(item.document_id), item]));
     const documents = docs.length ? docs.map((doc, index) => {
       const url = this._escape(paperlessBase + "/documents/" + encodeURIComponent(doc.document_id));
@@ -452,7 +453,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '</style><div class="review-head"><div><p class="eyebrow">TASK REVIEW</p><h2 id="review-title">' + this._escape(task.title || "Untitled task") + '</h2></div><button type="button" data-review-close aria-label="Close">Close</button></div>' +
       '<p class="review-muted">Scroll through the linked documents, then review the local AI suggestions below.</p><div class="review-docs">' + documents + '</div>' + result +
       '<div class="review-actions"><span class="review-muted" aria-live="polite">' + this._escape(busyText) + '</span>' +
-      '<button type="button" data-review-refresh>' + (review ? 'Refresh analysis' : 'Analyze task') + '</button><button type="button" data-review-close>Close</button></div>';
+      '<button type="button" data-review-refresh' + (reviewPending ? ' disabled' : '') + '>' + (reviewPending ? 'Analysis running…' : (review ? 'Refresh analysis' : 'Analyze task')) + '</button><button type="button" data-review-close>Close</button></div>';
   }
 
   _bindReviewDialog(dialog, taskId) {
@@ -470,20 +471,31 @@ class LifeOSPATaskCard extends HTMLElement {
   async _requestTaskReview(dialog, taskId) {
     const task = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
     if (!task) return;
+    const alreadyPending = this._reviewPendingTaskIds.has(String(taskId));
     const refresh = dialog.querySelector("[data-review-refresh]");
     const priorGeneratedAt = Number(task.ai_review?.generated_at || 0);
     if (refresh) refresh.disabled = true;
     try {
-      await this._hass.callService("shell_command", "lifeos_pa_user_action", {
-        action: "review", task_id: taskId, note: "", until: "", severity: "", due_date: "", paperless_ids: "",
-      });
+      if (!alreadyPending) {
+        await this._hass.callService("shell_command", "lifeos_pa_user_action", {
+          action: "review", task_id: taskId, note: "", until: "", severity: "", due_date: "", paperless_ids: "",
+        });
+      }
       this._reviewPendingTaskIds.add(String(taskId));
       dialog._reviewBusyText = "Preparing private document text and local analysis…";
       dialog.innerHTML = this._reviewDialogMarkup(task, dialog._reviewBusyText, dialog._reviewPreviews || []);
       this._bindReviewDialog(dialog, taskId);
       let attempts = 0;
       const poll = async () => {
-        if (!dialog.open || attempts++ >= 60) return;
+        if (!dialog.open) return;
+        if (attempts++ >= 60) {
+          this._reviewPendingTaskIds.delete(String(taskId));
+          dialog._reviewBusyText = "Local analysis has not finished after 10 minutes. It may still be queued; close and reopen this task to check or retry.";
+          const latest = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId) || task;
+          dialog.innerHTML = this._reviewDialogMarkup(latest, dialog._reviewBusyText, dialog._reviewPreviews || []);
+          this._bindReviewDialog(dialog, taskId);
+          return;
+        }
         await this._hass.callService("homeassistant", "update_entity", { entity_id: this._entity() }).catch(() => {});
         await this._loadReviewPreviews(dialog, taskId);
         await new Promise((resolve) => window.setTimeout(resolve, 10000));
@@ -499,6 +511,8 @@ class LifeOSPATaskCard extends HTMLElement {
         const latestAttrs = this._hass.states[this._entity()]?.attributes || {};
         const pendingIds = new Set((latestAttrs.review_pending_task_ids || []).map(String));
         const failedIds = new Set((latestAttrs.review_failed_task_ids || []).map(String));
+        if (pendingIds.has(String(taskId))) this._reviewPendingTaskIds.add(String(taskId));
+        else this._reviewPendingTaskIds.delete(String(taskId));
         if (failedIds.has(String(taskId)) && !pendingIds.has(String(taskId))) {
           this._reviewPendingTaskIds.delete(String(taskId));
           dialog._reviewBusyText = "Local analysis failed. The document text remains available below; you can retry the analysis.";

@@ -187,6 +187,19 @@ def refresh_task_paperless_evidence(task):
     task["paperless_evidence"]=list(combined.values())[:10]
     return task["paperless_evidence"]
 
+def reverify_saved_task_paperless_evidence(task):
+    """Retain only previously linked documents whose contents still prove identity."""
+    message_ids=set(task.get("source_message_ids") or [])
+    if task.get("email_message_id"):
+        message_ids.add(str(task["email_message_id"]))
+    task["paperless_evidence"]=verified_message_documents(
+        task.get("paperless_evidence") or [],
+        message_ids,
+        task.get("case_reference_ids") or [],
+        _paperless_document,
+    )
+    return task["paperless_evidence"]
+
 def record_source_event(task,msg,decision,observed,actionable=True):
     message_id=str(msg.get("message_id") or msg.get("source_ref") or "")[:300]
     source_ids=set(task.get("source_message_ids") or [])
@@ -282,10 +295,9 @@ def load_previous():
         for x in rows:
             if not isinstance(x,dict) or not x.get("id"): continue
             item=dict(x)
-            # Older state used broad full-text search results as if they were
-            # relationships. Rebuild evidence only when the source email ID is
-            # present in the Paperless document itself.
-            item["paperless_evidence"]=[]
+            # Treat saved IDs as candidates, then re-check their full text
+            # before publishing. This lets already-processed emails retain
+            # valid links without restoring legacy broad-search false matches.
             if str(item.get("machine_status") or "").upper() in {"OPEN","WAITING","DONE","DISMISSED"}:
                 item["status"]=item["machine_status"]
             item.pop("status_source",None); item.pop("status_set_at",None)
@@ -930,6 +942,8 @@ def _run_reconciler():
     # request. Preserve prior state when a task is outside this bounded scan.
     set_failure_stage("reconcile")
     tasks=dict(previous)
+    for task in tasks.values():
+        reverify_saved_task_paperless_evidence(task)
     for observed,k,d,msg in sorted(observations,key=lambda x:x[0]):
         task_id=resolve_task_id(d,msg,tasks)
         if not task_id:continue

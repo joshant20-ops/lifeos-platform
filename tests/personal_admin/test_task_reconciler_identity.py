@@ -112,6 +112,31 @@ def test_paperless_search_results_without_source_identity_are_not_links():
     assert result==[]
 
 
+def test_saved_document_candidates_are_reverified_after_email_was_already_processed(monkeypatch,tmp_path):
+    import json
+
+    monkeypatch.setattr(reconciler,"STATE",tmp_path/"tasks.json")
+    reconciler.STATE.write_text(json.dumps({"tasks":[{
+        "id":"gemini-migration-123456",
+        "email_message_id":"<migration@example.test>",
+        "source_message_ids":["<migration@example.test>"],
+        "paperless_evidence":[
+            {"document_id":41,"title":"Migration email"},
+            {"document_id":42,"title":"Unrelated email"},
+        ],
+    }]}))
+    documents={
+        41:{"id":41,"title":"Migration email","content":"Message-ID: <migration@example.test>"},
+        42:{"id":42,"title":"Unrelated email","content":"Message-ID: <other@example.test>"},
+    }
+    monkeypatch.setattr(reconciler,"_paperless_document",lambda document_id:documents.get(document_id))
+
+    task=reconciler.load_previous()["gemini-migration-123456"]
+    verified=reconciler.reverify_saved_task_paperless_evidence(task)
+
+    assert [item["document_id"] for item in verified]==[41]
+
+
 def test_cross_company_paperless_document_links_on_shared_order_reference():
     result=reconciler.verified_message_documents(
         [
