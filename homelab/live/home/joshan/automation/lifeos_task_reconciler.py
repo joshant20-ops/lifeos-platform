@@ -193,6 +193,17 @@ def task_source_message_ids(task):
         ordered=[value for value in ordered if value != primary]+[primary]
     return ordered[-20:]
 
+def has_valid_source_email(task):
+    """Return whether a task retains at least one usable RFC822 Message-ID."""
+    for value in task_source_message_ids(task):
+        message_id=str(value or "").strip()
+        if (len(message_id)<=300 and message_id.startswith("<") and message_id.endswith(">")
+                and "@" in message_id
+                and not any(ord(ch)<32 or ch in (chr(34),chr(92),"<",">") for ch in message_id[1:-1])):
+            return True
+    return False
+
+
 def refresh_task_paperless_evidence(task):
     evidence=paperless_linked_documents(
         task_source_message_ids(task),
@@ -1028,7 +1039,7 @@ def _run_reconciler():
         }
         record_source_event(tasks[task_id],msg,d,observed)
     cutoff=int(time.time())-STALE_DAYS*86400
-    tasks={k:v for k,v in tasks.items() if int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE"}
+    tasks={k:v for k,v in tasks.items() if has_valid_source_email(v) and (int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE")}
     open_tasks=[x for x in tasks.values() if x.get("status")!="DONE"]
     resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
