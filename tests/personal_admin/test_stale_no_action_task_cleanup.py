@@ -34,6 +34,7 @@ def test_stale_cleanup_accepts_source_retained_only_in_timeline():
         }
     }
     assert reconciler.task_source_message_ids(tasks["legacy-gemini-task"]) == [source_id]
+    assert reconciler.task_cleanup_source_message_id(tasks["legacy-gemini-task"]) == source_id
     assert reconciler.discard_single_source_no_action_task(
         tasks,
         {"message_id": source_id},
