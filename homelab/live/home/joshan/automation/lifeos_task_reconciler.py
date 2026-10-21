@@ -411,9 +411,12 @@ def _process_junk_request(path):
     if request.get("schema") != "lifeos_pa_junk_request_v1":
         raise ValueError("junk_request_schema_invalid")
     task_id = str(request.get("task_id") or "")
+    request_id = str(request.get("request_id") or "")
     document_ids = request.get("paperless_document_ids")
     if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}", task_id):
         raise ValueError("junk_task_id_invalid")
+    if path.name != task_id + ".json" or not re.fullmatch(r"[a-f0-9]{32}", request_id):
+        raise ValueError("junk_request_identity_invalid")
     if (not isinstance(document_ids, list) or not document_ids or len(document_ids) > 5
             or any(not isinstance(x, int) or x <= 0 for x in document_ids)
             or len(set(document_ids)) != len(document_ids)):
@@ -422,6 +425,8 @@ def _process_junk_request(path):
     task = previous.get(task_id)
     if not task:
         raise ValueError("junk_task_unavailable")
+    if str(task.get("status") or "").upper() not in {"OPEN", "WAITING"}:
+        raise ValueError("junk_task_not_open")
     linked = {
         int(doc["document_id"])
         for doc in (task.get("paperless_evidence") or [])
