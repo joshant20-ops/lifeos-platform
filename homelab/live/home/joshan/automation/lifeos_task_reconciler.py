@@ -97,9 +97,20 @@ def normalize_counterparty(value):
     return re.sub(r"[^a-z0-9]+","",str(value or "").lower())
 
 def case_reference_ids(msg):
-    """Extract only explicitly labelled case/reference identifiers from a message."""
+    """Extract stable identifiers that can safely connect related messages."""
     text=" ".join(str(msg.get(field,"")) for field in ("subject","body"))
-    pattern=r"\b(?:case(?:\s*(?:id|no\.?|number|ref(?:erence)?))?|claim(?:\s*(?:id|no\.?|number|ref(?:erence)?))?|reference|ref)\s*(?:(?:is|number)\s*)?[:#=-]?\s*([A-Z0-9][A-Z0-9/_-]{2,39})\b"
+    labels=(
+        r"case(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
+        r"|claim(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
+        r"|(?:purchase\s+)?order(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
+        r"|tracking(?:\s*(?:id|no\.?|number|code|ref(?:erence)?))?"
+        r"|shipment(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
+        r"|consignment(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
+        r"|parcel\s+tracking(?:\s*(?:id|no\.?|number|code|ref(?:erence)?))?"
+        r"|parcel(?:\s*(?:id|no\.?|number|ref(?:erence)?))?"
+        r"|reference|ref"
+    )
+    pattern=rf"\b(?:{labels})\s*(?:(?:is|number)\s*){{0,2}}[:#=-]?\s*([A-Z0-9][A-Z0-9/_-]{{2,39}})\b"
     values=set()
     for match in re.finditer(pattern,text,re.IGNORECASE):
         normalized=re.sub(r"[^A-Z0-9]","",match.group(1).upper())
@@ -107,15 +118,15 @@ def case_reference_ids(msg):
             values.add(normalized)
     return values
 
-def verified_message_documents(candidates, message_ids, document_loader):
-    """Keep only documents that explicitly contain a task source Message-ID.
+def verified_message_documents(candidates, message_ids, matter_reference_ids, document_loader):
+    """Keep documents explicitly tied by source Message-ID or labelled ID.
 
     Paperless full-text search is a candidate finder, not proof of a relationship.
-    In particular, matching broad words from an AI-generated query can attach
-    unrelated mail to a task. Require the exact source email Message-ID in the
-    document text before exposing it as linked evidence.
+    Accept exact email identity or a shared, labelled order/tracking/case ID so
+    that merchant and courier messages can join without broad keyword matches.
     """
     source_ids={str(value).strip().casefold() for value in message_ids or [] if str(value or "").strip()}
+    matter_ids={str(value).strip().upper() for value in matter_reference_ids or [] if str(value or "").strip()}
     verified=[]
     seen=set()
     for candidate in candidates or []:
@@ -127,8 +138,11 @@ def verified_message_documents(candidates, message_ids, document_loader):
         document=document_loader(int(document_id))
         if not isinstance(document,dict):
             continue
-        content=str(document.get("content") or "").casefold()
-        if not any(source_id in content for source_id in source_ids):
+        content=str(document.get("content") or "")
+        direct_match=any(source_id in content.casefold() for source_id in source_ids)
+        document_refs=case_reference_ids({"body":content})
+        reference_match=bool(matter_ids & document_refs)
+        if not direct_match and not reference_match:
             continue
         seen.add(str(document_id))
         verified.append({
@@ -140,20 +154,38 @@ def verified_message_documents(candidates, message_ids, document_loader):
             break
     return verified
 
-def paperless_linked_documents(message_ids):
-    """Find documents with an exact, verifiable source email reference."""
+def paperless_linked_documents(message_ids, matter_reference_ids=None):
+    """Find Paperless documents tied by exact email or labelled order/case IDs."""
     ids=sorted({str(value).strip() for value in message_ids or [] if str(value or "").strip()})
+    matter_ids=sorted({str(value).strip() for value in matter_reference_ids or [] if str(value or "").strip()})
     candidates=[]
     seen=set()
-    for message_id in ids:
-        # Search is only a way to locate candidates. verified_message_documents
-        # checks the full document text before any result is called linked.
-        for candidate in paperless_search(message_id):
+    # Keep discovery bounded. Search results are untrusted candidates; every
+    # document is checked for the exact source identity or a labelled ID below.
+    # Search stable matter references first: recent courier/merchant emails may
+    # have many source IDs, but the shared order/tracking ID is the key bridge.
+    queries=(matter_ids[-10:]+ids[-10:])[:20]
+    for query in queries:
+        for candidate in paperless_search(query):
             document_id=str(candidate.get("document_id") or "")
             if document_id not in seen:
                 candidates.append(candidate)
                 seen.add(document_id)
-    return verified_message_documents(candidates,ids,_paperless_document)
+                if len(candidates)>=50:
+                    break
+        if len(candidates)>=50:
+            break
+    return verified_message_documents(candidates,ids,matter_ids,_paperless_document)
+
+def refresh_task_paperless_evidence(task):
+    evidence=paperless_linked_documents(
+        task.get("source_message_ids") or [],
+        task.get("case_reference_ids") or [],
+    )
+    combined={str(item.get("document_id")):item for item in (task.get("paperless_evidence") or []) if isinstance(item,dict) and str(item.get("document_id") or "").isdigit()}
+    combined.update({str(item["document_id"]):item for item in evidence})
+    task["paperless_evidence"]=list(combined.values())[:10]
+    return task["paperless_evidence"]
 
 def record_source_event(task,msg,decision,observed,actionable=True):
     message_id=str(msg.get("message_id") or msg.get("source_ref") or "")[:300]
@@ -181,6 +213,7 @@ def reconcile_information_event(tasks,task_id,msg,decision,observed):
     if not isinstance(task,dict):
         return False
     record_source_event(task,msg,decision,observed,actionable=False)
+    refresh_task_paperless_evidence(task)
     return True
 
 
@@ -916,7 +949,8 @@ def _run_reconciler():
         source_message_ids=set(old.get("source_message_ids") or [])
         if msg.get("message_id"):
             source_message_ids.add(str(msg["message_id"])[:300])
-        evidence=paperless_linked_documents(source_message_ids)
+        matter_ids=set(old.get("case_reference_ids") or []) | case_reference_ids(msg)
+        evidence=paperless_linked_documents(source_message_ids,matter_ids)
         tasks[task_id]={
             "id":task_id,"identity_semantic":key(d),"thread_root_id":thread_root(msg),
             "title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
