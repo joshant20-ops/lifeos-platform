@@ -142,3 +142,9 @@ def test_pa_tasks_have_a_dedicated_week_and_matter_view():
     assert 'data-week="' in card_source
     assert 'data-day="no-date"' in card_source
     assert 'source_message_ids' in card_source
+    assert "_actionSections(items)" in card_source
+    assert "this._taskCard(selected, true)" in card_source
+    assert 'data-matter="' in card_source
+    assert 'button[data-matter]' in card_source
+    assert "The story so far" in card_source
+    assert "Other matters" in card_source
