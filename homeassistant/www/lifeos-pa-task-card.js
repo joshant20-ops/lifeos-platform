@@ -363,22 +363,24 @@ class LifeOSPATaskCard extends HTMLElement {
       window.alert("Junk needs at least one linked email.");
       return null;
     }
+    const paperlessBase = String(this._config.paperless_base_url || (window.location.protocol + "//" + window.location.hostname + ":8010")).replace(/\/+$/, "");
     const dialog = document.createElement("dialog");
     dialog.setAttribute("aria-labelledby", "junk-title");
     dialog.innerHTML = '<style>' +
       'dialog{max-width:min(520px,calc(100vw - 32px));max-height:80vh;overflow:auto;border:1px solid var(--divider-color);border-radius:14px;background:var(--card-background-color);color:var(--primary-text-color);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.4)}' +
       'dialog::backdrop{background:rgba(0,0,0,.62)}.junk-title{font-size:1.15rem;margin:0 0 10px}.junk-copy{font-size:.86rem;line-height:1.45;color:var(--secondary-text-color)}' +
       '.junk-docs{display:grid;gap:8px;margin:14px 0}.junk-doc{display:flex;gap:10px;align-items:flex-start;padding:10px;border:1px solid var(--divider-color);border-radius:9px}' +
-      '.junk-doc strong{display:block;overflow-wrap:anywhere}.junk-doc small{color:var(--secondary-text-color)}.junk-warning{font-size:.77rem;color:var(--error-color,var(--secondary-text-color))}' +
+      '.junk-doc strong{display:block;overflow-wrap:anywhere}.junk-doc small{display:block;color:var(--secondary-text-color)}.junk-doc a{display:inline-block;margin-top:5px;color:var(--primary-color);font-size:.82rem;font-weight:600}.junk-warning{font-size:.77rem;color:var(--error-color,var(--secondary-text-color))}' +
       '.junk-buttons{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}.junk-buttons button{padding:9px 12px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}' +
       '.junk-buttons .danger{background:var(--error-color,#b3261e);color:#fff}.junk-error{min-height:1.2em;color:var(--error-color,#b3261e);font-size:.8rem}' +
       '</style><h2 class="junk-title" id="junk-title">Move this matter to Junk?</h2>' +
       '<p class="junk-copy">This will move all ' + refs.length + (refs.length === 1 ? ' related email' : ' related emails') +
-      ' to Gmail Spam and dismiss the matter. Choose any linked Paperless documents to delete too. Leave them unchecked to keep them.</p>' +
+      ' to Gmail Spam and dismiss the matter. Choose any linked Paperless documents to delete too. Leave them unchecked to keep them. “View in Paperless” opens a document in a new tab; this selection stays open.</p>' +
       '<div class="junk-docs">' + (documents.length ? documents.map((doc, index) =>
         '<label class="junk-doc"><input type="checkbox" data-paperless-id="' + this._escape(doc.document_id) + '">' +
         '<span><strong>' + this._escape(doc.title || ("Paperless document " + (index + 1))) + '</strong>' +
-        '<small>Document ID ' + this._escape(doc.document_id) + '</small></span></label>'
+        '<small>Document ID ' + this._escape(doc.document_id) + '</small>' +
+        '<a target="_blank" rel="noopener noreferrer" href="' + this._escape(paperlessBase + "/documents/" + encodeURIComponent(doc.document_id)) + '">View in Paperless</a></span></label>'
       ).join("") : '<p class="junk-copy">No linked Paperless documents were found for this matter.</p>') +
       '</div><p class="junk-warning">Only checked documents will be deleted from Paperless. This may also remove their versions.</p>' +
       '<div class="junk-error" aria-live="polite"></div><div class="junk-buttons">' +
