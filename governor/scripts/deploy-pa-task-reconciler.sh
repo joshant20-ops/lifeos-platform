@@ -93,7 +93,7 @@ HA_CONFIG=/opt/stacks/homeassistant/config
 # Forward only fixed counters and safe categories; never emit private source/model data.
 journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
   grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$|^TASK_CLASSIFICATION_ERROR_CATEGORIES=[A-Z0-9_,=]+$' |
-  tail -n 3 || true
+  tail -n 6 || true
 
 ERROR_COUNT=$(python3 - <<'PY'
 import json,pathlib
