@@ -76,10 +76,22 @@ class PAJunkActionTests(unittest.TestCase):
              patch.object(RECONCILER, "_move_emails_to_junk") as move, \
              patch.object(RECONCILER, "_paperless_delete") as delete:
             with self.assertRaisesRegex(ValueError, "source_email_id_invalid"):
-                RECONCILER._process_junk_request(self.request)
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / (self.request["task_id"] + ".json")
+                    path.write_text(json.dumps(self.request), encoding="utf-8")
+                    RECONCILER._process_junk_request(path)
         get_document.assert_not_called()
         move.assert_not_called()
         delete.assert_not_called()
+
+    def test_gmail_spam_uses_gmail_label_store_without_imap_move(self):
+        client = unittest.mock.Mock()
+        client.uid.side_effect = [("OK", []), ("OK", [])]
+        RECONCILER._mark_imap_message_as_spam(client, b"17")
+        self.assertEqual(client.uid.call_args_list, [
+            unittest.mock.call("STORE", b"17", "+X-GM-LABELS", r"(\Spam)"),
+            unittest.mock.call("STORE", b"17", "-X-GM-LABELS", r"(\Inbox)"),
+        ])
 
 
 if __name__ == "__main__":
