@@ -230,7 +230,7 @@ def test_ha_user_action_shell_command_uses_env_executable():
     ).read_text()
     marker = "  lifeos_pa_user_action: >-\n"
     assert marker in config
-    command = config.split(marker, 1)[1].split("\n  ", 1)[0].replace("\n", " ").strip()
+    command = config.split(marker, 1)[1].splitlines()[0].strip()
     assert command.startswith(
         "env LIFEOS_PA_USER_STATE_PATH=/config/lifeos-pa-state/user_state.json "
         "python3 /config/scripts/lifeos_pa_user_action.py"
