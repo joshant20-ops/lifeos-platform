@@ -1380,6 +1380,7 @@ def _run_reconciler():
     # request. Preserve prior state when a task is outside this bounded scan.
     set_failure_stage("reconcile")
     tasks=dict(previous)
+    previous_tasks_loaded=len(previous)
     for task in tasks.values():
         reverify_saved_task_paperless_evidence(task)
     # Recheck the source text for existing tasks as well as new messages. This
@@ -1465,7 +1466,11 @@ def _run_reconciler():
     open_tasks=[x for x in tasks.values() if x.get("status")!="DONE"]
     resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
-    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"source_lookup_diagnostics":dict(_SOURCE_LOOKUP_DIAGNOSTICS),"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
+    lookup_diagnostics=dict(_SOURCE_LOOKUP_DIAGNOSTICS)
+    lookup_diagnostics["previous_tasks_loaded"]=previous_tasks_loaded
+    lookup_diagnostics["tasks_before_publish"]=len(tasks)
+    lookup_diagnostics["open_tasks_before_publish"]=len(open_tasks)
+    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"source_lookup_diagnostics":lookup_diagnostics,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     payload=apply_user_state(payload,read_user_state())
     set_failure_stage("persist_publish")
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
