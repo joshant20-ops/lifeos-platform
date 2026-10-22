@@ -9,6 +9,11 @@ from subprocess import CompletedProcess
 
 ROOT = Path(__file__).resolve().parents[2]
 AUTOMATION = ROOT / "homelab" / "live" / "home" / "joshan" / "automation"
+HA_SCRIPTS = ROOT / "homelab" / "live" / "opt" / "stacks" / "homeassistant" / "config" / "scripts"
+sys.path.insert(0, str(HA_SCRIPTS))
+ACTION_SPEC = importlib.util.spec_from_file_location("lifeos_pa_user_action_tests", HA_SCRIPTS / "lifeos_pa_user_action.py")
+USER_ACTION = importlib.util.module_from_spec(ACTION_SPEC)
+ACTION_SPEC.loader.exec_module(USER_ACTION)
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(AUTOMATION))
 SPEC = importlib.util.spec_from_file_location(
@@ -136,6 +141,33 @@ class PAJunkActionTests(unittest.TestCase):
                 RECONCILER.process_junk_requests()
             process.assert_called_once_with(request_path)
             self.assertFalse(request_path.exists())
+
+    def test_malformed_failed_request_recovers_email_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pending = root / "pending"
+            failed = root / "failed"
+            pending.mkdir()
+            failed.mkdir()
+            request_path = failed / (self.task["id"] + ".json")
+            request_path.write_text("{", encoding="utf-8")
+            with patch.object(RECONCILER, "JUNK_REQUESTS", pending), patch.object(RECONCILER, "JUNK_FAILED", failed), patch.object(RECONCILER, "load_previous", return_value={self.task["id"]: self.task}), patch.object(RECONCILER, "_move_emails_to_junk") as move, patch.object(RECONCILER, "_paperless_delete") as delete, patch.object(RECONCILER.subprocess, "run", return_value=CompletedProcess([], 0, "PA_USER_ACTION=PASS", "")) as dismiss:
+                RECONCILER.process_junk_requests()
+            move.assert_called_once_with(["<latest@example.test>", "<older@example.test>"])
+            delete.assert_not_called()
+            dismiss.assert_called_once()
+            self.assertFalse(request_path.exists())
+
+    def test_user_action_request_is_published_atomically(self):
+        with tempfile.TemporaryDirectory() as directory:
+            queue = Path(directory) / "junk-requests"
+            queue.mkdir()
+            request_path = queue / "matter-1234.json"
+            request = {"schema": "lifeos_pa_junk_request_v1", "task_id": "matter-1234"}
+            self.assertTrue(USER_ACTION._enqueue_request_atomically(request_path, request))
+            self.assertEqual(json.loads(request_path.read_text(encoding="utf-8")), request)
+            self.assertFalse(USER_ACTION._enqueue_request_atomically(request_path, request))
+            self.assertEqual(list(queue.iterdir()), [request_path])
 
 if __name__ == "__main__":
     unittest.main()

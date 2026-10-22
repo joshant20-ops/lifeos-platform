@@ -26,6 +26,26 @@ _SAFE_REASONS = {
 }
 
 
+def _enqueue_request_atomically(path, request):
+    """Publish a complete JSON request before the watched *.json path appears."""
+    temp = path.with_name("." + path.name + "." + uuid.uuid4().hex + ".tmp")
+    fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(request, stream, separators=(",", ":"))
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temp, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        temp.unlink(missing_ok=True)
+
+
+
 def main():
     global _ACTION_STAGE
     parser = argparse.ArgumentParser()
@@ -70,17 +90,10 @@ def main():
             stale_failure.unlink()
         except FileNotFoundError:
             pass
-        try:
-            fd = os.open(request_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        except FileExistsError:
+        if not _enqueue_request_atomically(request_path, request):
             print("PA_USER_ACTION=QUEUED")
             print("PA_USER_ACTION_KIND=review")
             return
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(request, stream, separators=(",", ":"))
-            stream.write("\n")
-            stream.flush()
-            os.fsync(stream.fileno())
         print("PA_USER_ACTION=QUEUED")
         print("PA_USER_ACTION_KIND=review")
         return
@@ -114,12 +127,10 @@ def main():
             "requested_at": int(time.time()),
         }
         request_path = queue_dir / (args.task_id + ".json")
-        fd = os.open(request_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(request, stream, separators=(",", ":"))
-            stream.write("\\n")
-            stream.flush()
-            os.fsync(stream.fileno())
+        if not _enqueue_request_atomically(request_path, request):
+            print("PA_USER_ACTION=QUEUED")
+            print("PA_USER_ACTION_KIND=junk")
+            return
         print("PA_USER_ACTION=QUEUED")
         print("PA_USER_ACTION_KIND=junk")
         return
