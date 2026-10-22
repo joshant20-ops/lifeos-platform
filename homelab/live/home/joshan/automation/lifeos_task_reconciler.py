@@ -532,8 +532,11 @@ def message_time(date_value):
     try:return int(parsedate_to_datetime(str(date_value or "")).timestamp())
     except Exception:return int(time.time())
 
+_SOURCE_LOOKUP_DIAGNOSTICS={}
+
 def fetch_existing_task_source_emails(tasks, already_fetched=()):
     """Fetch exact saved source emails and keep lookup diagnostics aggregate."""
+    global _SOURCE_LOOKUP_DIAGNOSTICS
     known={str(value).strip() for value in already_fetched if str(value or "").strip()}
     message_ids=set()
     source_dates={}
@@ -575,6 +578,11 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS=0",flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS=0",flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES=0",flush=True)
+        _SOURCE_LOOKUP_DIAGNOSTICS={
+            "single_source_tasks":single_source_tasks,"valid_ids":valid_source_ids,
+            "already_fetched":tasks_already_fetched,"missing_dates":tasks_missing_date,
+            "date_windows":0,"date_window_uids":0,"fetch_attempts":0,"exact_id_matches":0,
+        }
         return {}
     user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
     password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
@@ -661,6 +669,12 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS="+str(date_window_uids),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS="+str(fetch_attempts),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES="+str(exact_id_matches),flush=True)
+    _SOURCE_LOOKUP_DIAGNOSTICS={
+        "single_source_tasks":single_source_tasks,"valid_ids":valid_source_ids,
+        "already_fetched":tasks_already_fetched,"missing_dates":tasks_missing_date,
+        "date_windows":date_windows,"date_window_uids":date_window_uids,
+        "fetch_attempts":fetch_attempts,"exact_id_matches":exact_id_matches,
+    }
     return result
 
 
@@ -1377,7 +1391,7 @@ def _run_reconciler():
     open_tasks=[x for x in tasks.values() if x.get("status")!="DONE"]
     resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
-    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
+    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"source_lookup_diagnostics":dict(_SOURCE_LOOKUP_DIAGNOSTICS),"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     payload=apply_user_state(payload,read_user_state())
     set_failure_stage("persist_publish")
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
