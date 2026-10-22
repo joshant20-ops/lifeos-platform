@@ -2,8 +2,10 @@
 """LifeOS personal task reconciler.
 
 Reads recent Gmail locally, extracts user obligations with governed local AI, and
-reconciles them against Paperless evidence. Private content never leaves the host.
-The published HA JSON contains only user-facing task summaries plus stable provenance.
+reconciles them against Paperless evidence. It also rechecks each saved task's
+primary source email so explicit no-action notices can remove false-positive tasks.
+Private content never leaves the host. The published HA JSON contains only
+user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
 import email, errno, hashlib, html, imaplib, json, os, re, socket, ssl, subprocess, sys, time
