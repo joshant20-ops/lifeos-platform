@@ -150,6 +150,9 @@ def test_exact_source_lookup_uses_bounded_date_fallback_when_id_search_misses(mo
     found = reconciler.fetch_existing_task_source_emails([task])
     assert set(found) == {message_id}
     assert reconciler.has_explicit_no_action_required(found[message_id])
+    assert reconciler._SOURCE_LOOKUP_DIAGNOSTICS["tasks_seen"] == 1
+    assert reconciler._SOURCE_LOOKUP_DIAGNOSTICS["tasks_with_source_ids"] == 1
+    assert reconciler._SOURCE_LOOKUP_DIAGNOSTICS["timeline_fallback_tasks"] == 1
 
 
 def test_stale_primary_no_action_email_can_remove_legacy_extra_source_ids():
