@@ -6,17 +6,31 @@ on:
     paths:
       - '.github/workflows/lifeos-emailops-shadow.yml'
       - 'governor/emailops_runtime_audit.py'
+      - 'governor/emailops_build.py'
+      - 'governor/emailops_shadow_runtime.py'
+      - 'governor/emailops_adapter.py'
+      - 'config/emailops-upstream.json'
+      - 'third_party/emailops/**'
+      - 'scripts/lifeos-deploy-emailops-shadow.sh'
+  pull_request:
+    paths:
+      - '.github/workflows/lifeos-emailops-shadow.yml'
+      - 'governor/emailops*.py'
+      - 'config/emailops-upstream.json'
+      - 'third_party/emailops/**'
+      - 'scripts/lifeos-deploy-emailops-shadow.sh'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: lifeos-pi5-deploy
+  group: lifeos-emailops-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   prerequisites:
+    if: github.event_name != 'pull_request'
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 5
     steps:
@@ -28,3 +42,62 @@ jobs:
         run: |
           set -Eeuo pipefail
           python3 governor/emailops_runtime_audit.py
+
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: /tmp/emailops-cargo-target
+      CARGO_PROFILE_DEV_DEBUG: 0
+      CARGO_PROFILE_TEST_DEBUG: 0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.1
+      - name: Native build dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends pkg-config libssl-dev libdbus-1-dev
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            /tmp/emailops-cargo-target
+          key: emailops-arm64-rust1.99.1-${{ hashFiles('config/emailops-upstream.json', 'third_party/emailops/headless-cli.patch') }}
+          restore-keys: emailops-arm64-rust1.99.1-
+      - name: Verify pinned source, test extensions, build CLI
+        run: python3 governor/emailops_build.py "$RUNNER_TEMP/emailops-artifact"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: emailops-shadow-${{ github.sha }}
+          path: ${{ runner.temp }}/emailops-artifact
+          if-no-files-found: error
+          retention-days: 7
+
+  install-shadow:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [prerequisites, build]
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 25
+    concurrency:
+      group: lifeos-pi5-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/download-artifact@v4
+        with:
+          name: emailops-shadow-${{ github.sha }}
+          path: /home/joshan/.cache/lifeos/emailops-shadow-build
+      - name: Install and evaluate through the fixed deployment boundary
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          git fetch origin main
+          git merge --ff-only origin/main
+          test -z "$(git status --porcelain)"
+          test "$(git rev-parse HEAD)" = "${{ github.sha }}"
+          sudo -n bash scripts/lifeos-install-github-runner-gateway.sh
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway deploy-emailops-shadow

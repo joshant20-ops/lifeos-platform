@@ -11,6 +11,40 @@ PREVIEWS = Path("/config/lifeos-pa-state/task-previews")
 TASK_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,119}")
 DOCUMENT_ID_RE = re.compile(r"[1-9][0-9]{0,11}")
 MAX_AGE_SECONDS = 3600
+EMAILOPS_PREVIEWS = Path("/config/lifeos-pa-state/emailops-shadow")
+
+
+class LifeOSEmailOpsShadowView(HomeAssistantView):
+    """Expose only the matched task's private shadow result, without actions."""
+
+    url = "/api/lifeos_emailops_shadow/{task_id}"
+    name = "api:lifeos_emailops_shadow"
+    requires_auth = True
+
+    async def get(self, request, task_id):
+        if not TASK_ID_RE.fullmatch(task_id or ""):
+            raise web.HTTPNotFound()
+        try:
+            raw = await self.hass.async_add_executor_job((EMAILOPS_PREVIEWS / (task_id + ".json")).read_text, "utf-8")
+            payload = json.loads(raw)
+            valid = (isinstance(payload, dict)
+                     and payload.get("schema") == "lifeos_emailops_shadow_task_v1"
+                     and payload.get("task_id") == task_id
+                     and time.time() - int(payload.get("generated_at") or 0) < 7 * 86400)
+        except (OSError, ValueError, TypeError):
+            valid = False
+        if not valid:
+            raise web.HTTPNotFound()
+        response = web.json_response({
+            "schema": "lifeos_emailops_shadow_task_v1", "task_id": task_id, "mode": "shadow",
+            "summary": str(payload.get("summary") or "")[:4000],
+            "proposals": [
+                {"title": str(p.get("title") or "")[:300], "due_date": p.get("due_date")}
+                for p in payload.get("proposals", [])[:20] if isinstance(p, dict)
+            ],
+        })
+        response.headers["Cache-Control"] = "no-store, private"
+        return response
 
 
 class LifeOSPATaskReviewPreviewView(HomeAssistantView):
@@ -74,4 +108,5 @@ class LifeOSPATaskReviewPreviewView(HomeAssistantView):
 
 async def async_setup(hass, config):
     hass.http.register_view(LifeOSPATaskReviewPreviewView())
+    hass.http.register_view(LifeOSEmailOpsShadowView())
     return True

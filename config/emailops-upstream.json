@@ -8,5 +8,8 @@
   "verification": "upstream_git_object_and_source_archive_checksums",
   "signed_release": false,
   "mode": "shadow",
-  "mailbox_writes": false
+  "mailbox_writes": false,
+  "patch_sha256": "e15cf683bed830d6c5f5f28d141d09f8de630b3a923c82783de7f3a56bc19746",
+  "version": "0.6.16",
+  "rust_toolchain": "1.99.1"
 }

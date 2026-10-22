@@ -11,6 +11,17 @@ from lifeos_pa_user_state import apply_user_state, order_tasks_for_attention, re
 
 TASKS = Path("/config/www/lifeos_tasks.json")
 REVIEW_RESULTS = Path("/config/lifeos-pa-state/task-reviews")
+EMAILOPS_RESULTS = Path("/config/lifeos-pa-state/emailops-shadow")
+
+
+def has_emailops_review(task_id):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}", str(task_id or "")):
+        return False
+    try:
+        path = EMAILOPS_RESULTS / (task_id + ".json")
+        return path.is_file() and time.time() - path.stat().st_mtime < 7 * 86400
+    except OSError:
+        return False
 def safe_markdown(value):
     value=html.escape(str(value or "Untitled task")[:160],quote=False)
     return re.sub(r"([\\`*_{}\[\]()#+\-.!|>])",r"\\\1",value)
@@ -103,7 +114,7 @@ def main():
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or ""))}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ][:100]
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"

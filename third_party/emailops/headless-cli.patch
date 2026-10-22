@@ -1,0 +1,324 @@
+diff --git a/src-tauri/src/cli/accounts.rs b/src-tauri/src/cli/accounts.rs
+index a7a57b1..f74e2d9 100644
+--- a/src-tauri/src/cli/accounts.rs
++++ b/src-tauri/src/cli/accounts.rs
+@@ -70,6 +70,9 @@ pub enum AddProvider {
+         /// required when running with `--json` (which cannot prompt).
+         #[arg(long)]
+         password: Option<String>,
++        /// Read the app password from a private file (e.g. a systemd credential).
++        #[arg(long, conflicts_with = "password")]
++        password_file: Option<std::path::PathBuf>,
+         /// SMTP server host. Defaults to the IMAP host.
+         #[arg(long)]
+         smtp_host: Option<String>,
+@@ -114,6 +117,7 @@ async fn add_account(session: &CliSession, provider: AddProvider) -> Result<()>
+             email,
+             username,
+             password,
++            password_file,
+             smtp_host,
+             smtp_port,
+             name,
+@@ -123,7 +127,10 @@ async fn add_account(session: &CliSession, provider: AddProvider) -> Result<()>
+             // immediately instead of after the user has typed a secret.
+             let identity = crate::services::accounts::resolve_imap_identity(&email, username.as_deref())?;
+             let ts = parse_sync_from(sync_from.as_deref())?;
+-            let password = resolve_password(session.mode, password)?;
++            let password = match password_file {
++                Some(path) => read_password_file(&path)?,
++                None => resolve_password(session.mode, password)?,
++            };
+             let credentials = ImapCredentials {
+                 smtp_host: smtp_host.unwrap_or_else(|| host.clone()),
+                 host,
+@@ -161,6 +168,33 @@ fn resolve_password(mode: OutputMode, provided: Option<String>) -> Result<String
+     }
+ }
+ 
++fn read_password_file(path: &std::path::Path) -> Result<String> {
++    use std::io::Read;
++    let metadata =
++        std::fs::symlink_metadata(path).map_err(|_| AppError::InvalidInput("password file unavailable".into()))?;
++    if !metadata.is_file() {
++        return Err(AppError::InvalidInput("password file must be a regular file".into()));
++    }
++    #[cfg(unix)]
++    {
++        use std::os::unix::fs::PermissionsExt;
++        if metadata.permissions().mode() & 0o077 != 0 {
++            return Err(AppError::InvalidInput("password file must be private".into()));
++        }
++    }
++    let mut secret = String::new();
++    std::fs::File::open(path)
++        .map_err(|_| AppError::InvalidInput("password file unavailable".into()))?
++        .take(4097)
++        .read_to_string(&mut secret)
++        .map_err(|_| AppError::InvalidInput("password file unreadable".into()))?;
++    let secret = secret.trim_end_matches(['\r', '\n']);
++    if secret.is_empty() || secret.len() > 4096 {
++        return Err(AppError::InvalidInput("password file has invalid length".into()));
++    }
++    Ok(secret.to_string())
++}
++
+ /// Parse an optional `YYYY-MM-DD` "sync from" date into a Unix timestamp
+ /// (midnight UTC). `None` input → `None` (sync all history). Pure so the parsing
+ /// is unit-testable.
+@@ -194,6 +228,27 @@ fn render_added(account: &Account, mode: OutputMode) -> Result<()> {
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn private_password_file_keeps_secret_out_of_arguments() {
++        let file = tempfile::NamedTempFile::new().unwrap();
++        std::fs::write(file.path(), "synthetic-password\n").unwrap();
++        assert_eq!(read_password_file(file.path()).unwrap(), "synthetic-password");
++    }
++
++    #[cfg(unix)]
++    #[test]
++    fn password_file_rejects_public_permissions_and_symlinks() {
++        use std::os::unix::fs::{symlink, PermissionsExt};
++        let dir = tempfile::tempdir().unwrap();
++        let file = dir.path().join("secret");
++        std::fs::write(&file, "synthetic-password").unwrap();
++        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
++        assert!(read_password_file(&file).is_err());
++        let link = dir.path().join("link");
++        symlink(&file, &link).unwrap();
++        assert!(read_password_file(&link).is_err());
++    }
++
+     #[test]
+     fn sync_from_none_is_none() {
+         assert_eq!(parse_sync_from(None).expect("ok"), None);
+diff --git a/src-tauri/src/cli/automation.rs b/src-tauri/src/cli/automation.rs
+new file mode 100644
+index 0000000..84bdc2d
+--- /dev/null
++++ b/src-tauri/src/cli/automation.rs
+@@ -0,0 +1,37 @@
++//! Headless previews and explicit user-confirmed Junk, over the shared services.
++use crate::models::error::{AppError, Result};
++use crate::services::{ai::AiService, emails, junk, ownership, tasks};
++
++use super::{output, session::CliSession};
++
++pub async fn analyze(session: &CliSession, id: &str) -> Result<()> {
++    let account = session.require_account()?;
++    let email = ownership::email_in_account(&session.db, &account, id)?;
++    let ai = AiService::new(session.db.clone())?;
++    let extracted = tasks::extractor::extract_for_eval(&session.db, &ai, &email).await?;
++    output::emit_ok(serde_json::json!({
++        "schema": "emailops_analysis_v1",
++        "source": {
++            "id": email.id, "accountId": email.account_id,
++            "threadId": email.thread_id, "messageId": email.message_id,
++            "references": email.references, "mailbox": email.mailbox,
++        },
++        "extraction": extracted,
++    }))
++}
++
++pub async fn report_junk(session: &CliSession, id: &str, confirm: bool) -> Result<()> {
++    if !confirm {
++        return Err(AppError::InvalidInput("explicit --confirm is required".into()));
++    }
++    let account_id = session.require_account()?;
++    let email = ownership::email_in_account(&session.db, &account_id, id)?;
++    let account = session
++        .db
++        .get_account(&account_id)?
++        .ok_or_else(|| AppError::NotFound("account not found".into()))?;
++    let provider = emails::build_provider(&account, None).await?;
++    junk::set_feedback(&session.db, &account_id, id, true).await?;
++    let filed = emails::file_in_spam_verified(&session.db, &email, provider.as_ref()).await?;
++    output::emit_ok(serde_json::json!({"filed": filed, "verified": filed}))
++}
+diff --git a/src-tauri/src/cli/commands.rs b/src-tauri/src/cli/commands.rs
+index e9c6417..95473ab 100644
+--- a/src-tauri/src/cli/commands.rs
++++ b/src-tauri/src/cli/commands.rs
+@@ -15,6 +15,8 @@ use super::{Command, OutputMode, RenderStyle, SuggestionAction};
+ /// Execute one parsed command against the session.
+ pub async fn dispatch(session: &mut CliSession, command: Command) -> Result<()> {
+     match command {
++        Command::Analyze { id } => super::automation::analyze(session, &id).await,
++        Command::ReportJunk { id, confirm } => super::automation::report_junk(session, &id, confirm).await,
+         Command::Accounts { action } => super::accounts::run_account(session, action).await,
+ 
+         Command::Emails {
+diff --git a/src-tauri/src/cli/config.rs b/src-tauri/src/cli/config.rs
+index 16d303c..d1be009 100644
+--- a/src-tauri/src/cli/config.rs
++++ b/src-tauri/src/cli/config.rs
+@@ -21,6 +21,13 @@ pub const CLI_DEFAULT_ACCOUNT_KEY: &str = "cli_default_account";
+ /// What to do with a [`ConfigKey`].
+ #[derive(Subcommand, Debug, Clone)]
+ pub enum ConfigAction {
++    /// Configure a local AI backend without a desktop session.
++    LocalAi {
++        #[arg(long, default_value = "ollama")]
++        provider: String,
++        #[arg(long)]
++        model: String,
++    },
+     /// Print a setting's stored value (or `(unset)`).
+     Get {
+         /// Which setting to read.
+@@ -71,6 +78,25 @@ impl ConfigKey {
+ /// Execute a `config` action against the session's DB.
+ pub fn run_config(session: &CliSession, action: ConfigAction) -> Result<()> {
+     match action {
++        ConfigAction::LocalAi { provider, model } => {
++            if !matches!(provider.as_str(), "ollama" | "llamacpp") || model.trim().is_empty() {
++                return Err(AppError::InvalidInput(
++                    "a local provider and nonempty model are required".into(),
++                ));
++            }
++            crate::services::ai::AiService::save_config(
++                &session.db,
++                &provider,
++                &model,
++                None,
++                None,
++                0.0,
++                Some(false),
++                None,
++            )?;
++            session.db.set_preference("ai_enabled", "true")?;
++            output::emit_ok(serde_json::json!({ "provider": provider, "model": model }))
++        }
+         ConfigAction::Get { key } => {
+             let value = session.db.get_preference(key.pref_key())?;
+             emit_setting(session.mode, key, value.as_deref())
+diff --git a/src-tauri/src/cli/mod.rs b/src-tauri/src/cli/mod.rs
+index ba35900..f1603bf 100644
+--- a/src-tauri/src/cli/mod.rs
++++ b/src-tauri/src/cli/mod.rs
+@@ -15,6 +15,7 @@
+ //! real features headlessly and assert on structured output.
+ 
+ mod accounts;
++mod automation;
+ mod commands;
+ mod config;
+ mod doctor;
+@@ -201,6 +202,17 @@ pub enum Command {
+         id: String,
+     },
+ 
++    /// Preview structured tasks from one message using the configured AI.
++    /// Does not create pending tasks or change the provider mailbox.
++    Analyze { id: String },
++
++    /// Explicitly file one message as junk and read it back from the provider.
++    ReportJunk {
++        id: String,
++        #[arg(long, required = true)]
++        confirm: bool,
++    },
++
+     /// Full-text search across an account's mail.
+     Search {
+         /// Search query.
+@@ -1080,6 +1092,7 @@ mod tests {
+                                 email,
+                                 username,
+                                 password,
++                                password_file,
+                                 smtp_host,
+                                 smtp_port,
+                                 name,
+@@ -1095,6 +1108,7 @@ mod tests {
+                     "no --username given; the login defaults to the address"
+                 );
+                 assert_eq!(password.as_deref(), Some("secret"));
++                assert!(password_file.is_none());
+                 assert!(smtp_host.is_none());
+                 assert_eq!(smtp_port, 587);
+                 assert!(name.is_none());
+diff --git a/src-tauri/src/services/emails/mod.rs b/src-tauri/src/services/emails/mod.rs
+index 8aabcf9..e426092 100644
+--- a/src-tauri/src/services/emails/mod.rs
++++ b/src-tauri/src/services/emails/mod.rs
+@@ -47,7 +47,7 @@ pub use snooze::{
+     due_snoozes, list_thread_snoozes, snooze_threads, unsnooze_threads, wake_due_snoozes, SnoozesWoken,
+     SNOOZES_WOKEN_EVENT,
+ };
+-pub use spam::{file_in_spam, restore_from_spam, SpamFiling};
++pub use spam::{file_in_spam, file_in_spam_verified, restore_from_spam, SpamFiling};
+ pub(crate) use state_refresh::last_refresh_key as state_refresh_last_key;
+ pub use sync::{
+     reopen_inbox_gap_repair, request_extra_mailbox_backfill_reset, request_sync_abort, resync_mailbox_full,
+diff --git a/src-tauri/src/services/emails/spam.rs b/src-tauri/src/services/emails/spam.rs
+index 8063501..5b38626 100644
+--- a/src-tauri/src/services/emails/spam.rs
++++ b/src-tauri/src/services/emails/spam.rs
+@@ -24,6 +24,38 @@ pub enum SpamFiling {
+     LocalOnly,
+ }
+ 
++/// Provider read-back proof for consumers that close an external workflow.
++/// A successful move request or a local spam flag alone is insufficient.
++pub async fn file_in_spam_verified(db: &Database, email: &Email, provider: &dyn EmailProvider) -> Result<bool> {
++    let expected = email
++        .message_id
++        .as_deref()
++        .filter(|s| !s.trim().is_empty())
++        .ok_or_else(|| AppError::InvalidInput("stable Message-ID is required for verified filing".into()))?;
++    let location = if email.mailbox == "spam" {
++        crate::sync::provider::MessageLocation {
++            id: email.id.clone(),
++            mailbox: "spam".into(),
++        }
++    } else {
++        match provider.move_to_spam(&email.id, Some(expected)).await {
++            Ok(location) => location,
++            Err(AppError::NoSpamFolder) => return Ok(false),
++            Err(e) => return Err(e),
++        }
++    };
++    let (remote, _, _) = provider.get_message(&location.id).await?;
++    if !spam_readback_matches(expected, &remote) {
++        return Err(AppError::SyncError("provider junk filing could not be verified".into()));
++    }
++    refile_moved_row(db, &email.id, &location.id, "spam")?;
++    Ok(true)
++}
++
++fn spam_readback_matches(expected: &str, remote: &Email) -> bool {
++    remote.mailbox == "spam" && remote.message_id.as_deref() == Some(expected)
++}
++
+ /// File `email` as spam at the provider (`None` = an account without mailbox
+ /// writes) and re-file the row where the provider put it.
+ pub async fn file_in_spam(db: &Database, email: &Email, provider: Option<&dyn EmailProvider>) -> Result<SpamFiling> {
+@@ -104,6 +136,25 @@ mod tests {
+         (db, provider)
+     }
+ 
++    #[test]
++    fn verified_filing_requires_same_message_in_provider_spam() {
++        let mut remote = message("remote", "spam");
++        assert!(spam_readback_matches("<remote@example.com>", &remote));
++        assert!(!spam_readback_matches("<other@example.com>", &remote));
++        remote.mailbox = "inbox".into();
++        assert!(!spam_readback_matches("<remote@example.com>", &remote));
++        remote.message_id = None;
++        assert!(!spam_readback_matches("<remote@example.com>", &remote));
++    }
++
++    #[tokio::test]
++    async fn verified_filing_reads_the_provider_before_refiling_local_row() {
++        let email = message("m1", "inbox");
++        let (db, provider) = setup(&email);
++        assert!(file_in_spam_verified(&db, &email, &provider).await.unwrap());
++        assert_eq!(db.get_email("m1").unwrap().unwrap().mailbox, "spam");
++    }
++
+     #[tokio::test]
+     async fn filing_moves_it_at_the_provider_then_locally() {
+         let email = message("m1", "inbox");

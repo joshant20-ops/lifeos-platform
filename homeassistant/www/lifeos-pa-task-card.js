@@ -132,10 +132,11 @@ class LifeOSPATaskCard extends HTMLElement {
       '<span class="tag muted">No due date</span>';
     const statusTag = '<span class="tag status-' + this._escape(status.toLowerCase()) + '">' + this._escape(status === "WAITING" ? "Waiting for reply" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") + '</span>';
     const closed = status === "DONE" || status === "DISMISSED";
+    const reviewLabel = task.emailops_shadow_available ? "Review · EmailOps" : "Review";
     const primaryActions = closed
-      ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button><button data-action="review" data-id="' + id + '">Review</button>'
+      ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button><button data-action="review" data-id="' + id + '">' + reviewLabel + '</button>'
       : '<button class="primary" data-action="close" data-id="' + id + '">Mark done</button>' +
-        '<button data-action="review" data-id="' + id + '">Review</button>' +
+        '<button data-action="review" data-id="' + id + '">' + reviewLabel + '</button>' +
         '<button data-action="comment" data-id="' + id + '">Add note</button>' +
         '<button data-action="snooze" data-id="' + id + '">Snooze</button>' +
         '<button data-action="due_date" data-id="' + id + '">Set due date</button>' +
@@ -425,6 +426,12 @@ class LifeOSPATaskCard extends HTMLElement {
       .filter((doc) => doc && /^\d+$/.test(String(doc.document_id || ""))).slice(0, 10);
     const paperlessBase = String(this._config.paperless_base_url || (window.location.protocol + "//" + window.location.hostname + ":8010")).replace(/\/+$/, "");
     const review = task.ai_review && typeof task.ai_review === "object" ? task.ai_review : null;
+    const emailops = this._emailopsReports?.get(String(task.id));
+    const emailopsMarkup = emailops ? '<section class="review-analysis"><h3>EmailOps preview</h3>' +
+      '<p class="review-muted">Comparison only. Your task has not been changed.</p><p>' + this._escape(emailops.summary || "") + '</p>' +
+      ((emailops.proposals || []).length ? '<h4>Suggested tasks</h4><ul>' + emailops.proposals.map((item) =>
+        '<li>' + this._escape(item.title) + (item.due_date ? ' · ' + this._escape(item.due_date) : '') + '</li>').join("") + '</ul>' :
+        '<p>No action suggested for this email.</p>') + '</section>' : '';
     const sourceMessageIds = Array.from(new Set([
       ...(Array.isArray(task.source_message_ids) ? task.source_message_ids : []),
       task.email_message_id,
@@ -468,7 +475,7 @@ class LifeOSPATaskCard extends HTMLElement {
       'dialog{width:min(980px,calc(100vw - 28px));max-width:980px;max-height:92vh;overflow:auto;border:1px solid var(--divider-color);border-radius:14px;background:var(--card-background-color);color:var(--primary-text-color);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.4)}dialog::backdrop{background:rgba(0,0,0,.68)}' +
       '.review-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.review-head h2{margin:0}.review-muted,.review-confidence{color:var(--secondary-text-color);font-size:.9rem}.review-docs{display:grid;gap:16px;margin:18px 0}.review-doc{border:1px solid var(--divider-color);border-radius:10px;overflow:hidden}.review-doc-head{display:flex;justify-content:space-between;gap:12px;padding:10px 12px}.review-doc-head strong{overflow-wrap:anywhere}.review-doc a{color:var(--primary-color);white-space:nowrap}.review-doc-text{white-space:pre-wrap;overflow-wrap:anywhere;max-height:52vh;overflow:auto;margin:0;padding:16px;border-top:1px solid var(--divider-color);font:inherit;line-height:1.5;color:var(--primary-text-color)}.review-doc-unavailable{padding:4px 12px 12px}.review-analysis{border:1px solid var(--divider-color);border-radius:10px;padding:16px;margin-top:20px}.review-analysis h3{margin:0 0 10px}.review-analysis h4{margin-bottom:6px}.review-analysis li{margin:7px 0}.review-analysis label{display:block;font-size:.85rem;color:var(--secondary-text-color);margin:10px 0}.review-analysis input,.review-analysis textarea{display:block;width:100%;box-sizing:border-box;margin-top:5px;padding:10px;border:1px solid var(--divider-color);border-radius:8px;background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}.review-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px}.review-actions button,.review-analysis button{padding:9px 12px;border-radius:8px;border:1px solid var(--divider-color);background:var(--secondary-background-color);color:var(--primary-text-color);font:inherit}.review-actions .primary{background:var(--primary-color);color:var(--text-primary-color,#fff)}' +
       '</style><div class="review-head"><div><p class="eyebrow">TASK REVIEW</p><h2 id="review-title">' + this._escape(task.title || "Untitled task") + '</h2></div><button type="button" data-review-close aria-label="Close">Close</button></div>' +
-      '<p class="review-muted">Review the source email and any verified Paperless documents, then check the local AI suggestions below.</p>' + sourceMarkup + '<div class="review-docs">' + documents + '</div>' + result +
+      '<p class="review-muted">Review the source email and any verified Paperless documents, then check the local AI suggestions below.</p>' + sourceMarkup + '<div class="review-docs">' + documents + '</div>' + emailopsMarkup + result +
       '<div class="review-actions"><span class="review-muted" aria-live="polite">' + this._escape(busyText) + '</span>' +
       '<button type="button" data-review-refresh' + (reviewPending ? ' disabled' : '') + '>' + (reviewPending ? 'Analysis running…' : (review ? 'Refresh analysis' : 'Analyze task')) + '</button><button type="button" data-review-close>Close</button></div>';
   }
@@ -564,6 +571,7 @@ class LifeOSPATaskCard extends HTMLElement {
     });
     this._bindReviewDialog(dialog, String(task.id));
     dialog.showModal();
+    this._loadEmailOpsShadow(dialog, String(task.id));
     this._loadReviewPreviews(dialog, String(task.id)).then((loaded) => {
       if (!dialog.open) return;
       if (!loaded || !task.ai_review) this._requestTaskReview(dialog, String(task.id));
@@ -585,6 +593,20 @@ class LifeOSPATaskCard extends HTMLElement {
     } catch (_) {
       return false;
     }
+  }
+
+  async _loadEmailOpsShadow(dialog, taskId) {
+    try {
+      const payload = await this._hass.callApi("GET", "lifeos_emailops_shadow/" + encodeURIComponent(taskId));
+      if (!dialog.open || payload?.schema !== "lifeos_emailops_shadow_task_v1" || payload.task_id !== taskId || payload.mode !== "shadow") return;
+      if (!this._emailopsReports) this._emailopsReports = new Map();
+      this._emailopsReports.set(taskId, payload);
+      const task = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+      if (task) {
+        dialog.innerHTML = this._reviewDialogMarkup(task, dialog._reviewBusyText || "", dialog._reviewPreviews || []);
+        this._bindReviewDialog(dialog, taskId);
+      }
+    } catch (_) { /* A task without a shadow sample keeps its normal review. */ }
   }
 
   async _act(button) {
