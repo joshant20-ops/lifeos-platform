@@ -1102,21 +1102,35 @@ def process_junk_requests():
     if not JUNK_REQUESTS.is_dir():
         return
     JUNK_FAILED.mkdir(mode=0o700, exist_ok=True)
-    for path in sorted(JUNK_REQUESTS.glob("*.json")):
+    attempted=set()
+
+    def process(path, retry=False):
+        attempted.add(path.name)
         try:
             _process_junk_request(path)
             path.unlink()
-            stale_failure = JUNK_FAILED / path.name
+            stale_failure=JUNK_FAILED/path.name
             if stale_failure.exists():
                 stale_failure.unlink()
-            print("PA_JUNK_ACTION=PASS", flush=True)
+            print("PA_JUNK_ACTION=PASS",flush=True)
         except Exception as exc:
-            try:
-                path.replace(JUNK_FAILED / path.name)
-            except Exception:
-                pass
-            print("PA_JUNK_ACTION=FAIL", flush=True)
-            print("PA_JUNK_ACTION_ERROR=" + type(exc).__name__, flush=True)
+            # Failed requests represent explicit user confirmations. Keep them
+            # durable and retry on later runs; Gmail labeling and Paperless
+            # deletion are verified, idempotent operations.
+            if not retry:
+                try:
+                    path.replace(JUNK_FAILED/path.name)
+                except Exception:
+                    pass
+            print("PA_JUNK_ACTION=FAIL",flush=True)
+            print("PA_JUNK_ACTION_ERROR="+type(exc).__name__,flush=True)
+
+    for path in sorted(JUNK_REQUESTS.glob("*.json")):
+        process(path)
+    # Do not retry a request that failed earlier in this same invocation.
+    for path in sorted(JUNK_FAILED.glob("*.json")):
+        if path.name not in attempted:
+            process(path,retry=True)
 
 
 def _review_message_ids(task):
