@@ -123,5 +123,19 @@ class PAJunkActionTests(unittest.TestCase):
         ])
 
 
+    def test_failed_user_confirmed_request_is_retried_and_removed_on_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            pending = root / "pending"
+            failed = root / "failed"
+            pending.mkdir()
+            failed.mkdir()
+            request_path = failed / (self.task["id"] + ".json")
+            request_path.write_text(json.dumps(self.request), encoding="utf-8")
+            with patch.object(RECONCILER, "JUNK_REQUESTS", pending), patch.object(RECONCILER, "JUNK_FAILED", failed), patch.object(RECONCILER, "_process_junk_request") as process:
+                RECONCILER.process_junk_requests()
+            process.assert_called_once_with(request_path)
+            self.assertFalse(request_path.exists())
+
 if __name__ == "__main__":
     unittest.main()
