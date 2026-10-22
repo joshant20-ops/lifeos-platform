@@ -684,13 +684,17 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
             try:
                 status,_=client.select(mailbox,readonly=True)
             except imaplib.IMAP4.error:
-                # A reused session is already selected on INBOX. Gmail can
-                # reject a localized All Mail name with a protocol error;
-                # keep using the selected Inbox rather than abandoning every
-                # exact source lookup.
+                # SELECT rejection can return the session to AUTH state. A
+                # reused reconciler session must explicitly reselect INBOX
+                # before issuing UID SEARCH commands.
                 if not owns_client:
-                    selected=True
-                    break
+                    try:
+                        status,_=client.select("INBOX",readonly=True)
+                    except imaplib.IMAP4.error:
+                        status="NO"
+                    if status=="OK":
+                        selected=True
+                        break
                 continue
             if status=="OK":
                 selected=True
