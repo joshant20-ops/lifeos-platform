@@ -674,6 +674,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
     }
     result={}
     lookup_phase="mailbox_select"
+    _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
     try:
         if owns_client:
             client.login(user,password)
@@ -687,6 +688,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
             raise RuntimeError("imap_all_mail_unavailable")
         for message_id in sorted(message_ids):
             lookup_phase="header_search"
+            _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
             status,rows=client.uid("search",None,"HEADER","Message-ID",message_id)
             matches=rows[0].split() if status=="OK" and rows else []
             if len(matches)!=1:
@@ -695,6 +697,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                 # fetched RFC822 header is still checked against the exact ID.
                 raw_message_id=message_id[1:-1]
                 lookup_phase="gmail_raw_search"
+                _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
                 status,rows=client.uid(
                     "search",None,"X-GM-RAW","rfc822msgid:"+raw_message_id
                 )
@@ -714,6 +717,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                     end=(source_date+timedelta(days=2)).strftime("%d-%b-%Y")
                     date_windows+=1
                     lookup_phase="date_window_search"
+                    _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
                     status,rows=client.uid("search",None,"SINCE",start,"BEFORE",end)
                     date_uids=(rows[0].split() if status=="OK" and rows else [])[-200:]
                     date_window_uids+=len(date_uids)
@@ -723,6 +727,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
             for uid in matches:
                 fetch_attempts+=1
                 lookup_phase="message_fetch"
+                _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
                 status,data=client.uid("fetch",uid,"(RFC822)")
                 if status!="OK" or not data:
                     continue
@@ -1423,7 +1428,7 @@ def _run_reconciler():
     except Exception as exc:
         _SOURCE_LOOKUP_DIAGNOSTICS["lookup_failed"]=1
         _SOURCE_LOOKUP_DIAGNOSTICS["lookup_error_bucket"]=safe_error_bucket(exc)
-        _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
+        _SOURCE_LOOKUP_DIAGNOSTICS.setdefault("lookup_phase","mailbox_select")
         print("TASK_STALE_SOURCE_LOOKUP_FAILURE_BUCKET="+safe_error_bucket(exc),flush=True)
         print("TASK_STALE_SOURCE_EMAILS_FETCHED=FAIL",flush=True)
     for task in tasks.values():
