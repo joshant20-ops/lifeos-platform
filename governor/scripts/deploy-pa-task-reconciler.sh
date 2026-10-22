@@ -94,6 +94,9 @@ HA_CONFIG=/opt/stacks/homeassistant/config
 journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
   grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$|^TASK_CLASSIFICATION_ERROR_CATEGORIES=[A-Z0-9_,=]+$' |
   tail -n 3 || true
+journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
+  grep -E '^TASK_(STALE_SOURCE_EMAILS_FETCHED|NO_ACTION_SOURCE_EMAILS|NO_ACTION_TASKS_REMOVED)=[0-9]+$' |
+  tail -n 3 || true
 
 ERROR_COUNT=$(python3 - <<'PY'
 import json,pathlib
