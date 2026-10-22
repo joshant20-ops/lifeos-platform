@@ -1129,6 +1129,17 @@ def _recover_corrupt_failed_junk_request(path):
         temp.unlink(missing_ok=True)
 
 
+_SAFE_JUNK_FAILURE_REASONS = {
+    "junk_request_schema_invalid", "junk_task_id_invalid", "junk_request_identity_invalid",
+    "paperless_selection_invalid", "junk_task_unavailable", "junk_task_not_open",
+    "paperless_selection_not_linked", "source_email_set_invalid", "source_email_id_invalid",
+    "imap_gmail_labels_unsupported", "imap_junk_folder_unavailable", "imap_inbox_unavailable",
+    "imap_message_ambiguous", "imap_all_mail_folder_unavailable", "imap_message_not_found",
+    "imap_source_folder_unavailable", "imap_spam_label_failed", "imap_inbox_label_remove_failed",
+    "imap_spam_unverified", "junk_task_dismiss_unverified",
+}
+
+
 def process_junk_requests():
     if not JUNK_REQUESTS.is_dir():
         return
@@ -1166,6 +1177,9 @@ def process_junk_requests():
                     pass
             print("PA_JUNK_ACTION=FAIL",flush=True)
             print("PA_JUNK_ACTION_ERROR="+type(exc).__name__,flush=True)
+            reason=str(exc)
+            if reason in _SAFE_JUNK_FAILURE_REASONS:
+                print("PA_JUNK_ACTION_REASON="+reason,flush=True)
 
     for path in sorted(JUNK_REQUESTS.glob("*.json")):
         process(path)
