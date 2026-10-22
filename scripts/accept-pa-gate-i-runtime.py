@@ -94,6 +94,18 @@ def main():
     require('INSTALLED_RECONCILER_MATCHES_SOURCE',bool(digest(SOURCE)) and digest(SOURCE)==digest(RECONCILER))
 
     state=read_json(PERSISTED); published=read_json(PROJECTION); now=time.time()
+    gemini_rows=[
+        row for row in (state.get('tasks') or []) + (state.get('resolved') or [])
+        if isinstance(row,dict)
+        and 'gemini' in str(row.get('title') or '').casefold()
+        and 'flash' in str(row.get('title') or '').casefold()
+    ]
+    gemini_open=sum(1 for row in (state.get('tasks') or [])
+                    if isinstance(row,dict)
+                    and 'gemini' in str(row.get('title') or '').casefold()
+                    and 'flash' in str(row.get('title') or '').casefold())
+    print('TASK_GEMINI_FLASH_TOTAL_COUNT='+str(len(gemini_rows)))
+    print('TASK_GEMINI_FLASH_OPEN_COUNT='+str(gemini_open))
     require('PERSISTED_AND_HA_PROJECTION_EQUAL',state==published)
     require('TASK_VIEW_SCHEMA_VALID',state.get('schema')=='lifeos_tasks_v3')
     require('TASK_VIEW_FRESH',0<=now-float(state.get('generated_time') or 0)<=7*3600)
