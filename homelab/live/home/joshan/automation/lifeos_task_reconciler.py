@@ -623,25 +623,22 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         elif message_id in known:
             tasks_already_fetched+=1
     if not message_ids:
-        print("TASK_STALE_SOURCE_LOOKUP_TASKS_SEEN="+str(tasks_seen),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_SOURCE_IDS="+str(tasks_with_source_ids),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITHOUT_SOURCE_IDS="+str(tasks_without_source_ids),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_PRIMARY="+str(tasks_with_primary),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_TASKS_SEEN="+str(tasks_seen),flush=True)
-    print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_SOURCE_IDS="+str(tasks_with_source_ids),flush=True)
-    print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITHOUT_SOURCE_IDS="+str(tasks_without_source_ids),flush=True)
-    print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_PRIMARY="+str(tasks_with_primary),flush=True)
-    print("TASK_STALE_SOURCE_LOOKUP_SINGLE_SOURCE_TASKS="+str(single_source_tasks),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_VALID_IDS="+str(valid_source_ids),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_ALREADY_FETCHED="+str(tasks_already_fetched),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_MISSING_DATES="+str(tasks_missing_date),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITHOUT_PRIMARY="+str(tasks_without_primary),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_MULTI_SOURCE_WITHOUT_PRIMARY="+str(tasks_multi_source_without_primary),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_TIMELINE_FALLBACK_TASKS="+str(timeline_source_fallback_tasks),flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_DATE_WINDOWS=0",flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS=0",flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS=0",flush=True)
-        print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES=0",flush=True)
+        for key,value in (
+            ("TASKS_SEEN",tasks_seen),
+            ("TASKS_WITH_SOURCE_IDS",tasks_with_source_ids),
+            ("TASKS_WITHOUT_SOURCE_IDS",tasks_without_source_ids),
+            ("TASKS_WITH_PRIMARY",tasks_with_primary),
+            ("SINGLE_SOURCE_TASKS",single_source_tasks),
+            ("VALID_IDS",valid_source_ids),
+            ("ALREADY_FETCHED",tasks_already_fetched),
+            ("MISSING_DATES",tasks_missing_date),
+            ("TASKS_WITHOUT_PRIMARY",tasks_without_primary),
+            ("MULTI_SOURCE_WITHOUT_PRIMARY",tasks_multi_source_without_primary),
+            ("TIMELINE_FALLBACK_TASKS",timeline_source_fallback_tasks),
+        ):
+            print("TASK_STALE_SOURCE_LOOKUP_"+key+"="+str(value),flush=True)
+        for key in ("DATE_WINDOWS","DATE_UIDS","FETCH_ATTEMPTS","EXACT_MATCHES"):
+            print("TASK_STALE_SOURCE_LOOKUP_"+key+"=0",flush=True)
         _SOURCE_LOOKUP_DIAGNOSTICS={
             "tasks_seen":tasks_seen,"tasks_with_source_ids":tasks_with_source_ids,
             "tasks_without_source_ids":tasks_without_source_ids,"tasks_with_primary":tasks_with_primary,
