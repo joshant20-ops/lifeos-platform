@@ -537,14 +537,24 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     known={str(value).strip() for value in already_fetched if str(value or "").strip()}
     message_ids=set()
     source_dates={}
+    single_source_tasks=0
+    valid_source_ids=0
+    tasks_already_fetched=0
+    tasks_missing_date=0
+    date_windows=0
+    date_window_uids=0
+    fetch_attempts=0
+    exact_id_matches=0
     for task in tasks or []:
         ids=task_source_message_ids(task)
         if len(ids)!=1:
             continue
+        single_source_tasks+=1
         message_id=ids[0]
         if (message_id not in known and len(message_id)<=300 and message_id.startswith("<")
                 and message_id.endswith(">") and "@" in message_id
                 and not any(ord(ch)<32 or ch in (chr(34),chr(92),"<",">") for ch in message_id[1:-1])):
+            valid_source_ids+=1
             message_ids.add(message_id)
             for event in reversed(task.get("timeline_events") or []):
                 if isinstance(event,dict) and str(event.get("message_id") or "").strip()==message_id and event.get("date"):
@@ -552,7 +562,19 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
                     break
             if message_id not in source_dates and task.get("email_message_id")==message_id:
                 source_dates[message_id]=str(task.get("updated_from_email") or "")
+            if not source_dates.get(message_id):
+                tasks_missing_date+=1
+        elif message_id in known:
+            tasks_already_fetched+=1
     if not message_ids:
+        print("TASK_STALE_SOURCE_LOOKUP_SINGLE_SOURCE_TASKS="+str(single_source_tasks),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_VALID_IDS="+str(valid_source_ids),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_ALREADY_FETCHED="+str(tasks_already_fetched),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_MISSING_DATES="+str(tasks_missing_date),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_DATE_WINDOWS=0",flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS=0",flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS=0",flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES=0",flush=True)
         return {}
     user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
     password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
@@ -597,12 +619,15 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
                 if source_date:
                     start=(source_date-timedelta(days=1)).strftime("%d-%b-%Y")
                     end=(source_date+timedelta(days=2)).strftime("%d-%b-%Y")
+                    date_windows+=1
                     status,rows=client.uid("search",None,"SINCE",start,"BEFORE",end)
                     date_uids=(rows[0].split() if status=="OK" and rows else [])[-200:]
+                    date_window_uids+=len(date_uids)
                 matches=date_uids
             if not matches:
                 continue
             for uid in matches:
+                fetch_attempts+=1
                 status,data=client.uid("fetch",uid,"(RFC822)")
                 if status!="OK" or not data:
                     continue
@@ -613,6 +638,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
                 actual_id=str(message.get("Message-ID","")).strip()
                 if actual_id.casefold()!=message_id.casefold():
                     continue
+                exact_id_matches+=1
                 result[message_id]={
                     "from":str(message.get("From",""))[:300],
                     "subject":str(message.get("Subject",""))[:500],
@@ -627,6 +653,14 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     finally:
         try:client.logout()
         except Exception:pass
+    print("TASK_STALE_SOURCE_LOOKUP_SINGLE_SOURCE_TASKS="+str(single_source_tasks),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_VALID_IDS="+str(valid_source_ids),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_ALREADY_FETCHED="+str(tasks_already_fetched),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_MISSING_DATES="+str(tasks_missing_date),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_DATE_WINDOWS="+str(date_windows),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS="+str(date_window_uids),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS="+str(fetch_attempts),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES="+str(exact_id_matches),flush=True)
     return result
 
 
