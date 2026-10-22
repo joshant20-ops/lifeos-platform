@@ -1,0 +1,30 @@
+name: LifeOS EmailOps Shadow
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-emailops-shadow.yml'
+      - 'governor/emailops_runtime_audit.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lifeos-pi5-deploy
+  cancel-in-progress: false
+
+jobs:
+  prerequisites:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Audit EmailOps shadow prerequisites without mailbox access
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 governor/emailops_runtime_audit.py
