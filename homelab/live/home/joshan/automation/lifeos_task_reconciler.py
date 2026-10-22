@@ -948,6 +948,20 @@ def _junk_message_ids(task):
     return sorted(values)
 
 
+def _gmail_imap_capabilities(client):
+    # Refresh after login: Gmail can advertise its extensions in the authenticated
+    # CAPABILITY response even when the pre-login greeting omitted them.
+    status, rows = client.capability()
+    if status != "OK":
+        raise RuntimeError("imap_capability_query_failed")
+    return {
+        token.upper()
+        for row in (rows or [])
+        if isinstance(row, bytes)
+        for token in row.split()
+    }
+
+
 def _mark_imap_message_as_spam(client, uid):
     status, _ = client.uid("STORE", uid, "+X-GM-LABELS", r"(\Spam)")
     if status != "OK":
@@ -955,7 +969,6 @@ def _mark_imap_message_as_spam(client, uid):
     status, _ = client.uid("STORE", uid, "-X-GM-LABELS", r"(\Inbox)")
     if status != "OK":
         raise RuntimeError("imap_inbox_label_remove_failed")
-
 
 def _move_emails_to_junk(message_ids):
     global _JUNK_ACTION_STAGE
@@ -971,7 +984,7 @@ def _move_emails_to_junk(message_ids):
         _JUNK_ACTION_STAGE = "imap_login"
         client.login(user, password)
         _JUNK_ACTION_STAGE = "imap_capabilities"
-        capabilities = {x.upper() for x in client.capabilities}
+        capabilities = _gmail_imap_capabilities(client)
         if b"X-GM-EXT-1" not in capabilities:
             raise RuntimeError("imap_gmail_labels_unsupported")
         _JUNK_ACTION_STAGE = "imap_folder_discovery"
