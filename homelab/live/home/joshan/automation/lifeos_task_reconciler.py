@@ -970,6 +970,7 @@ def _mark_imap_message_as_spam(client, uid):
     if status != "OK":
         raise RuntimeError("imap_inbox_label_remove_failed")
 
+
 def _move_emails_to_junk(message_ids):
     global _JUNK_ACTION_STAGE
     _JUNK_ACTION_STAGE = "imap_credentials"
