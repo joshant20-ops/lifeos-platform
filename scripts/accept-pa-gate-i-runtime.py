@@ -97,13 +97,15 @@ def main():
     require('PERSISTED_AND_HA_PROJECTION_EQUAL',state==published)
     require('TASK_VIEW_SCHEMA_VALID',state.get('schema')=='lifeos_tasks_v3')
     require('TASK_VIEW_FRESH',0<=now-float(state.get('generated_time') or 0)<=7*3600)
-    require('TASK_VIEW_ZERO_ERRORS',int(state.get('errors',-1))==0)
+    # Emit bounded numeric diagnostics before the zero-error gate so source
+    # lookup failures remain visible even when an unrelated scan error occurs.
     lookup_diagnostics=state.get('source_lookup_diagnostics') or {}
     for key in ('single_source_tasks','valid_ids','already_fetched','missing_dates',
                 'date_windows','date_window_uids','fetch_attempts','exact_id_matches'):
         value=lookup_diagnostics.get(key,0)
         if isinstance(value,int) and value>=0:
             print('TASK_STALE_SOURCE_LOOKUP_'+key.upper()+'='+str(value))
+    require('TASK_VIEW_ZERO_ERRORS',int(state.get('errors',-1))==0)
 
     health=run(['docker','inspect','-f','{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}','homeassistant'])
     require('HOME_ASSISTANT_HEALTHY',health.returncode==0 and health.stdout.strip().lower() in {'healthy','running'})
