@@ -111,6 +111,9 @@ def main():
     lookup_error_bucket=lookup_diagnostics.get('lookup_error_bucket')
     if lookup_error_bucket in {'TLS','IMAP','HTTP','NETWORK','JSON','FILESYSTEM','IO','DATA','OTHER'}:
         print('TASK_STALE_SOURCE_LOOKUP_FAILURE_BUCKET='+lookup_error_bucket)
+    lookup_phase=lookup_diagnostics.get('lookup_phase')
+    if lookup_phase in {'mailbox_select','header_search','gmail_raw_search','date_window_search','message_fetch','complete'}:
+        print('TASK_STALE_SOURCE_LOOKUP_FAILURE_PHASE='+lookup_phase)
     require('TASK_VIEW_ZERO_ERRORS',int(state.get('errors',-1))==0)
 
     health=run(['docker','inspect','-f','{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}','homeassistant'])
