@@ -700,8 +700,12 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
         for message_id in sorted(message_ids):
             lookup_phase="header_search"
             _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
+            # IMAP4.uid passes search arguments verbatim (unlike search()).
+            # Quote search strings explicitly so RFC822 Message-IDs with <>/@
+            # remain one valid IMAP astring.
+            quoted_message_id='"'+message_id.replace("\\","\\\\").replace('"','\\"')+'"'
             try:
-                status,rows=client.uid("search",None,"HEADER","Message-ID",message_id)
+                status,rows=client.uid("search",None,"HEADER","Message-ID",quoted_message_id)
             except imaplib.IMAP4.error:
                 lookup_query_errors+=1
                 status,rows="NO",[]
@@ -713,9 +717,10 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                 raw_message_id=message_id[1:-1]
                 lookup_phase="gmail_raw_search"
                 _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
+                quoted_gmail_query='"rfc822msgid:'+raw_message_id.replace("\\","\\\\").replace('"','\\"')+'"'
                 try:
                     status,rows=client.uid(
-                        "search",None,"X-GM-RAW","rfc822msgid:"+raw_message_id
+                        "search",None,"X-GM-RAW",quoted_gmail_query
                     )
                 except imaplib.IMAP4.error:
                     lookup_query_errors+=1
