@@ -101,6 +101,7 @@ def main():
     # lookup failures remain visible even when an unrelated scan error occurs.
     lookup_diagnostics=state.get('source_lookup_diagnostics') or {}
     for key in ('single_source_tasks','valid_ids','already_fetched','missing_dates',
+                'tasks_without_primary','multi_source_without_primary','timeline_fallback_tasks',
                 'date_windows','date_window_uids','fetch_attempts','exact_id_matches'):
         value=lookup_diagnostics.get(key,0)
         if isinstance(value,int) and value>=0:
