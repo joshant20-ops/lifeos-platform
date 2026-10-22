@@ -1235,10 +1235,10 @@ def _run_reconciler():
     }
     # Saved single-source tasks can outlive the bounded mailbox scan. Fetch only
     # their exact Message-IDs so stale no-action tasks can be corrected promptly.
+    extra_sources={}
     try:
         extra_sources=fetch_existing_task_source_emails(tasks.values(),fetched_by_message_id)
         fetched_by_message_id.update(extra_sources)
-        print("TASK_STALE_SOURCE_EMAILS_FETCHED="+str(len(extra_sources)),flush=True)
     except Exception:
         print("TASK_STALE_SOURCE_EMAILS_FETCHED=FAIL",flush=True)
     for task in tasks.values():
@@ -1322,6 +1322,7 @@ def _run_reconciler():
     print('TASK_CLASSIFICATION_ERRORS='+str(classification_errors),flush=True)
     print('TASK_CLASSIFICATION_ERROR_TYPES='+(','.join(sorted(classification_error_types)) or 'NONE'),flush=True)
     print('TASK_CLASSIFICATION_ERROR_CATEGORIES='+(','.join(f"{k}={v}" for k,v in sorted(classification_error_categories.items())) or 'NONE'),flush=True)
+    print("TASK_STALE_SOURCE_EMAILS_FETCHED="+str(len(extra_sources)),flush=True)
     set_failure_stage("complete")
     print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"classified":classification_attempts,"reused":messages_reused,"errors":errors}))
 
