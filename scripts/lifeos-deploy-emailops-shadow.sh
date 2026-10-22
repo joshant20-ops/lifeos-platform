@@ -6,7 +6,10 @@ DEST=/opt/lifeos/emailops-shadow
 PROFILE=/home/joshan/.local/share/lifeos/emailops-shadow
 [[ "$(hostname)" == Docker && "$(uname -m)" == aarch64 ]] || { echo EMAILOPS_INSTALL=WRONG_RUNTIME; exit 20; }
 [[ $EUID -eq 0 ]] || exit 20
-if systemctl is-active --quiet lifeos-emailops-shadow.service; then echo EMAILOPS_INSTALL=ALREADY_RUNNING; exit 20; fi
+if systemctl is-active --quiet lifeos-emailops-shadow.service || systemctl is-active --quiet lifeos-emailops-junk.service; then
+  echo EMAILOPS_INSTALL=ALREADY_RUNNING
+  exit 20
+fi
 for secret in gmail-imap-user gmail-imap-password; do
   [[ -f /etc/lifeos/secrets/$secret && ! -L /etc/lifeos/secrets/$secret ]] || { echo EMAILOPS_INSTALL=CREDENTIAL_MISSING; exit 20; }
 done
@@ -101,7 +104,7 @@ if ! systemctl start lifeos-emailops-shadow.service; then
 fi
 journalctl -u lifeos-emailops-shadow.service -n 35 --no-pager -o cat | grep -E '^EMAILOPS_[A-Z_]+=[a-zA-Z0-9_]+$'
 python3 - <<'PY'
-import json, pathlib, re, sys
+import json, os, pathlib, re, sys
 sys.path.insert(0, '/home/joshan/lifeos-platform')
 from governor.emailops_adapter import write_private_json
 profile = pathlib.Path('/home/joshan/.local/share/lifeos/emailops-shadow')
@@ -116,5 +119,13 @@ for result in report['results']:
             'proposals': result['proposals'],
         })
 print('EMAILOPS_PRIVATE_REVIEW=READY')
+manifest = json.loads(pathlib.Path('/opt/lifeos/emailops-shadow/manifest.json').read_text())
+assert report['mode'] == 'shadow' and report['results']
+write_private_json('/opt/lifeos/emailops-shadow/runtime-proof.json', {
+    'schema': 'lifeos_emailops_runtime_proof_v1', 'read_only_verified': True,
+    'source_commit': manifest['source_commit'], 'patch_sha256': manifest['patch_sha256'],
+    'binary_sha256': manifest['binary_sha256'], 'generated_at': report['generated_at'],
+})
+os.chmod('/opt/lifeos/emailops-shadow/runtime-proof.json', 0o644)
 PY
 echo EMAILOPS_INSTALL=PASS

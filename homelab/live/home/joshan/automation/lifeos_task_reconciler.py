@@ -1178,6 +1178,9 @@ _SAFE_JUNK_FAILURE_REASONS = {
     "imap_message_ambiguous", "imap_all_mail_folder_unavailable", "imap_message_not_found",
     "imap_source_folder_unavailable", "imap_spam_label_failed", "imap_inbox_label_remove_failed",
     "imap_spam_unverified", "junk_task_dismiss_unverified",
+    "emailops_acceptance_required", "emailops_junk_unverified", "source_lookup_not_unique",
+    "isolated_account_mismatch", "cli_unavailable", "cli_failed", "cli_invalid_json", "cli_invalid_envelope",
+    "cli_invalid_input", "cli_not_found", "cli_auth", "cli_network", "cli_ai", "cli_cancelled",
 }
 
 
@@ -1189,7 +1192,7 @@ def process_junk_requests():
     if emailops_policy.is_file():
         try:
             policy = json.loads(emailops_policy.read_text())
-            active = policy.get("mode") == "active" and policy.get("mailbox_writes") is True
+            active = (policy.get("confirmed_actions") or {}).get("junk") is True
         except (OSError, ValueError):
             active = False
         if not active:

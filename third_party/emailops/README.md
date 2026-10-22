@@ -55,18 +55,24 @@ state hashes stay unchanged. It never promotes proposals or infers completion.
 
 ## Junk transition
 
-While policy is `shadow`, the legacy Junk processor holds requests, preserving
-the selected document IDs. New requests leave the path-triggered inbox so they
-cannot cause a service restart loop. Existing failed requests stay recoverable.
-Mailbox actions are disabled in the shadow adapter.
+During initial installation, the legacy Junk processor holds requests,
+preserving the selected document IDs. New requests leave the path-triggered
+inbox so they cannot cause a service restart loop. Existing failed requests
+stay recoverable. The shadow sampling adapter has no mailbox action command.
 
-The future confirmed action runs through a separate fixed user service, sharing
-the isolated keyring. It requires source policy acceptance and a matching
-installed build. All sources must resolve uniquely before any mutation; a local
+Confirmed Junk is a separate, bounded cutover from automatic classification.
+It runs only for the user's explicit Junk requests, through a separate fixed
+user service sharing the isolated keyring. It requires the
+`confirmed_actions.junk` source switch and matching root-owned proof of a
+successful read-only sample for the installed binary. The public native tests
+must also have passed before that switch is reviewed. All sources must resolve
+uniquely before any mutation; a local
 spam flag, a missing provider message or a successful move request alone cannot
 produce a verified proof. Only verified proof for the current request permits
 the existing coordinator to delete selected Paperless documents and dismiss
-the task. Automatic classification remains a separate migration gate.
+the task. This switch never promotes AI task proposals or enables automatic
+mailbox actions. Full corpus, lifecycle, and user acceptance remain prerequisites
+for replacing the current classifier and matter projection.
 
 ## Recovery and rollback
 
