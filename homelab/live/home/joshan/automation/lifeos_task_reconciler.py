@@ -973,6 +973,12 @@ def _mark_imap_message_as_spam(client, uid):
 
 def _move_emails_to_junk(message_ids):
     global _JUNK_ACTION_STAGE
+    emailops_policy = REPO / "config/emailops-upstream.json"
+    if emailops_policy.is_file():
+        from governor.emailops_adapter import confirm_junk
+        _JUNK_ACTION_STAGE = "emailops_junk_verification"
+        confirm_junk(message_ids)
+        return
     _JUNK_ACTION_STAGE = "imap_credentials"
     user = secret("LIFEOS_IMAP_USER", ("gmail-imap-user", "imap-user", "gmail-user"))
     password = secret("LIFEOS_IMAP_PASSWORD", ("gmail-imap-password", "imap-password", "gmail-app-password"))
@@ -1179,6 +1185,23 @@ def process_junk_requests():
     if not JUNK_REQUESTS.is_dir():
         return
     JUNK_FAILED.mkdir(mode=0o700, exist_ok=True)
+    emailops_policy = REPO / "config/emailops-upstream.json"
+    if emailops_policy.is_file():
+        try:
+            policy = json.loads(emailops_policy.read_text())
+            active = policy.get("mode") == "active" and policy.get("mailbox_writes") is True
+        except (OSError, ValueError):
+            active = False
+        if not active:
+            # Take new requests out of the path-triggered inbox to avoid a
+            # restart loop. Preserve the exact selection in its own directory.
+            for path in sorted(JUNK_REQUESTS.glob("*.json")):
+                held = JUNK_FAILED / "held" / os.urandom(16).hex()
+                held.mkdir(mode=0o700, parents=True)
+                path.replace(held / path.name)
+            print("PA_JUNK_ACTION=HELD", flush=True)
+            print("PA_JUNK_ACTION_REASON=emailops_shadow_acceptance_required", flush=True)
+            return
     attempted=set()
 
     def process(path, retry=False):
@@ -1221,6 +1244,9 @@ def process_junk_requests():
         process(path)
     # Do not retry a request that failed earlier in this same invocation.
     for path in sorted(JUNK_FAILED.glob("*.json")):
+        if path.name not in attempted:
+            process(path,retry=True)
+    for path in sorted((JUNK_FAILED / "held").glob("*/*.json")):
         if path.name not in attempted:
             process(path,retry=True)
 

@@ -16,6 +16,10 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
+    'deploy-emailops-shadow': {
+        'script': 'scripts/lifeos-deploy-emailops-shadow.sh',
+        'privileged': True,
+    },
     'discover-house-status': {
         'script': 'scripts/lifeos-discover-house-status.sh',
         'privileged': True,
