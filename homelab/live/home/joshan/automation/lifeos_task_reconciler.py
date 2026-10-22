@@ -1121,7 +1121,7 @@ def _recover_corrupt_failed_junk_request(path):
     try:
         with os.fdopen(fd,"w",encoding="utf-8") as stream:
             json.dump(request,stream,separators=(",",":"))
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temp,path)
