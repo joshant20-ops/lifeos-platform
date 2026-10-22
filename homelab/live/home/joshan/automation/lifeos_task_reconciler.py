@@ -533,7 +533,7 @@ def message_time(date_value):
     except Exception:return int(time.time())
 
 def fetch_existing_task_source_emails(tasks, already_fetched=()):
-    """Fetch exact saved sources and report aggregate lookup diagnostics only."""
+    """Fetch exact saved source emails and keep lookup diagnostics aggregate."""
     known={str(value).strip() for value in already_fetched if str(value or "").strip()}
     message_ids=set()
     source_dates={}
