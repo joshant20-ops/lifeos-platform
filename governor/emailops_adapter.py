@@ -13,6 +13,7 @@ CLI = Path("/opt/lifeos/emailops-shadow/bin/emailops-cli")
 PROFILE = Path("/home/joshan/.local/share/lifeos/emailops-shadow")
 POLICY = Path("/home/joshan/lifeos-platform/config/emailops-upstream.json")
 MANIFEST = Path("/opt/lifeos/emailops-shadow/manifest.json")
+RUNTIME_PROOF = Path("/opt/lifeos/emailops-shadow/runtime-proof.json")
 
 
 class EmailOpsError(RuntimeError):
@@ -26,7 +27,9 @@ def envelope(stdout, returncode=0):
         raise EmailOpsError("cli_invalid_json") from None
     if not isinstance(data, dict) or data.get("ok") is not True or returncode != 0:
         # Upstream errors can include subjects, addresses, and provider responses.
-        raise EmailOpsError("cli_failed")
+        reason = {2: "cli_invalid_input", 3: "cli_not_found", 4: "cli_auth", 5: "cli_network",
+                  6: "cli_ai", 130: "cli_cancelled"}.get(returncode, "cli_failed")
+        raise EmailOpsError(reason)
     if data.get("error") is not None or "data" not in data:
         raise EmailOpsError("cli_invalid_envelope")
     return data["data"]
@@ -44,17 +47,21 @@ def source_identity(source):
 
 
 def require_acceptance():
-    """Activated only after corpus and user acceptance; no IMAP code lives here."""
+    """Gate confirmed Junk separately from automatic classifier promotion."""
     try:
         policy = json.loads(POLICY.read_text())
         manifest = json.loads(MANIFEST.read_text())
+        proof = json.loads(RUNTIME_PROOF.read_text())
     except (OSError, ValueError):
         raise EmailOpsError("emailops_acceptance_required") from None
-    acceptance = policy.get("acceptance") or {}
-    if (policy.get("mode") != "active" or policy.get("mailbox_writes") is not True
-            or acceptance.get("corpus") is not True or acceptance.get("user") is not True
+    actions = policy.get("confirmed_actions") or {}
+    if (actions.get("junk") is not True
+            or proof.get("read_only_verified") is not True
             or manifest.get("source_commit") != policy.get("commit")
-            or manifest.get("patch_sha256") != policy.get("patch_sha256")):
+            or manifest.get("patch_sha256") != policy.get("patch_sha256")
+            or proof.get("source_commit") != manifest.get("source_commit")
+            or proof.get("patch_sha256") != manifest.get("patch_sha256")
+            or proof.get("binary_sha256") != manifest.get("binary_sha256")):
         raise EmailOpsError("emailops_acceptance_required")
     return policy
 
