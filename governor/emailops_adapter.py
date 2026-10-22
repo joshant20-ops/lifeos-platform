@@ -12,6 +12,7 @@ import tempfile
 CLI = Path("/opt/lifeos/emailops-shadow/bin/emailops-cli")
 PROFILE = Path("/home/joshan/.local/share/lifeos/emailops-shadow")
 POLICY = Path("/home/joshan/lifeos-platform/config/emailops-upstream.json")
+MANIFEST = Path("/opt/lifeos/emailops-shadow/manifest.json")
 
 
 class EmailOpsError(RuntimeError):
@@ -46,7 +47,7 @@ def require_acceptance():
     """Activated only after corpus and user acceptance; no IMAP code lives here."""
     try:
         policy = json.loads(POLICY.read_text())
-        manifest = json.loads(Path("/opt/lifeos/emailops-shadow/manifest.json").read_text())
+        manifest = json.loads(MANIFEST.read_text())
     except (OSError, ValueError):
         raise EmailOpsError("emailops_acceptance_required") from None
     acceptance = policy.get("acceptance") or {}
@@ -65,6 +66,9 @@ def confirm_junk_native(message_ids, runner=subprocess.run):
     if len(accounts) != 1:
         raise EmailOpsError("isolated_account_mismatch")
     client.account = accounts[0]["id"]
+    # Refresh provider IDs after a previous partial move/restart before resolving
+    # the confirmed source set. This download does not mutate provider mail.
+    client._call("sync", timeout=300)
     rows = client.emails(200) + client._call("emails", "--mailbox", "spam", "--limit", "200")
     selected = []
     # Resolve every source before the first mailbox mutation. A fuzzy subject or

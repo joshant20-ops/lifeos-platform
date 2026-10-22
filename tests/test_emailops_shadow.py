@@ -15,6 +15,16 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_shadow_policy_refuses_junk_even_with_a_matching_installed_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            policy, manifest = root / "policy.json", root / "manifest.json"
+            policy.write_text(json.dumps({"mode": "shadow", "mailbox_writes": False, "commit": "a", "patch_sha256": "b"}))
+            manifest.write_text(json.dumps({"source_commit": "a", "patch_sha256": "b"}))
+            with patch.object(adapter, "POLICY", policy), patch.object(adapter, "MANIFEST", manifest):
+                with self.assertRaisesRegex(adapter.EmailOpsError, "emailops_acceptance_required"):
+                    adapter.require_acceptance()
+
     def test_all_sources_resolve_before_any_junk_mutation_and_proof_is_required(self):
         import subprocess
         calls = []
