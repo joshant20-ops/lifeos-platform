@@ -48,6 +48,11 @@ TASK_CLASSIFICATION_SCHEMA={
 LOOKBACK_DAYS=int(os.getenv("LIFEOS_TASK_LOOKBACK_DAYS","90"))
 STALE_DAYS=int(os.getenv("LIFEOS_TASK_STALE_DAYS","180"))
 
+
+def _uid_search(client, *criteria):
+    """Issue UID SEARCH without IMAP4.search()'s charset placeholder."""
+    return client.uid("search", *criteria)
+
 def parse_json(raw):
     s=str(raw).strip()
     try:return json.loads(s)
@@ -702,7 +707,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
             # remain one valid IMAP astring.
             quoted_message_id='"'+message_id.replace("\\","\\\\").replace('"','\\"')+'"'
             try:
-                status,rows=client.uid("search",None,"HEADER","Message-ID",quoted_message_id)
+                status,rows=client.uid("search","HEADER","Message-ID",quoted_message_id)
             except imaplib.IMAP4.error:
                 lookup_query_errors+=1
                 status,rows="NO",[]
@@ -716,8 +721,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                 _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
                 quoted_gmail_query='"rfc822msgid:'+raw_message_id.replace("\\","\\\\").replace('"','\\"')+'"'
                 try:
-                    status,rows=client.uid(
-                        "search",None,"X-GM-RAW",quoted_gmail_query
+                    status,rows=client.uid("search","X-GM-RAW",quoted_gmail_query
                     )
                 except imaplib.IMAP4.error:
                     lookup_query_errors+=1
@@ -740,7 +744,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                     lookup_phase="date_window_search"
                     _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
                     try:
-                        status,rows=client.uid("search",None,"SINCE",start,"BEFORE",end)
+                        status,rows=client.uid("search","SINCE",start,"BEFORE",end)
                     except imaplib.IMAP4.error:
                         lookup_query_errors+=1
                         status,rows="NO",[]
@@ -989,7 +993,7 @@ def _move_emails_to_junk(message_ids):
             raise RuntimeError("imap_inbox_unavailable")
         inbox_matches = {}
         for message_id in message_ids:
-            status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+            status, rows = client.uid("search", "HEADER", "Message-ID", message_id)
             matches = rows[0].split() if status == "OK" and rows else []
             if len(matches) > 1:
                 raise RuntimeError("imap_message_ambiguous")
@@ -999,7 +1003,7 @@ def _move_emails_to_junk(message_ids):
             raise RuntimeError("imap_junk_folder_unavailable")
         pending = {}
         for message_id, inbox_uid in inbox_matches.items():
-            status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+            status, rows = client.uid("search", "HEADER", "Message-ID", message_id)
             matches = rows[0].split() if status == "OK" and rows else []
             if len(matches) > 1 or (inbox_uid is not None and matches):
                 raise RuntimeError("imap_message_ambiguous")
@@ -1017,7 +1021,7 @@ def _move_emails_to_junk(message_ids):
             if status != "OK":
                 raise RuntimeError("imap_all_mail_folder_unavailable")
             for message_id in missing:
-                status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+                status, rows = client.uid("search", "HEADER", "Message-ID", message_id)
                 matches = rows[0].split() if status == "OK" and rows else []
                 if len(matches) != 1:
                     raise RuntimeError("imap_message_not_found")
@@ -1033,7 +1037,7 @@ def _move_emails_to_junk(message_ids):
         if status != "OK":
             raise RuntimeError("imap_junk_folder_unavailable")
         for message_id in message_ids:
-            status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+            status, rows = client.uid("search", "HEADER", "Message-ID", message_id)
             if status != "OK" or not rows or len(rows[0].split()) != 1:
                 raise RuntimeError("imap_spam_unverified")
             spam_uid = rows[0].split()[0]
@@ -1163,7 +1167,7 @@ def _fetch_review_emails(message_ids):
             if status != "OK":
                 continue
             for message_id in missing:
-                status, rows = client.uid("search", None, "HEADER", "Message-ID", message_id)
+                status, rows = client.uid("search", "HEADER", "Message-ID", message_id)
                 matches = rows[0].split() if status == "OK" and rows else []
                 if len(matches) > 1:
                     raise RuntimeError("review_email_ambiguous")
@@ -1372,7 +1376,7 @@ def _run_reconciler():
     if scan.get("uidvalidity")!=uidvalidity:
         scan={}
     set_failure_stage("mailbox_search")
-    status,rows=c.uid("search",None,"SINCE",time.strftime("%d-%b-%Y",time.localtime(time.time()-LOOKBACK_DAYS*86400)))
+    status,rows=c.uid("search","SINCE",time.strftime("%d-%b-%Y",time.localtime(time.time()-LOOKBACK_DAYS*86400)))
     all_ids=sorted({int(x) for x in (rows[0].split() if status=="OK" and rows else [])})
     cursor=int(scan.get("before_uid") or 0)
     candidates=[x for x in all_ids if not cursor or x<cursor]
