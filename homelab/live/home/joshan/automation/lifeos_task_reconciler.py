@@ -8,7 +8,7 @@ The published HA JSON contains only user-facing task summaries plus stable prove
 from __future__ import annotations
 import email, errno, hashlib, html, imaplib, json, os, re, socket, ssl, subprocess, sys, time
 from email.utils import parsedate_to_datetime
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 import http.client
@@ -536,6 +536,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     """Fetch exact source emails for saved single-source tasks outside the current scan batch."""
     known={str(value).strip() for value in already_fetched if str(value or "").strip()}
     message_ids=set()
+    source_dates={}
     for task in tasks or []:
         ids=task_source_message_ids(task)
         if len(ids)!=1:
@@ -545,6 +546,12 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
                 and message_id.endswith(">") and "@" in message_id
                 and not any(ord(ch)<32 or ch in (chr(34),chr(92),"<",">") for ch in message_id[1:-1])):
             message_ids.add(message_id)
+            for event in reversed(task.get("timeline_events") or []):
+                if isinstance(event,dict) and str(event.get("message_id") or "").strip()==message_id and event.get("date"):
+                    source_dates[message_id]=str(event["date"])
+                    break
+            if message_id not in source_dates and task.get("email_message_id")==message_id:
+                source_dates[message_id]=str(task.get("updated_from_email") or "")
     if not message_ids:
         return {}
     user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
@@ -578,27 +585,45 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
                 )
                 matches=rows[0].split() if status=="OK" and rows else []
             if len(matches)!=1:
+                # Some Gmail IMAP deployments do not return results for either
+                # exact Message-ID search form. Use the saved source date to
+                # scan a small mailbox window, then require an exact RFC822
+                # Message-ID match before accepting any email as task evidence.
+                try:
+                    source_date=parsedate_to_datetime(source_dates.get(message_id,"")).date()
+                except (TypeError,ValueError,OverflowError):
+                    source_date=None
+                date_uids=[]
+                if source_date:
+                    start=(source_date-timedelta(days=1)).strftime("%d-%b-%Y")
+                    end=(source_date+timedelta(days=2)).strftime("%d-%b-%Y")
+                    status,rows=client.uid("search",None,"SINCE",start,"BEFORE",end)
+                    date_uids=(rows[0].split() if status=="OK" and rows else [])[-200:]
+                matches=date_uids
+            if not matches:
                 continue
-            status,data=client.uid("fetch",matches[0],"(RFC822)")
-            if status!="OK" or not data:
-                continue
-            raw=next((row[1] for row in data if isinstance(row,tuple) and len(row)>1),None)
-            if not raw:
-                continue
-            message=email.message_from_bytes(raw)
-            actual_id=str(message.get("Message-ID","")).strip()
-            if actual_id.casefold()!=message_id.casefold():
-                continue
-            result[message_id]={
-                "from":str(message.get("From",""))[:300],
-                "subject":str(message.get("Subject",""))[:500],
-                "date":str(message.get("Date",""))[:100],
-                "message_id":actual_id[:300],
-                "in_reply_to":str(message.get("In-Reply-To",""))[:500],
-                "references":str(message.get("References",""))[:2000],
-                "source_ref":actual_id[:300],
-                "body":text_of(message),
-            }
+            for uid in matches:
+                status,data=client.uid("fetch",uid,"(RFC822)")
+                if status!="OK" or not data:
+                    continue
+                raw=next((row[1] for row in data if isinstance(row,tuple) and len(row)>1),None)
+                if not raw:
+                    continue
+                message=email.message_from_bytes(raw)
+                actual_id=str(message.get("Message-ID","")).strip()
+                if actual_id.casefold()!=message_id.casefold():
+                    continue
+                result[message_id]={
+                    "from":str(message.get("From",""))[:300],
+                    "subject":str(message.get("Subject",""))[:500],
+                    "date":str(message.get("Date",""))[:100],
+                    "message_id":actual_id[:300],
+                    "in_reply_to":str(message.get("In-Reply-To",""))[:500],
+                    "references":str(message.get("References",""))[:2000],
+                    "source_ref":actual_id[:300],
+                    "body":text_of(message),
+                }
+                break
     finally:
         try:client.logout()
         except Exception:pass
