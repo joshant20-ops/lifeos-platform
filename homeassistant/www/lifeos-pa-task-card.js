@@ -132,10 +132,11 @@ class LifeOSPATaskCard extends HTMLElement {
       '<span class="tag muted">No due date</span>';
     const statusTag = '<span class="tag status-' + this._escape(status.toLowerCase()) + '">' + this._escape(status === "WAITING" ? "Waiting for reply" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") + '</span>';
     const closed = status === "DONE" || status === "DISMISSED";
+    const reviewLabel = task.emailops_shadow_available ? "Review · EmailOps" : "Review";
     const primaryActions = closed
-      ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button><button data-action="review" data-id="' + id + '">Review</button>'
+      ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button><button data-action="review" data-id="' + id + '">' + reviewLabel + '</button>'
       : '<button class="primary" data-action="close" data-id="' + id + '">Mark done</button>' +
-        '<button data-action="review" data-id="' + id + '">Review</button>' +
+        '<button data-action="review" data-id="' + id + '">' + reviewLabel + '</button>' +
         '<button data-action="comment" data-id="' + id + '">Add note</button>' +
         '<button data-action="snooze" data-id="' + id + '">Snooze</button>' +
         '<button data-action="due_date" data-id="' + id + '">Set due date</button>' +
