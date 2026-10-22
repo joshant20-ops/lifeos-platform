@@ -108,6 +108,9 @@ def main():
         value=lookup_diagnostics.get(key,0)
         if isinstance(value,int) and value>=0:
             print('TASK_STALE_SOURCE_LOOKUP_'+key.upper()+'='+str(value))
+    lookup_error_bucket=lookup_diagnostics.get('lookup_error_bucket')
+    if lookup_error_bucket in {'TLS','IMAP','HTTP','NETWORK','JSON','FILESYSTEM','IO','DATA','OTHER'}:
+        print('TASK_STALE_SOURCE_LOOKUP_FAILURE_BUCKET='+lookup_error_bucket)
     require('TASK_VIEW_ZERO_ERRORS',int(state.get('errors',-1))==0)
 
     health=run(['docker','inspect','-f','{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}','homeassistant'])
