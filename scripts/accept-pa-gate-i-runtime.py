@@ -98,10 +98,14 @@ def main():
     require('TASK_VIEW_SCHEMA_VALID',state.get('schema')=='lifeos_tasks_v3')
     require('TASK_VIEW_FRESH',0<=now-float(state.get('generated_time') or 0)<=7*3600)
     require('TASK_VIEW_ZERO_ERRORS',int(state.get('errors',-1))==0)
-    recent_reconciler_log=run(['journalctl','-u','lifeos-task-reconciler.service','--since','30 minutes ago','--no-pager','-o','cat'])
-    for line in recent_reconciler_log.stdout.splitlines():
-        if re.fullmatch(r'TASK_STALE_SOURCE_LOOKUP_[A-Z_]+=[0-9]+',line):
-            print(line)
+    recent_reconciler_log=run(['journalctl','-u','lifeos-task-reconciler.service','-n','5000','--no-pager','-o','cat'])
+    lookup_diagnostic_lines=[
+        line for line in recent_reconciler_log.stdout.splitlines()
+        if re.fullmatch(r'TASK_STALE_SOURCE_LOOKUP_[A-Z_]+=[0-9]+',line)
+    ]
+    for line in lookup_diagnostic_lines:
+        print(line)
+    print('TASK_STALE_SOURCE_LOOKUP_LOG_LINES='+str(len(lookup_diagnostic_lines)))
 
     health=run(['docker','inspect','-f','{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}','homeassistant'])
     require('HOME_ASSISTANT_HEALTHY',health.returncode==0 and health.stdout.strip().lower() in {'healthy','running'})
