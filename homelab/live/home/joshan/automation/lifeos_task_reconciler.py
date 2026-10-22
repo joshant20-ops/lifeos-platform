@@ -563,6 +563,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
     date_window_uids=0
     fetch_attempts=0
     exact_id_matches=0
+    lookup_query_errors=0
     tasks_seen=0
     tasks_with_source_ids=0
     tasks_without_source_ids=0
@@ -670,7 +671,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
         "multi_source_without_primary":tasks_multi_source_without_primary,
         "timeline_fallback_tasks":timeline_source_fallback_tasks,
         "date_windows":0,"date_window_uids":0,"fetch_attempts":0,"exact_id_matches":0,
-        "lookup_failed":0,
+        "lookup_failed":0,"lookup_query_errors":0,
     }
     result={}
     lookup_phase="mailbox_select"
@@ -699,7 +700,11 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
         for message_id in sorted(message_ids):
             lookup_phase="header_search"
             _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
-            status,rows=client.uid("search",None,"HEADER","Message-ID",message_id)
+            try:
+                status,rows=client.uid("search",None,"HEADER","Message-ID",message_id)
+            except imaplib.IMAP4.error:
+                lookup_query_errors+=1
+                status,rows="NO",[]
             matches=rows[0].split() if status=="OK" and rows else []
             if len(matches)!=1:
                 # Gmail's message-ID search operator is a fallback for servers
@@ -708,9 +713,13 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                 raw_message_id=message_id[1:-1]
                 lookup_phase="gmail_raw_search"
                 _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
-                status,rows=client.uid(
-                    "search",None,"X-GM-RAW","rfc822msgid:"+raw_message_id
-                )
+                try:
+                    status,rows=client.uid(
+                        "search",None,"X-GM-RAW","rfc822msgid:"+raw_message_id
+                    )
+                except imaplib.IMAP4.error:
+                    lookup_query_errors+=1
+                    status,rows="NO",[]
                 matches=rows[0].split() if status=="OK" and rows else []
             if len(matches)!=1:
                 # Some Gmail IMAP deployments do not return results for either
@@ -728,7 +737,11 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                     date_windows+=1
                     lookup_phase="date_window_search"
                     _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
-                    status,rows=client.uid("search",None,"SINCE",start,"BEFORE",end)
+                    try:
+                        status,rows=client.uid("search",None,"SINCE",start,"BEFORE",end)
+                    except imaplib.IMAP4.error:
+                        lookup_query_errors+=1
+                        status,rows="NO",[]
                     date_uids=(rows[0].split() if status=="OK" and rows else [])[-200:]
                     date_window_uids+=len(date_uids)
                 matches=date_uids
@@ -738,7 +751,11 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                 fetch_attempts+=1
                 lookup_phase="message_fetch"
                 _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
-                status,data=client.uid("fetch",uid,"(RFC822)")
+                try:
+                    status,data=client.uid("fetch",uid,"(RFC822)")
+                except imaplib.IMAP4.error:
+                    lookup_query_errors+=1
+                    continue
                 if status!="OK" or not data:
                     continue
                 raw=next((row[1] for row in data if isinstance(row,tuple) and len(row)>1),None)
@@ -785,7 +802,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
         "timeline_fallback_tasks":timeline_source_fallback_tasks,
         "date_windows":date_windows,"date_window_uids":date_window_uids,
         "fetch_attempts":fetch_attempts,"exact_id_matches":exact_id_matches,
-        "lookup_failed":0,
+        "lookup_failed":0,"lookup_query_errors":lookup_query_errors,
         "lookup_phase":"complete",
     }
     return result

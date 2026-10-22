@@ -104,7 +104,7 @@ def main():
                 'tasks_seen','tasks_with_source_ids','tasks_without_source_ids','tasks_with_primary',
                 'single_source_tasks','valid_ids','already_fetched','missing_dates',
                 'tasks_without_primary','multi_source_without_primary','timeline_fallback_tasks',
-                'date_windows','date_window_uids','fetch_attempts','exact_id_matches','lookup_failed'):
+                'date_windows','date_window_uids','fetch_attempts','exact_id_matches','lookup_failed','lookup_query_errors'):
         value=lookup_diagnostics.get(key,0)
         if isinstance(value,int) and value>=0:
             print('TASK_STALE_SOURCE_LOOKUP_'+key.upper()+'='+str(value))
