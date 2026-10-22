@@ -102,16 +102,19 @@ def test_unrelated_or_multi_source_ocr_cannot_remove_task(monkeypatch):
     assert reconciler.verified_source_email_requires_no_action(task) == ""
 
 
+
 def test_exact_source_lookup_uses_bounded_date_fallback_when_id_search_misses(monkeypatch):
     message_id = "<dated-gemini@example.test>"
-    raw = (
-        b"From: Google AI Studio <ai-studio@example.test>\\r\\n"
-        b"Subject: Gemini deprecation\\r\\n"
-        b"Date: Sat, 10 Oct 2026 15:05:15 +0000\\r\\n"
-        b"Message-ID: <dated-gemini@example.test>\\r\\n"
-        b"Content-Type: text/plain; charset=utf-8\\r\\n\\r\\n"
-        b"No action required."
-    )
+    crlf = bytes([13, 10])
+    raw = crlf.join([
+        b"From: Google AI Studio <ai-studio@example.test>",
+        b"Subject: Gemini deprecation",
+        b"Date: Sat, 10 Oct 2026 15:05:15 +0000",
+        b"Message-ID: <dated-gemini@example.test>",
+        b"Content-Type: text/plain; charset=utf-8",
+        b"",
+        b"No action required.",
+    ])
 
     class FakeIMAP:
         def __init__(self, *_args, **_kwargs):
