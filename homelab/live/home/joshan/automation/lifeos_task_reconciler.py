@@ -563,17 +563,28 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     date_window_uids=0
     fetch_attempts=0
     exact_id_matches=0
+    tasks_seen=0
+    tasks_with_source_ids=0
+    tasks_without_source_ids=0
+    tasks_with_primary=0
     tasks_without_primary=0
     tasks_multi_source_without_primary=0
     timeline_source_fallback_tasks=0
-    for task in tasks or []:
+    task_rows=list(tasks or [])
+    tasks_seen=len(task_rows)
+    for task in task_rows:
         ids=task_source_message_ids(task)
-        if not ids:
+        if ids:
+            tasks_with_source_ids+=1
+        else:
+            tasks_without_source_ids+=1
             continue
         if len(ids)==1:
             single_source_tasks+=1
         primary_id=str(task.get("email_message_id") or "").strip()
-        if not primary_id:
+        if primary_id:
+            tasks_with_primary+=1
+        else:
             tasks_without_primary+=1
         # Prefer the explicit primary ID. For a legacy row with several
         # provenance IDs, inspect a sole timeline event only when the primary
@@ -612,7 +623,15 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         elif message_id in known:
             tasks_already_fetched+=1
     if not message_ids:
-        print("TASK_STALE_SOURCE_LOOKUP_SINGLE_SOURCE_TASKS="+str(single_source_tasks),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_TASKS_SEEN="+str(tasks_seen),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_SOURCE_IDS="+str(tasks_with_source_ids),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITHOUT_SOURCE_IDS="+str(tasks_without_source_ids),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_PRIMARY="+str(tasks_with_primary),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_TASKS_SEEN="+str(tasks_seen),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_SOURCE_IDS="+str(tasks_with_source_ids),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITHOUT_SOURCE_IDS="+str(tasks_without_source_ids),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITH_PRIMARY="+str(tasks_with_primary),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_SINGLE_SOURCE_TASKS="+str(single_source_tasks),flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_VALID_IDS="+str(valid_source_ids),flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_ALREADY_FETCHED="+str(tasks_already_fetched),flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_MISSING_DATES="+str(tasks_missing_date),flush=True)
@@ -624,6 +643,8 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS=0",flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES=0",flush=True)
         _SOURCE_LOOKUP_DIAGNOSTICS={
+            "tasks_seen":tasks_seen,"tasks_with_source_ids":tasks_with_source_ids,
+            "tasks_without_source_ids":tasks_without_source_ids,"tasks_with_primary":tasks_with_primary,
             "single_source_tasks":single_source_tasks,"valid_ids":valid_source_ids,
             "already_fetched":tasks_already_fetched,"missing_dates":tasks_missing_date,
             "tasks_without_primary":tasks_without_primary,
@@ -721,6 +742,8 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS="+str(fetch_attempts),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES="+str(exact_id_matches),flush=True)
     _SOURCE_LOOKUP_DIAGNOSTICS={
+        "tasks_seen":tasks_seen,"tasks_with_source_ids":tasks_with_source_ids,
+        "tasks_without_source_ids":tasks_without_source_ids,"tasks_with_primary":tasks_with_primary,
         "single_source_tasks":single_source_tasks,"valid_ids":valid_source_ids,
         "already_fetched":tasks_already_fetched,"missing_dates":tasks_missing_date,
         "tasks_without_primary":tasks_without_primary,
