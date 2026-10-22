@@ -248,16 +248,17 @@ def discard_single_source_no_action_task(tasks,msg):
         if not isinstance(task,dict):
             continue
         source_ids=set(task_source_message_ids(task))
-        # The source may be retained only in source_message_ids or the timeline
-        # on legacy rows; the complete identity set is the authority here.
-        if source_ids=={message_id}:
-            event_ids={
-                str(event.get("message_id") or "").strip()
-                for event in task.get("timeline_events") or []
-                if isinstance(event,dict) and event.get("message_id")
-            }
-            if event_ids.issubset({message_id}):
-                matches.append(task_id)
+        primary_id=str(task.get("email_message_id") or "").strip()
+        event_ids={
+            str(event.get("message_id") or "").strip()
+            for event in task.get("timeline_events") or []
+            if isinstance(event,dict) and event.get("message_id")
+        }
+        # Legacy task rows can carry extra provenance IDs that were never
+        # recorded as timeline events. Permit cleanup only when the no-action
+        # email is the primary source and the sole recorded timeline event.
+        if message_id in source_ids and primary_id==message_id and event_ids=={message_id}:
+            matches.append(task_id)
     if len(matches)!=1:
         return False
     tasks.pop(matches[0],None)
@@ -550,10 +551,17 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     exact_id_matches=0
     for task in tasks or []:
         ids=task_source_message_ids(task)
-        if len(ids)!=1:
+        if not ids:
             continue
-        single_source_tasks+=1
-        message_id=ids[0]
+        if len(ids)==1:
+            single_source_tasks+=1
+        primary_id=str(task.get("email_message_id") or "").strip()
+        # Saved tasks may contain extra provenance IDs while their actionable
+        # source remains the primary email. Inspect that exact primary source;
+        # cleanup below still requires it to be the sole timeline event.
+        message_id=primary_id if primary_id in ids else (ids[0] if len(ids)==1 else "")
+        if not message_id:
+            continue
         if (message_id not in known and len(message_id)<=300 and message_id.startswith("<")
                 and message_id.endswith(">") and "@" in message_id
                 and not any(ord(ch)<32 or ch in (chr(34),chr(92),"<",">") for ch in message_id[1:-1])):
