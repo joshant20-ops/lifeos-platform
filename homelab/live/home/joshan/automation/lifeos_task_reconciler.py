@@ -549,7 +549,7 @@ def message_time(date_value):
 
 _SOURCE_LOOKUP_DIAGNOSTICS={}
 
-def fetch_existing_task_source_emails(tasks, already_fetched=()):
+def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
     """Fetch exact saved source emails and keep lookup diagnostics aggregate."""
     global _SOURCE_LOOKUP_DIAGNOSTICS
     known={str(value).strip() for value in already_fetched if str(value or "").strip()}
@@ -650,16 +650,32 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
             "date_windows":0,"date_window_uids":0,"fetch_attempts":0,"exact_id_matches":0,
         }
         return {}
-    user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
-    password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
-    client=imaplib.IMAP4_SSL(
-        os.getenv("LIFEOS_IMAP_HOST","imap.gmail.com"),
-        int(os.getenv("LIFEOS_IMAP_PORT","993")),
-        ssl_context=ssl.create_default_context(),
-    )
+    owns_client=client is None
+    if owns_client:
+        user=secret("LIFEOS_IMAP_USER",("gmail-imap-user","imap-user","gmail-user"))
+        password=secret("LIFEOS_IMAP_PASSWORD",("gmail-imap-password","imap-password","gmail-app-password"))
+        client=imaplib.IMAP4_SSL(
+            os.getenv("LIFEOS_IMAP_HOST","imap.gmail.com"),
+            int(os.getenv("LIFEOS_IMAP_PORT","993")),
+            ssl_context=ssl.create_default_context(),
+        )
+    # Publish the task-side counts before any network operation so a mailbox
+    # error cannot make a populated state look like zero tasks were inspected.
+    _SOURCE_LOOKUP_DIAGNOSTICS={
+        "tasks_seen":tasks_seen,"tasks_with_source_ids":tasks_with_source_ids,
+        "tasks_without_source_ids":tasks_without_source_ids,"tasks_with_primary":tasks_with_primary,
+        "single_source_tasks":single_source_tasks,"valid_ids":valid_source_ids,
+        "already_fetched":tasks_already_fetched,"missing_dates":tasks_missing_date,
+        "tasks_without_primary":tasks_without_primary,
+        "multi_source_without_primary":tasks_multi_source_without_primary,
+        "timeline_fallback_tasks":timeline_source_fallback_tasks,
+        "date_windows":0,"date_window_uids":0,"fetch_attempts":0,"exact_id_matches":0,
+        "lookup_failed":0,
+    }
     result={}
     try:
-        client.login(user,password)
+        if owns_client:
+            client.login(user,password)
         selected=False
         for mailbox in ("[Gmail]/All Mail","[GoogleMail]/All Mail","INBOX"):
             status,_=client.select(mailbox,readonly=True)
@@ -725,8 +741,9 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
                 }
                 break
     finally:
-        try:client.logout()
-        except Exception:pass
+        if owns_client:
+            try:client.logout()
+            except Exception:pass
     print("TASK_STALE_SOURCE_LOOKUP_SINGLE_SOURCE_TASKS="+str(single_source_tasks),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_VALID_IDS="+str(valid_source_ids),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_ALREADY_FETCHED="+str(tasks_already_fetched),flush=True)
@@ -748,6 +765,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         "timeline_fallback_tasks":timeline_source_fallback_tasks,
         "date_windows":date_windows,"date_window_uids":date_window_uids,
         "fetch_attempts":fetch_attempts,"exact_id_matches":exact_id_matches,
+        "lookup_failed":0,
     }
     return result
 
@@ -1394,9 +1412,11 @@ def _run_reconciler():
     # their exact Message-IDs so stale no-action tasks can be corrected promptly.
     extra_sources={}
     try:
-        extra_sources=fetch_existing_task_source_emails(tasks.values(),fetched_by_message_id)
+        extra_sources=fetch_existing_task_source_emails(tasks.values(),fetched_by_message_id,client=c)
         fetched_by_message_id.update(extra_sources)
-    except Exception:
+    except Exception as exc:
+        _SOURCE_LOOKUP_DIAGNOSTICS["lookup_failed"]=1
+        print("TASK_STALE_SOURCE_LOOKUP_FAILURE_BUCKET="+safe_error_bucket(exc),flush=True)
         print("TASK_STALE_SOURCE_EMAILS_FETCHED=FAIL",flush=True)
     for task in tasks.values():
         if insurance_matter(task):
