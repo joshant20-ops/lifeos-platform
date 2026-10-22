@@ -100,3 +100,50 @@ def test_unrelated_or_multi_source_ocr_cannot_remove_task(monkeypatch):
         "content": "Message-ID: <other@example.test>\nNo action required.",
     })
     assert reconciler.verified_source_email_requires_no_action(task) == ""
+
+
+def test_exact_source_lookup_uses_bounded_date_fallback_when_id_search_misses(monkeypatch):
+    message_id = "<dated-gemini@example.test>"
+    raw = (
+        b"From: Google AI Studio <ai-studio@example.test>\\r\\n"
+        b"Subject: Gemini deprecation\\r\\n"
+        b"Date: Sat, 10 Oct 2026 15:05:15 +0000\\r\\n"
+        b"Message-ID: <dated-gemini@example.test>\\r\\n"
+        b"Content-Type: text/plain; charset=utf-8\\r\\n\\r\\n"
+        b"No action required."
+    )
+
+    class FakeIMAP:
+        def __init__(self, *_args, **_kwargs):
+            self.searches = 0
+        def login(self, *_args):
+            return "OK", []
+        def select(self, *_args, **_kwargs):
+            return "OK", []
+        def uid(self, command, *args):
+            if command == "search":
+                self.searches += 1
+                if self.searches < 3:
+                    return "OK", [b""]
+                assert args[:2] == (None, "SINCE")
+                assert args[3] == "BEFORE"
+                return "OK", [b"77"]
+            if command == "fetch":
+                return "OK", [(b"77 (RFC822)", raw)]
+            raise AssertionError(command)
+        def logout(self):
+            return "BYE", []
+
+    monkeypatch.setattr(reconciler.imaplib, "IMAP4_SSL", FakeIMAP)
+    monkeypatch.setattr(reconciler, "secret", lambda *_args: "credential")
+    task = {
+        "email_message_id": message_id,
+        "source_message_ids": [message_id],
+        "timeline_events": [{
+            "message_id": message_id,
+            "date": "Sat, 10 Oct 2026 15:05:15 +0000",
+        }],
+    }
+    found = reconciler.fetch_existing_task_source_emails([task])
+    assert set(found) == {message_id}
+    assert reconciler.has_explicit_no_action_required(found[message_id])
