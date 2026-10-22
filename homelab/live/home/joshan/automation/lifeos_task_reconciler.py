@@ -569,6 +569,15 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
             status,rows=client.uid("search",None,"HEADER","Message-ID",message_id)
             matches=rows[0].split() if status=="OK" and rows else []
             if len(matches)!=1:
+                # Gmail's message-ID search operator is a fallback for servers
+                # that do not match RFC822 header values consistently. The
+                # fetched RFC822 header is still checked against the exact ID.
+                raw_message_id=message_id[1:-1]
+                status,rows=client.uid(
+                    "search",None,"X-GM-RAW","rfc822msgid:"+raw_message_id
+                )
+                matches=rows[0].split() if status=="OK" and rows else []
+            if len(matches)!=1:
                 continue
             status,data=client.uid("fetch",matches[0],"(RFC822)")
             if status!="OK" or not data:
