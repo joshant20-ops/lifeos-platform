@@ -89,14 +89,19 @@ print('ERRORS='+str(j.get('errors')))
 PY
 
 HA_CONFIG=/opt/stacks/homeassistant/config
+JUNK_QUEUE_DIR="$HA_CONFIG/lifeos-pa-state/junk-requests"
 
 # Forward only fixed counters and safe categories; never emit private source/model data.
 journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
   grep -E '^TASK_(FETCH|CLASSIFICATION)_ERRORS=[0-9]+$|^TASK_CLASSIFICATION_ERROR_CATEGORIES=[A-Z0-9_,=]+$' |
   tail -n 3 || true
-journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
-  grep -E '^TASK_(STALE_SOURCE_EMAILS_FETCHED|NO_ACTION_SOURCE_EMAILS|NO_ACTION_TASKS_REMOVED)=[0-9]+$' |
-  tail -n 3 || true
+journalctl -u lifeos-task-reconciler.service -n 80 --no-pager -o cat |
+  grep -E '^TASK_(STALE_SOURCE_EMAILS_FETCHED|NO_ACTION_SOURCE_EMAILS|NO_ACTION_TASKS_REMOVED)=[0-9]+$|^PA_JUNK_ACTION=(PASS|FAIL)$|^PA_JUNK_ACTION_ERROR=[A-Za-z0-9_]+$' |
+  tail -n 12 || true
+JUNK_PENDING=$(find "$JUNK_QUEUE_DIR" -maxdepth 1 -type f -name '*.json' | wc -l)
+JUNK_FAILED_COUNT=$(find "$JUNK_QUEUE_DIR/failed" -maxdepth 1 -type f -name '*.json' | wc -l)
+echo "PA_JUNK_PENDING=$JUNK_PENDING"
+echo "PA_JUNK_FAILED=$JUNK_FAILED_COUNT"
 
 ERROR_COUNT=$(python3 - <<'PY'
 import json,pathlib

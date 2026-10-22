@@ -1564,6 +1564,13 @@ def _run_reconciler():
     print('TASK_CLASSIFICATION_ERROR_TYPES='+(','.join(sorted(classification_error_types)) or 'NONE'),flush=True)
     print('TASK_CLASSIFICATION_ERROR_CATEGORIES='+(','.join(f"{k}={v}" for k,v in sorted(classification_error_categories.items())) or 'NONE'),flush=True)
     print("TASK_STALE_SOURCE_EMAILS_FETCHED="+str(len(extra_sources)),flush=True)
+    gemini_open=sum(
+        1 for row in tasks.values()
+        if str(row.get("status") or "").upper()!="DONE"
+        and "gemini" in str(row.get("title") or "").casefold()
+        and "flash" in str(row.get("title") or "").casefold()
+    )
+    print("TASK_GEMINI_FLASH_OPEN_COUNT="+str(gemini_open),flush=True)
     set_failure_stage("complete")
     print(json.dumps({"tasks":len(open_tasks),"resolved":len(resolved),"messages":len(ids),"classified":classification_attempts,"reused":messages_reused,"errors":errors}))
 
