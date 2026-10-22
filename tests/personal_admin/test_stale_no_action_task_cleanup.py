@@ -8,6 +8,16 @@ sys.path.insert(0, str(REPO / "homelab/live/home/joshan/automation"))
 import lifeos_task_reconciler as reconciler
 
 
+def test_uid_search_uses_uid_syntax_without_charset_placeholder():
+    from unittest.mock import Mock
+
+    client = Mock()
+    client.uid.return_value = ("OK", [b"77"])
+    query = '"<gemini@example.test>"'
+    assert reconciler._uid_search(client, "HEADER", "Message-ID", query) == ("OK", [b"77"])
+    client.uid.assert_called_once_with("search", "HEADER", "Message-ID", query)
+
+
 def test_verified_sole_source_email_with_no_action_notice_is_detected(monkeypatch):
     task = {
         "email_message_id": "<gemini@example.test>",
@@ -65,6 +75,7 @@ def test_exact_source_lookup_fetches_only_unprocessed_single_source_tasks(monkey
             return ("OK", []) if mailbox == "[Gmail]/All Mail" else ("NO", [])
         def uid(self, command, *args):
             if command == "search":
+                assert args and args[0] is not None, "UID SEARCH must not include a charset placeholder"
                 return "OK", [b"77"]
             if command == "fetch":
                 return "OK", [(b"77 (RFC822)", raw)]
@@ -125,11 +136,12 @@ def test_exact_source_lookup_uses_bounded_date_fallback_when_id_search_misses(mo
             return "OK", []
         def uid(self, command, *args):
             if command == "search":
+                assert args and args[0] is not None, "UID SEARCH must not include a charset placeholder"
                 self.searches += 1
                 if self.searches < 3:
                     return "OK", [b""]
-                assert args[:2] == (None, "SINCE")
-                assert args[3] == "BEFORE"
+                assert args[0] == "SINCE"
+                assert args[2] == "BEFORE"
                 return "OK", [b"77"]
             if command == "fetch":
                 return "OK", [(b"77 (RFC822)", raw)]
@@ -217,6 +229,7 @@ def test_stale_source_lookup_inspects_primary_when_legacy_ids_are_extra(monkeypa
             return "OK", []
         def uid(self, command, *args):
             if command == "search":
+                assert args and args[0] is not None, "UID SEARCH must not include a charset placeholder"
                 self.searches += 1
                 if self.searches < 3:
                     return "OK", [b""]
@@ -264,6 +277,7 @@ def test_stale_source_lookup_uses_sole_timeline_id_without_primary(monkeypatch):
             return "OK", []
         def uid(self, command, *args):
             if command == "search":
+                assert args and args[0] is not None, "UID SEARCH must not include a charset placeholder"
                 self.searches += 1
                 if self.searches < 3:
                     return "OK", [b""]
