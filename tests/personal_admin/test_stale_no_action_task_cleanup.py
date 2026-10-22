@@ -304,3 +304,53 @@ def test_stale_source_lookup_uses_sole_timeline_id_without_primary(monkeypatch):
     tasks = {"legacy-gemini-task": task}
     assert reconciler.discard_single_source_no_action_task(tasks, found[message_id])
     assert tasks == {}
+
+
+def test_stale_source_lookup_uses_fresh_authenticated_inbox_session(monkeypatch):
+    message_id = "<gemini@example.test>"
+    crlf = bytes([13, 10])
+    raw = crlf.join([
+        b"From: Google AI Studio <ai-studio@example.test>",
+        b"Subject: Gemini 3.5 Flash deprecation",
+        b"Date: Sat, 10 Oct 2026 15:05:15 +0000",
+        b"Message-ID: <gemini@example.test>",
+        b"Content-Type: text/plain; charset=utf-8",
+        b"",
+        b"No action required.",
+    ])
+    sessions = []
+
+    class FakeIMAP:
+        def __init__(self, *_args, **_kwargs):
+            self.logged_in = False
+            self.selected = []
+            sessions.append(self)
+        def login(self, *_args):
+            self.logged_in = True
+            return "OK", []
+        def select(self, mailbox, readonly=True):
+            assert self.logged_in
+            self.selected.append(mailbox)
+            return ("OK", []) if mailbox == "INBOX" else ("NO", [])
+        def uid(self, command, *args):
+            assert self.logged_in and self.selected == ["INBOX"]
+            if command == "search":
+                assert args == ("HEADER", "Message-ID", '"<gemini@example.test>"')
+                return "OK", [b"77"]
+            if command == "fetch":
+                return "OK", [(b"77 (RFC822)", raw)]
+            raise AssertionError(command)
+        def logout(self):
+            self.logged_in = False
+            return "BYE", []
+
+    monkeypatch.setattr(reconciler.imaplib, "IMAP4_SSL", FakeIMAP)
+    monkeypatch.setattr(reconciler, "secret", lambda *_args: "credential")
+    found = reconciler.fetch_existing_task_source_emails(
+        [{"email_message_id": message_id, "source_message_ids": [message_id]}]
+    )
+    assert len(sessions) == 1
+    assert sessions[0].selected == ["INBOX"]
+    assert not sessions[0].logged_in
+    assert found[message_id]["message_id"] == message_id
+    assert reconciler.has_explicit_no_action_required(found[message_id])

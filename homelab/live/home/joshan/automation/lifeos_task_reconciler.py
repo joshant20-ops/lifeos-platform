@@ -689,7 +689,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
         # SELECT can invalidate its selected state before source searches.
         selected=not owns_client
         if owns_client:
-            for mailbox in ("[Gmail]/All Mail","[GoogleMail]/All Mail","INBOX"):
+            for mailbox in ("INBOX","[Gmail]/All Mail","[GoogleMail]/All Mail"):
                 try:
                     status,_=client.select(mailbox,readonly=True)
                 except imaplib.IMAP4.error:
@@ -1456,7 +1456,7 @@ def _run_reconciler():
     # their exact Message-IDs so stale no-action tasks can be corrected promptly.
     extra_sources={}
     try:
-        extra_sources=fetch_existing_task_source_emails(tasks.values(),fetched_by_message_id,client=c)
+        extra_sources=fetch_existing_task_source_emails(tasks.values(),fetched_by_message_id)
         fetched_by_message_id.update(extra_sources)
     except Exception as exc:
         _SOURCE_LOOKUP_DIAGNOSTICS["lookup_failed"]=1
