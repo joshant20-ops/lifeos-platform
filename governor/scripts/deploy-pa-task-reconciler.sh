@@ -89,6 +89,7 @@ print('ERRORS='+str(j.get('errors')))
 PY
 
 HA_CONFIG=/opt/stacks/homeassistant/config
+JUNK_QUEUE_DIR="$HA_CONFIG/lifeos-pa-state/junk-requests"
 
 # Forward only fixed counters and safe categories; never emit private source/model data.
 journalctl -u lifeos-task-reconciler.service -n 20 --no-pager -o cat |
