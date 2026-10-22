@@ -1,0 +1,12 @@
+{
+  "schema": "lifeos_emailops_source_v1",
+  "repository": "https://github.com/emailops/emailops.git",
+  "commit": "63ee83d795360e5635d8bc0ff25b0a167d7dd483",
+  "tree": "8c83aa601d9108ff40ac744f98128c6e064ced67",
+  "archive_sha256": "9c27978c284d85c0316923e70b7d6d48a942b88d3fb5a418bba28a38fe3a26c7",
+  "cargo_lock_sha256": "422420809b8f630b5e373a15c89dc2c0c7737c49226a5076a1980806a2c4a9bd",
+  "verification": "upstream_git_object_and_source_archive_checksums",
+  "signed_release": false,
+  "mode": "shadow",
+  "mailbox_writes": false
+}
