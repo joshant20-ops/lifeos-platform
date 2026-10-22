@@ -100,7 +100,8 @@ def main():
     # Emit bounded numeric diagnostics before the zero-error gate so source
     # lookup failures remain visible even when an unrelated scan error occurs.
     lookup_diagnostics=state.get('source_lookup_diagnostics') or {}
-    for key in ('tasks_seen','tasks_with_source_ids','tasks_without_source_ids','tasks_with_primary',
+    for key in ('previous_tasks_loaded','tasks_before_publish','open_tasks_before_publish',
+                'tasks_seen','tasks_with_source_ids','tasks_without_source_ids','tasks_with_primary',
                 'single_source_tasks','valid_ids','already_fetched','missing_dates',
                 'tasks_without_primary','multi_source_without_primary','timeline_fallback_tasks',
                 'date_windows','date_window_uids','fetch_attempts','exact_id_matches'):
