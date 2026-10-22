@@ -679,26 +679,19 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
     try:
         if owns_client:
             client.login(user,password)
-        selected=False
-        for mailbox in ("[Gmail]/All Mail","[GoogleMail]/All Mail","INBOX"):
-            try:
-                status,_=client.select(mailbox,readonly=True)
-            except imaplib.IMAP4.error:
-                # SELECT rejection can return the session to AUTH state. A
-                # reused reconciler session must explicitly reselect INBOX
-                # before issuing UID SEARCH commands.
-                if not owns_client:
-                    try:
-                        status,_=client.select("INBOX",readonly=True)
-                    except imaplib.IMAP4.error:
-                        status="NO"
-                    if status=="OK":
-                        selected=True
-                        break
-                continue
-            if status=="OK":
-                selected=True
-                break
+        # The reconciler's shared IMAP session is already selected on
+        # INBOX. Do not probe All Mail names on that session: a rejected
+        # SELECT can invalidate its selected state before source searches.
+        selected=not owns_client
+        if owns_client:
+            for mailbox in ("[Gmail]/All Mail","[GoogleMail]/All Mail","INBOX"):
+                try:
+                    status,_=client.select(mailbox,readonly=True)
+                except imaplib.IMAP4.error:
+                    continue
+                if status=="OK":
+                    selected=True
+                    break
         if not selected:
             raise RuntimeError("imap_all_mail_unavailable")
         for message_id in sorted(message_ids):
