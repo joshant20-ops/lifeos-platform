@@ -118,6 +118,15 @@ class PAJunkActionTests(unittest.TestCase):
         move.assert_not_called()
         delete.assert_not_called()
 
+    def test_gmail_imap_capabilities_are_refreshed_after_login(self):
+        client = unittest.mock.Mock()
+        client.capabilities = (b"IMAP4REV1",)
+        client.capability.return_value = (
+            "OK", [b"CAPABILITY IMAP4REV1 IDLE X-GM-EXT-1"]
+        )
+        self.assertIn(b"X-GM-EXT-1", RECONCILER._gmail_imap_capabilities(client))
+        client.capability.assert_called_once_with()
+
     def test_gmail_spam_uses_gmail_label_store_without_imap_move(self):
         client = unittest.mock.Mock()
         client.uid.side_effect = [("OK", []), ("OK", [])]
