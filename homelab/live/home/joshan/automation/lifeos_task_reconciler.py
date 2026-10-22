@@ -1416,6 +1416,7 @@ def _run_reconciler():
         fetched_by_message_id.update(extra_sources)
     except Exception as exc:
         _SOURCE_LOOKUP_DIAGNOSTICS["lookup_failed"]=1
+        _SOURCE_LOOKUP_DIAGNOSTICS["lookup_error_bucket"]=safe_error_bucket(exc)
         print("TASK_STALE_SOURCE_LOOKUP_FAILURE_BUCKET="+safe_error_bucket(exc),flush=True)
         print("TASK_STALE_SOURCE_EMAILS_FETCHED=FAIL",flush=True)
     for task in tasks.values():
