@@ -958,6 +958,8 @@ def _mark_imap_message_as_spam(client, uid):
 
 
 def _move_emails_to_junk(message_ids):
+    global _JUNK_ACTION_STAGE
+    _JUNK_ACTION_STAGE = "imap_credentials"
     user = secret("LIFEOS_IMAP_USER", ("gmail-imap-user", "imap-user", "gmail-user"))
     password = secret("LIFEOS_IMAP_PASSWORD", ("gmail-imap-password", "imap-password", "gmail-app-password"))
     client = imaplib.IMAP4_SSL(
@@ -966,10 +968,13 @@ def _move_emails_to_junk(message_ids):
         ssl_context=ssl.create_default_context(),
     )
     try:
+        _JUNK_ACTION_STAGE = "imap_login"
         client.login(user, password)
+        _JUNK_ACTION_STAGE = "imap_capabilities"
         capabilities = {x.upper() for x in client.capabilities}
         if b"X-GM-EXT-1" not in capabilities:
             raise RuntimeError("imap_gmail_labels_unsupported")
+        _JUNK_ACTION_STAGE = "imap_folder_discovery"
         folders = {}
         status, boxes = client.list()
         if status == "OK":
@@ -988,9 +993,11 @@ def _move_emails_to_junk(message_ids):
         all_box = folders.get("all")
         if not junk_box:
             raise RuntimeError("imap_junk_folder_unavailable")
+        _JUNK_ACTION_STAGE = "imap_inbox_select"
         status, _ = client.select("INBOX", readonly=False)
         if status != "OK":
             raise RuntimeError("imap_inbox_unavailable")
+        _JUNK_ACTION_STAGE = "imap_inbox_search"
         inbox_matches = {}
         for message_id in message_ids:
             status, rows = client.uid("search", "HEADER", "Message-ID", message_id)
@@ -998,6 +1005,7 @@ def _move_emails_to_junk(message_ids):
             if len(matches) > 1:
                 raise RuntimeError("imap_message_ambiguous")
             inbox_matches[message_id] = matches[0] if matches else None
+        _JUNK_ACTION_STAGE = "imap_existing_junk_search"
         status, _ = client.select(junk_box, readonly=True)
         if status != "OK":
             raise RuntimeError("imap_junk_folder_unavailable")
@@ -1015,6 +1023,7 @@ def _move_emails_to_junk(message_ids):
                 pending[message_id] = ("", None)
         missing = [message_id for message_id, (box, uid) in pending.items() if box == ""]
         if missing:
+            _JUNK_ACTION_STAGE = "imap_all_mail_search"
             if not all_box:
                 raise RuntimeError("imap_all_mail_folder_unavailable")
             status, _ = client.select(all_box, readonly=True)
@@ -1026,6 +1035,7 @@ def _move_emails_to_junk(message_ids):
                 if len(matches) != 1:
                     raise RuntimeError("imap_message_not_found")
                 pending[message_id] = (all_box, matches[0])
+        _JUNK_ACTION_STAGE = "imap_apply_spam_labels"
         for message_id, (source_box, uid) in pending.items():
             if source_box is None:
                 continue
@@ -1033,6 +1043,7 @@ def _move_emails_to_junk(message_ids):
             if status != "OK":
                 raise RuntimeError("imap_source_folder_unavailable")
             _mark_imap_message_as_spam(client, uid)
+        _JUNK_ACTION_STAGE = "imap_verify_spam"
         status, _ = client.select(junk_box, readonly=True)
         if status != "OK":
             raise RuntimeError("imap_junk_folder_unavailable")
@@ -1055,7 +1066,10 @@ def _move_emails_to_junk(message_ids):
 
 
 def _process_junk_request(path):
+    global _JUNK_ACTION_STAGE
+    _JUNK_ACTION_STAGE = "request_read"
     request = json.loads(path.read_text(encoding="utf-8"))
+    _JUNK_ACTION_STAGE = "request_validation"
     if request.get("schema") != "lifeos_pa_junk_request_v1":
         raise ValueError("junk_request_schema_invalid")
     task_id = str(request.get("task_id") or "")
@@ -1069,12 +1083,14 @@ def _process_junk_request(path):
             or any(not isinstance(x, int) or x <= 0 for x in document_ids)
             or len(set(document_ids)) != len(document_ids)):
         raise ValueError("paperless_selection_invalid")
+    _JUNK_ACTION_STAGE = "task_lookup"
     previous = load_previous()
     task = previous.get(task_id)
     if not task:
         raise ValueError("junk_task_unavailable")
     if str(task.get("status") or "").upper() not in {"OPEN", "WAITING"}:
         raise ValueError("junk_task_not_open")
+    _JUNK_ACTION_STAGE = "paperless_link_validation"
     linked = {
         int(doc["document_id"])
         for doc in (task.get("paperless_evidence") or [])
@@ -1084,11 +1100,15 @@ def _process_junk_request(path):
         raise ValueError("paperless_selection_not_linked")
     message_ids = _junk_message_ids(task)
     # Validate every Paperless target before moving any source email.
+    _JUNK_ACTION_STAGE = "paperless_target_validation"
     for document_id in document_ids:
         _paperless_document(document_id)
+    _JUNK_ACTION_STAGE = "email_to_junk"
     _move_emails_to_junk(message_ids)
+    _JUNK_ACTION_STAGE = "paperless_delete"
     for document_id in document_ids:
         _paperless_delete(document_id)
+    _JUNK_ACTION_STAGE = "task_dismiss"
     result = subprocess.run(
         ["docker", "exec", "homeassistant", "python3",
          "/config/scripts/lifeos_pa_user_action.py", "--action", "dismiss", "--task-id", task_id],
@@ -1129,6 +1149,7 @@ def _recover_corrupt_failed_junk_request(path):
         temp.unlink(missing_ok=True)
 
 
+_JUNK_ACTION_STAGE = "idle"
 _SAFE_JUNK_FAILURE_REASONS = {
     "junk_request_schema_invalid", "junk_task_id_invalid", "junk_request_identity_invalid",
     "paperless_selection_invalid", "junk_task_unavailable", "junk_task_not_open",
@@ -1177,6 +1198,7 @@ def process_junk_requests():
                     pass
             print("PA_JUNK_ACTION=FAIL",flush=True)
             print("PA_JUNK_ACTION_ERROR="+type(exc).__name__,flush=True)
+            print("PA_JUNK_ACTION_STAGE="+_JUNK_ACTION_STAGE,flush=True)
             reason=str(exc)
             if reason in _SAFE_JUNK_FAILURE_REASONS:
                 print("PA_JUNK_ACTION_REASON="+reason,flush=True)
