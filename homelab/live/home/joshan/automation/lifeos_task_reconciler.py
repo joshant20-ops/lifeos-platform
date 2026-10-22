@@ -1098,6 +1098,37 @@ def _process_junk_request(path):
         raise RuntimeError("junk_task_dismiss_unverified")
 
 
+def _recover_corrupt_failed_junk_request(path):
+    """Recover the email-only part of a confirmed request whose JSON was truncated."""
+    task_id=path.stem
+    if path.name!=task_id+".json" or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}",task_id):
+        raise ValueError("junk_request_identity_invalid")
+    task=load_previous().get(task_id)
+    if not task or str(task.get("status") or "").upper() not in {"OPEN","WAITING"}:
+        raise ValueError("junk_task_unavailable")
+    # The original Paperless selection is unrecoverable, so preserve every
+    # document and honor only the explicitly confirmed email-to-Junk action.
+    _junk_message_ids(task)
+    request={
+        "schema":"lifeos_pa_junk_request_v1",
+        "request_id":os.urandom(16).hex(),
+        "task_id":task_id,
+        "paperless_document_ids":[],
+        "requested_at":int(time.time()),
+    }
+    temp=path.with_name("."+path.name+"."+os.urandom(8).hex()+".tmp")
+    fd=os.open(temp,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+    try:
+        with os.fdopen(fd,"w",encoding="utf-8") as stream:
+            json.dump(request,stream,separators=(",",":"))
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp,path)
+    finally:
+        temp.unlink(missing_ok=True)
+
+
 def process_junk_requests():
     if not JUNK_REQUESTS.is_dir():
         return
@@ -1114,9 +1145,20 @@ def process_junk_requests():
                 stale_failure.unlink()
             print("PA_JUNK_ACTION=PASS",flush=True)
         except Exception as exc:
-            # Failed requests represent explicit user confirmations. Keep them
-            # durable and retry on later runs; Gmail labeling and Paperless
-            # deletion are verified, idempotent operations.
+            # The queue file can be observed while incomplete. For a durable
+            # failed file, recover only its user-confirmed email action; the
+            # lost document selection is deliberately not reconstructed.
+            if retry and isinstance(exc,json.JSONDecodeError):
+                try:
+                    _recover_corrupt_failed_junk_request(path)
+                    _process_junk_request(path)
+                except Exception as recovery_exc:
+                    exc=recovery_exc
+                else:
+                    path.unlink()
+                    print("PA_JUNK_ACTION=PASS",flush=True)
+                    return
+            # Failed requests remain durable and are retried on later runs.
             if not retry:
                 try:
                     path.replace(JUNK_FAILED/path.name)
