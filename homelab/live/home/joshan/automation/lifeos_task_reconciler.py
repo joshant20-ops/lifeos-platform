@@ -222,11 +222,23 @@ def task_source_message_ids(task):
     return ordered[-20:]
 
 def task_cleanup_source_message_id(task):
-    """Choose the source ID to inspect when legacy rows lack a primary email ID."""
-    values=task_source_message_ids(task)
+    """Choose the exact primary email, or a sole timeline source for legacy rows."""
+    values=set(task_source_message_ids(task))
+    primary=str(task.get("email_message_id") or "").strip()
+    if primary and primary in values:
+        return primary
+    event_ids={
+        str(event.get("message_id") or "").strip()
+        for event in task.get("timeline_events") or []
+        if isinstance(event,dict) and str(event.get("message_id") or "").strip()
+    }
+    if len(event_ids)==1:
+        event_id=next(iter(event_ids))
+        if event_id in values:
+            return event_id
     if len(values)==1:
-        return values[0]
-    return str(task.get("email_message_id") or "").strip()
+        return next(iter(values))
+    return ""
 
 
 def has_valid_source_email(task):
@@ -256,10 +268,10 @@ def discard_single_source_no_action_task(tasks,msg):
             for event in task.get("timeline_events") or []
             if isinstance(event,dict) and event.get("message_id")
         }
-        # Legacy task rows can carry extra provenance IDs that were never
-        # recorded as timeline events. Permit cleanup only when the no-action
-        # email is the primary source and the sole recorded timeline event.
-        if message_id in source_ids and primary_id==message_id and event_ids=={message_id}:
+        # Legacy rows may lack a primary field while retaining extra provenance
+        # IDs. The sole timeline event is a safe fallback identity in that case.
+        if (message_id in source_ids and event_ids=={message_id}
+                and (primary_id==message_id or not primary_id)):
             matches.append(task_id)
     if len(matches)!=1:
         return False
@@ -551,6 +563,9 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     date_window_uids=0
     fetch_attempts=0
     exact_id_matches=0
+    tasks_without_primary=0
+    tasks_multi_source_without_primary=0
+    timeline_source_fallback_tasks=0
     for task in tasks or []:
         ids=task_source_message_ids(task)
         if not ids:
@@ -558,10 +573,27 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         if len(ids)==1:
             single_source_tasks+=1
         primary_id=str(task.get("email_message_id") or "").strip()
-        # Saved tasks may contain extra provenance IDs while their actionable
-        # source remains the primary email. Inspect that exact primary source;
-        # cleanup below still requires it to be the sole timeline event.
-        message_id=primary_id if primary_id in ids else (ids[0] if len(ids)==1 else "")
+        if not primary_id:
+            tasks_without_primary+=1
+        # Prefer the explicit primary ID. For a legacy row with several
+        # provenance IDs, inspect a sole timeline event only when the primary
+        # field is absent; the cleanup guard below also requires that sole event.
+        message_id=primary_id if primary_id in ids else ""
+        if not message_id and not primary_id:
+            event_ids={
+                str(event.get("message_id") or "").strip()
+                for event in task.get("timeline_events") or []
+                if isinstance(event,dict) and str(event.get("message_id") or "").strip()
+            }
+            if len(event_ids)==1:
+                candidate=next(iter(event_ids))
+                if candidate in ids:
+                    message_id=candidate
+                    timeline_source_fallback_tasks+=1
+            if len(ids)>1:
+                tasks_multi_source_without_primary+=1
+        if not message_id and len(ids)==1:
+            message_id=ids[0]
         if not message_id:
             continue
         if (message_id not in known and len(message_id)<=300 and message_id.startswith("<")
@@ -584,6 +616,9 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         print("TASK_STALE_SOURCE_LOOKUP_VALID_IDS="+str(valid_source_ids),flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_ALREADY_FETCHED="+str(tasks_already_fetched),flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_MISSING_DATES="+str(tasks_missing_date),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITHOUT_PRIMARY="+str(tasks_without_primary),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_MULTI_SOURCE_WITHOUT_PRIMARY="+str(tasks_multi_source_without_primary),flush=True)
+        print("TASK_STALE_SOURCE_LOOKUP_TIMELINE_FALLBACK_TASKS="+str(timeline_source_fallback_tasks),flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_DATE_WINDOWS=0",flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS=0",flush=True)
         print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS=0",flush=True)
@@ -591,6 +626,9 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
         _SOURCE_LOOKUP_DIAGNOSTICS={
             "single_source_tasks":single_source_tasks,"valid_ids":valid_source_ids,
             "already_fetched":tasks_already_fetched,"missing_dates":tasks_missing_date,
+            "tasks_without_primary":tasks_without_primary,
+            "multi_source_without_primary":tasks_multi_source_without_primary,
+            "timeline_fallback_tasks":timeline_source_fallback_tasks,
             "date_windows":0,"date_window_uids":0,"fetch_attempts":0,"exact_id_matches":0,
         }
         return {}
@@ -675,6 +713,9 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     print("TASK_STALE_SOURCE_LOOKUP_VALID_IDS="+str(valid_source_ids),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_ALREADY_FETCHED="+str(tasks_already_fetched),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_MISSING_DATES="+str(tasks_missing_date),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_TASKS_WITHOUT_PRIMARY="+str(tasks_without_primary),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_MULTI_SOURCE_WITHOUT_PRIMARY="+str(tasks_multi_source_without_primary),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_TIMELINE_FALLBACK_TASKS="+str(timeline_source_fallback_tasks),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_DATE_WINDOWS="+str(date_windows),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS="+str(date_window_uids),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS="+str(fetch_attempts),flush=True)
@@ -682,6 +723,9 @@ def fetch_existing_task_source_emails(tasks, already_fetched=()):
     _SOURCE_LOOKUP_DIAGNOSTICS={
         "single_source_tasks":single_source_tasks,"valid_ids":valid_source_ids,
         "already_fetched":tasks_already_fetched,"missing_dates":tasks_missing_date,
+        "tasks_without_primary":tasks_without_primary,
+        "multi_source_without_primary":tasks_multi_source_without_primary,
+        "timeline_fallback_tasks":timeline_source_fallback_tasks,
         "date_windows":date_windows,"date_window_uids":date_window_uids,
         "fetch_attempts":fetch_attempts,"exact_id_matches":exact_id_matches,
     }
