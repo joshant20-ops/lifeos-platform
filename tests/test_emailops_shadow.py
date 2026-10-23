@@ -15,6 +15,17 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_sync_prefix_is_ignored_but_final_json_and_exit_status_remain_required(self):
+        payload = 'PRIVATE_SENTINEL sync diagnostic\n' + json.dumps({"ok": True, "data": {"synced": "a"}, "error": None}, indent=2)
+        self.assertEqual(adapter.envelope(payload), {"synced": "a"})
+        for malformed in (payload + "\ntrailing diagnostic", 'PRIVATE_SENTINEL {"ok":true}'):
+            with self.assertRaisesRegex(adapter.EmailOpsError, "^cli_invalid_json$"):
+                adapter.envelope(malformed)
+        with self.assertRaises(adapter.EmailOpsError) as caught:
+            adapter.envelope(payload, 1)
+        self.assertNotIn("PRIVATE_SENTINEL", str(caught.exception))
+
+
     def test_systemd_password_handoff_is_private_and_removed_on_success_and_failure(self):
         import os
         for fail in (False, True):
@@ -101,7 +112,7 @@ class EmailOpsShadowTests(unittest.TestCase):
         class Client:
             account = None
             def _call(self, *args, **kwargs):
-                return {}
+                return {"synced": "a"} if args[0] == "sync" else {}
             def accounts(self):
                 return [{"id": "a", "email": "synthetic@example.test", "provider": "imap"}]
             def doctor(self):
