@@ -16,7 +16,7 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
         for fault, expected in (
             (None, None), ('component', 'component_source_mismatch'),
             ('card', 'served_card_mismatch'), ('anonymous', 'anonymous_preview_not_denied'),
-            ('credential', 'ha_credential_rejected'), ('auth', 'preview_route_not_loaded'), ('cache', 'preview_cache_policy_invalid'),
+            ('credential', 'ha_credential_rejected'), ('auth', 'authenticated_preview_not_found'), ('cache', 'preview_cache_policy_invalid'),
             ('body', 'served_preview_mismatch'), ('mode', 'preview_not_private'),
             ('stale', 'report_not_fresh'),
         ):

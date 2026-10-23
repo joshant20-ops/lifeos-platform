@@ -91,7 +91,7 @@ def audit(token, fetcher=fetch):
         status, _, _ = fetcher(path)
         require(status in {401, 403}, 'anonymous_preview_not_denied')
         status, headers, body = fetcher(path, token)
-        require(status != 404, 'preview_route_not_loaded')
+        require(status != 404, 'authenticated_preview_not_found')
         require(status == 200, 'authenticated_preview_unavailable')
         require('no-store' in headers.get('Cache-Control', '') and 'private' in headers.get('Cache-Control', ''),
                 'preview_cache_policy_invalid')
