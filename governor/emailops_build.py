@@ -44,6 +44,7 @@ def main():
         run("cargo", "test", *cargo_args, "--lib", "services::emails::spam::tests", cwd=rust)
         run("cargo", "test", *cargo_args, "--lib", "ai::json_shape::tests", cwd=rust)
         run("cargo", "test", *cargo_args, "--lib", "services::tasks::extractor::", cwd=rust)
+        run("cargo", "test", *cargo_args, "--lib", "ai::ollama::structured_response_tests", cwd=rust)
         run("cargo", "build", *cargo_args, "--config", "profile.dev.debug-assertions=false",
             "--bin", "emailops-cli", cwd=rust)
         output.mkdir(parents=True, exist_ok=True)
