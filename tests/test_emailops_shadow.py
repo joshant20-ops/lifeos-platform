@@ -15,6 +15,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_ai_failure_subtypes_suppress_private_native_messages(self):
+        for message, expected in (
+            ("AI error: Generation timed out PRIVATE_SENTINEL", "cli_ai_timeout"),
+            ("AI error: Failed to parse response PRIVATE_SENTINEL", "cli_ai_parse"),
+            ("AI error: task extraction reply held no JSON object", "cli_ai_parse"),
+            ("AI error: Failed to connect to Ollama PRIVATE_SENTINEL", "cli_ai_connect"),
+            ("AI error: Ollama error: PRIVATE_SENTINEL", "cli_ai_provider_response"),
+            ("PRIVATE_SENTINEL", "cli_ai"),
+        ):
+            payload = json.dumps({"ok": False, "error": {"code": "ai", "message": message}})
+            with self.assertRaises(adapter.EmailOpsError) as caught:
+                adapter.envelope(payload, 6)
+            self.assertEqual(str(caught.exception), expected)
+
+
     def test_ai_readiness_uses_only_a_bounded_synthetic_gateway_request(self):
         import io
         calls = []

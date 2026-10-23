@@ -60,6 +60,19 @@ def envelope(stdout, returncode=0):
                     reason = "cli_account_address_missing"
                 elif message.startswith("Account ") and message.endswith(" is already connected"):
                     reason = "cli_account_already_connected"
+        if code == "ai":
+            message = error.get("message")
+            if isinstance(message, str):
+                if "timed out" in message.lower():
+                    reason = "cli_ai_timeout"
+                elif "Failed to parse" in message or "task extraction reply held no JSON object" in message:
+                    reason = "cli_ai_parse"
+                elif "would send email content unencrypted" in message:
+                    reason = "cli_ai_transport_policy"
+                elif "Failed to connect to Ollama" in message:
+                    reason = "cli_ai_connect"
+                elif "Ollama error:" in message or "Ollama tool-call error:" in message:
+                    reason = "cli_ai_provider_response"
         raise EmailOpsError(reason)
     if data.get("error") is not None or "data" not in data:
         raise EmailOpsError("cli_invalid_envelope")
