@@ -89,7 +89,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: emailops-shadow-${{ github.sha }}
-          path: /home/joshan/.cache/lifeos/emailops-shadow-build
+          path: /home/joshan/emailops-shadow-build
       - name: Install and evaluate through the fixed deployment boundary
         shell: bash
         run: |
