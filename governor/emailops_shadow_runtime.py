@@ -121,7 +121,9 @@ def main():
         if doctor.get("ok") is not True or doctor.get("provider") != "ollama":
             raise EmailOpsError("doctor_not_ready")
         stage = "bounded_sync"
-        client._call("sync", timeout=300)
+        synced = client._call("sync", timeout=300)
+        if synced != {"synced": client.account}:
+            raise EmailOpsError("sync_account_proof_invalid")
         rows = client.emails(200)
         current = json.loads(STATE.read_text())
         known = {}
