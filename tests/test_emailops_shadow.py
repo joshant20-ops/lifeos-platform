@@ -19,6 +19,7 @@ class EmailOpsShadowTests(unittest.TestCase):
         for message, expected in (
             ("AI error: Generation timed out PRIVATE_SENTINEL", "cli_ai_timeout"),
             ("AI error: Failed to parse response PRIVATE_SENTINEL", "cli_ai_parse"),
+            ("AI error: task extraction reply held no JSON object", "cli_ai_parse"),
             ("AI error: Failed to connect to Ollama PRIVATE_SENTINEL", "cli_ai_connect"),
             ("AI error: Ollama error: PRIVATE_SENTINEL", "cli_ai_provider_response"),
             ("PRIVATE_SENTINEL", "cli_ai"),

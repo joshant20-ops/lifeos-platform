@@ -65,7 +65,7 @@ def envelope(stdout, returncode=0):
             if isinstance(message, str):
                 if "timed out" in message.lower():
                     reason = "cli_ai_timeout"
-                elif "Failed to parse" in message:
+                elif "Failed to parse" in message or "task extraction reply held no JSON object" in message:
                     reason = "cli_ai_parse"
                 elif "would send email content unencrypted" in message:
                     reason = "cli_ai_transport_policy"
