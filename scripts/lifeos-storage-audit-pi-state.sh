@@ -151,6 +151,43 @@ else
   echo 'PRE_CUTOVER_CONTAINER_BASELINE=UNAVAILABLE'
 fi
 
+
+section 'read-only SD underlay metadata (live filesystem; not backup acceptance)'
+python3 - <<'PY'
+import re, shutil, subprocess
+tool = shutil.which('debugfs')
+try:
+    fields = subprocess.check_output(
+        ['findmnt', '-n', '-o', 'SOURCE,UUID,FSTYPE', '-T', '/'],
+        text=True, timeout=5).split()
+except (OSError, subprocess.SubprocessError):
+    fields = []
+if (not tool or len(fields) != 3 or fields[0] != '/dev/mmcblk0p2'
+        or fields[1] != 'e20b40e9-a03b-4e15-b170-f527cf96d5e5' or fields[2] != 'ext4'):
+    print('SD_UNDERLAY_PROBE=UNAVAILABLE_OR_UNEXPECTED_ROOT')
+else:
+    # debugfs defaults to read-only. Never use -w or read file contents.
+    # The live filesystem can change during this metadata-only observation.
+    for label, path in (
+        ('SOURCE', '/opt/stacks'),
+        ('SOURCE_HA_MANIFEST', '/opt/stacks/homeassistant/docker-compose.yml'),
+        ('ROLLBACK', '/opt/stacks.sd-rollback-20261017'),
+    ):
+        try:
+            result = subprocess.run([tool, '-R', 'stat ' + path, fields[0]],
+                capture_output=True, text=True, timeout=10, check=False)
+            match = re.search(r'Inode:\s*(\d+)\s+Type:\s*(directory|regular)', result.stdout)
+            if match and result.returncode == 0:
+                print('SD_UNDERLAY_' + label + '=PRESENT_' + match.group(2).upper())
+            elif 'File not found' in result.stderr:
+                print('SD_UNDERLAY_' + label + '=NOT_FOUND')
+            else:
+                print('SD_UNDERLAY_' + label + '=UNKNOWN')
+        except (OSError, subprocess.SubprocessError):
+            print('SD_UNDERLAY_' + label + '=UNKNOWN')
+    print('SD_UNDERLAY_PROBE=READ_ONLY_METADATA_NOT_RECOVERY_PROOF')
+PY
+
 section 'process references to active, staged, or rollback stack paths'
 python3 - <<'PY'
 import os
