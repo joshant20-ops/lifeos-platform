@@ -36,6 +36,11 @@ def local_ollama_host():
         pass
     if not local or parsed.scheme not in {"http", "https"} or parsed.username or parsed.password:
         raise EmailOpsError("local_ai_route_invalid")
+    # ai.lan is the stable name of the gateway on this same Pi. Use its
+    # loopback listener so upstream's HTTP transport guard stays intact.
+    if (name == "ai.lan" and parsed.scheme == "http" and parsed.port == 18114
+            and parsed.path in {"", "/"} and not parsed.query and not parsed.fragment):
+        return "http://127.0.0.1:18114"
     return host
 
 

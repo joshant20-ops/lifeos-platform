@@ -15,6 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_same_pi_ai_gateway_uses_loopback_without_rewriting_other_routes(self):
+        with patch.object(runtime.ai_broker, "OLLAMA_URL", "http://ai.lan:18114/api/generate"):
+            self.assertEqual(runtime.local_ollama_host(), "http://127.0.0.1:18114")
+        with patch.object(runtime.ai_broker, "OLLAMA_URL", "https://other.lan:18114/api/generate"):
+            self.assertEqual(runtime.local_ollama_host(), "https://other.lan:18114")
+
+
     def test_sync_prefix_is_ignored_but_final_json_and_exit_status_remain_required(self):
         payload = 'PRIVATE_SENTINEL sync diagnostic\n' + json.dumps({"ok": True, "data": {"synced": "a"}, "error": None}, indent=2)
         self.assertEqual(adapter.envelope(payload), {"synced": "a"})
