@@ -17,6 +17,8 @@ ROOT = Path(__file__).resolve().parents[1]
 class EmailOpsShadowTests(unittest.TestCase):
     def test_ai_failure_subtypes_suppress_private_native_messages(self):
         for message, expected in (
+            ("AI error: structured completion reached token limit", "cli_ai_token_limit"),
+            ("AI error: structured completion answer empty", "cli_ai_empty_answer"),
             ("AI error: Generation timed out PRIVATE_SENTINEL", "cli_ai_timeout"),
             ("AI error: Failed to parse response PRIVATE_SENTINEL", "cli_ai_parse"),
             ("AI error: task extraction reply held no JSON object", "cli_ai_parse"),
