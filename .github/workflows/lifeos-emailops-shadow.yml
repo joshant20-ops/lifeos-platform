@@ -63,7 +63,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             /tmp/emailops-cargo-target
-          key: emailops-arm64-rust1.99.1-${{ hashFiles('config/emailops-upstream.json', 'third_party/emailops/headless-cli.patch') }}
+          key: emailops-arm64-rust1.99.1-${{ hashFiles('config/emailops-upstream.json', 'third_party/emailops/headless-cli.patch', 'governor/emailops_build.py') }}
           restore-keys: emailops-arm64-rust1.99.1-
       - name: Verify pinned source, test extensions, build CLI
         run: python3 governor/emailops_build.py "$RUNNER_TEMP/emailops-artifact"
