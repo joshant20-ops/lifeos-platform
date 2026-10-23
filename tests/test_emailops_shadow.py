@@ -15,6 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_fixed_input_reason_uses_native_detail_without_disclosing_values(self):
+        payload = json.dumps({"ok": False, "error": {"code": "invalid_input",
+            "message": "Invalid input: password file must be private",
+            "params": {"detail": "password file must be private"}}})
+        with self.assertRaisesRegex(adapter.EmailOpsError, "^cli_password_file_permissions$"):
+            adapter.envelope(payload, 2)
+
     def test_failure_categories_never_include_native_details(self):
         for code, expected in (("keyring", "cli_keyring"), ("auth", "cli_auth"),
                                ("PRIVATE_SENTINEL", "cli_failed")):
