@@ -13,7 +13,7 @@ import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from governor import ai_broker
-from governor.emailops_adapter import EmailOpsError, PROFILE, ShadowClient, confirm_junk_native, write_private_json
+from governor.emailops_adapter import EmailOpsError, POLICY, PROFILE, ShadowClient, confirm_junk_native, write_private_json
 
 STATE = Path("/opt/stacks/homeassistant/config/www/lifeos_tasks.json")
 USER_STATE = Path("/opt/stacks/homeassistant/config/lifeos-pa-state/user_state.json")
@@ -77,12 +77,19 @@ def add_imap_account(client, address, credentials, sync_from):
         )
 
 
-def ensure_local_ai_ready(host):
+def shadow_model():
+    model = json.loads(POLICY.read_text()).get("shadow_model", ai_broker.OLLAMA_MODEL)
+    if not isinstance(model, str) or not model.strip() or model != model.strip():
+        raise EmailOpsError("shadow_model_invalid")
+    return model
+
+
+def ensure_local_ai_ready(host, model=None):
     # A synthetic request through the existing gateway lets its controller own
     # cold wake/model loading before the native CLI's 60-second generation call.
     from urllib.request import Request, urlopen
     from urllib.error import HTTPError, URLError
-    payload = json.dumps({"model": ai_broker.OLLAMA_MODEL, "prompt": "Reply OK.",
+    payload = json.dumps({"model": model if model is not None else shadow_model(), "prompt": "Reply OK.",
         "stream": False, "think": False, "options": {"num_predict": 8}}).encode()
     try:
         with urlopen(Request(host + "/api/generate", data=payload,
@@ -129,7 +136,8 @@ def main():
             raise EmailOpsError("runtime_arguments_invalid")
         stage = "local_ai_configuration"
         client = ShadowClient()
-        client._call("config", "local-ai", "--provider", "ollama", "--model", ai_broker.OLLAMA_MODEL)
+        model = shadow_model()
+        client._call("config", "local-ai", "--provider", "ollama", "--model", model)
         stage = "account_bootstrap"
         address = (credentials / "gmail-imap-user").read_text().strip()
         stage = "account_list"
@@ -164,7 +172,7 @@ def main():
         rows.sort(key=lambda row: row.get("messageId") not in known)
         results, seen = [], set()
         stage = "local_ai_readiness"
-        ensure_local_ai_ready(os.environ["OLLAMA_HOST"])
+        ensure_local_ai_ready(os.environ["OLLAMA_HOST"], model)
         stage = "shadow_analysis"
         started = time.monotonic()
         for row in rows:

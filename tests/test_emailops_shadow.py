@@ -15,6 +15,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_shadow_model_is_scoped_and_does_not_change_shared_broker(self):
+        original = runtime.ai_broker.OLLAMA_MODEL
+        with tempfile.TemporaryDirectory() as directory:
+            policy = Path(directory) / "policy.json"
+            with patch.object(runtime, "POLICY", policy):
+                policy.write_text(json.dumps({"shadow_model": "qwen2.5-coder:7b-instruct"}))
+                self.assertEqual(runtime.shadow_model(), "qwen2.5-coder:7b-instruct")
+                self.assertEqual(runtime.ai_broker.OLLAMA_MODEL, original)
+                policy.write_text("{}")
+                self.assertEqual(runtime.shadow_model(), original)
+                for value in ("", " model ", None, 7):
+                    policy.write_text(json.dumps({"shadow_model": value}))
+                    with self.assertRaisesRegex(adapter.EmailOpsError, "^shadow_model_invalid$"):
+                        runtime.shadow_model()
+
     def test_ai_failure_subtypes_suppress_private_native_messages(self):
         for message, expected in (
             ("AI error: structured completion reached token limit", "cli_ai_token_limit"),
@@ -43,11 +58,12 @@ class EmailOpsShadowTests(unittest.TestCase):
             return Response(b'{"done":true,"response":"PRIVATE_SENTINEL"}')
         output = io.StringIO()
         with patch("urllib.request.urlopen", side_effect=opened), redirect_stdout(output):
-            runtime.ensure_local_ai_ready("http://127.0.0.1:18114")
+            runtime.ensure_local_ai_ready("http://127.0.0.1:18114", "qwen2.5-coder:7b-instruct")
         request, options = calls[0]
         self.assertEqual(request.full_url, "http://127.0.0.1:18114/api/generate")
         self.assertEqual(options["timeout"], 420)
         payload = json.loads(request.data)
+        self.assertEqual(payload["model"], "qwen2.5-coder:7b-instruct")
         self.assertEqual(payload["prompt"], "Reply OK.")
         self.assertEqual(payload["options"]["num_predict"], 8)
         self.assertNotIn("PRIVATE_SENTINEL", output.getvalue())
@@ -177,7 +193,7 @@ class EmailOpsShadowTests(unittest.TestCase):
             output = io.StringIO()
             with patch.object(runtime, "PROFILE", root), patch.object(runtime, "STATE", state), \
                  patch.object(runtime, "USER_STATE", user), patch.object(runtime, "ShadowClient", Client), \
-                 patch.object(runtime, "unlock_keyring"), patch.object(runtime, "ensure_local_ai_ready"), patch.object(runtime, "local_ollama_host", return_value="http://ai.lan:18114"), \
+                 patch.object(runtime, "unlock_keyring"), patch.object(runtime, "shadow_model", return_value="qwen2.5-coder:7b-instruct"), patch.object(runtime, "ensure_local_ai_ready"), patch.object(runtime, "local_ollama_host", return_value="http://ai.lan:18114"), \
                  patch.object(runtime.platform, "node", return_value="Docker"), patch.object(runtime.os, "geteuid", return_value=1000), \
                  patch.dict(runtime.os.environ, {"CREDENTIALS_DIRECTORY": str(root)}), \
                  patch.object(runtime.sys, "argv", ["runtime"]), redirect_stdout(output):

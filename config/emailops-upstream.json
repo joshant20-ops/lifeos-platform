@@ -11,5 +11,6 @@
   "mailbox_writes": false,
   "patch_sha256": "2631e83506f3ae62bf3fc8b7c8299ac36c6dcb8dab5bbba55b222e43feb8e5c6",
   "version": "0.6.16",
-  "rust_toolchain": "1.99.1"
+  "rust_toolchain": "1.99.1",
+  "shadow_model": "qwen2.5-coder:7b-instruct"
 }
