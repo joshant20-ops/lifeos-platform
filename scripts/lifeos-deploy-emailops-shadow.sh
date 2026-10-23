@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 REPO=/home/joshan/lifeos-platform
-BUILD=/home/joshan/.cache/lifeos/emailops-shadow-build
+BUILD=/home/joshan/emailops-shadow-build
 DEST=/opt/lifeos/emailops-shadow
 PROFILE=/home/joshan/.local/share/lifeos/emailops-shadow
 [[ "$(hostname)" == Docker && "$(uname -m)" == aarch64 ]] || { echo EMAILOPS_INSTALL=WRONG_RUNTIME; exit 20; }
@@ -13,7 +13,7 @@ done
 python3 - <<'PY'
 import hashlib, json, pathlib, subprocess
 repo = pathlib.Path('/home/joshan/lifeos-platform')
-build = pathlib.Path('/home/joshan/.cache/lifeos/emailops-shadow-build')
+build = pathlib.Path('/home/joshan/emailops-shadow-build')
 pin = json.loads((repo / 'config/emailops-upstream.json').read_text())
 manifest = json.loads((build / 'manifest.json').read_text())
 assert manifest['schema'] == 'lifeos_emailops_build_v1'
