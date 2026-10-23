@@ -322,3 +322,114 @@ index 8063501..5b38626 100644
      #[tokio::test]
      async fn filing_moves_it_at_the_provider_then_locally() {
          let email = message("m1", "inbox");
+diff --git a/src-tauri/src/ai/json_shape.rs b/src-tauri/src/ai/json_shape.rs
+--- a/src-tauri/src/ai/json_shape.rs
++++ b/src-tauri/src/ai/json_shape.rs
+@@ -18,6 +18,8 @@
+         min: usize,
+         max: usize,
+     },
++    /// A nullable value; required fields may explicitly report an unknown value.
++    Nullable(Box<JsonShape>),
+     /// A string of at most `max_len` characters.
+     String { max_len: usize },
+     /// One of these strings.
+@@ -62,6 +64,7 @@
+                 "minItems": min,
+                 "maxItems": max,
+             }),
++            JsonShape::Nullable(inner) => json!({ "anyOf": [inner.to_json_schema(), { "type": "null" }] }),
+             JsonShape::String { max_len } => json!({ "type": "string", "maxLength": max_len }),
+             JsonShape::Enum(values) => json!({ "type": "string", "enum": values }),
+         }
+@@ -103,6 +106,10 @@
+                     format!("\"[\" space {item} {more} \"]\" space")
+                 }
+             }
++            JsonShape::Nullable(inner) => {
++                let value = inner.rule(rules);
++                format!("(\"null\" space | {value})")
++            }
+             JsonShape::String { max_len } => format!("\"\\\"\" char{{0,{max_len}}} \"\\\"\" space"),
+             JsonShape::Enum(values) => {
+                 let alternatives: Vec<String> = values.iter().map(|v| gbnf_literal(&json_string(v))).collect();
+@@ -137,6 +144,15 @@
+ mod tests {
+     use super::*;
+ 
++    #[test]
++    fn nullable_shape_preserves_null_in_schema_and_grammar() {
++        let shape = JsonShape::Nullable(Box::new(JsonShape::String { max_len: 32 }));
++        let schema = shape.to_json_schema();
++        assert_eq!(schema["anyOf"][0]["type"], json!("string"));
++        assert_eq!(schema["anyOf"][1]["type"], json!("null"));
++        assert!(shape.to_gbnf().contains("\"null\" space"));
++    }
++
+     fn finding() -> JsonShape {
+         JsonShape::object(vec![
+             ("tag", JsonShape::one_of(&["match", "context"])),
+diff --git a/src-tauri/src/services/tasks/extractor.rs b/src-tauri/src/services/tasks/extractor.rs
+--- a/src-tauri/src/services/tasks/extractor.rs
++++ b/src-tauri/src/services/tasks/extractor.rs
+@@ -13,6 +13,7 @@
+ use serde::Deserialize;
+ use uuid::Uuid;
+ 
++use crate::ai::json_shape::JsonShape;
+ use crate::ai::provider::CompletionOptions;
+ use crate::db::Database;
+ use crate::models::error::{AppError, Result};
+@@ -210,6 +211,21 @@
+     run_llm_extraction(db, ai, email, &cfg).await
+ }
+ 
++fn task_extraction_shape(max_tasks: usize) -> JsonShape {
++    let text = |max_len| JsonShape::Nullable(Box::new(JsonShape::String { max_len }));
++    JsonShape::object(vec![
++        ("tasks", JsonShape::array(JsonShape::object(vec![
++            ("title", JsonShape::String { max_len: 300 }),
++            ("detail", text(1200)),
++            ("priority", JsonShape::Nullable(Box::new(JsonShape::one_of(&["low", "normal", "high"])))),
++            ("dueAtIso", text(32)),
++        ]), 0, max_tasks.clamp(1, 20))),
++        ("threadSummary", text(600)),
++        ("commitment", text(400)),
++        ("deadlineIso", text(32)),
++    ])
++}
++
+ async fn run_llm_extraction(
+     db: &Arc<Database>,
+     ai: &AiService,
+@@ -233,7 +249,9 @@
+                 temperature: Some(0.1),
+                 max_tokens: Some(500),
+                 think: None,
+-                json_shape: None,
++                json_shape: Some(task_extraction_shape(
++                    if cfg.max_tasks_per_email > 0 { cfg.max_tasks_per_email as usize } else { 20 }
++                )),
+             }),
+         )
+         .await?;
+@@ -923,3 +941,19 @@
+         assert!(parse_iso_ts("").is_none());
+     }
+ }
++
++#[cfg(test)]
++mod structured_shape_tests {
++    use super::*;
++
++    #[test]
++    fn task_shape_bounds_tasks_and_preserves_unknown_dates() {
++        let schema = task_extraction_shape(2).to_json_schema();
++        let tasks = &schema["properties"]["tasks"];
++        assert_eq!(tasks["maxItems"], serde_json::json!(2));
++        assert_eq!(tasks["minItems"], serde_json::json!(0));
++        assert_eq!(tasks["items"]["properties"]["dueAtIso"]["anyOf"][1]["type"], serde_json::json!("null"));
++        assert_eq!(schema["properties"]["deadlineIso"]["anyOf"][1]["type"], serde_json::json!("null"));
++        assert_eq!(task_extraction_shape(100).to_json_schema()["properties"]["tasks"]["maxItems"], serde_json::json!(20));
++    }
++}
