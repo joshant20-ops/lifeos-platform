@@ -79,3 +79,7 @@ reused, and private reports are written atomically.
 Rollback disables the shadow integration and restores the previous program/unit
 through a reviewed deployment. Do not delete the profile or pending/held user
 requests. Do not enable the legacy mailbox writer just to clear a card.
+
+## Structured extraction candidate
+
+The temporary native patch now routes task extraction through the existing JsonShape provider support and adds nullable fields so unknown due dates remain null. It bounds task count and text fields without changing the model, extraction prompt or task authority. Native schema/grammar and extractor tests run on the ARM builder. This is an UPSTREAM_GENERIC candidate; live shadow/corpus acceptance is still required. Discuss the nullable shape API with the maintainer before opening an upstream API-change PR.
