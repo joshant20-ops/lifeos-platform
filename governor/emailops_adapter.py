@@ -32,6 +32,23 @@ def envelope(stdout, returncode=0):
         code = error.get("code") if isinstance(error, dict) else None
         if code in {"auth", "keyring", "database", "http", "sync", "io", "invalid_input", "not_found"}:
             reason = "cli_" + code
+        if code == "invalid_input":
+            message = error.get("message")
+            fixed = {
+                "password file unavailable": "cli_password_file_unavailable",
+                "password file must be a regular file": "cli_password_file_type",
+                "password file must be private": "cli_password_file_permissions",
+                "password file unreadable": "cli_password_file_unreadable",
+                "password file has invalid length": "cli_password_file_length",
+            }
+            if isinstance(message, str):
+                reason = fixed.get(message, reason)
+                if "is not a valid email address." in message:
+                    reason = "cli_account_address_invalid"
+                elif message.startswith("An email address is required."):
+                    reason = "cli_account_address_missing"
+                elif message.startswith("Account ") and message.endswith(" is already connected"):
+                    reason = "cli_account_already_connected"
         raise EmailOpsError(reason)
     if data.get("error") is not None or "data" not in data:
         raise EmailOpsError("cli_invalid_envelope")

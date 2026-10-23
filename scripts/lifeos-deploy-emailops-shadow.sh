@@ -17,6 +17,8 @@ build = pathlib.Path('/home/joshan/emailops-shadow-build')
 pin = json.loads((repo / 'config/emailops-upstream.json').read_text())
 manifest = json.loads((build / 'manifest.json').read_text())
 assert manifest['schema'] == 'lifeos_emailops_build_v1'
+assert manifest.get('debug_assertions') is False
+assert manifest.get('credential_backend') == 'native_keyring'
 assert manifest['platform_commit'] == subprocess.check_output(['runuser','-u','joshan','--','git','-C',str(repo),'rev-parse','HEAD'],text=True).strip()
 assert manifest['source_commit'] == pin['commit']
 assert manifest['source_archive_sha256'] == pin['archive_sha256']
