@@ -28,6 +28,10 @@ def envelope(stdout, returncode=0):
         # Upstream errors can include subjects, addresses, and provider responses.
         reason = {2: "cli_invalid_input", 3: "cli_not_found", 4: "cli_auth", 5: "cli_network",
                   6: "cli_ai", 130: "cli_cancelled"}.get(returncode, "cli_failed")
+        error = data.get("error")
+        code = error.get("code") if isinstance(error, dict) else None
+        if code in {"auth", "keyring", "database", "http", "sync", "io", "invalid_input", "not_found"}:
+            reason = "cli_" + code
         raise EmailOpsError(reason)
     if data.get("error") is not None or "data" not in data:
         raise EmailOpsError("cli_invalid_envelope")
