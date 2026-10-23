@@ -15,6 +15,36 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_systemd_password_handoff_is_private_and_removed_on_success_and_failure(self):
+        import os
+        for fail in (False, True):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                credential = root / "gmail-imap-password"
+                credential.write_bytes(b"PRIVATE_SENTINEL")
+                credential.chmod(0o440)
+                paths = []
+                class Client:
+                    def _call(self, *args):
+                        path = Path(args[args.index("--password-file") + 1])
+                        paths.append(path)
+                        assert path.stat().st_mode & 0o777 == 0o600
+                        assert path.read_bytes() == b"PRIVATE_SENTINEL"
+                        assert "PRIVATE_SENTINEL" not in str(args)
+                        if fail:
+                            raise adapter.EmailOpsError("cli_auth")
+                        return {"id": "synthetic"}
+                with patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(root)}):
+                    if fail:
+                        with self.assertRaisesRegex(adapter.EmailOpsError, "^cli_auth$"):
+                            runtime.add_imap_account(Client(), "synthetic@example.test", root, "2026-10-01")
+                    else:
+                        self.assertEqual(runtime.add_imap_account(Client(), "synthetic@example.test", root, "2026-10-01"), {"id": "synthetic"})
+                self.assertTrue(paths)
+                self.assertFalse(paths[0].exists())
+                self.assertEqual(credential.stat().st_mode & 0o777, 0o440)
+
+
     def test_fixed_input_reason_uses_native_detail_without_disclosing_values(self):
         payload = json.dumps({"ok": False, "error": {"code": "invalid_input",
             "message": "Invalid input: password file must be private",
