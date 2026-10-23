@@ -15,6 +15,28 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_ai_readiness_uses_only_a_bounded_synthetic_gateway_request(self):
+        import io
+        calls = []
+        class Response(io.BytesIO):
+            def __enter__(self): return self
+            def __exit__(self, *args): self.close()
+        def opened(request, **kwargs):
+            calls.append((request, kwargs))
+            return Response(b'{"done":true,"response":"PRIVATE_SENTINEL"}')
+        output = io.StringIO()
+        with patch("urllib.request.urlopen", side_effect=opened), redirect_stdout(output):
+            runtime.ensure_local_ai_ready("http://127.0.0.1:18114")
+        request, options = calls[0]
+        self.assertEqual(request.full_url, "http://127.0.0.1:18114/api/generate")
+        self.assertEqual(options["timeout"], 420)
+        payload = json.loads(request.data)
+        self.assertEqual(payload["prompt"], "Reply OK.")
+        self.assertEqual(payload["options"]["num_predict"], 8)
+        self.assertNotIn("PRIVATE_SENTINEL", output.getvalue())
+        self.assertIn("EMAILOPS_AI_READINESS=PASS", output.getvalue())
+
+
     def test_same_pi_ai_gateway_uses_loopback_without_rewriting_other_routes(self):
         with patch.object(runtime.ai_broker, "OLLAMA_URL", "http://ai.lan:18114/api/generate"):
             self.assertEqual(runtime.local_ollama_host(), "http://127.0.0.1:18114")
@@ -138,7 +160,7 @@ class EmailOpsShadowTests(unittest.TestCase):
             output = io.StringIO()
             with patch.object(runtime, "PROFILE", root), patch.object(runtime, "STATE", state), \
                  patch.object(runtime, "USER_STATE", user), patch.object(runtime, "ShadowClient", Client), \
-                 patch.object(runtime, "unlock_keyring"), patch.object(runtime, "local_ollama_host", return_value="http://ai.lan:18114"), \
+                 patch.object(runtime, "unlock_keyring"), patch.object(runtime, "ensure_local_ai_ready"), patch.object(runtime, "local_ollama_host", return_value="http://ai.lan:18114"), \
                  patch.object(runtime.platform, "node", return_value="Docker"), patch.object(runtime.os, "geteuid", return_value=1000), \
                  patch.dict(runtime.os.environ, {"CREDENTIALS_DIRECTORY": str(root)}), \
                  patch.object(runtime.sys, "argv", ["runtime"]), redirect_stdout(output):
