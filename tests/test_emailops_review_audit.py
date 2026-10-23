@@ -16,7 +16,7 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
         for fault, expected in (
             (None, None), ('component', 'component_source_mismatch'),
             ('card', 'served_card_mismatch'), ('anonymous', 'anonymous_preview_not_denied'),
-            ('auth', 'authenticated_preview_unavailable'), ('cache', 'preview_cache_policy_invalid'),
+            ('credential', 'ha_credential_rejected'), ('auth', 'authenticated_preview_not_found'), ('cache', 'preview_cache_policy_invalid'),
             ('body', 'served_preview_mismatch'), ('mode', 'preview_not_private'),
             ('stale', 'report_not_fresh'),
         ):
@@ -44,6 +44,8 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
                 calls = []
                 def fetcher(path, token=None):
                     calls.append((path, token))
+                    if path == '/api/':
+                        return (401 if fault == 'credential' else 200), {}, b'{}'
                     if path.startswith('/local/'):
                         return 200, {}, b'wrong' if fault == 'card' else b'fixture'
                     if token is None:
@@ -57,7 +59,7 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
                             audit.audit('secret-fixture', fetcher)
                     else:
                         self.assertEqual(audit.audit('secret-fixture', fetcher), 1)
-                        self.assertEqual([token for _, token in calls], [None, None, 'secret-fixture'])
+                        self.assertEqual([token for _, token in calls], ['secret-fixture', None, None, 'secret-fixture'])
 
     def test_redirects_are_not_followed_with_a_credential(self):
         self.assertIsNone(audit.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://example.test'))

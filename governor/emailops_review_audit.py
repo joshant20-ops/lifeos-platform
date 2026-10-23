@@ -60,6 +60,8 @@ def expected_preview(payload):
 
 
 def audit(token, fetcher=fetch):
+    status, _, _ = fetcher('/api/', token)
+    require(status == 200, 'ha_credential_rejected' if status in {401, 403} else 'ha_api_unavailable')
     component = Path('custom_components/lifeos_pa_review/__init__.py')
     require(digest(HA / component) == digest(REPO / 'homelab/live/opt/stacks/homeassistant/config' / component),
             'component_source_mismatch')
@@ -89,6 +91,7 @@ def audit(token, fetcher=fetch):
         status, _, _ = fetcher(path)
         require(status in {401, 403}, 'anonymous_preview_not_denied')
         status, headers, body = fetcher(path, token)
+        require(status != 404, 'authenticated_preview_not_found')
         require(status == 200, 'authenticated_preview_unavailable')
         require('no-store' in headers.get('Cache-Control', '') and 'private' in headers.get('Cache-Control', ''),
                 'preview_cache_policy_invalid')
