@@ -280,3 +280,23 @@ try:
 finally:
     preview_path.unlink(missing_ok=True)
 PYPROBE
+
+# Verify actual authenticated EmailOps delivery only when a recent shadow report
+# exists. Old/absent one-shot evidence must not block unrelated PA deployments.
+if python3 - <<'PYFRESH'
+import json, time
+from pathlib import Path
+try:
+    p = Path('/home/joshan/.local/share/lifeos/emailops-shadow/shadow-report.json')
+    report = json.loads(p.read_text())
+    fresh = (report.get('schema') == 'lifeos_emailops_comparison_v1'
+             and 0 <= time.time() - int(report.get('generated_at') or 0) < 86400)
+except (OSError, ValueError, TypeError):
+    fresh = False
+raise SystemExit(0 if fresh else 1)
+PYFRESH
+then
+  /usr/local/sbin/lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN /usr/bin/python3 "$REPO/governor/emailops_review_audit.py"
+else
+  echo EMAILOPS_REVIEW_CHECK=NO_FRESH_SHADOW_REPORT
+fi

@@ -21,6 +21,9 @@ class LifeOSEmailOpsShadowView(HomeAssistantView):
     name = "api:lifeos_emailops_shadow"
     requires_auth = True
 
+    def __init__(self, hass):
+        self.hass = hass
+
     async def get(self, request, task_id):
         if not TASK_ID_RE.fullmatch(task_id or ""):
             raise web.HTTPNotFound()
@@ -53,6 +56,9 @@ class LifeOSPATaskReviewPreviewView(HomeAssistantView):
     url = "/api/lifeos_pa_review/{task_id}"
     name = "api:lifeos_pa_review"
     requires_auth = True
+
+    def __init__(self, hass):
+        self.hass = hass
 
     async def get(self, request, task_id):
         if not TASK_ID_RE.fullmatch(task_id or ""):
@@ -107,6 +113,6 @@ class LifeOSPATaskReviewPreviewView(HomeAssistantView):
 
 
 async def async_setup(hass, config):
-    hass.http.register_view(LifeOSPATaskReviewPreviewView())
-    hass.http.register_view(LifeOSEmailOpsShadowView())
+    hass.http.register_view(LifeOSPATaskReviewPreviewView(hass))
+    hass.http.register_view(LifeOSEmailOpsShadowView(hass))
     return True
