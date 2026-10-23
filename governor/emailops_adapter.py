@@ -23,7 +23,16 @@ def envelope(stdout, returncode=0):
     try:
         data = json.loads(stdout)
     except (ValueError, TypeError):
-        raise EmailOpsError("cli_invalid_json") from None
+        # Some upstream sync diagnostics precede the final pretty JSON object.
+        # Accept only a complete object at column zero ending at EOF; never
+        # emit the ignored prefix or search arbitrary embedded mail JSON.
+        start = stdout.rfind("\n{") if isinstance(stdout, str) else -1
+        if start < 0:
+            raise EmailOpsError("cli_invalid_json") from None
+        try:
+            data = json.loads(stdout[start + 1:])
+        except (ValueError, TypeError):
+            raise EmailOpsError("cli_invalid_json") from None
     if not isinstance(data, dict) or data.get("ok") is not True or returncode != 0:
         # Upstream errors can include subjects, addresses, and provider responses.
         reason = {2: "cli_invalid_input", 3: "cli_not_found", 4: "cli_auth", 5: "cli_network",
