@@ -119,4 +119,5 @@ for result in report['results']:
         })
 print('EMAILOPS_PRIVATE_REVIEW=READY')
 PY
+lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN /usr/bin/python3 "$REPO/governor/emailops_review_audit.py"
 echo EMAILOPS_INSTALL=PASS
