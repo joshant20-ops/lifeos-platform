@@ -63,7 +63,11 @@ def envelope(stdout, returncode=0):
         if code == "ai":
             message = error.get("message")
             if isinstance(message, str):
-                if "timed out" in message.lower():
+                if "structured completion reached token limit" in message:
+                    reason = "cli_ai_token_limit"
+                elif "structured completion answer empty" in message:
+                    reason = "cli_ai_empty_answer"
+                elif "timed out" in message.lower():
                     reason = "cli_ai_timeout"
                 elif "Failed to parse" in message or "task extraction reply held no JSON object" in message:
                     reason = "cli_ai_parse"

@@ -433,3 +433,110 @@ diff --git a/src-tauri/src/services/tasks/extractor.rs b/src-tauri/src/services/
 +        assert_eq!(task_extraction_shape(100).to_json_schema()["properties"]["tasks"]["maxItems"], serde_json::json!(20));
 +    }
 +}
+diff --git a/src-tauri/src/ai/ollama.rs b/src-tauri/src/ai/ollama.rs
+--- a/src-tauri/src/ai/ollama.rs
++++ b/src-tauri/src/ai/ollama.rs
+@@ -89,6 +89,21 @@
+     done_reason: Option<String>,
+ }
+ 
++/// Select answer content without treating private reasoning as structured output.
++fn completed_text(content: String, thinking: String, truncated: bool, structured: bool) -> Result<(String, bool)> {
++    if structured && truncated {
++        return Err(AppError::AiError("structured completion reached token limit".into()));
++    }
++    if structured && content.trim().is_empty() {
++        return Err(AppError::AiError("structured completion answer empty".into()));
++    }
++    if content.is_empty() && !thinking.is_empty() {
++        Ok((thinking, truncated))
++    } else {
++        Ok((content, truncated))
++    }
++}
++
+ /// Whether Ollama stopped because the reply reached `num_predict`.
+ fn stopped_at_limit(done_reason: Option<&str>) -> bool {
+     done_reason == Some("length")
+@@ -566,6 +581,7 @@
+         sampling: Option<OllamaSamplingOptions>,
+         format: Option<serde_json::Value>,
+     ) -> Result<(String, bool)> {
++        let structured = format.is_some();
+         let url = self.endpoint("/api/generate")?;
+ 
+         let request = OllamaRequest {
+@@ -605,15 +621,10 @@
+             .await
+             .map_err(|e| AppError::AiError(format!("Failed to parse Ollama response: {}", e)))?;
+ 
+-        // Thinking models (gemma4, deepseek-r1, qwq) put their scratchpad in
+-        // `thinking` and leave `response` empty. Fall back to thinking content
+-        // so callers can still extract JSON from the model's reasoning.
++        // Preserve legacy fallback only for unstructured callers. Structured
++        // completions require the complete explicit answer channel.
+         let truncated = stopped_at_limit(result.done_reason.as_deref());
+-        if result.response.is_empty() && !result.thinking.is_empty() {
+-            Ok((result.thinking, truncated))
+-        } else {
+-            Ok((result.response, truncated))
+-        }
++        completed_text(result.response, result.thinking, truncated, structured)
+     }
+ 
+     pub async fn chat(&self, prompt: &str, think: Option<bool>) -> Result<String> {
+@@ -630,6 +641,7 @@
+         sampling: OllamaSamplingOptions,
+         format: Option<serde_json::Value>,
+     ) -> Result<(String, bool)> {
++        let structured = format.is_some();
+         let url = self.endpoint("/api/chat")?;
+ 
+         let request = OllamaChatRequest {
+@@ -677,12 +689,7 @@
+             .map_err(|e| AppError::AiError(format!("Failed to parse Ollama chat response: {}", e)))?;
+ 
+         let truncated = stopped_at_limit(result.done_reason.as_deref());
+-        let content = result.message.content;
+-        if content.is_empty() && !result.message.thinking.is_empty() {
+-            Ok((result.message.thinking, truncated))
+-        } else {
+-            Ok((content, truncated))
+-        }
++        completed_text(result.message.content, result.message.thinking, truncated, structured)
+     }
+ 
+     /// Non-streaming chat with tool definitions (Ollama wire types).
+@@ -2143,3 +2150,32 @@
+         assert_eq!(result.eval_count, Some(3));
+     }
+ }
++
++#[cfg(test)]
++mod structured_response_tests {
++    use super::*;
++
++    #[test]
++    fn a_structured_reply_never_substitutes_private_reasoning() {
++        let error = completed_text(String::new(), "PRIVATE_SENTINEL".into(), false, true).unwrap_err();
++        assert!(error.to_string().contains("structured completion answer empty"));
++        assert!(!error.to_string().contains("PRIVATE_SENTINEL"));
++    }
++
++    #[test]
++    fn a_truncated_structured_reply_is_refused_even_if_it_looks_like_json() {
++        let error = completed_text("{}".into(), "PRIVATE_SENTINEL".into(), true, true).unwrap_err();
++        assert!(error.to_string().contains("structured completion reached token limit"));
++        assert!(!error.to_string().contains("PRIVATE_SENTINEL"));
++    }
++
++    #[test]
++    fn a_completed_structured_answer_uses_only_the_answer_channel() {
++        assert_eq!(completed_text("{}".into(), "PRIVATE_SENTINEL".into(), false, true).unwrap(), ("{}".into(), false));
++    }
++
++    #[test]
++    fn unstructured_callers_keep_their_existing_fallback() {
++        assert_eq!(completed_text(String::new(), "legacy".into(), true, false).unwrap(), ("legacy".into(), true));
++    }
++}
