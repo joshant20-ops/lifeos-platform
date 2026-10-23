@@ -77,6 +77,28 @@ def add_imap_account(client, address, credentials, sync_from):
         )
 
 
+def ensure_local_ai_ready(host):
+    # A synthetic request through the existing gateway lets its controller own
+    # cold wake/model loading before the native CLI's 60-second generation call.
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError, URLError
+    payload = json.dumps({"model": ai_broker.OLLAMA_MODEL, "prompt": "Reply OK.",
+        "stream": False, "think": False, "options": {"num_predict": 8}}).encode()
+    try:
+        with urlopen(Request(host + "/api/generate", data=payload,
+                headers={"Content-Type": "application/json"}, method="POST"), timeout=420) as response:
+            data = json.loads(response.read(1048576))
+    except HTTPError:
+        raise EmailOpsError("local_ai_readiness_http") from None
+    except (URLError, TimeoutError, OSError):
+        raise EmailOpsError("local_ai_readiness_unavailable") from None
+    except (ValueError, TypeError):
+        raise EmailOpsError("local_ai_readiness_response") from None
+    if not isinstance(data, dict) or data.get("done") is not True or data.get("error"):
+        raise EmailOpsError("local_ai_readiness_response")
+    print("EMAILOPS_AI_READINESS=PASS")
+
+
 def main():
     stage = "runtime_preflight"
     try:
@@ -141,6 +163,8 @@ def main():
         # Prefer exact source matches to current tasks, then sample other mail.
         rows.sort(key=lambda row: row.get("messageId") not in known)
         results, seen = [], set()
+        stage = "local_ai_readiness"
+        ensure_local_ai_ready(os.environ["OLLAMA_HOST"])
         stage = "shadow_analysis"
         started = time.monotonic()
         for row in rows:
