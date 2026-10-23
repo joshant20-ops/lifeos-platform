@@ -26,7 +26,9 @@ def envelope(stdout, returncode=0):
         raise EmailOpsError("cli_invalid_json") from None
     if not isinstance(data, dict) or data.get("ok") is not True or returncode != 0:
         # Upstream errors can include subjects, addresses, and provider responses.
-        raise EmailOpsError("cli_failed")
+        reason = {2: "cli_invalid_input", 3: "cli_not_found", 4: "cli_auth", 5: "cli_network",
+                  6: "cli_ai", 130: "cli_cancelled"}.get(returncode, "cli_failed")
+        raise EmailOpsError(reason)
     if data.get("error") is not None or "data" not in data:
         raise EmailOpsError("cli_invalid_envelope")
     return data["data"]
