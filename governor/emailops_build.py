@@ -42,7 +42,8 @@ def main():
         rust = source / "src-tauri"
         run("cargo", "test", *cargo_args, "--lib", "cli::accounts::tests", cwd=rust)
         run("cargo", "test", *cargo_args, "--lib", "services::emails::spam::tests", cwd=rust)
-        run("cargo", "build", *cargo_args, "--bin", "emailops-cli", cwd=rust)
+        run("cargo", "build", *cargo_args, "--config", "profile.dev.debug-assertions=false",
+            "--bin", "emailops-cli", cwd=rust)
         output.mkdir(parents=True, exist_ok=True)
         binary = output / "emailops-cli"
         target = Path(os.environ.get("CARGO_TARGET_DIR", rust / "target"))
@@ -51,6 +52,8 @@ def main():
         binary.chmod(0o755)
         manifest = {
             "schema": "lifeos_emailops_build_v1",
+            "debug_assertions": False,
+            "credential_backend": "native_keyring",
             "platform_commit": run("git", "rev-parse", "HEAD", cwd=ROOT, capture=True).decode().strip(),
             "source_commit": pin["commit"],
             "source_archive_sha256": pin["archive_sha256"],
