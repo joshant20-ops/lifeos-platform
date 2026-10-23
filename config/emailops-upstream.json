@@ -9,7 +9,7 @@
   "signed_release": false,
   "mode": "shadow",
   "mailbox_writes": false,
-  "patch_sha256": "6391701730e70c16e2ab5349a7cd044ab10be5a0e258891bfb5337594c822539",
+  "patch_sha256": "2631e83506f3ae62bf3fc8b7c8299ac36c6dcb8dab5bbba55b222e43feb8e5c6",
   "version": "0.6.16",
   "rust_toolchain": "1.99.1"
 }
