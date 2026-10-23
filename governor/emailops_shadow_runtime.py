@@ -81,9 +81,11 @@ def main():
         client._call("config", "local-ai", "--provider", "ollama", "--model", ai_broker.OLLAMA_MODEL)
         stage = "account_bootstrap"
         address = (credentials / "gmail-imap-user").read_text().strip()
+        stage = "account_list"
         accounts = client.accounts()
         matches = [a for a in accounts if a.get("email", "").casefold() == address.casefold()]
         if not matches:
+            stage = "account_add"
             sync_from = (datetime.now(timezone.utc) - timedelta(days=30)).date().isoformat()
             added = client._call(
                 "accounts", "add", "imap", "--host", "imap.gmail.com", "--email", address,

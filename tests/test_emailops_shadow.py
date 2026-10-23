@@ -15,6 +15,15 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class EmailOpsShadowTests(unittest.TestCase):
+    def test_failure_categories_never_include_native_details(self):
+        for code, expected in (("keyring", "cli_keyring"), ("auth", "cli_auth"),
+                               ("PRIVATE_SENTINEL", "cli_failed")):
+            payload = json.dumps({"ok": False, "error": {"code": code,
+                "message": "PRIVATE_SENTINEL", "params": {"detail": "PRIVATE_SENTINEL"}}})
+            with self.assertRaises(adapter.EmailOpsError) as caught:
+                adapter.envelope(payload, 1)
+            self.assertEqual(str(caught.exception), expected)
+
     def test_shadow_policy_refuses_junk_even_with_a_matching_installed_build(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
