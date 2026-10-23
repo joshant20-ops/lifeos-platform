@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/lifeos-emailops-shadow.yml'
+      - 'governor/emailops_review_audit.py'
       - 'governor/emailops_runtime_audit.py'
       - 'governor/emailops_build.py'
       - 'governor/emailops_shadow_runtime.py'
