@@ -8,6 +8,7 @@ from pathlib import Path
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -46,6 +47,29 @@ def unlock_keyring(credentials):
     )
     if result.returncode != 0:
         raise EmailOpsError("keyring_unlock_failed")
+
+
+def add_imap_account(client, address, credentials, sync_from):
+    # Systemd may expose its protected credential with group-read permissions.
+    # Keep EmailOps' private-file requirement: use an ephemeral service-owned
+    # 0600 handoff in the private /run directory, then unlink on every outcome.
+    runtime = Path(os.environ["XDG_RUNTIME_DIR"])
+    info = runtime.lstat()
+    if (runtime.is_symlink() or not runtime.is_dir() or info.st_uid != os.geteuid()
+            or info.st_mode & 0o077):
+        raise EmailOpsError("credential_handoff_directory_not_private")
+    with (credentials / "gmail-imap-password").open("rb") as source:
+        password = source.read(4097)
+    if not password or len(password) > 4096:
+        raise EmailOpsError("credential_handoff_length_invalid")
+    with tempfile.NamedTemporaryFile(prefix="emailops-password-", dir=runtime) as handoff:
+        handoff.write(password)
+        handoff.flush()
+        return client._call(
+            "accounts", "add", "imap", "--host", "imap.gmail.com", "--email", address,
+            "--smtp-host", "smtp.gmail.com", "--password-file", handoff.name,
+            "--sync-from", sync_from,
+        )
 
 
 def main():
@@ -87,11 +111,7 @@ def main():
         if not matches:
             stage = "account_add"
             sync_from = (datetime.now(timezone.utc) - timedelta(days=30)).date().isoformat()
-            added = client._call(
-                "accounts", "add", "imap", "--host", "imap.gmail.com", "--email", address,
-                "--smtp-host", "smtp.gmail.com", "--password-file", str(credentials / "gmail-imap-password"),
-                "--sync-from", sync_from,
-            )
+            added = add_imap_account(client, address, credentials, sync_from)
             matches = [added]
         if len(matches) != 1 or matches[0].get("provider") != "imap":
             raise EmailOpsError("isolated_account_mismatch")
