@@ -33,7 +33,9 @@ def envelope(stdout, returncode=0):
         if code in {"auth", "keyring", "database", "http", "sync", "io", "invalid_input", "not_found"}:
             reason = "cli_" + code
         if code == "invalid_input":
-            message = error.get("message")
+            params = error.get("params")
+            detail = params.get("detail") if isinstance(params, dict) else None
+            message = detail if isinstance(detail, str) else error.get("message")
             fixed = {
                 "password file unavailable": "cli_password_file_unavailable",
                 "password file must be a regular file": "cli_password_file_type",
