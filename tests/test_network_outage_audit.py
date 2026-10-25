@@ -1,9 +1,39 @@
 import json
 import unittest
-from governor.network_outage_audit import summarize_journal
+from pathlib import Path
+import tempfile
+import struct
+from unittest.mock import MagicMock, patch
+from governor.network_outage_audit import summarize_journal, runner_diagnostics, dns_probe
 
 
 class NetworkOutageAuditTests(unittest.TestCase):
+    def test_dns_probe_reports_only_status_and_counts(self):
+        for code, expected in ((0, 'NOERROR'), (3, 'NXDOMAIN'), (2, 'SERVFAIL')):
+            stream = MagicMock()
+            stream.__enter__.return_value = stream
+            stream.recvfrom.return_value = (struct.pack('!6H', 0x4c4f, 0x8000 | code, 1, 1, 0, 0), ('192.0.2.1', 53))
+            with patch('governor.network_outage_audit.socket.socket', return_value=stream):
+                result = dns_probe('192.0.2.1', 'adguard.lan')
+            self.assertEqual(result['status'], expected)
+            self.assertNotIn('192.0.2.1', json.dumps(result))
+
+    def test_runner_diagnostic_window_and_private_data_suppression(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'Runner_20261023.log').write_text(
+                '[2026-10-23 15:00:00Z] SocketException PRIVATE_OUTSIDE\n'
+                '[2026-10-23 20:40:00Z] HttpRequestException PRIVATE_TOKEN\n'
+                'SocketException: Name or service not known PRIVATE_HOST\n'
+                '[2026-10-24 08:52:17Z] Listening for Jobs\n'
+                '[2026-10-25 00:00:00Z] SocketException PRIVATE_OUTSIDE\n')
+            output = runner_diagnostics(root)
+            self.assertEqual(output['files_checked'], 1)
+            self.assertFalse(output['scan_limit_reached'])
+            self.assertNotIn('PRIVATE', json.dumps(output))
+            self.assertIn('dns_lookup_error', {x['category'] for x in output['counts']})
+            self.assertEqual(output['last'], '2026-10-24T08:52:17Z')
+
     def row(self, message, stamp='1792791000000000', unit='NetworkManager.service'):
         return json.dumps({'MESSAGE': message, '__REALTIME_TIMESTAMP': stamp, '_SYSTEMD_UNIT': unit})
 

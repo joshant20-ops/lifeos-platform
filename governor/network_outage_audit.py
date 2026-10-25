@@ -11,6 +11,8 @@ import os
 from pathlib import Path
 import platform
 import re
+import socket
+import struct
 import subprocess
 
 SINCE = '2026-10-23 16:30:00 UTC'
@@ -30,6 +32,13 @@ RULES = (
     ('link_up', r'gained carrier|link is up|link up|state change: .* -> activated'),
     ('dhcp_failure', r'dhcp.*(?:timed out|timeout|failed|expired)|lease.*(?:expired|lost)'),
     ('dns_failure', r'temporary failure in name resolution|name resolution.*fail|dns.*(?:timeout|failed|unreachable)|lookup.*no such host'),
+    ('dns_lookup_error', r'name or service not known|no such host|eai_again|enotfound|getaddrinfo|nameresolutionerror'),
+    ('tls_error', r'ssl connection could not be established|authenticationexception|certificate.*(?:invalid|expired)|tls.*handshake.*fail'),
+    ('transport_error', r'connection reset by peer|connection refused|socketexception|httprequestexception'),
+    ('cancel_or_timeout', r'taskcanceledexception|timeoutexception|deadline exceeded|operation was cancel'),
+    ('remote_service_error', r'badgateway|serviceunavailable|gatewaytimeout|too many requests|toomanyrequests'),
+    ('remote_auth_error', r'unauthorized|forbidden|invalid.*(?:credential|token)'),
+    ('runner_session_failure', r'failed to create.*session|session.*conflict|runner listener.*exit|main process exited'),
     ('route_failure', r'network is unreachable|no route to host'),
     ('connection_timeout', r'connection timed out|connection timeout|connect.*timed out'),
     ('runner_connected', r'listening for jobs|connected to github'),
@@ -91,6 +100,87 @@ def command(argv):
         return None
 
 
+def runner_diagnostics(directory):
+    start = datetime(2026, 10, 23, 16, 30, tzinfo=timezone.utc)
+    end = datetime(2026, 10, 24, 9, 5, tzinfo=timezone.utc)
+    files = sorted(directory.glob('Runner_*.log'), reverse=True)
+    rows, checked, limited = [], 0, False
+    for path in files:
+        # Files started after the incident cannot contain incident evidence.
+        name_date = re.search(r'Runner_(\d{8})', path.name)
+        if name_date and name_date[1] > '20261024':
+            continue
+        if checked >= 6:
+            limited = True
+            break
+        if path.is_symlink():
+            continue
+        try:
+            if path.stat().st_mtime < start.timestamp():
+                continue
+            checked += 1
+            stamp = None
+            with path.open(errors='replace') as stream:
+                total = 0
+                for line in stream:
+                    total += len(line.encode('utf-8', errors='replace'))
+                    if total > 16 * 1024 * 1024 or len(rows) >= 2000:
+                        limited = True
+                        break
+                    match = re.search(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}(?:\.\d+)?Z', line)
+                    if match:
+                        stamp = datetime.fromisoformat(match[0].replace('Z', '+00:00'))
+                    if stamp is not None and stamp > end:
+                        break
+                    if stamp is None or stamp < start:
+                        continue
+                    if any(re.search(pattern, line, re.I) for _, pattern in RULES):
+                        rows.append(json.dumps({'__REALTIME_TIMESTAMP': int(stamp.timestamp() * 1000000),
+                            '_SYSTEMD_UNIT': 'actions.runner.local.service', 'MESSAGE': line}))
+        except (OSError, ValueError, OverflowError):
+            continue
+    result = summarize_journal('\n'.join(rows))
+    result.update(files_checked=checked, scan_limit_reached=limited)
+    return result
+
+
+def dns_probe(server, name):
+    ident = 0x4c4f
+    question = b''.join(bytes([len(part)]) + part.encode('ascii') for part in name.split('.')) + b'\0'
+    packet = struct.pack('!6H', ident, 0x0100, 1, 0, 0, 0) + question + struct.pack('!2H', 1, 1)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as stream:
+            stream.settimeout(3)
+            stream.sendto(packet, (server, 53))
+            data, _ = stream.recvfrom(4096)
+        header = struct.unpack('!6H', data[:12])
+        if header[0] != ident or not header[1] & 0x8000:
+            return {'status': 'PROTOCOL_ERROR'}
+        code = header[1] & 15
+        return {'status': {0: 'NOERROR', 2: 'SERVFAIL', 3: 'NXDOMAIN', 5: 'REFUSED'}.get(code, 'OTHER'),
+                'answers': header[3], 'truncated': bool(header[1] & 0x0200)}
+    except (socket.timeout, TimeoutError):
+        return {'status': 'TIMEOUT'}
+    except (OSError, ValueError, struct.error):
+        return {'status': 'UNAVAILABLE'}
+
+
+def dns_checks():
+    servers = [('loopback', '127.0.0.1')]
+    raw = command(['ip', '-j', '-4', 'address', 'show', 'scope', 'global'])
+    try:
+        for interface in json.loads(raw or '[]'):
+            if str(interface.get('ifname', '')).startswith(('eth', 'en', 'wlan')):
+                for addr in interface.get('addr_info', []):
+                    if addr.get('family') == 'inet' and len(servers) < 3:
+                        servers.append(('lan', addr['local']))
+    except (ValueError, TypeError, KeyError):
+        pass
+    for label, server in servers:
+        for name in ('adguard.lan', 'example.com'):
+            print('OUTAGE_CURRENT_DNS=' + json.dumps({'via': label, 'name': name, **dns_probe(server, name)}))
+
+
 def main():
     if platform.node() != 'Docker' or os.geteuid() != 0:
         print('OUTAGE_AUDIT=WRONG_RUNTIME')
@@ -119,6 +209,8 @@ def main():
             print('OUTAGE_JOURNAL_' + name.upper() + '=UNAVAILABLE')
         else:
             print('OUTAGE_JOURNAL_' + name.upper() + '=' + json.dumps(summarize_journal(raw, kernel), separators=(',', ':')))
+    print('OUTAGE_RUNNER_DIAGNOSTICS=' + json.dumps(runner_diagnostics(Path('/opt/actions-runner-lifeos/_diag')), separators=(',', ':')))
+    dns_checks()
     raw = command(['docker', 'inspect', 'homeassistant', 'adguardhome', 'mosquitto', 'nginx-proxy-manager'])
     try:
         containers = json.loads(raw or '[]')
