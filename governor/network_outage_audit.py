@@ -14,9 +14,10 @@ import re
 import subprocess
 
 SINCE = '2026-10-23 16:30:00 UTC'
+UNTIL = '2026-10-24 09:05:00 UTC'
 UNITS = ('NetworkManager.service', 'systemd-networkd.service', 'systemd-resolved.service',
          'wpa_supplicant.service', 'tailscaled.service', 'wg-quick@*.service', 'openvpn*.service',
-         'systemd-logind.service', 'systemd-journald.service', 'init.scope',
+         'systemd-logind.service', 'systemd-journald.service',
          'actions.runner.joshant20-ops-lifeos-platform.lifeos-pi5.service')
 RULES = (
     ('power_undervoltage', r'under.?voltage|voltage.*below'),
@@ -75,7 +76,8 @@ def summarize_journal(raw, kernel=False):
         for item in matching[:2] + matching[-4:]:
             if item not in selected:
                 selected.append(item)
-    return {'records': len(records), 'first': utc(min(records)) if records else None,
+    return {'records': len(records), 'record_limit_reached': len(raw.splitlines()) >= 6000,
+            'first': utc(min(records)) if records else None,
             'last': utc(max(records)) if records else None,
             'counts': [{'group': g, 'category': c, 'count': n} for (g, c), n in sorted(counts.items())],
             'events': sorted(selected, key=lambda x: x['at'])}
@@ -95,6 +97,7 @@ def main():
         return 20
     print('OUTAGE_AUDIT_VERSION=1')
     print('OUTAGE_WINDOW_START=2026-10-23T16:30:00Z')
+    print('OUTAGE_WINDOW_END=2026-10-24T09:05:00Z')
     try:
         uptime = float(Path('/proc/uptime').read_text().split()[0])
         print('OUTAGE_CURRENT_BOOT=' + utc(datetime.now(timezone.utc).timestamp() - uptime))
@@ -108,7 +111,7 @@ def main():
         dates = re.findall(r'\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\b', line)
         if match and len(dates) == 2:
             print('OUTAGE_BOOT=' + json.dumps({'index': int(match[1]), 'first_utc': dates[0], 'last_utc': dates[1]}))
-    common = ['journalctl', '--since', SINCE, '--no-pager', '-o', 'json', '-n', '6000']
+    common = ['journalctl', '--since', SINCE, '--until', UNTIL, '--no-pager', '-o', 'json', '-n', '6000']
     units = [arg for unit in UNITS for arg in ('-u', unit)]
     for name, extra, kernel in (('network', units, False), ('kernel', ['_TRANSPORT=kernel'], True)):
         raw = command(common + extra)
