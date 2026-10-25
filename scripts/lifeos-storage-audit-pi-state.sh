@@ -239,5 +239,8 @@ if [[ -f /var/mail/joshan ]]; then
   printf 'MAIL_SPOOL_MESSAGE_COUNT=%s\n' "$(grep -c '^From ' /var/mail/joshan 2>/dev/null || true)"
 fi
 
+section 'bounded connectivity incident history'
+python3 /home/joshan/lifeos-platform/governor/network_outage_audit.py || echo 'OUTAGE_AUDIT=UNAVAILABLE'
+
 echo 'AUDIT_MUTATIONS=NONE'
 echo 'RESULT=PASS'
