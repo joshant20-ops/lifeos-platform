@@ -44,6 +44,7 @@ jobs:
       - name: Control-plane regression tests
         run: |
           python3 -m unittest -v \
+            tests.test_network_outage_audit \
             tests.test_emailops_shadow \
             tests.test_emailops_review_audit \
             tests.test_emailops_review_views \
