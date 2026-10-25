@@ -3,11 +3,30 @@ import unittest
 from pathlib import Path
 import tempfile
 import struct
+import sqlite3
 from unittest.mock import MagicMock, patch
-from governor.network_outage_audit import summarize_journal, runner_diagnostics, dns_probe
+from governor.network_outage_audit import summarize_journal, runner_diagnostics, dns_probe, kuma_history
 
 
 class NetworkOutageAuditTests(unittest.TestCase):
+    def test_kuma_history_is_private_read_only_and_scoped_to_incident(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'kuma.db'
+            with sqlite3.connect(path) as db:
+                db.execute('CREATE TABLE monitor(id INTEGER,type TEXT,url TEXT,hostname TEXT)')
+                db.execute('CREATE TABLE heartbeat(monitor_id INTEGER,status INTEGER,time TEXT,msg TEXT)')
+                db.execute("INSERT INTO monitor VALUES(1,'http','http://private-name.lan/private',NULL)")
+                db.execute("INSERT INTO heartbeat VALUES(1,0,'2026-10-23 20:40:00','Connection timed out PRIVATE_TOKEN')")
+                db.execute("INSERT INTO heartbeat VALUES(1,0,'2026-10-25 20:40:00','PRIVATE_OUTSIDE')")
+            before = path.read_bytes()
+            result = kuma_history(path)
+            self.assertEqual(result['samples'], 1)
+            self.assertEqual(result['monitors'][0]['scope'], 'lan_name')
+            self.assertEqual(result['monitors'][0]['down'], 1)
+            self.assertNotIn('PRIVATE', json.dumps(result))
+            self.assertNotIn('private-name', json.dumps(result))
+            self.assertEqual(path.read_bytes(), before)
+
     def test_dns_probe_reports_only_status_and_counts(self):
         for code, expected in ((0, 'NOERROR'), (3, 'NXDOMAIN'), (2, 'SERVFAIL')):
             stream = MagicMock()

@@ -13,6 +13,10 @@ import platform
 import re
 import socket
 import struct
+import sqlite3
+import time
+from urllib.parse import urlsplit
+import ipaddress
 import subprocess
 
 SINCE = '2026-10-23 16:30:00 UTC'
@@ -181,6 +185,49 @@ def dns_checks():
             print('OUTAGE_CURRENT_DNS=' + json.dumps({'via': label, 'name': name, **dns_probe(server, name)}))
 
 
+def kuma_history(path):
+    if not path.is_file() or path.is_symlink():
+        return {'status': 'UNAVAILABLE'}
+    try:
+        # Immutable/read-only avoids writing database/WAL/shared-memory files.
+        # Historical checkpointed rows are sufficient; newer WAL rows may be absent.
+        with sqlite3.connect(path.as_uri() + '?mode=ro&immutable=1', uri=True, timeout=3) as db:
+            deadline = time.monotonic() + 8
+            db.set_progress_handler(lambda: int(time.monotonic() > deadline), 10000)
+            monitor_count = db.execute('SELECT count(*) FROM monitor').fetchone()[0]
+            rows = db.execute('''SELECT h.monitor_id,h.status,h.time,h.msg,m.type,m.url,m.hostname
+                FROM heartbeat h JOIN monitor m ON m.id=h.monitor_id
+                WHERE datetime(h.time)>=? AND datetime(h.time)<=?
+                ORDER BY h.time LIMIT 20000''', ('2026-10-23 16:30:00', '2026-10-24 09:05:00')).fetchall()
+        groups = {}
+        for monitor_id, status, stamp, message, kind, url, hostname in rows:
+            if monitor_id not in groups:
+                host = urlsplit(str(url or '')).hostname or str(hostname or '')
+                try:
+                    scope = 'lan' if ipaddress.ip_address(host).is_private else 'external'
+                except ValueError:
+                    scope = 'lan_name' if host.endswith(('.lan', '.local')) else 'external_name' if host else 'unknown'
+                groups[monitor_id] = {'monitor': len(groups) + 1,
+                    'kind': kind if kind in {'http', 'port', 'ping', 'dns', 'docker'} else 'other',
+                    'scope': scope, 'samples': 0, 'down': 0, 'first_down': None, 'last_down': None, 'errors': Counter()}
+            item = groups[monitor_id]
+            item['samples'] += 1
+            if status == 0:
+                item['down'] += 1
+                parsed = utc(datetime.fromisoformat(str(stamp).replace('Z', '+00:00')).replace(tzinfo=timezone.utc).timestamp())
+                item['first_down'] = item['first_down'] or parsed
+                item['last_down'] = parsed
+                for category, pattern in RULES:
+                    if re.search(pattern, str(message or ''), re.I):
+                        item['errors'][category] += 1
+        for item in groups.values():
+            item['errors'] = dict(item['errors'])
+        return {'status': 'READ_ONLY_CHECKPOINTED', 'configured_monitors': monitor_count,
+                'samples': len(rows), 'row_limit_reached': len(rows) == 20000, 'monitors': list(groups.values())}
+    except (sqlite3.Error, ValueError, TypeError, OSError):
+        return {'status': 'UNAVAILABLE'}
+
+
 def main():
     if platform.node() != 'Docker' or os.geteuid() != 0:
         print('OUTAGE_AUDIT=WRONG_RUNTIME')
@@ -211,6 +258,7 @@ def main():
             print('OUTAGE_JOURNAL_' + name.upper() + '=' + json.dumps(summarize_journal(raw, kernel), separators=(',', ':')))
     print('OUTAGE_RUNNER_DIAGNOSTICS=' + json.dumps(runner_diagnostics(Path('/opt/actions-runner-lifeos/_diag')), separators=(',', ':')))
     dns_checks()
+    print('OUTAGE_KUMA_HISTORY=' + json.dumps(kuma_history(Path('/mnt/docker-data/volumes/uptime-kuma/_data/kuma.db')), separators=(',', ':')))
     raw = command(['docker', 'inspect', 'homeassistant', 'adguardhome', 'mosquitto', 'nginx-proxy-manager'])
     try:
         containers = json.loads(raw or '[]')
