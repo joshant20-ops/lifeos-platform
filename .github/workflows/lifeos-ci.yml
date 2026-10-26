@@ -44,6 +44,7 @@ jobs:
       - name: Control-plane regression tests
         run: |
           python3 -m unittest -v \
+            tests.test_restore_staging_capacity \
             tests.test_storage_source_preservation \
             tests.test_vpn_runtime_audit \
             tests.test_network_outage_audit \
