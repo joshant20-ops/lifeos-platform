@@ -46,6 +46,19 @@ def main():
         entry=matter_entry()
         if entry.get("state") not in {"loaded","setup_retry","setup_error"}: raise RuntimeError("integration_state_unexpected")
         if state=="exited":
+            recovery=Path("/mnt/docker-data/recovery")
+            backup=recovery/"matter-data-before-recovery.tar"
+            source=mount[0]["Source"]
+            size=int(command(["du","-sx","--apparent-size","--block-size=1",source]).split()[0])
+            if size>256*1024**2: raise RuntimeError("fabric_backup_size_unexpected")
+            if backup.exists() or backup.is_symlink():
+                if backup.is_symlink() or not backup.is_file(): raise RuntimeError("fabric_backup_unsafe")
+                command(["tar","--acls","--xattrs","--compare","--file",str(backup),"-C",source,"."],timeout=60)
+            else:
+                fd=os.open(backup,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600);os.close(fd)
+                command(["tar","--acls","--xattrs","--numeric-owner","--create","--file",str(backup),"-C",source,"."],timeout=60)
+                command(["tar","--acls","--xattrs","--compare","--file",str(backup),"-C",source,"."],timeout=60)
+            print("MATTER_PRIVATE_FABRIC_BACKUP=PASS")
             command(["docker","start","matter-server"],timeout=40);started=True
         ready=False
         for _ in range(30):
