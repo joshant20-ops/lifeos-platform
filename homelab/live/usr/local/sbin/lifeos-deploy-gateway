@@ -120,6 +120,10 @@ OPS = {
         'script': 'scripts/lifeos-storage-inspect-backup-evidence.sh',
         'privileged': True,
     },
+    'storage-verify-runtime': {
+        'script': 'scripts/lifeos-storage-verify-runtime.sh',
+        'privileged': True,
+    },
     'storage-preserve-sd-source': {
         'script': 'scripts/lifeos-storage-preserve-sd-source.sh',
         'privileged': True,
