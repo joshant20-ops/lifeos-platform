@@ -73,6 +73,18 @@ def main():
     except Exception:
         print("MONITORING_AUTH_PREFLIGHT=UNAVAILABLE")
     version=run(["docker","exec","uptime-kuma","node","-p","require('/app/package.json').version"]).strip()
-    print("MONITORING_INSTALLED_VERSION="+(version if re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+(?:[-.A-Za-z0-9]+)?",version) else "UNKNOWN"))
+    print("MONITORING_INSTALLED_VERSION="+(version if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:[-.A-Za-z0-9]+)?",version) else "UNKNOWN"))
+    native=run(["docker","exec","uptime-kuma","node","-e","const {io}=require(\"socket.io-client\"); const socket=io(\"http://127.0.0.1:3001\",{transports:[\"websocket\"],reconnection:false,timeout:4000}); const timer=setTimeout(()=>process.exit(1),6000); socket.on(\"connect\",()=>socket.emit(\"needSetup\",(needed)=>{console.log(JSON.stringify({needSetup:needed,version:require(\"/app/package.json\").version}));clearTimeout(timer);socket.close();})); socket.on(\"connect_error\",()=>process.exit(1));"])
+    try:
+        details=json.loads(native)
+        print("MONITORING_NATIVE_SETUP_REQUIRED="+str(details.get("needSetup") is True))
+        print("MONITORING_NATIVE_VERSION="+str(details.get("version") if re.fullmatch(r"[0-9A-Za-z.+-]{1,40}",str(details.get("version"))) else "UNKNOWN"))
+    except Exception: print("MONITORING_NATIVE_PREFLIGHT=UNAVAILABLE")
+    states=run(["lifeos-secret","exec","homeassistant.long_lived_access_token","HA_TOKEN","python3","-c","import json,os,urllib.request; q=urllib.request.Request(\"http://127.0.0.1:8123/api/config/config_entries/entry\",headers={\"Authorization\":\"Bearer \"+os.environ[\"HA_TOKEN\"]}); rows=json.load(urllib.request.urlopen(q,timeout=6)); print(json.dumps({d:[r.get(\"state\") for r in rows if r.get(\"domain\")==d] for d in [\"matter\",\"zwave_js\",\"mqtt\"]}))"])
+    try:
+        details=json.loads(states)
+        allowed={"loaded","not_loaded","setup_error","setup_retry","migration_error","failed_unload"}
+        print("RECOVERY_HA_INTEGRATIONS="+json.dumps({k:[v if v in allowed else "OTHER" for v in details.get(k,[])] for k in ["matter","zwave_js","mqtt"]}))
+    except Exception: print("RECOVERY_HA_INTEGRATIONS=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
