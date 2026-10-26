@@ -3,10 +3,15 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from governor.vpn_runtime_audit import capture_reports, router_url, wireguard_summary
+from governor.vpn_runtime_audit import capture_reports, router_url, wireguard_summary, endpoint_metadata
 
 
 class VPNRuntimeAuditTests(unittest.TestCase):
+    def test_native_endpoint_metadata_reads_only_valid_selected_values(self):
+        host, port = endpoint_metadata('PRIVATE_KEY=SECRET\npivpnHOST="vpn.example.test"\npivpnPORT=51820\n')
+        self.assertEqual((host, port), ('vpn.example.test', 51820))
+        self.assertEqual(endpoint_metadata('pivpnHOST=$(private-command)\npivpnPORT=51820'), (None, None))
+
     def test_wireguard_metadata_never_exposes_peer_keys(self):
         result = wireguard_summary('51820', 'PRIVATE_PUBLIC_KEY 0', 'PRIVATE_PUBLIC_KEY 100 200')
         self.assertEqual(result['listen_port'], 51820)

@@ -77,7 +77,20 @@ def router_url(url, gateway):
     return url
 
 
-def router_status(gateway, local_address, port):
+def endpoint_metadata(text):
+    values = {}
+    for key in ('pivpnHOST', 'pivpnPORT'):
+        match = re.search(r'^' + key + r'=(.*)$', text, re.M)
+        if match:
+            values[key] = match[1].strip().strip('\"\'')
+    host = values.get('pivpnHOST', '')
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]{0,252}', host):
+        return None, None
+    port = values.get('pivpnPORT', '')
+    return host, int(port) if port.isdigit() and 0 < int(port) < 65536 else None
+
+
+def router_status(gateway, local_address, port, endpoint_addresses=()):
     if not gateway or not local_address or not port:
         return {'status': 'NO_ROUTE_OR_LISTENER'}
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
@@ -118,6 +131,7 @@ def router_status(gateway, local_address, port):
             control = router_url(urljoin(location, service.findtext('{*}controlURL') or ''), gateway)
             for action, arguments in (
                 ('GetStatusInfo', ''),
+                ('GetExternalIPAddress', ''),
                 ('GetSpecificPortMappingEntry', '<NewRemoteHost></NewRemoteHost><NewExternalPort>' + str(port) +
                  '</NewExternalPort><NewProtocol>UDP</NewProtocol>'),
             ):
@@ -133,6 +147,11 @@ def router_status(gateway, local_address, port):
                         for field in ('NewConnectionStatus', 'NewLastConnectionError'):
                             value = reply.findtext('.//{*}' + field) or ''
                             result[field] = value if re.fullmatch(r'[A-Za-z_]{1,80}', value) else 'UNKNOWN'
+                    elif action == 'GetExternalIPAddress':
+                        address = ipaddress.IPv4Address(reply.findtext('.//{*}NewExternalIPAddress') or '')
+                        result['wan_ipv4_is_public'] = address.is_global
+                        if endpoint_addresses:
+                            result['saved_endpoint_matches_wan'] = str(address) in endpoint_addresses
                     else:
                         result['udp_mapping_listed'] = True
                         result['mapping_targets_pi'] = reply.findtext('.//{*}NewInternalClient') == local_address
@@ -164,7 +183,26 @@ def main():
         if gateway and local:
             ipaddress.IPv4Address(gateway)
             ipaddress.IPv4Address(local)
-        print('VPN_ROUTER=' + json.dumps(router_status(gateway, local, summary['listen_port']), separators=(',', ':')))
+        endpoint, endpoint_port, addresses = None, None, set()
+        setup = Path('/etc/pivpn/wireguard/setupVars.conf')
+        if setup.is_file() and not setup.is_symlink():
+            endpoint, endpoint_port = endpoint_metadata(setup.read_text()[:16384])
+        if endpoint:
+            try:
+                addresses.add(str(ipaddress.IPv4Address(endpoint)))
+                kind = 'IPV4'
+            except ipaddress.AddressValueError:
+                kind = 'HOSTNAME'
+                for line in (run('getent', 'ahostsv4', endpoint) or '').splitlines():
+                    try:
+                        addresses.add(str(ipaddress.IPv4Address(line.split()[0])))
+                    except (ipaddress.AddressValueError, IndexError):
+                        pass
+            print('VPN_SAVED_ENDPOINT=' + json.dumps({'kind': kind, 'resolution_available': bool(addresses),
+                  'port_matches_listener': endpoint_port == summary['listen_port']}))
+        else:
+            print('VPN_SAVED_ENDPOINT=NOT_AVAILABLE')
+        print('VPN_ROUTER=' + json.dumps(router_status(gateway, local, summary['listen_port'], addresses), separators=(',', ':')))
         print('VPN_AUDIT_MUTATIONS=NONE')
         print('VPN_AUDIT=PASS')
         return 0
