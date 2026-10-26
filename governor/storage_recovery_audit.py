@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sqlite3
 
 SSD = "a53fd6a0-c498-4b76-a496-0e5d9233447f"
 SD = "e20b40e9-a03b-4e15-b170-f527cf96d5e5"
@@ -61,5 +62,17 @@ def main():
     for unit in ["docker.service","opt-stacks.mount","mnt-docker\\x2ddata.mount"]:
         text = run(["systemctl","show",unit,"-p","ActiveState","-p","Requires","-p","BindsTo","-p","After"])
         print("RECOVERY_BOOT_UNIT="+json.dumps({"unit":unit,"properties":text.strip().splitlines()},separators=(",",":")))
+    try:
+        db=Path("/mnt/docker-data/volumes/uptime-kuma/_data/kuma.db")
+        with sqlite3.connect(db.as_uri()+"?mode=ro&immutable=1",uri=True,timeout=3) as connection:
+            connection.execute("PRAGMA query_only=ON")
+            users=connection.execute('SELECT COUNT(*) FROM user').fetchone()[0]
+            monitors=connection.execute('SELECT COUNT(*) FROM monitor').fetchone()[0]
+        print("MONITORING_CHECKPOINTED_USER_COUNT="+str(users))
+        print("MONITORING_CHECKPOINTED_MONITOR_COUNT="+str(monitors))
+    except Exception:
+        print("MONITORING_AUTH_PREFLIGHT=UNAVAILABLE")
+    version=run(["docker","exec","uptime-kuma","node","-p","require('/app/package.json').version"]).strip()
+    print("MONITORING_INSTALLED_VERSION="+(version if re.fullmatch(r"[0-9]+\\.[0-9]+\\.[0-9]+(?:[-.A-Za-z0-9]+)?",version) else "UNKNOWN"))
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
