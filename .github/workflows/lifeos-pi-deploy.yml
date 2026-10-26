@@ -23,6 +23,7 @@ on:
           - deploy-p0-resilience
           - storage-remove-stale-copies
           - storage-inspect-backup-evidence
+          - storage-preserve-sd-source
           - storage-audit-pi-state
           - audit-paperless-runtime
           - storage-stage-opt-stacks
@@ -83,6 +84,7 @@ jobs:
         || github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' ||
         github.event.issue.title == 'LifeOS Deploy: storage-remove-stale-copies' ||
         github.event.issue.title == 'LifeOS Deploy: storage-inspect-backup-evidence' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-preserve-sd-source' ||
         github.event.issue.title == 'LifeOS Deploy: storage-audit-pi-state' ||
         github.event.issue.title == 'LifeOS Deploy: storage-stage-opt-stacks' ||
         github.event.issue.title == 'LifeOS Deploy: storage-activate-opt-stacks' ||
@@ -116,6 +118,7 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' && 'deploy-pa-task-reconciler' ||
         github.event.issue.title == 'LifeOS Deploy: storage-remove-stale-copies' && 'storage-remove-stale-copies' ||
         github.event.issue.title == 'LifeOS Deploy: storage-inspect-backup-evidence' && 'storage-inspect-backup-evidence' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-preserve-sd-source' && 'storage-preserve-sd-source' ||
         github.event.issue.title == 'LifeOS Deploy: storage-audit-pi-state' && 'storage-audit-pi-state' ||
         github.event.issue.title == 'LifeOS Deploy: storage-stage-opt-stacks' && 'storage-stage-opt-stacks' ||
         github.event.issue.title == 'LifeOS Deploy: storage-activate-opt-stacks' && 'storage-activate-opt-stacks' ||
@@ -158,7 +161,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/lifeos-evidence"
-          if [[ "$LIFEOS_OPERATION" == "storage-remove-stale-copies" || "$LIFEOS_OPERATION" == "storage-inspect-backup-evidence" || "$LIFEOS_OPERATION" == "storage-audit-pi-state" || "$LIFEOS_OPERATION" == "storage-stage-opt-stacks" || "$LIFEOS_OPERATION" == "storage-activate-opt-stacks" || "$LIFEOS_OPERATION" == "storage-rollback-opt-stacks" || "$LIFEOS_OPERATION" == "storage-finalize-opt-stacks" || "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then
+          if [[ "$LIFEOS_OPERATION" == "storage-preserve-sd-source" || "$LIFEOS_OPERATION" == "storage-remove-stale-copies" || "$LIFEOS_OPERATION" == "storage-inspect-backup-evidence" || "$LIFEOS_OPERATION" == "storage-audit-pi-state" || "$LIFEOS_OPERATION" == "storage-stage-opt-stacks" || "$LIFEOS_OPERATION" == "storage-activate-opt-stacks" || "$LIFEOS_OPERATION" == "storage-rollback-opt-stacks" || "$LIFEOS_OPERATION" == "storage-finalize-opt-stacks" || "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then
             # Bootstrap the reviewed main-branch allow-list into the root-owned gateway.
             # The installer enforces a clean canonical main checkout and fixed source path.
             sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-install-github-runner-gateway.sh
