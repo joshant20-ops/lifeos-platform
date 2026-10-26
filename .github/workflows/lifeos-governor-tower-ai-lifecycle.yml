@@ -4,12 +4,10 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/lifeos-governor-tower-ai-lifecycle.yml'
       - 'scripts/lifeos-deploy-governor-managed-engineer.sh'
       - 'governor/engineer_backend.py'
       - 'governor/autonomous_agent.py'
       - 'governor/systemd/lifeos-engineer.service.d/governor-ai-broker.conf'
-      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
       - 'governor/tower_control.py'
       - 'governor/systemd/lifeos-tower-control.service'
   workflow_dispatch:

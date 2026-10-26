@@ -4,7 +4,6 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/lifeos-pa-deploy.yml'
       - 'governor/assistant_bridge.py'
       - 'governor/ai_broker.py'
       - 'governor/assistant_ui.html'
@@ -24,7 +23,6 @@ on:
       - 'tests/personal_admin/test_pa_task_review.py'
       - 'tests/personal_admin/test_assistant_pa_actions.py'
       - 'governor/scripts/deploy-ha-assistant.sh'
-      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
 
 permissions:
   contents: read
