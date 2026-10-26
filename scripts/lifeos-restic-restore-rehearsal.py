@@ -3,6 +3,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -81,6 +82,14 @@ def restic_env():
     return env
 
 
+def require_capacity(stats, available):
+    size = stats.get("total_size")
+    if isinstance(size, bool) or not isinstance(size, int) or size < 0:
+        raise RuntimeError("restore size unavailable")
+    if available < size + size // 10 + 5 * 1024**3:
+        raise RuntimeError("insufficient restore staging capacity")
+
+
 def main():
     print("RESTORE_REHEARSAL=START")
     env = restic_env()
@@ -100,10 +109,17 @@ def main():
         print(f"SNAPSHOT_TIME={snap.get('time', '')}")
         print(f"SNAPSHOT_HOST={snap.get('hostname', '')}")
         print(f"SNAPSHOT_PATH_COUNT={len(snap.get('paths') or [])}")
+        snapshot_id = snap.get("id", "")
+        if not re.fullmatch(r"[0-9a-f]{64}", snapshot_id):
+            raise RuntimeError("invalid snapshot identity")
+        stats_file = base / "stats.json"
+        restic(env, ["stats", snapshot_id, "--mode", "restore-size", "--json"], str(stats_file))
+        require_capacity(json.loads(stats_file.read_text()), shutil.disk_usage(base).free)
+        print("RESTORE_STAGING_CAPACITY=PASS")
         restic(env, ["check", "--read-data-subset=1/100"])
         print("RESTIC_CHECK=PASS")
         target = base / "restore"
-        restic(env, ["restore", "latest", "--target", str(target)])
+        restic(env, ["restore", snapshot_id, "--target", str(target)])
         count = sum(1 for path in target.rglob("*") if path.is_file())
     if count <= 0:
         raise RuntimeError("no files restored")
