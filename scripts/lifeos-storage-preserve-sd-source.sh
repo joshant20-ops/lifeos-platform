@@ -36,7 +36,7 @@ src=$view/opt/stacks
 [[ $(findmnt -n -o UUID -T "$src") == e20b40e9-a03b-4e15-b170-f527cf96d5e5 ]] || fail source_device
 [[ ,$(findmnt -n -o OPTIONS -T "$src"), == *,ro,* ]] || fail source_not_readonly
 [[ -d "$src" && ! -L "$src" && -f "$src/homeassistant/docker-compose.yml" ]] || fail source_missing
-needed=$(du -sx --block-size=1 "$src" | awk '{print $1}')
+needed=$(du -sx --apparent-size --block-size=1 "$src" | awk '{print $1}')
 available=$(df --output=avail -B1 "$RECOVERY" | tail -1 | tr -d ' ')
 [[ $needed =~ ^[0-9]+$ && $available =~ ^[0-9]+$ ]] || fail capacity_unknown
 (( available > needed + 5368709120 )) || fail insufficient_capacity
@@ -50,7 +50,7 @@ else
   payload=$dest/payload
   mkdir -m 0700 "$payload"
   # No --delete on the copying pass. Diagnostics and all contents stay private.
-  timeout 1200 rsync -aHAXx --numeric-ids "$src/" "$payload/" >"$dest/copy.log" 2>&1 || fail copy_failed_partial_retained
+  timeout 1200 rsync -aHAXxS --numeric-ids "$src/" "$payload/" >"$dest/copy.log" 2>&1 || fail copy_failed_partial_retained
 fi
 # Two checksum/metadata passes detect unstable source as well as incomplete copy.
 for pass in 1 2; do
@@ -64,6 +64,7 @@ sync -f "$dest"
 if [[ "$dest" != "$RECOVERY/sd-opt-stacks-20261017" ]]; then
   [[ ! -e "$RECOVERY/sd-opt-stacks-20261017" && ! -L "$RECOVERY/sd-opt-stacks-20261017" ]] || fail destination_race
   mv -T -n "$dest" "$RECOVERY/sd-opt-stacks-20261017"
+  [[ ! -e "$dest" ]] || fail publication_not_completed
 fi
 echo 'SD_SOURCE_READ_ONLY=PASS'
 echo 'SD_SOURCE_PRESERVATION=PASS'
