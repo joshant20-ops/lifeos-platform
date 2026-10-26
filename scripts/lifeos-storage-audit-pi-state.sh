@@ -245,5 +245,7 @@ python3 /home/joshan/lifeos-platform/governor/network_outage_audit.py || echo 'O
 section 'read-only VPN and router state'
 python3 /home/joshan/lifeos-platform/governor/vpn_runtime_audit.py || echo 'VPN_AUDIT=UNAVAILABLE'
 
+python3 /home/joshan/lifeos-platform/governor/storage_recovery_audit.py || echo 'RECOVERY_DIAGNOSTIC=UNAVAILABLE'
+
 echo 'AUDIT_MUTATIONS=NONE'
 echo 'RESULT=PASS'
