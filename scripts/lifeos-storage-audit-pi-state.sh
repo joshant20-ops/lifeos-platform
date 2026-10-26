@@ -242,5 +242,8 @@ fi
 section 'bounded connectivity incident history'
 python3 /home/joshan/lifeos-platform/governor/network_outage_audit.py || echo 'OUTAGE_AUDIT=UNAVAILABLE'
 
+section 'read-only VPN and router state'
+python3 /home/joshan/lifeos-platform/governor/vpn_runtime_audit.py || echo 'VPN_AUDIT=UNAVAILABLE'
+
 echo 'AUDIT_MUTATIONS=NONE'
 echo 'RESULT=PASS'
