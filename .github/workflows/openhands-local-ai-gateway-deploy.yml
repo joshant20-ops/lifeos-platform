@@ -13,10 +13,7 @@ on:
       - 'scripts/lifeos-wake-aware-ai-acceptance.sh'
       - 'scripts/lifeos-deploy-ha-control-bridge.sh'
       - 'scripts/lifeos-deploy-ha-control-bridge-impl.sh'
-      - '.github/workflows/lifeos-governor-tower-ai-lifecycle.yml'
       - 'governor/tower_control.py'
-      - '.github/workflows/lifeos-governor-broker-deploy.yml'
-      - '.github/workflows/openhands-local-ai-gateway-deploy.yml'
 permissions:
   contents: read
 concurrency:
