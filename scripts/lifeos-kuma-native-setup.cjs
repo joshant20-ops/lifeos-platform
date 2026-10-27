@@ -21,6 +21,14 @@ const run=async()=>{
  stage="login";await checked("login",{username:input.username,password:input.password,token:""});
  await checked("getMonitorList");
  const owned=[];
+ stage="retire_incorrect_loopback_target";
+ const old=Object.values(monitors).filter(m=>m.name==="Homelab Predbat");
+ if(old.length>1)throw new Error("duplicate_retired_monitor");
+ if(old.length===1){
+   const m=old[0];
+   if(m.type!=="http"||m.url!==input.retiredPredbatUrl||Number(m.interval)!==60||Number(m.maxretries)!==2||Object.values(m.notificationIDList||{}).some(Boolean))throw new Error("retired_monitor_changed");
+   await checked("deleteMonitor",Number(m.id));
+ }
  stage="monitors";
  for(const spec of input.monitors){
    const matches=Object.values(monitors).filter(m=>m.name===spec.name);
