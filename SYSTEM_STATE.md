@@ -36,7 +36,7 @@
 - `paperless-redis-1` — `redis:7`
 - `predbat` — `31413752bb3e`
 - `uptime-kuma` — `3d632903e6af`
-- `vaultwarden` — `094b5689ed81`
+- `vaultwarden` — `efb3cde96201`
 - `zwave-js-ui` — `86f418050ce6`
 
 ## Key Source Locations

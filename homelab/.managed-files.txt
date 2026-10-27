@@ -236,6 +236,7 @@ opt/stacks/predbat/docker-compose.yml
 opt/stacks/qbittorrent_backup_2026-07-01_171445/docker-compose.yml
 opt/stacks/qbittorrent/docker-compose.yml
 opt/stacks/uptime-kuma/docker-compose.yml
+opt/stacks/vaultwarden/backup-20261027-132554/docker-compose.yml
 opt/stacks/vaultwarden/docker-compose.yml
 opt/stacks/zwave/docker-compose.yml
 opt/stacks/zwave-js-ui/docker-compose.yml
