@@ -44,6 +44,7 @@ jobs:
       - name: Control-plane regression tests
         run: |
           python3 -m unittest -v \
+            tests.test_smart_native_repair \
             tests.test_storage_boot_acceptance \
             tests.test_matter_storage_recovery \
             tests.test_storage_runtime_acceptance \
