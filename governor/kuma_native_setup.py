@@ -11,7 +11,7 @@ CREDENTIALS=Path("/etc/lifeos/secrets/uptime-kuma/admin.json")
 def specs(pi,gateway):
     if not ipaddress.ip_address(pi).is_private or not ipaddress.ip_address(gateway).is_private: raise RuntimeError("unexpected_lan_route")
     rows=[{"name":"Homelab Router","type":"ping","hostname":gateway},{"name":"Homelab WAN without DNS","type":"port","hostname":"1.1.1.1","port":443},{"name":"Homelab Public DNS via AdGuard","type":"dns","hostname":"example.com","dns_resolve_server":pi,"port":53},{"name":"Homelab Local DNS via AdGuard","type":"dns","hostname":"adguard.lan","dns_resolve_server":pi,"port":53},{"name":"Homelab MQTT listener","type":"port","hostname":pi,"port":1883},{"name":"Homelab Matter listener","type":"port","hostname":pi,"port":5580}]
-    for name,port,path in [("Home Assistant",8123,"/"),("AdGuard admin",3001,"/"),("Energy API",8110,"/api/energy/current"),("Paperless",8010,"/"),("Vaultwarden",8081,"/alive"),("Predbat",5052,"/")]:
+    for name,port,path in [("Home Assistant",8123,"/"),("AdGuard admin",3001,"/"),("Energy API",8110,"/api/energy/current"),("Paperless",8010,"/"),("Vaultwarden",8081,"/alive")]:
         rows.append({"name":"Homelab "+name,"type":"http","url":"http://"+pi+":"+str(port)+path})
     return rows
 
@@ -39,6 +39,7 @@ def main():
         row=json.loads(route.stdout)[0]
         if row.get("dev")!="eth0":raise RuntimeError("unexpected_interface")
         data=credentials();data["monitors"]=specs(row["prefsrc"],row["gateway"])
+        data["retiredPredbatUrl"]="http://"+row["prefsrc"]+":5052/"
         script=Path("/home/joshan/lifeos-platform/scripts/lifeos-kuma-native-setup.cjs").read_text()
         result=subprocess.run(["docker","exec","-i","uptime-kuma","node","-e",script],input=json.dumps(data),capture_output=True,text=True,timeout=440)
         details=json.loads(result.stdout.strip().splitlines()[-1])
