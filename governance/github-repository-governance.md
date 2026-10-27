@@ -80,7 +80,7 @@ default branch appear permanently unhealthy.
 
 ## Issues, projects and the task ledger
 
-GitHub Issues and a small Project view are the human-facing roadmap:
+`docs/UNIFIED_ROADMAP.md` is the sole programme roadmap. GitHub Issues and a small Project view are subordinate execution surfaces:
 
 - Now
 - Blocked

@@ -36,3 +36,6 @@ remain normative.
 - Migration evidence and rollback artifacts follow
   `operations/records-retention.md`; a capability-specific policy may retain them
   longer but never silently shorten the stated recovery window.
+
+
+Programme sequencing is governed solely by [UNIFIED_ROADMAP.md](UNIFIED_ROADMAP.md). These procedures apply only to explicitly selected migration work; they do not authorize repeating completed recovery or removing retained data.
