@@ -1,3 +1,7 @@
+# RETIRED programme roadmap
+
+Use [UNIFIED_ROADMAP.md](UNIFIED_ROADMAP.md) for current priorities. Everything below is historical evidence, not authority to start work or reopen completed stages.
+
 # Roadmap
 
 ## Current priorities

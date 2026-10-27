@@ -6,6 +6,8 @@
 
 This document defines what LifeOS is trying to become and the engineering rules that govern it. It is intentionally more stable than GitHub issues, runtime evidence, or work logs.
 
+For current priorities use [UNIFIED_ROADMAP.md](UNIFIED_ROADMAP.md). Finance & Assets is deferred by owner decision (27 Oct 2026), with no active delivery or dependency. Older work logs and finance ambitions below are historical only; they cannot reactivate this scope.
+
 For current implementation state, use GitHub issues plus live runtime evidence. **Current reality outranks stale issue text.**
 
 ---
@@ -148,7 +150,7 @@ The capability backlog is managed in the central portfolio/index issue rather th
 - calendar, scheduling, email and document workflows;
 - Home Assistant / infrastructure / smart-home coordination;
 - energy optimisation and opportunity alerting;
-- finance, rental-property accounting, budgeting, tax preparation and MTD support;
+- finance delivery is deferred indefinitely; historical ambitions require explicit owner reselection;
 - vehicles, EV and travel context;
 - knowledge, provenance and Ask LifeOS;
 - proactive cross-domain assistance;
@@ -180,7 +182,7 @@ Credentials, recipient consent and household notification preferences remain gen
 
 ---
 
-## 9. Finance mission
+## 9. Finance mission — DEFERRED, historical proposal
 
 LifeOS Finance should combine useful personal money management with rigorous bookkeeping/tax preparation while keeping private financial data local by default.
 
@@ -294,7 +296,7 @@ LifeOS succeeds when it is a boringly reliable personal infrastructure layer tha
 
 ---
 
-## Work log — 2026-09-05 — capability roadmap regrouping
+## Historical work log — 2026-09-05 — superseded by UNIFIED_ROADMAP.md
 
 ### Decision
 

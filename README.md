@@ -2,7 +2,7 @@
 
 Canonical source of truth for LifeOS.
 
-All authoritative implementation belongs here: Homelab infrastructure, Home Assistant deployment, energy/Predbat/Octopus integration, forecast learning, financial accounting, tests, assurance tooling, documentation and deployment logic.
+All authoritative implementation belongs here: Homelab infrastructure, Home Assistant deployment, energy/Predbat/Octopus integration, forecast learning, tests, assurance tooling, documentation and deployment logic.
 
 Sanitised engineering history and observed-state evidence live in separate
 non-authoritative repositories. Live execution state and raw output remain local
@@ -31,7 +31,8 @@ Start with:
 
 - `docs/architecture_overview.md` for system boundaries and authority.
 - `governance/communication.md` for worker communication rules.
-- `docs/roadmap.md` and `docs/migration_strategy.md` for planned work and gates.
+- `docs/UNIFIED_ROADMAP.md` for the sole active programme roadmap.
+- Older stage/wave plans are historical; migration procedures apply only to selected work.
 - `AGENTS.md` for repository-wide contributor instructions.
 
 The repository contains existing runtime and deployment assets. Foundation-only
