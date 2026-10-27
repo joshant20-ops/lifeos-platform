@@ -261,3 +261,32 @@ def write_private_json(path, data):
         os.replace(temporary, path)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def task_previews(report):
+    """Keep every sampled source for a task instead of overwriting earlier messages."""
+    grouped = {}
+    for result in report["results"]:
+        for task_id in set(result["matched_task_ids"]):
+            if not isinstance(task_id, str) or not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,119}", task_id):
+                raise EmailOpsError("preview_task_invalid")
+            grouped.setdefault(task_id, []).append(result)
+    previews = {}
+    for task_id, results in grouped.items():
+        proposals, seen = [], set()
+        for result in results:
+            for proposal in result["proposals"]:
+                key = (proposal["title"], proposal.get("due_date"))
+                if key not in seen:
+                    proposals.append(proposal)
+                    seen.add(key)
+        previews[task_id] = {
+            "schema": "lifeos_emailops_shadow_task_v1", "task_id": task_id,
+            "generated_at": report["generated_at"],
+            "summary": "\n\n".join(str(result.get("summary") or "") for result in results)[:4000],
+            "proposals": proposals[:20],
+            "source_message_ids": sorted({source for result in results for source in result["source_message_ids"]}),
+            "sampled_messages": len(results),
+            "lifecycle": "UNKNOWN", "promotion_ready": False,
+        }
+    return previews

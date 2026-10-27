@@ -105,18 +105,12 @@ journalctl -u lifeos-emailops-shadow.service -n 35 --no-pager -o cat | grep -E '
 python3 - <<'PY'
 import json, pathlib, re, sys
 sys.path.insert(0, '/home/joshan/lifeos-platform')
-from governor.emailops_adapter import write_private_json
+from governor.emailops_adapter import write_private_json, task_previews
 profile = pathlib.Path('/home/joshan/.local/share/lifeos/emailops-shadow')
 report = json.loads((profile / 'shadow-report.json').read_text())
 destination = pathlib.Path('/opt/stacks/homeassistant/config/lifeos-pa-state/emailops-shadow')
-for result in report['results']:
-    for task_id in result['matched_task_ids']:
-        assert re.fullmatch(r'[a-z0-9][a-z0-9-]{0,119}', task_id)
-        write_private_json(destination / (task_id + '.json'), {
-            'schema': 'lifeos_emailops_shadow_task_v1', 'task_id': task_id,
-            'generated_at': report['generated_at'], 'summary': result.get('summary'),
-            'proposals': result['proposals'],
-        })
+for task_id, preview in task_previews(report).items():
+    write_private_json(destination / (task_id + '.json'), preview)
 print('EMAILOPS_PRIVATE_REVIEW=READY')
 PY
 lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN /usr/bin/python3 "$REPO/governor/emailops_review_audit.py"
