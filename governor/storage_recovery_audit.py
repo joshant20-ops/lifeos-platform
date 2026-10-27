@@ -86,5 +86,9 @@ def main():
         allowed={"loaded","not_loaded","setup_error","setup_retry","migration_error","failed_unload"}
         print("RECOVERY_HA_INTEGRATIONS="+json.dumps({k:[v if v in allowed else "OTHER" for v in details.get(k,[])] for k in ["matter","zwave_js","mqtt"]}))
     except Exception: print("RECOVERY_HA_INTEGRATIONS=UNAVAILABLE")
+    try:
+        tower=json.loads(run(["mosquitto_sub","-h","127.0.0.1","-t","lifeos/tower/state","-C","1","-W","5"]))
+        print("RECOVERY_TOWER_STATE="+json.dumps({k:tower.get(k) for k in ["lease_state","active_leases","accessible","idle_seconds"]}))
+    except Exception: print("RECOVERY_TOWER_STATE=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
