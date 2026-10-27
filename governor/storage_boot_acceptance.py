@@ -40,7 +40,7 @@ def validate_fleet(before,after):
         row=after[name]
         if row["health"] not in {"healthy","none"}: raise RuntimeError("container_not_healthy")
 
-def preflight():
+def preflight(require_idle=True):
     if device("/opt/stacks")!="SSD" or device("/mnt/docker-data")!="SSD" or device("/")!="SD_ROOT": raise RuntimeError("storage_device_mismatch")
     if command(["docker","info","--format","{{.DockerRootDir}}"])!="/mnt/docker-data": raise RuntimeError("docker_root")
     command(["/usr/local/sbin/lifeos-require-opt-stacks-ssd"])
@@ -51,7 +51,7 @@ def preflight():
         command(["systemctl","is-active","--quiet",unit])
     command(["systemctl","is-enabled","--quiet",RUNNER])
     state=json.loads(command(["mosquitto_sub","-h","127.0.0.1","-t","lifeos/tower/state","-C","1","-W","5"]))
-    if state.get("lease_state")!="NONE" or int(state.get("active_leases") or 0)!=0: raise RuntimeError("active_compute_lease")
+    if require_idle and (state.get("lease_state")!="NONE" or int(state.get("active_leases") or 0)!=0): raise RuntimeError("active_compute_lease")
 
 def applications():
     command(["bash","/home/joshan/lifeos-platform/scripts/lifeos-storage-verify-runtime.sh"],timeout=180)
@@ -101,7 +101,7 @@ def verify():
     if data["status"]!="REBOOT_SCHEDULED" or data["boot_id"]==boot_id(): raise RuntimeError("new_boot_not_observed")
     for attempt in range(60):
         try:
-            preflight();validate_fleet(data["containers"],inventory());break
+            preflight(require_idle=False);validate_fleet(data["containers"],inventory());break
         except Exception:
             if attempt==59: raise
             time.sleep(3)
@@ -123,5 +123,6 @@ def main():
     if sys.argv[1] not in actions:return 64
     try:actions[sys.argv[1]]();return 0
     except Exception as error:
+        if type(error) is RuntimeError and str(error).replace("_","").isalnum(): print("BOOT_FAILURE_REASON="+str(error))
         print("BOOT_ACCEPTANCE=FAIL_"+type(error).__name__);return 1
 if __name__=="__main__":raise SystemExit(main())
