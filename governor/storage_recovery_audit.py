@@ -137,5 +137,16 @@ def main():
         print("MONITORING_NATIVE_STATUS="+json.dumps({"monitors":len(statuses),"up":sum(x==1 for x in statuses),"down":sum(x==0 for x in statuses),"down_services":sorted(down)}))
     except FileNotFoundError: print("MONITORING_NATIVE_STATUS=NOT_CONFIGURED")
     except Exception: print("MONITORING_NATIVE_STATUS=UNAVAILABLE")
+    try:
+        rows=run(["ss","-H","-ltn"]).splitlines()
+        bindings=[row.split()[3] for row in rows if len(row.split())>3 and row.split()[3].endswith(":5052")]
+        print("MONITORING_PREDBAT_BIND="+json.dumps({"listeners":len(bindings),"loopback_only":bool(bindings) and all(v.startswith(("127.","[::1]:")) for v in bindings)}))
+        db=Path("/mnt/docker-data/volumes/uptime-kuma/_data/kuma.db")
+        with sqlite3.connect(db.as_uri()+"?mode=ro&immutable=1",uri=True,timeout=3) as connection:
+            messages=connection.execute("SELECT h.msg FROM heartbeat h JOIN monitor m ON m.id=h.monitor_id WHERE m.name='Homelab Predbat' ORDER BY h.id DESC LIMIT 5").fetchall()
+        raw=" ".join(str(row[0]) for row in messages)
+        categories={"CONNECTION_REFUSED":r"ECONNREFUSED|connection refused","TIMEOUT":r"timeout|timed out","HTTP_AUTH":r"status code (401|403)","HTTP_NOT_FOUND":r"status code 404","HTTP_SERVER":r"status code 5[0-9][0-9]"}
+        print("MONITORING_PREDBAT_FAILURES="+json.dumps({k:bool(re.search(pattern,raw,re.I)) for k,pattern in categories.items()}))
+    except Exception: print("MONITORING_PREDBAT_DIAGNOSTIC=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
