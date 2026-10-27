@@ -86,7 +86,6 @@ def main():
         allowed={"loaded","not_loaded","setup_error","setup_retry","migration_error","failed_unload","setup_in_progress","unload_in_progress"}
         print("RECOVERY_HA_INTEGRATIONS="+json.dumps({k:[v if v in allowed else "OTHER" for v in details.get(k,[])] for k in ["matter","zwave_js","mqtt"]}))
     except Exception: print("RECOVERY_HA_INTEGRATIONS=UNAVAILABLE")
-    import collections
     core=run(["lifeos-secret","exec","homeassistant.long_lived_access_token","HA_TOKEN","python3","-c","import json,os,urllib.request; h={\"Authorization\":\"Bearer \"+os.environ[\"HA_TOKEN\"]}; q=urllib.request.Request(\"http://127.0.0.1:8123/api/config\",headers=h); d=json.load(urllib.request.urlopen(q,timeout=6)); print(json.dumps({\"state\":d.get(\"state\"),\"components\":len(d.get(\"components\",[]))}))"])
     try:
         value=json.loads(core);state=str(value.get("state")).upper()
@@ -94,7 +93,6 @@ def main():
     except Exception: print("RECOVERY_HA_CORE=UNAVAILABLE")
     health=json.loads(run(["docker","inspect","--format","{{json .State.Health}}","homeassistant"]) or "{}")
     print("RECOVERY_HA_HEALTH="+json.dumps({"status":health.get("Status"),"exit_codes":[r.get("ExitCode") for r in health.get("Log",[])]}))
-    logs=run(["docker","logs","--tail","1200","homeassistant"])
     # docker writes HA logs to stderr; capture privately, emit fixed categories only.
     try:
         proc=subprocess.run(["docker","logs","--tail","1200","homeassistant"],capture_output=True,text=True,timeout=8)
@@ -107,5 +105,9 @@ def main():
         result=run(["curl","--noproxy","*","-s","--max-time","5","-o","/dev/null","-w","%{http_code}",url])
         codes[label]=result.strip() if re.fullmatch(r"[0-9]{3}",result.strip()) else "UNAVAILABLE"
     print("RECOVERY_HA_HTTP_CODES="+json.dumps(codes))
+    try:
+        tower=json.loads(run(["mosquitto_sub","-h","127.0.0.1","-t","lifeos/tower/state","-C","1","-W","5"]))
+        print("RECOVERY_TOWER_STATE="+json.dumps({k:tower.get(k) for k in ["lease_state","active_leases","accessible","idle_seconds"]}))
+    except Exception: print("RECOVERY_TOWER_STATE=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
