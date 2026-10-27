@@ -136,6 +136,10 @@ OPS = {
         'script': 'scripts/lifeos-configure-native-kuma.sh',
         'privileged': True,
     },
+    'repair-native-smart': {
+        'script': 'scripts/lifeos-repair-native-smart.sh',
+        'privileged': True,
+    },
     'storage-restore-matter': {
         'script': 'scripts/lifeos-storage-restore-matter.sh',
         'privileged': True,
