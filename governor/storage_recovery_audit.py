@@ -60,6 +60,38 @@ def smart_diagnostics():
         for key, pattern in categories.items()}))
     version = run(["dpkg-query", "-W", "-f=${Version}", "smartmontools"]).strip()
     print("SMART_PACKAGE_VERSION=" + (version if re.fullmatch(r"[0-9A-Za-z.+:~_-]{1,80}", version) else "UNKNOWN"))
+
+    events = []
+    vocabulary = set(("smartd Device opened Opened configuration file parsed scanning ATA SCSI NVMe SAT "
+                      "USB JMicron sntjmicron sat scsi removable type devices monitor Monitoring "
+                      "DeviceScan Read read Identify Controller failed error unsupported field command "
+                      "start operation timed out Terminating Successfully terminated "
+                      "SMART support available unavailable enabled disabled "
+                      "Power mode standby sleep check failed LOG SENSE INQUIRY "
+                      "Adding device list IEC CHECK POWER MODE "
+                      "systemd notify notification ready READY exiting exit status timeout").lower().split())
+    for line in journal.splitlines():
+        # Only publish words from a fixed native diagnostic vocabulary.
+        tokens = re.findall(r"[A-Za-z]+", line.lower())
+        events.append(" ".join(token for token in tokens if token in vocabulary))
+    print("SMART_EVENT_VOCABULARY=" + json.dumps(events))
+    kernel = run(["journalctl", "-k", "-b", "--no-pager", "-n", "2000", "-o", "cat"])
+    faults = {
+        "USB_RESET": r"reset .*USB device",
+        "UAS_ABORT": r"uas_eh_abort_handler|uas_eh_device_reset_handler",
+        "SCSI_TIMEOUT": r"timing out command|command.*timed out|DID_TIME_OUT",
+        "BLOCK_IO_ERROR": r"I/O error.*sda|sda.*I/O error",
+        "FILESYSTEM_ERROR": r"EXT4-fs error|Remounting filesystem read-only",
+    }
+    print("SMART_BOOT_KERNEL_CATEGORIES=" + json.dumps({
+        key:len(re.findall(pattern,kernel,re.I)) for key,pattern in faults.items()}))
+    for prop in ("vendor", "model", "rev"):
+        try:
+            value = (Path("/sys/block/sda/device") / prop).read_text().strip()
+            # Generic product identity only: never publish serials/WWNs.
+            print("SMART_SCSI_" + prop.upper() + "=" +
+                  (value if re.fullmatch(r"[A-Za-z0-9 ._-]{1,40}",value) else "REDACTED"))
+        except OSError: pass
     config = Path("/etc/smartd.conf")
     try:
         if config.is_symlink() or config.stat().st_size > 65536:
