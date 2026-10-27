@@ -73,6 +73,11 @@ jobs:
             tests.test_paperless_readonly_audit_trigger \
             tests.test_paperless_governed_restore
 
+      - name: Validate native monitoring setup syntax
+        run: |
+          node --check scripts/lifeos-kuma-native-setup.cjs
+          python3 -m py_compile governor/kuma_native_setup.py
+
       - name: Install focused Python contract dependency
         run: python3 -m pip install pytest
 
