@@ -47,11 +47,11 @@ def preflight():
     marker=Path("/mnt/docker-data/recovery/sd-opt-stacks-20261017/.lifeos-preserved")
     if not marker.is_file() or marker.is_symlink(): raise RuntimeError("preservation_missing")
     if not STATE.is_dir() or STATE.is_symlink() or STATE.stat().st_uid!=0: raise RuntimeError("state_unsafe")
-    for unit in [RUNNER,"ssh.service","NetworkManager.service","lifeos-root-broker.socket","lifeos-control-job-submit.socket"]:
+    for unit in [RUNNER,"ssh.service","NetworkManager.service","lifeos-root-broker.socket","lifeos-control-job-submit.socket","lifeos-tower-control.service"]:
         command(["systemctl","is-active","--quiet",unit])
     command(["systemctl","is-enabled","--quiet",RUNNER])
     state=json.loads(command(["mosquitto_sub","-h","127.0.0.1","-t","lifeos/tower/state","-C","1","-W","5"]))
-    if int(state.get("active_leases") or 0)!=0: raise RuntimeError("active_compute_lease")
+    if state.get("lease_state")!="NONE" or int(state.get("active_leases") or 0)!=0: raise RuntimeError("active_compute_lease")
 
 def applications():
     command(["bash","/home/joshan/lifeos-platform/scripts/lifeos-storage-verify-runtime.sh"],timeout=180)
