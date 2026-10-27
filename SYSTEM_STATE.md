@@ -28,6 +28,7 @@
 - `lifeos-agent-canvas` — `ghcr.io/openhands/agent-canvas:1.23.0`
 - `lifeos-agent-canvas-tls` — `nginx:1.29-alpine`
 - `lifeos-energy` — `d7933b4b7e5d`
+- `matter-server` — `ghcr.io/home-assistant-libs/python-matter-server:stable`
 - `mosquitto` — `6f8d8a947c50`
 - `nginx-proxy-manager` — `52b2c59994f3`
 - `paperless-db-1` — `postgres:15`
