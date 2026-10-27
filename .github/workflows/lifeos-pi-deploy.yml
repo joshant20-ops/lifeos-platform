@@ -23,6 +23,10 @@ on:
           - deploy-p0-resilience
           - storage-remove-stale-copies
           - storage-inspect-backup-evidence
+          - storage-boot-prepare
+          - storage-boot-reboot
+          - storage-boot-verify
+          - configure-native-kuma
           - storage-restore-matter
           - storage-verify-runtime
           - storage-preserve-sd-source
@@ -86,6 +90,10 @@ jobs:
         || github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' ||
         github.event.issue.title == 'LifeOS Deploy: storage-remove-stale-copies' ||
         github.event.issue.title == 'LifeOS Deploy: storage-inspect-backup-evidence' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-boot-prepare' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-boot-reboot' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-boot-verify' ||
+        github.event.issue.title == 'LifeOS Deploy: configure-native-kuma' ||
         github.event.issue.title == 'LifeOS Deploy: storage-restore-matter' ||
         github.event.issue.title == 'LifeOS Deploy: storage-verify-runtime' ||
         github.event.issue.title == 'LifeOS Deploy: storage-preserve-sd-source' ||
@@ -122,6 +130,10 @@ jobs:
         github.event.issue.title == 'LifeOS Deploy: deploy-pa-task-reconciler' && 'deploy-pa-task-reconciler' ||
         github.event.issue.title == 'LifeOS Deploy: storage-remove-stale-copies' && 'storage-remove-stale-copies' ||
         github.event.issue.title == 'LifeOS Deploy: storage-inspect-backup-evidence' && 'storage-inspect-backup-evidence' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-boot-prepare' && 'storage-boot-prepare' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-boot-reboot' && 'storage-boot-reboot' ||
+        github.event.issue.title == 'LifeOS Deploy: storage-boot-verify' && 'storage-boot-verify' ||
+        github.event.issue.title == 'LifeOS Deploy: configure-native-kuma' && 'configure-native-kuma' ||
         github.event.issue.title == 'LifeOS Deploy: storage-restore-matter' && 'storage-restore-matter' ||
         github.event.issue.title == 'LifeOS Deploy: storage-verify-runtime' && 'storage-verify-runtime' ||
         github.event.issue.title == 'LifeOS Deploy: storage-preserve-sd-source' && 'storage-preserve-sd-source' ||
@@ -167,7 +179,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/lifeos-evidence"
-          if [[ "$LIFEOS_OPERATION" == "storage-restore-matter" || "$LIFEOS_OPERATION" == "storage-verify-runtime" || "$LIFEOS_OPERATION" == "storage-preserve-sd-source" || "$LIFEOS_OPERATION" == "storage-remove-stale-copies" || "$LIFEOS_OPERATION" == "storage-inspect-backup-evidence" || "$LIFEOS_OPERATION" == "storage-audit-pi-state" || "$LIFEOS_OPERATION" == "storage-stage-opt-stacks" || "$LIFEOS_OPERATION" == "storage-activate-opt-stacks" || "$LIFEOS_OPERATION" == "storage-rollback-opt-stacks" || "$LIFEOS_OPERATION" == "storage-finalize-opt-stacks" || "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then
+          if [[ "$LIFEOS_OPERATION" == "storage-boot-prepare" || "$LIFEOS_OPERATION" == "storage-restore-matter" || "$LIFEOS_OPERATION" == "storage-verify-runtime" || "$LIFEOS_OPERATION" == "storage-preserve-sd-source" || "$LIFEOS_OPERATION" == "storage-remove-stale-copies" || "$LIFEOS_OPERATION" == "storage-inspect-backup-evidence" || "$LIFEOS_OPERATION" == "storage-audit-pi-state" || "$LIFEOS_OPERATION" == "storage-stage-opt-stacks" || "$LIFEOS_OPERATION" == "storage-activate-opt-stacks" || "$LIFEOS_OPERATION" == "storage-rollback-opt-stacks" || "$LIFEOS_OPERATION" == "storage-finalize-opt-stacks" || "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then
             # Bootstrap the reviewed main-branch allow-list into the root-owned gateway.
             # The installer enforces a clean canonical main checkout and fixed source path.
             sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-install-github-runner-gateway.sh

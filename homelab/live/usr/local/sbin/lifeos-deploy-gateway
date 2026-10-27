@@ -120,6 +120,22 @@ OPS = {
         'script': 'scripts/lifeos-storage-inspect-backup-evidence.sh',
         'privileged': True,
     },
+    'storage-boot-prepare': {
+        'script': 'scripts/lifeos-storage-boot-prepare.sh',
+        'privileged': True,
+    },
+    'storage-boot-reboot': {
+        'script': 'scripts/lifeos-storage-boot-reboot.sh',
+        'privileged': True,
+    },
+    'storage-boot-verify': {
+        'script': 'scripts/lifeos-storage-boot-verify.sh',
+        'privileged': True,
+    },
+    'configure-native-kuma': {
+        'script': 'scripts/lifeos-configure-native-kuma.sh',
+        'privileged': True,
+    },
     'storage-restore-matter': {
         'script': 'scripts/lifeos-storage-restore-matter.sh',
         'privileged': True,
