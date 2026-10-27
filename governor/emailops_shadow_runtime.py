@@ -106,6 +106,27 @@ def ensure_local_ai_ready(host, model=None):
     print("EMAILOPS_AI_READINESS=PASS")
 
 
+
+def select_sample(rows, known):
+    """Balance existing-task evidence with unseen mail; exclude junk and duplicates."""
+    pools = [[], []]
+    seen = set()
+    for row in rows:
+        source = row.get("messageId")
+        if not source or source in seen or row.get("mailbox") in {"spam", "trash"}:
+            continue
+        seen.add(source)
+        pools[0 if source in known else 1].append(row)
+    selected = pools[0][:4] + pools[1][:4]
+    selected_ids = {row["messageId"] for row in selected}
+    for row in pools[0][4:] + pools[1][4:]:
+        if len(selected) >= 8:
+            break
+        if row["messageId"] not in selected_ids:
+            selected.append(row)
+            selected_ids.add(row["messageId"])
+    return selected
+
 def main():
     stage = "runtime_preflight"
     try:
@@ -169,7 +190,7 @@ def main():
             for value in ids:
                 known.setdefault(value, []).append(task["id"])
         # Prefer exact source matches to current tasks, then sample other mail.
-        rows.sort(key=lambda row: row.get("messageId") not in known)
+        rows = select_sample(rows, known)
         results, seen = [], set()
         stage = "local_ai_readiness"
         ensure_local_ai_ready(os.environ["OLLAMA_HOST"], model)
@@ -185,8 +206,6 @@ def main():
                 raise EmailOpsError("analysis_source_mismatch")
             result["matched_task_ids"] = known.get(source, [])
             results.append(result)
-            if len(results) == 3:
-                break
         if not results:
             raise EmailOpsError("no_shadow_sample")
         stage = "authoritative_state_check"
@@ -200,6 +219,7 @@ def main():
         print("EMAILOPS_MAILBOX_WRITES=DISABLED")
         print("EMAILOPS_SAMPLED=" + str(len(results)))
         print("EMAILOPS_EXACT_SOURCE_MATCHES=" + str(sum(bool(x["matched_task_ids"]) for x in results)))
+        print("EMAILOPS_UNMATCHED_SOURCES=" + str(sum(not x["matched_task_ids"] for x in results)))
         print("EMAILOPS_PROPOSALS=" + str(sum(len(x["proposals"]) for x in results)))
         print("EMAILOPS_AUTHORITATIVE_STATE=UNCHANGED")
         print("EMAILOPS_PROMOTION=HELD_LIFECYCLE_CORPUS_AND_USER_REVIEW")

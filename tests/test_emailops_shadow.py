@@ -265,3 +265,30 @@ class EmailOpsShadowTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BroaderShadowTests(unittest.TestCase):
+    def test_balances_known_and_unmatched_without_junk_or_duplicates(self):
+        rows = [{"id":str(i),"messageId":"<%s@example.test>"%i,"mailbox":"inbox"} for i in range(20)]
+        known = {r["messageId"]:["task"] for r in rows[:12]}
+        selected = runtime.select_sample(rows + [rows[0]], known)
+        self.assertEqual(len(selected),8)
+        self.assertEqual(sum(r["messageId"] in known for r in selected),4)
+        self.assertEqual(len({r["messageId"] for r in selected}),8)
+        self.assertEqual(runtime.select_sample([{"messageId":"<spam@example.test>","mailbox":"spam"}],{}),[])
+
+    def test_all_message_evidence_survives_one_task_preview(self):
+        report = {"generated_at":123,"results":[
+            {"matched_task_ids":["task"],"source_message_ids":["<one@example.test>"],
+             "summary":"First request","proposals":[{"title":"Reply","due_date":None}]},
+            {"matched_task_ids":["task"],"source_message_ids":["<two@example.test>"],
+             "summary":"Progress","proposals":[{"title":"Reply","due_date":None}]}
+        ]}
+        preview = adapter.task_previews(report)["task"]
+        self.assertEqual(preview["source_message_ids"],["<one@example.test>","<two@example.test>"])
+        self.assertIn("First request",preview["summary"])
+        self.assertIn("Progress",preview["summary"])
+        self.assertEqual(len(preview["proposals"]),1)
+        self.assertEqual(preview["sampled_messages"],2)
+        self.assertEqual(preview["lifecycle"],"UNKNOWN")
+        self.assertFalse(preview["promotion_ready"])
