@@ -128,7 +128,13 @@ def main():
             if len(data)>1048576: raise ValueError("metrics_oversized")
         finally: connection.close()
         statuses=[float(line.rsplit(" ",1)[1]) for line in data.decode().splitlines() if line.startswith("monitor_status{")]
-        print("MONITORING_NATIVE_STATUS="+json.dumps({"monitors":len(statuses),"up":sum(x==1 for x in statuses),"down":sum(x==0 for x in statuses)}))
+        known={"Homelab Router","Homelab WAN without DNS","Homelab Public DNS via AdGuard","Homelab Local DNS via AdGuard","Homelab MQTT listener","Homelab Matter listener","Homelab Home Assistant","Homelab AdGuard admin","Homelab Energy API","Homelab Paperless","Homelab Vaultwarden","Homelab Predbat"}
+        down=[]
+        for line in data.decode().splitlines():
+            if line.startswith("monitor_status{") and float(line.rsplit(" ",1)[1])!=1:
+                for name in known:
+                    if 'monitor_name="'+name+'"' in line: down.append(name)
+        print("MONITORING_NATIVE_STATUS="+json.dumps({"monitors":len(statuses),"up":sum(x==1 for x in statuses),"down":sum(x==0 for x in statuses),"down_services":sorted(down)}))
     except FileNotFoundError: print("MONITORING_NATIVE_STATUS=NOT_CONFIGURED")
     except Exception: print("MONITORING_NATIVE_STATUS=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
