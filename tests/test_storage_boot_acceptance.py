@@ -17,3 +17,20 @@ class BootFleetAcceptance(unittest.TestCase):
             if mutation=="health":after["homeassistant"]["health"]="unhealthy"
             if mutation=="legacy":after["legacy"]["state"]="running"
             with self.assertRaises(RuntimeError):validate_fleet(before,after)
+
+    def test_native_owned_canvas_recreation_does_not_require_old_id(self):
+        before=self.fleet();after=copy.deepcopy(before)
+        after["lifeos-agent-canvas"]["id"]="native_recreated"
+        validate_fleet(before,after)
+
+    def test_canvas_image_network_and_persistent_mounts_must_match(self):
+        from governor.storage_boot_acceptance import validate_canvas_row
+        row={"Config":{"Image":"nginx:1.29-alpine"},"HostConfig":{"NetworkMode":"host"},"Mounts":[{"Type":"bind","Source":"/home/joshan/lifeos-canvas-tls","Destination":"/tls","RW":False}]}
+        validate_canvas_row("lifeos-agent-canvas-tls",row)
+        for mutation in ["image","network","source","writable"]:
+            changed=copy.deepcopy(row)
+            if mutation=="image":changed["Config"]["Image"]="different"
+            if mutation=="network":changed["HostConfig"]["NetworkMode"]="bridge"
+            if mutation=="source":changed["Mounts"][0]["Source"]="/different"
+            if mutation=="writable":changed["Mounts"][0]["RW"]=True
+            with self.assertRaises(RuntimeError):validate_canvas_row("lifeos-agent-canvas-tls",changed)

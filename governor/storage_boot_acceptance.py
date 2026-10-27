@@ -34,11 +34,38 @@ def inventory():
 def validate_fleet(before,after):
     if {n for n,r in after.items() if r["state"]=="running"} != EXPECTED: raise RuntimeError("running_set_changed")
     for name,row in before.items():
-        if name not in after or row["id"]!=after[name]["id"]: raise RuntimeError("container_identity_changed")
+        if name not in after or (name not in CANVAS and row["id"]!=after[name]["id"]): raise RuntimeError("container_identity_changed")
         if row["state"]!="running" and after[name]["state"]=="running": raise RuntimeError("legacy_container_started")
     for name in EXPECTED:
         row=after[name]
         if row["health"] not in {"healthy","none"}: raise RuntimeError("container_not_healthy")
+
+
+def validate_canvas_row(name,row):
+    expected={
+        "lifeos-agent-canvas":("ghcr.io/openhands/agent-canvas:1.23.0",{
+            ("/home/joshan/.openhands","/home/openhands/.openhands",True),
+            ("/home/joshan/workspace","/home/openhands/workspace",True),
+            ("/home/joshan/lifeos-projects","/projects",True)}),
+        "lifeos-agent-canvas-tls":("nginx:1.29-alpine",{
+            ("/home/joshan/lifeos-canvas-tls","/tls",False)})}
+    image,mounts=expected[name]
+    actual={(m.get("Source"),m.get("Destination"),m.get("RW")) for m in row.get("Mounts",[]) if m.get("Type")=="bind"}
+    if row.get("Config",{}).get("Image")!=image or row.get("HostConfig",{}).get("NetworkMode")!="host" or actual!=mounts or len(row.get("Mounts",[]))!=len(mounts):
+        raise RuntimeError("canvas_persistence_or_image_changed")
+
+def canvas_acceptance():
+    import pwd
+    uid=pwd.getpwnam("joshan").pw_uid
+    prefix=["runuser","-u","joshan","--","env","HOME=/home/joshan","XDG_RUNTIME_DIR=/run/user/"+str(uid),"DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/"+str(uid)+"/bus"]
+    for unit in ["lifeos-openhands-ui.service","lifeos-openhands-tls.service"]:
+        command(prefix+["systemctl","--user","is-active","--quiet",unit])
+        command(prefix+["systemctl","--user","is-enabled","--quiet",unit])
+    for row in json.loads(command(["docker","inspect",*sorted(CANVAS)])):
+        validate_canvas_row(row["Name"].lstrip("/"),row)
+    command(["curl","--noproxy","*","-fsS","--max-time","10","-o","/dev/null","http://127.0.0.1:18000/alive"])
+    command(["curl","--noproxy","*","-kfsS","--max-time","10","-o","/dev/null","https://127.0.0.1:8443/canvas/"])
+    command(["docker","exec","lifeos-agent-canvas","test","-d","/projects/lifeos-platform/.git"])
 
 def preflight(require_idle=True):
     if device("/opt/stacks")!="SSD" or device("/mnt/docker-data")!="SSD" or device("/")!="SD_ROOT": raise RuntimeError("storage_device_mismatch")
@@ -50,6 +77,7 @@ def preflight(require_idle=True):
     for unit in [RUNNER,"ssh.service","NetworkManager.service","lifeos-root-broker.socket","lifeos-control-job-submit.socket","lifeos-tower-control.service"]:
         command(["systemctl","is-active","--quiet",unit])
     command(["systemctl","is-enabled","--quiet",RUNNER])
+    canvas_acceptance()
     state=json.loads(command(["mosquitto_sub","-h","127.0.0.1","-t","lifeos/tower/state","-C","1","-W","5"]))
     if require_idle and (state.get("lease_state")!="NONE" or int(state.get("active_leases") or 0)!=0): raise RuntimeError("active_compute_lease")
 
@@ -67,16 +95,13 @@ def prepare():
     save(data)
     changed=[]
     try:
-        for name in EXPECTED:
-            policy=before[name]["policy"]
-            if name in CANVAS and policy=="no":
-                command(["docker","update","--restart","unless-stopped",before[name]["id"]]);changed.append(name)
-            elif policy not in {"unless-stopped","always"}: raise RuntimeError("unexpected_restart_policy")
+        for name in EXPECTED-CANVAS:
+            if before[name]["policy"] not in {"unless-stopped","always"}: raise RuntimeError("unexpected_restart_policy")
         after=inventory();validate_fleet(before,after)
-        if any(after[n]["policy"] not in {"unless-stopped","always"} for n in EXPECTED): raise RuntimeError("restart_policy_not_persisted")
+        if any(after[n]["policy"] not in {"unless-stopped","always"} for n in EXPECTED-CANVAS): raise RuntimeError("restart_policy_not_persisted")
         data["status"]="PREPARED";data["time"]=int(time.time());save(data)
         print("BOOT_PREPARE=PASS")
-        print("BOOT_POLICY_CHANGE=ONLY_TWO_RUNNING_CANVAS_CONTAINERS")
+        print("BOOT_CANVAS_STARTUP_OWNER=EXISTING_ENABLED_USER_SYSTEMD_UNITS")
     except Exception:
         for name in changed:
             command(["docker","update","--restart",before[name]["policy"],before[name]["id"]])
@@ -89,7 +114,7 @@ def reboot():
     if data["status"]!="PREPARED" or data["boot_id"]!=boot_id() or not 0<=time.time()-data["time"]<900: raise RuntimeError("stale_reboot_request")
     validate_fleet(data["containers"],inventory())
     if data["fstab_sha"]!=digest("/etc/fstab") or data["guard_sha"]!=digest("/usr/local/sbin/lifeos-require-opt-stacks-ssd"): raise RuntimeError("boot_configuration_changed")
-    if any(inventory()[n]["policy"] not in {"unless-stopped","always"} for n in EXPECTED): raise RuntimeError("restart_policy_changed")
+    if any(inventory()[n]["policy"] not in {"unless-stopped","always"} for n in EXPECTED-CANVAS): raise RuntimeError("restart_policy_changed")
     data["status"]="REBOOT_SCHEDULED";data["scheduled_at"]=int(time.time());save(data)
     command(["sync"],timeout=60)
     command(["systemd-run","--unit=lifeos-storage-recovery-reboot","--on-active=45s","--timer-property=AccuracySec=1s","/usr/bin/systemctl","reboot"])
@@ -99,12 +124,12 @@ def reboot():
 def verify():
     data=json.loads(RECORD.read_text())
     if data["status"]!="REBOOT_SCHEDULED" or data["boot_id"]==boot_id(): raise RuntimeError("new_boot_not_observed")
-    for attempt in range(60):
+    for attempt in range(180):
         try:
             preflight(require_idle=False);validate_fleet(data["containers"],inventory());break
         except Exception:
-            if attempt==59: raise
-            time.sleep(3)
+            if attempt==179: raise
+            time.sleep(5)
     applications()
     validate_fleet(data["containers"],inventory())
     data["status"]="VERIFIED";data["verified_boot_id"]=boot_id();data["verified_at"]=int(time.time());save(data)
@@ -112,7 +137,8 @@ def verify():
     with os.fdopen(fd,"w") as handle:
         handle.write("REAL_REBOOT=PASS\nCURRENT_SERVICE_SET=PASS\n");handle.flush();os.fsync(handle.fileno())
     print("BOOT_REAL_NEW_BOOT=PASS")
-    print("BOOT_SAME_CONTAINER_IDENTITIES=PASS")
+    print("BOOT_CORE_CONTAINER_IDENTITIES=PASS")
+    print("BOOT_CANVAS_NATIVE_LIFECYCLE_AND_PERSISTENCE=PASS")
     print("BOOT_LEGACY_STOPPED_SET_UNCHANGED=PASS")
     print("BOOT_STORAGE_AND_NATIVE_APPLICATIONS=PASS")
     print("BOOT_ACCEPTANCE=PASS")
