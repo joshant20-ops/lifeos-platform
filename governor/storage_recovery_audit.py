@@ -109,5 +109,33 @@ def main():
         tower=json.loads(run(["mosquitto_sub","-h","127.0.0.1","-t","lifeos/tower/state","-C","1","-W","5"]))
         print("RECOVERY_TOWER_STATE="+json.dumps({k:tower.get(k) for k in ["lease_state","active_leases","accessible","idle_seconds"]}))
     except Exception: print("RECOVERY_TOWER_STATE=UNAVAILABLE")
+    try:
+        import base64, http.client, stat
+        credential=Path("/etc/lifeos/secrets/uptime-kuma/admin.json")
+        fd=os.open(credential,os.O_RDONLY|os.O_NOFOLLOW)
+        try:
+            info=os.fstat(fd)
+            if info.st_uid!=0 or stat.S_IMODE(info.st_mode)!=0o600 or not stat.S_ISREG(info.st_mode) or info.st_size>4096: raise ValueError("unsafe")
+            auth=json.loads(os.read(fd,4096))
+        finally: os.close(fd)
+        header=base64.b64encode((auth["username"]+":"+auth["password"]).encode()).decode()
+        connection=http.client.HTTPConnection("127.0.0.1",3002,timeout=8)
+        try:
+            connection.request("GET","/metrics",headers={"Authorization":"Basic "+header})
+            response=connection.getresponse()
+            if response.status!=200: raise ValueError("metrics_unavailable")
+            data=response.read(1048577)
+            if len(data)>1048576: raise ValueError("metrics_oversized")
+        finally: connection.close()
+        statuses=[float(line.rsplit(" ",1)[1]) for line in data.decode().splitlines() if line.startswith("monitor_status{")]
+        known={"Homelab Router","Homelab WAN without DNS","Homelab Public DNS via AdGuard","Homelab Local DNS via AdGuard","Homelab MQTT listener","Homelab Matter listener","Homelab Home Assistant","Homelab AdGuard admin","Homelab Energy API","Homelab Paperless","Homelab Vaultwarden","Homelab Predbat"}
+        down=[]
+        for line in data.decode().splitlines():
+            if line.startswith("monitor_status{") and float(line.rsplit(" ",1)[1])!=1:
+                for name in known:
+                    if 'monitor_name="'+name+'"' in line: down.append(name)
+        print("MONITORING_NATIVE_STATUS="+json.dumps({"monitors":len(statuses),"up":sum(x==1 for x in statuses),"down":sum(x==0 for x in statuses),"down_services":sorted(down)}))
+    except FileNotFoundError: print("MONITORING_NATIVE_STATUS=NOT_CONFIGURED")
+    except Exception: print("MONITORING_NATIVE_STATUS=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
