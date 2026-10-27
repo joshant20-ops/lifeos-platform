@@ -31,7 +31,9 @@ def smart_diagnostics():
     """Read native service/configuration evidence; no device commands or mutations."""
     props = run(["systemctl", "show", "smartmontools.service",
                  "-p", "ActiveState", "-p", "SubState", "-p", "Result",
-                 "-p", "ExecMainCode", "-p", "ExecMainStatus"])
+                 "-p", "ExecMainCode", "-p", "ExecMainStatus",
+                 "-p", "Type", "-p", "TimeoutStartUSec", "-p", "LimitNOFILE",
+                 "-p", "LimitNOFILESoft", "-p", "CPUUsageNSec"])
     print("SMART_SERVICE=" + json.dumps(dict(
         line.split("=", 1) for line in props.splitlines() if "=" in line)))
     journal = run(["journalctl", "-u", "smartmontools.service", "-b",
@@ -43,11 +45,21 @@ def smart_diagnostics():
         "DEVICE_OPEN_FAILED": r"Unable to open device|open device.*failed",
         "CONFIG_ERROR": r"configuration.*error|syntax error|Invalid directive",
         "SMART_UNSUPPORTED": r"does not support SMART|SMART support is.*Unavailable",
-        "HEALTH_FAILURE": r"FAILED!|FAILURE PREDICTION|SMART.*FAILED",
+        "HEALTH_FAILURE": r"SMART (?:overall-health self-assessment test result|Health Status):\\s*(?:FAILED|BAD)|FAILURE PREDICTION THRESHOLD EXCEEDED",
+        "START_TIMEOUT": r"start operation timed out",
+        "REGISTERED_DEVICE": r"Device:.*registered",
+        "MONITORING_DEVICE": r"Monitoring [0-9]+ .*devices",
+        "OPENED_DEVICE": r"Device:.*opened",
+        "READ_CONFIG": r"Opened configuration file|Configuration file.*parsed",
+        "NVME_DETECTED": r"\\[.*NVMe.*\\]|type.*sntjmicron",
+        "ATA_DETECTED": r"\\[SAT\\]|type.*sat\\b",
+        "DRIVE_INFO": r"Device:.*(Model|Serial|Firmware)",
     }
     print("SMART_LOG_CATEGORIES=" + json.dumps({
         key: len(re.findall(pattern, journal, re.I))
         for key, pattern in categories.items()}))
+    version = run(["dpkg-query", "-W", "-f=${Version}", "smartmontools"]).strip()
+    print("SMART_PACKAGE_VERSION=" + (version if re.fullmatch(r"[0-9A-Za-z.+:~_-]{1,80}", version) else "UNKNOWN"))
     config = Path("/etc/smartd.conf")
     try:
         if config.is_symlink() or config.stat().st_size > 65536:
