@@ -26,8 +26,62 @@ def device(path):
 def safe_name(raw):
     return raw.lstrip("/") if re.fullmatch(r"/?[A-Za-z0-9_.-]{1,100}", raw) else "UNRECOGNIZED"
 
+
+def smart_diagnostics():
+    """Read native service/configuration evidence; no device commands or mutations."""
+    props = run(["systemctl", "show", "smartmontools.service",
+                 "-p", "ActiveState", "-p", "SubState", "-p", "Result",
+                 "-p", "ExecMainCode", "-p", "ExecMainStatus"])
+    print("SMART_SERVICE=" + json.dumps(dict(
+        line.split("=", 1) for line in props.splitlines() if "=" in line)))
+    journal = run(["journalctl", "-u", "smartmontools.service", "-b",
+                   "--no-pager", "-n", "100", "-o", "cat"])
+    categories = {
+        "UNKNOWN_USB_BRIDGE": r"Unknown USB bridge",
+        "DEVICE_TYPE_REQUIRED": r"specify device type|device type with the -d",
+        "NO_DEVICES": r"No devices to monitor|Unable to register device",
+        "DEVICE_OPEN_FAILED": r"Unable to open device|open device.*failed",
+        "CONFIG_ERROR": r"configuration.*error|syntax error|Invalid directive",
+        "SMART_UNSUPPORTED": r"does not support SMART|SMART support is.*Unavailable",
+        "HEALTH_FAILURE": r"FAILED!|FAILURE PREDICTION|SMART.*FAILED",
+    }
+    print("SMART_LOG_CATEGORIES=" + json.dumps({
+        key: len(re.findall(pattern, journal, re.I))
+        for key, pattern in categories.items()}))
+    config = Path("/etc/smartd.conf")
+    try:
+        if config.is_symlink() or config.stat().st_size > 65536:
+            raise ValueError("unsafe config")
+        lines = [line.split("#", 1)[0].strip()
+                 for line in config.read_text().splitlines()]
+        lines = [line for line in lines if line]
+        records = []
+        for line in lines:
+            parts = line.split()
+            record = {"scan": parts[0] == "DEVICESCAN",
+                      "ssd_device": parts[0] == "/dev/sda",
+                      "other_device": parts[0] not in {"DEVICESCAN", "/dev/sda"}}
+            for flag in ("-d", "-n"):
+                if flag in parts and parts.index(flag) + 1 < len(parts):
+                    value = parts[parts.index(flag) + 1]
+                    record[flag] = value if re.fullmatch(r"[a-zA-Z0-9,+-]{1,40}", value) else "REDACTED"
+            record["scheduled_self_test"] = "-s" in parts
+            records.append(record)
+        print("SMART_CONFIG_RULES=" + json.dumps(records))
+    except (OSError, ValueError):
+        print("SMART_CONFIG_RULES=UNAVAILABLE")
+    block = run(["lsblk", "-dn", "-o", "NAME,TRAN,TYPE"])
+    print("SMART_BLOCK_TOPOLOGY=" + json.dumps([
+        line.split() for line in block.splitlines()
+        if re.fullmatch(r"[a-zA-Z0-9_ /-]{1,100}", line)]))
+    usb = run(["lsusb"])
+    print("SMART_USB_IDS=" + json.dumps(
+        re.findall(r"ID ([0-9a-f]{4}:[0-9a-f]{4})", usb)))
+    print("SMART_DIAGNOSTIC_DEVICE_COMMANDS=NONE")
+
 def main():
     if os.geteuid() != 0 or os.uname().nodename != "Docker": raise SystemExit(64)
+    smart_diagnostics()
     ids = run(["docker", "ps", "-aq"]).split()
     rows = json.loads(run(["docker", "inspect", *ids]) or "[]") if ids else []
     current = {r["Id"]:r for r in rows}
