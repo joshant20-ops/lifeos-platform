@@ -21,7 +21,8 @@ REPO=Path(os.getenv("LIFEOS_PLATFORM_REPO","/home/joshan/lifeos-platform"))
 sys.path.insert(0,str(REPO))
 from governor import ai_broker
 from lifeos_email_paperless_selective import secret, paperless_token
-from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state
+from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state, explicit_tracking
+from governor.pa_source_disposition import KINDS, non_obligation_kind, task_quality_category
 
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
@@ -153,6 +154,32 @@ def refresh_sign_in_events(task,sources):
     task["sign_in_events"]=[existing[key] for key in ids if key in existing][-20:]
 
 
+def hold_source_non_obligation(task,sources,user_state):
+    ids=task_source_message_ids(task)
+    kinds={source:non_obligation_kind(sources[source]) for source in ids if source in sources}
+    entry=(user_state.get("obligations") or {}).get(task.get("id"))
+    protected=explicit_tracking(entry)
+    user_closed=isinstance(entry,dict) and entry.get("status_override") in {"DONE","DISMISSED"}
+    task["source_disposition_checks"]={"sources":len(ids),"missing":len(ids)-len(kinds),
+        "non_obligation":sum(bool(kind) for kind in kinds.values()),"user_tracking":protected,"user_closed":user_closed,
+        "kind_counts":{kind:sum(value==kind for value in kinds.values()) for kind in sorted(KINDS)}}
+    prior=task.get("obligation_suppressed")
+    managed=prior in KINDS or prior=="non_obligation_updates"
+    if prior=="quote_only_no_verified_policy" or task.get("sign_in_events"):
+        return False
+    if protected or user_closed:
+        if managed:task.pop("obligation_suppressed",None)
+        return False
+    if managed and any(kind is None for kind in kinds.values()):
+        task.pop("obligation_suppressed",None)
+    if ids and len(kinds)==len(ids) and all(kinds.values()):
+        unique=set(kinds.values())
+        task["obligation_suppressed"]=next(iter(unique)) if len(unique)==1 else "non_obligation_updates"
+        return True
+    # A temporary lookup miss is not evidence that the source changed.
+    return False
+
+
 def classify(compact):
     event=sign_in_event(compact)
     if event:
@@ -160,9 +187,14 @@ def classify(compact):
                 "status":"OPEN","due_date":None,"counterparty":"OpenAI",
                 "topic":"Account sign-in "+event["id"][:16],"severity":"normal",
                 "evidence_query":"","reason":"Source email reports a sign-in requiring user confirmation."}
+    disposition=non_obligation_kind(compact)
+    if disposition:
+        return {"relevant":True,"actionable":False,"title":"Information update",
+                "status":"NONE","due_date":None,"counterparty":None,"topic":"Source update",
+                "severity":"normal","evidence_query":"","reason":"Source is "+disposition+", not an accepted commitment."}
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
 {"relevant":true|false,"actionable":true|false,"title":"short task or event","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short matter topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
-Mark relevant=true for a meaningful update to an existing matter, including informational updates that do not create an obligation. Mark relevant=false for junk, marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not create obligations from informative events. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
+Mark relevant=true for a meaningful update to an existing matter, including informational updates that do not create an obligation. Mark relevant=false for junk, marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not create obligations from informative events. Offers, discount expiry dates and invitations to apply are optional, not user commitments; require evidence that the user accepted/applied/booked or is personally required to act. Ordinary delivery status is information unless there is a delivery exception or a concrete required response. A past date alone does not prove completion or make an optional offer an overdue task. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
 EMAIL:
 """+json.dumps(compact,ensure_ascii=False)
     d=parse_json(ai_broker._ollama(prompt,ai_broker.OLLAMA_MODEL,response_format=TASK_CLASSIFICATION_SCHEMA))
@@ -850,6 +882,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                 exact_id_matches+=1
                 result[message_id]={
                     "from":str(message.get("From",""))[:300],
+                    "bulk_mail":bool(message.get("List-Unsubscribe") or message.get("List-Id") or str(message.get("Precedence") or "").lower() in {"bulk","list"}),
                     "subject":str(message.get("Subject",""))[:500],
                     "date":str(message.get("Date",""))[:100],
                     "message_id":actual_id[:300],
@@ -1602,6 +1635,7 @@ def _run_reconciler():
             message_id=str(msg.get("Message-ID",""))[:300]
             fetched.append({
                 "from":str(msg.get("From",""))[:300],
+                "bulk_mail":bool(msg.get("List-Unsubscribe") or msg.get("List-Id") or str(msg.get("Precedence") or "").lower() in {"bulk","list"}),
                 "subject":str(msg.get("Subject",""))[:500],
                 "date":str(msg.get("Date",""))[:100],
                 "message_id":message_id,
@@ -1666,7 +1700,7 @@ def _run_reconciler():
     try:
         source_tasks=list(tasks.values())
         for task in tasks.values():
-            if insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events"):
+            if insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events") or task_quality_category(task) or task.get("obligation_suppressed") in KINDS:
                 for source_id in task_source_message_ids(task):
                     source_tasks.append({"source_message_ids":[source_id],"email_message_id":source_id,"updated_from_email":task.get("updated_from_email")})
         extra_sources=fetch_existing_task_source_emails(source_tasks,fetched_by_message_id)
@@ -1749,11 +1783,17 @@ def _run_reconciler():
     quote_holds=0
     for task in tasks.values():
         source_ids=task_source_message_ids(task)
-        if (task.get("due_date_source")=="paperless_policy" or
+        if task.get("obligation_suppressed")=="quote_only_no_verified_policy" and (task.get("due_date_source")=="paperless_policy" or
                 any(source in fetched_by_message_id and not insurance_quote_only(fetched_by_message_id[source]) for source in source_ids)):
             task.pop("obligation_suppressed",None)
         if hold_quote_only_obligation(task,fetched_by_message_id):quote_holds+=1
     print("TASK_QUOTE_ONLY_OBLIGATIONS_HELD="+str(quote_holds),flush=True)
+    user_state=read_user_state()
+    for task in tasks.values():
+        if task.get("status") in {"OPEN","WAITING"} or task.get("obligation_suppressed"):
+            hold_source_non_obligation(task,fetched_by_message_id,user_state)
+    for kind in sorted(KINDS):
+        print("PA_QUALITY_HELD_"+kind.upper()+"="+str(sum(task.get("obligation_suppressed")==kind for task in tasks.values())),flush=True)
     cutoff=int(time.time())-STALE_DAYS*86400
     tasks={k:v for k,v in tasks.items() if has_valid_source_email(v) and (int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE")}
     informational=[x for x in tasks.values() if x.get("obligation_suppressed")]

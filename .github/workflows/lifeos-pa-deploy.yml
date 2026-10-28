@@ -8,6 +8,7 @@ on:
       - 'governor/ai_broker.py'
       - 'governor/assistant_ui.html'
       - 'governor/pa_user_state.py'
+      - 'governor/pa_source_disposition.py'
       - 'homelab/live/home/joshan/automation/lifeos_task_reconciler.py'
       - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml'
       - 'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_actions.yaml'

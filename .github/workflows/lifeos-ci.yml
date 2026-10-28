@@ -160,7 +160,7 @@ jobs:
           bash -n governor/scripts/deploy-pa-task-reconciler.sh governor/scripts/deploy-ha-assistant.sh
           node --check homeassistant/www/lifeos-pa-task-card.js
           node --test tests/personal_admin/pa_task_card.test.cjs
-          python3 -m unittest -v tests.test_pa_matter_overview
+          python3 -m unittest -v tests.test_pa_matter_overview tests.test_pa_source_disposition
           python3 -m unittest -v tests.test_pa_email_paperless_policy tests.test_paperless_runtime_diagnostic
           python3 -m pytest -q tests/personal_admin/test_task_policy_dates.py tests/personal_admin/test_task_reconciler_identity.py tests/personal_admin/test_pa_duplicate_audit.py tests/personal_admin/test_pa_junk_action.py tests/personal_admin/test_pa_task_review.py tests/personal_admin/test_emailops_junk_hold.py
           python3 -m pytest -q tests/personal_admin/test_stale_no_action_task_cleanup.py::test_uid_search_uses_uid_syntax_without_charset_placeholder tests/personal_admin/test_stale_no_action_task_cleanup.py::test_stale_source_lookup_uses_fresh_authenticated_inbox_session

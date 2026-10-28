@@ -140,12 +140,13 @@ def run_reconciler():
         "TASK_FETCH_ERROR_TYPES": "FETCH_ERROR_TYPES",
         "TASK_CLASSIFICATION_ERRORS": "CLASSIFICATION_ERRORS",
         "TASK_CLASSIFICATION_ERROR_TYPES": "CLASSIFICATION_ERROR_TYPES",
+        "TASK_CLASSIFICATION_ERROR_CATEGORIES": "CLASSIFICATION_ERROR_CATEGORIES",
     }
     for line in journal.splitlines():
         key, separator, value = line.partition("=")
         if not separator or key not in safe_fields:
             continue
-        safe_value = "".join(ch for ch in value if ch.isalnum() or ch in "_,")
+        safe_value = "".join(ch for ch in value if ch.isalnum() or ch in "_,=")
         print("GATE_H_RECONCILER_" + safe_fields[key] + "=" + (safe_value or "UNAVAILABLE"))
     payload = current_view()
     print("GATE_H_FRESH_RECONCILIATION_ERRORS=" + str(int(payload.get("errors") or 0)))
@@ -391,6 +392,19 @@ def main():
     print("PA_OVERVIEW_INFORMATION_NONACTIONABLE=PASS")
     print("PA_OVERVIEW_CACHED_CARD_COMPATIBILITY=PASS")
     print("PA_OVERVIEW_SOURCE_PARITY=PASS")
+    rows=[row for bucket in ("tasks","resolved","informational") for row in final_payload.get(bucket,[]) if isinstance(row,dict)]
+    kinds=("marketing_offer","routine_delivery","optional_opportunity")
+    known_optional_active=[]
+    for row in rows:
+        checks=row.get("source_disposition_checks") or {}
+        if (checks.get("sources",0)>0 and checks.get("missing")==0 and checks.get("non_obligation")==checks.get("sources") and not checks.get("user_tracking") and not row.get("user_tracking") and not row.get("sign_in_events") and not row.get("obligation_suppressed") and row.get("status") in {"OPEN","WAITING"}):
+            known_optional_active.append(row)
+    print("PA_QUALITY_KNOWN_OPTIONAL_ACTIONABLE="+str(len(known_optional_active)))
+    assert not known_optional_active, "source_non_obligation_still_actionable"
+    for kind in kinds:
+        print("PA_QUALITY_HELD_"+kind.upper()+"="+str(sum(row.get("obligation_suppressed")==kind for row in rows)))
+    print("PA_QUALITY_LOOKUP_MISSING="+str(sum(bool((row.get("source_disposition_checks") or {}).get("missing")) for row in rows)))
+    print("PA_QUALITY_PRIVATE_SOURCE_BOUNDARY=PASS")
     print("PA_OVERVIEW_RUNTIME=PASS")
     print("GATE_H_LIVE_ACCEPTANCE=PASS")
 

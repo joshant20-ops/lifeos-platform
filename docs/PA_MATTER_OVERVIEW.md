@@ -38,8 +38,9 @@ help uses a fixed OpenAI URL, never an untrusted URL from an email.
 ## Retained information
 
 Quote-only rows keep provenance and notes, stay outside attention counts, and
-are visible in Reference without completion/reopen/Junk controls. Review and note
-remain available. A quote cannot establish an existing policy renewal date.
+are visible in Reference without completion/Junk controls. Review and note remain available. **Track this**
+uses the existing explicit user reopen action to accept a personal follow-up; it
+does not turn the source email into proof of an obligation. A quote cannot establish an existing policy renewal date.
 Information and obligation buckets are disjoint, including legacy duplicate rows.
 
 ## Validation and rollback
@@ -56,3 +57,30 @@ Rollback is a reviewed revert and redeployment through the existing fixed gatewa
 Do not delete original task data, source emails, documents, notes or decision
 history. Unknown overlay fields are retained, so rollback need not erase decisions.
 Finance remains excluded. EmailOps stays shadow-only with lifecycle UNKNOWN.
+
+
+## Source quality correction
+
+The native source guard applies to both future extraction and existing saved
+rows. Promotional offers, routine delivery status and explicit optional bulk
+invitations cannot establish a user commitment or a personal due date. Titles
+are used only to select extra exact-source lookups; they never authorise a hold.
+All saved source messages must be retrieved and positively non-obligatory before
+creating a hold. Mixed, unknown or mandatory evidence remains active. Temporary
+lookup failure does not undo an existing hold; a retrieved contradictory source
+does. No date alone closes a genuine obligation or proves completion.
+
+Mandatory response, invoice/payment, actual policy, accepted application,
+appointment, delivery exception and equipment return signals outrank campaign
+footers. Existing user active-status, date or priority decisions are preserved. User-closed
+and dismissed matters retain their closed view through source replay.
+Information keeps its original source IDs, history and notes, carries an explicit
+reason and stays out of the legacy action channel. A user can choose Track this
+as a personal commitment through the existing overlay; no new task store or
+mailbox write is introduced. The existing pinned EmailOps shadow classifier is
+not promoted and local models are unchanged.
+
+Native acceptance reports fixed per-kind held counts and verifies zero known
+optional-source rows remain actionable without a user decision. This is a
+bounded source correction, not representative-corpus or general classification
+acceptance. Missing or ambiguous sources stay unresolved for later review.

@@ -72,6 +72,13 @@ def drop_to_state_owner(path=None):
             raise PermissionError("user_state_privilege_drop_" + name + "_failed") from exc
 
 
+def explicit_tracking(entry):
+    """A user's active status/date/priority decision outranks automatic holding."""
+    if not isinstance(entry, dict) or entry.get("status_override") in {"DONE", "DISMISSED"}:
+        return False
+    return entry.get("status_override") in {"OPEN", "WAITING"} or bool(entry.get("due_date_override") or entry.get("severity_override"))
+
+
 def _default():
     return {"schema": SCHEMA, "revision": 0, "obligations": {}}
 
@@ -480,7 +487,18 @@ def apply_user_state(payload, state=None):
         machine_rows.append(base)
     effective = apply_user_annotations(machine_rows, state, now_ts=generated)
     information=apply_user_annotations(payload.get("informational") or [],state,now_ts=generated)
-    result["informational"]=information
+    # Explicit user tracking is a personal commitment, even when the source
+    # itself is optional. Never silently demote an active user decision.
+    references=[]
+    for row in information:
+        entry=(state.get("obligations") or {}).get(row.get("id"))
+        if explicit_tracking(entry):
+            row.pop("obligation_suppressed",None)
+            row["user_tracking"]=True
+            effective.append(row)
+        else:
+            references.append(row)
+    result["informational"]=references
     result["tasks"] = [x for x in effective if str(x.get("status") or "").upper() not in {"DONE", "DISMISSED"}]
     result["resolved"] = [x for x in effective if str(x.get("status") or "").upper() in {"DONE", "DISMISSED"}]
     attention = derive_attention(effective, now_ts=generated)
