@@ -128,7 +128,7 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
     action = str(action or "")
     if not ID_RE.fullmatch(task_id):
         raise ValueError("task_id_invalid")
-    if action not in {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze"}:
+    if action not in {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "signin_yes", "signin_no", "signin_unsure"}:
         raise ValueError("action_not_allowlisted")
     now = int(time.time() if now is None else now)
     path = pathlib.Path(STATE_PATH if path is None else path)
@@ -139,7 +139,18 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
         state = read_user_state(path)
         obligations = state.setdefault("obligations", {})
         entry = dict(obligations.get(task_id) or {})
-        if action == "comment":
+        if action.startswith("signin_"):
+            event_id=str(note or "")
+            if not re.fullmatch(r"[a-f0-9]{64}",event_id):
+                raise ValueError("signin_event_id_invalid")
+            # This explicit answer supersedes an earlier whole-matter close.
+            # A subsequent explicit close/reopen still wins until answered again.
+            for field in ("status_override","status_set_at","status_source"):
+                entry.pop(field,None)
+            decisions=dict(entry.get("signin_decisions") or {})
+            decisions[event_id]={"answer":action.removeprefix("signin_"),"answered_at":now}
+            entry["signin_decisions"]=decisions
+        elif action == "comment":
             note = str(note or "").strip()
             if not note or len(note) > 1000:
                 raise ValueError("comment_length_invalid")
@@ -201,6 +212,21 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
         task = dict(original)
         task_id = str(task.get("id") or "")
         entry = obligations.get(task_id)
+        events=[dict(event) for event in task.get("sign_in_events") or [] if isinstance(event,dict)]
+        decisions=(entry or {}).get("signin_decisions") or {}
+        for event in events:
+            decision=decisions.get(event.get("id")) or {}
+            event["answer"]=decision.get("answer") if decision.get("answer") in {"yes","no","unsure"} else None
+            event["answered_at"]=decision.get("answered_at")
+        task["sign_in_events"]=events
+        if events and all(event.get("answer")=="yes" for event in events) and set(task.get("source_message_ids") or []) == {event.get("source_message_id") for event in events}:
+            task["machine_status"]=task.get("machine_status") or task.get("status")
+            task["status"]="DONE"
+            task["status_source"]="user_confirmation"
+        elif events and any(event.get("answer") in {"no","unsure"} for event in events):
+            task["machine_status"]=task.get("machine_status") or task.get("status")
+            task["status"]="OPEN"
+            task["status_source"]="user_confirmation"
         if not isinstance(entry, dict):
             until = str(task.get("snoozed_until") or "")
             try:
@@ -437,14 +463,15 @@ def apply_user_state(payload, state=None):
         generated = int(result.get("generated_time") or time.time())
     except (TypeError, ValueError):
         generated = int(time.time())
-    all_rows = list(payload.get("tasks") or []) + list(payload.get("resolved") or [])
+    information_ids={row.get("id") for row in payload.get("informational") or [] if isinstance(row,dict)}
+    all_rows = [row for row in list(payload.get("tasks") or []) + list(payload.get("resolved") or []) if isinstance(row,dict) and row.get("id") not in information_ids]
     # Recover the source-derived status before applying persistent user decisions.
     machine_rows = []
     for row in all_rows:
         if not isinstance(row, dict):
             continue
         base = dict(row)
-        if str(base.get("status_source") or "") == "user" and base.get("machine_status"):
+        if str(base.get("status_source") or "") in {"user", "user_confirmation"} and base.get("machine_status"):
             base["status"] = base["machine_status"]
         base.pop("status_source", None)
         base.pop("status_set_at", None)
@@ -452,6 +479,8 @@ def apply_user_state(payload, state=None):
         base.pop("due_date_source", None)
         machine_rows.append(base)
     effective = apply_user_annotations(machine_rows, state, now_ts=generated)
+    information=apply_user_annotations(payload.get("informational") or [],state,now_ts=generated)
+    result["informational"]=information
     result["tasks"] = [x for x in effective if str(x.get("status") or "").upper() not in {"DONE", "DISMISSED"}]
     result["resolved"] = [x for x in effective if str(x.get("status") or "").upper() in {"DONE", "DISMISSED"}]
     attention = derive_attention(effective, now_ts=generated)

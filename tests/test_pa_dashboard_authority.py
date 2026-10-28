@@ -124,7 +124,7 @@ def test_ask_lifeos_provenance_matches_existing_source_message_ids():
     )
 
 
-def test_pa_tasks_have_a_dedicated_week_and_matter_view():
+def test_pa_tasks_have_a_dedicated_daily_and_matter_view():
     source=json.loads((ROOT/"homeassistant"/"lifeos-dashboard.json").read_text())
     views=source["data"]["config"]["views"]
     pages=[view for view in views if view.get("path")=="personal-assistant"]
@@ -138,13 +138,12 @@ def test_pa_tasks_have_a_dedicated_week_and_matter_view():
     summary=next(card for card in overview.get("cards",[]) if card.get("type")=="custom:lifeos-pa-task-card")
     assert summary.get("compact") is True
     card_source=(ROOT/"homeassistant"/"www"/"lifeos-pa-task-card.js").read_text()
-    assert 'data-day="' in card_source
-    assert 'data-week="' in card_source
-    assert 'data-day="no-date"' in card_source
+    assert 'data-tab="' in card_source
+    assert "_overviewMarkup(items)" in card_source
+    assert '["reference","Reference"]' in card_source
     assert 'source_message_ids' in card_source
-    assert "_actionSections(items)" in card_source
     assert "this._taskCard(selected, true)" in card_source
     assert 'data-matter="' in card_source
     assert 'button[data-matter]' in card_source
     assert "The story so far" in card_source
-    assert "Other matters" in card_source
+    assert "No confirmed deadline" in card_source

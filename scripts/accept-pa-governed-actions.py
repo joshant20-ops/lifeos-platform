@@ -332,6 +332,33 @@ def main():
                 raise RuntimeError("post_test_restore_projection_mismatch")
             print("GATE_H_TEST_STATE_CLEANUP=PASS")
 
+    # Read-only acceptance of the new matter overview against the real projection.
+    final_view=hass_projection()
+    final_payload=current_view()
+    items=final_view.get("items") or []
+    ids=[item["id"] for item in items]
+    assert len(ids)==len(set(ids)), "overview_duplicate_matter"
+    information=[item for item in items if item.get("obligation_suppressed")]
+    active_ids={item["id"] for key in ("needs_me","waiting_on_others","due_overdue","upcoming") for item in final_payload.get("attention",{}).get(key,[])}
+    assert not any(item["id"] in active_ids for item in information)
+    questions=[item for item in items if any(event.get("answer")!="yes" for event in item.get("sign_in_events") or []) and item.get("status") in {"OPEN","WAITING"} and not item.get("snoozed") and not item.get("obligation_suppressed") and not any(event.get("answer")=="no" for event in item["sign_in_events"])]
+    assert final_view.get("questions")==len(questions)
+    assert final_view.get("information")==len(information)
+    source_by_id={item["id"]:item for key in ("tasks","resolved","informational") for item in final_payload.get(key,[])}
+    for item in items:
+        source_row=source_by_id.get(item.get("id"))
+        assert source_row is not None, "overview_source_row_missing"
+        assert item.get("obligation_suppressed")==source_row.get("obligation_suppressed")
+        assert {event["id"] for event in item.get("sign_in_events") or []}=={event["id"] for event in source_row.get("sign_in_events") or []}
+    card_text=CARD.read_text()
+    assert all(marker in card_text for marker in ("_overviewMarkup", "data-tab", "signin_yes", "signin_no", "signin_unsure", "Renewal date: not confirmed"))
+    print("PA_OVERVIEW_UNIQUE_MATTERS=PASS")
+    print("PA_OVERVIEW_INFORMATION="+str(len(information)))
+    print("PA_OVERVIEW_QUESTIONS="+str(len(questions)))
+    print("PA_OVERVIEW_SIGNIN_SOURCES="+str(sum(len(item.get("sign_in_events") or []) for item in items)))
+    print("PA_OVERVIEW_INFORMATION_NONACTIONABLE=PASS")
+    print("PA_OVERVIEW_SOURCE_PARITY=PASS")
+    print("PA_OVERVIEW_RUNTIME=PASS")
     print("GATE_H_LIVE_ACCEPTANCE=PASS")
 
 

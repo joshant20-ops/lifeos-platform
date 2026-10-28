@@ -159,6 +159,8 @@ jobs:
           python3 -m py_compile governor/scripts/lifeos-pa-execute homelab/live/home/joshan/automation/lifeos_email_paperless_selective.py homelab/live/home/joshan/automation/lifeos_task_reconciler.py governor/assistant_bridge.py governor/pa_user_state.py homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_user_action.py homelab/live/opt/stacks/homeassistant/config/custom_components/lifeos_pa_review/__init__.py scripts/accept-pa-governed-actions.py homeassistant/deploy-lifeos-dashboard.py
           bash -n governor/scripts/deploy-pa-task-reconciler.sh governor/scripts/deploy-ha-assistant.sh
           node --check homeassistant/www/lifeos-pa-task-card.js
+          node --test tests/personal_admin/pa_task_card.test.cjs
+          python3 -m unittest -v tests.test_pa_matter_overview
           python3 -m unittest -v tests.test_pa_email_paperless_policy tests.test_paperless_runtime_diagnostic
           python3 -m pytest -q tests/personal_admin/test_task_policy_dates.py tests/personal_admin/test_task_reconciler_identity.py tests/personal_admin/test_pa_duplicate_audit.py tests/personal_admin/test_pa_junk_action.py tests/personal_admin/test_pa_task_review.py tests/personal_admin/test_emailops_junk_hold.py
           python3 -m pytest -q tests/personal_admin/test_stale_no_action_task_cleanup.py::test_uid_search_uses_uid_syntax_without_charset_placeholder tests/personal_admin/test_stale_no_action_task_cleanup.py::test_stale_source_lookup_uses_fresh_authenticated_inbox_session

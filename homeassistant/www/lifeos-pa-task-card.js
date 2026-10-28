@@ -18,13 +18,6 @@ class LifeOSPATaskCard extends HTMLElement {
       String(date.getDate()).padStart(2, "0");
   }
 
-  _startOfWeek(offset = 0) {
-    const start = new Date();
-    start.setHours(12, 0, 0, 0);
-    start.setDate(start.getDate() - ((start.getDay() + 6) % 7) + offset * 7);
-    return start;
-  }
-
   _taskDate(value) {
     return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "")) ? String(value) : "";
   }
@@ -36,44 +29,67 @@ class LifeOSPATaskCard extends HTMLElement {
     return new Intl.DateTimeFormat(undefined, options).format(new Date(parts[0], parts[1] - 1, parts[2], 12));
   }
 
-  _dateLabel(date, options) {
-    return new Intl.DateTimeFormat(undefined, options).format(date);
-  }
-
   _entity() { return this._config.entity || "sensor.lifeos_pa_task_attention"; }
 
-  _weekStrip(items) {
-    const start = this._startOfWeek(this._weekOffset || 0);
-    const days = [];
-    for (let index = 0; index < 7; index++) {
-      const date = new Date(start);
-      date.setDate(start.getDate() + index);
-      const key = this._dateKey(date);
-      const count = items.filter((task) =>
-        ["OPEN", "WAITING"].includes(String(task.status || "").toUpperCase()) &&
-        !task.snoozed && this._taskDate(task.due_date) === key
-      ).length;
-      const selected = this._selectedDate === key;
-      days.push(
-        '<button class="day' + (selected ? " selected" : "") + '" type="button" data-day="' + key +
-        '" aria-pressed="' + selected + '" aria-label="' + this._escape(this._dateLabel(date, { weekday: "long", day: "numeric", month: "long" })) +
-        ", " + count + (count === 1 ? " task" : " tasks") + '">' +
-        '<span class="day-name">' + this._escape(this._dateLabel(date, { weekday: "short" })) + '</span>' +
-        '<strong>' + this._escape(this._dateLabel(date, { day: "numeric" })) + '</strong>' +
-        '<span class="day-count">' + (count ? count + (count === 1 ? " task" : " tasks") : "—") + '</span>' +
-        '</button>'
-      );
-    }
-    const weekLabel = this._dateLabel(start, { day: "numeric", month: "short" }) + " – ";
-    const end = new Date(start);
-    end.setDate(end.getDate() + 6);
-    return '<div class="week-heading"><button class="week-nav" type="button" data-week="-1" aria-label="Previous week">‹</button>' +
-      '<strong>' + this._escape(weekLabel + this._dateLabel(end, { day: "numeric", month: "short", year: "numeric" })) + '</strong>' +
-      '<button class="week-nav" type="button" data-week="1" aria-label="Next week">›</button></div>' +
-      '<div class="week-strip" role="group" aria-label="Tasks due this week">' + days.join("") + '</div>';
+  _kind(task) {
+    if (task.obligation_suppressed) return "information";
+    if (["DONE", "DISMISSED"].includes(String(task.status).toUpperCase())) return "closed";
+    if ((task.sign_in_events || []).some(e => e.answer !== "yes")) return task.sign_in_events.some(e => e.answer === "no") ? "action" : "question";
+    return String(task.status).toUpperCase() === "WAITING" ? "waiting" : "action";
+  }
+
+  _title(task) {
+    if (task.obligation_suppressed === "quote_only_no_verified_policy") return "Insurance quotes received";
+    if ((task.sign_in_events || []).some(e => e.answer !== "yes") && this._kind(task) !== "closed")
+      return this._kind(task) === "question" ? "Was this OpenAI sign-in you?" : "Secure your OpenAI account";
+    return task.title || "Untitled matter";
+  }
+
+  _confirmationMarkup(task) {
+    return (task.sign_in_events || []).map((event, index) => {
+      const id = this._escape(task.id), eventId = this._escape(event.id);
+      const emailTime = event.email_received_at ? new Date(event.email_received_at * 1000).toLocaleString() : "Not available";
+      const query = encodeURIComponent("rfc822msgid:" + String(event.source_message_id).replace(/[<>]/g, ""));
+      const choice = {yes: "Confirmed by you", no: "You did not recognise this sign-in", unsure: "Awaiting your review"}[event.answer] || "Awaiting your confirmation";
+      return '<section class="decision"><h4>Sign-in alert ' + (index + 1) + '</h4><p>An email reports a sign-in. ' + this._escape(choice) + '.</p>' +
+        '<dl><dt>Alert email received</dt><dd>' + this._escape(emailTime) + '</dd><dt>Sign-in time</dt><dd>Not provided in this view</dd><dt>Device / location</dt><dd>Check the original alert</dd></dl>' +
+        '<a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + query + '">View this alert email ↗</a>' +
+        '<div class="decision-buttons">' + [["yes", "Yes, that was me"], ["no", "No, help secure my account"], ["unsure", "Not sure — review activity"]].map(([value, label]) =>
+          '<button type="button" data-action="signin_' + value + '" data-id="' + id + '" data-event="' + eventId + '" aria-pressed="' + (event.answer === value) + '">' + label + '</button>').join("") + '</div>' +
+        '<p class="decision-note">Your answer updates only this alert in LifeOS. It does not approve or block a login.</p>' +
+        (event.answer === "no" || event.answer === "unsure" ? '<a target="_blank" rel="noopener noreferrer" href="https://help.openai.com/en/articles/8304786-keeping-your-openai-account-secure">Review OpenAI’s account security steps ↗</a>' : '') + '</section>';
+    }).join("");
+  }
+
+  _overviewMarkup(items) {
+    const tab = this._overviewTab || "today", today = this._dateKey(new Date());
+    const active = task => !task.snoozed && !["closed", "information"].includes(this._kind(task));
+    const shown = items.filter(task => {
+      const kind = this._kind(task), due = this._taskDate(task.due_date);
+      if (tab === "today") return active(task) && kind !== "waiting" && (!due || due <= today);
+      if (tab === "upcoming") return active(task) && kind !== "waiting" && due > today;
+      if (tab === "waiting") return active(task) && kind === "waiting";
+      if (tab === "reference") return kind === "information";
+      return true;
+    });
+    const labels = {question:"Confirmation",action:"Next action",waiting:"Waiting",information:"Information only",closed:"Closed"};
+    const selected = shown.find(task => task.id === this._selectedMatterId);
+    const tabs = [["today","Today"],["upcoming","Upcoming"],["waiting","Waiting"],["reference","Reference"],["all","All matters"]].map(([key,label]) =>
+      '<button type="button" data-tab="' + key + '" aria-pressed="' + (tab === key) + '">' + label + '</button>').join("");
+    const tiles = shown.map(task => {
+      const kind = this._kind(task), due = this._taskDate(task.due_date);
+      return '<button type="button" class="overview-tile kind-' + kind + '" data-matter="' + this._escape(task.id) + '"><span class="eyebrow">' + labels[kind] + (task.snoozed ? ' · Snoozed' : '') +
+        '</span><strong>' + this._escape(this._title(task)) + '</strong><span>' +
+        this._escape(kind === "information" ? "No action required · Sources retained" : kind === "waiting" ? "Awaiting progress or a reply" : kind === "closed" ? task.status === "DONE" ? "Completed" : "Dismissed" : due ? (due < today ? "Overdue · " : "Due · ") + this._formatDate(due) : "No confirmed deadline") +
+        '</span><span class="tile-link">' + (kind === "question" ? "Review sign-in" : "Open matter") + ' →</span></button>';
+    }).join("");
+    return '<nav class="overview-tabs" aria-label="Matter views">' + tabs + '</nav>' +
+      (selected ? '<button type="button" class="back-matters" data-back-matters>← Back to ' + this._escape(tab === "all" ? "all matters" : tab) + '</button>' + this._taskCard(selected, true) :
+        '<section class="overview-list" aria-label="' + this._escape(tab) + '">' + (tiles || '<div class="empty"><strong>No items in this view</strong><span>Other matters are available in the tabs above.</span></div>') + '</section>');
   }
 
   _taskCard(task, featured = false) {
+    const kind = this._kind(task);
     const id = this._escape(task.id);
     const status = String(task.status || "OPEN").toUpperCase();
     const severity = String(task.severity || "normal").toLowerCase();
@@ -127,13 +143,15 @@ class LifeOSPATaskCard extends HTMLElement {
     if (timeline && !featured) supporting.push('<details><summary>Full timeline · ' + timelineEvents.length + '</summary><div class="support-body timeline">' + timeline + '</div></details>');
     if (noteMarkup) supporting.push('<details><summary>Your notes · ' + (task.user_comment_count || comments.length) + '</summary><div class="support-body">' + noteMarkup + '</div></details>');
     const snooze = task.snoozed_until ? '<span class="tag muted">Snoozed until ' + this._escape(this._formatDate(task.snoozed_until)) + '</span>' : "";
-    const dueTag = due ? '<span class="tag ' + (due < this._dateKey(new Date()) ? "overdue" : "") + '">' +
+    const dueTag = kind === "information" ? '<span class="tag muted">Renewal date: not confirmed</span>' : due ? '<span class="tag ' + (due < this._dateKey(new Date()) ? "overdue" : "") + '">' +
       (due < this._dateKey(new Date()) ? "Overdue · " : "Due · ") + this._escape(this._formatDate(due)) + '</span>' :
       '<span class="tag muted">No due date</span>';
-    const statusTag = '<span class="tag status-' + this._escape(status.toLowerCase()) + '">' + this._escape(status === "WAITING" ? "Waiting for reply" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") + '</span>';
+    const statusTag = '<span class="tag status-' + this._escape(status.toLowerCase()) + '">' + this._escape(kind === "information" ? "Information only" : kind === "question" ? "Awaiting confirmation" : status === "WAITING" ? "Waiting for reply" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") + '</span>';
     const closed = status === "DONE" || status === "DISMISSED";
     const reviewLabel = task.emailops_shadow_available ? "Review · EmailOps" : "Review";
-    const primaryActions = closed
+    const primaryActions = kind === "information" || (task.sign_in_events || []).some(e => e.answer !== "yes") && !closed
+      ? '<button data-action="review" data-id="' + id + '">' + reviewLabel + '</button><button data-action="comment" data-id="' + id + '">Add note</button>'
+      : closed
       ? '<button class="primary" data-action="reopen" data-id="' + id + '">Reopen</button><button data-action="review" data-id="' + id + '">' + reviewLabel + '</button>'
       : '<button class="primary" data-action="close" data-id="' + id + '">Mark done</button>' +
         '<button data-action="review" data-id="' + id + '">' + reviewLabel + '</button>' +
@@ -141,7 +159,7 @@ class LifeOSPATaskCard extends HTMLElement {
         '<button data-action="snooze" data-id="' + id + '">Snooze</button>' +
         '<button data-action="due_date" data-id="' + id + '">Set due date</button>' +
         '<button data-action="junk" data-id="' + id + '">Junk</button>';
-    const secondaryActions =
+    const secondaryActions = kind === "information" ? "" :
       '<button data-action="severity" data-id="' + id + '">Set severity</button>' +
       (!closed ? '<button data-action="dismiss" data-id="' + id + '">Not a task</button>' : '<button data-action="due_date" data-id="' + id + '">Set due date</button>') +
       (task.snoozed_until ? '<button data-action="unsnooze" data-id="' + id + '">Unsnooze</button>' : '');
@@ -149,47 +167,13 @@ class LifeOSPATaskCard extends HTMLElement {
       (secondaryActions ? '<details class="more-actions"><summary>More actions</summary><div class="secondary-controls">' + secondaryActions + '</div></details>' : '') +
       '</div>';
     return '<article class="task' + (featured ? ' featured' : '') + '"><div class="task-top"><div><span class="eyebrow">' +
-      (status === "WAITING" ? "Waiting on someone else" : status === "DONE" ? "Completed matter" : status === "DISMISSED" ? "Dismissed item" : "Your next step") +
-      '</span><h3>' + this._escape(task.title || "Untitled obligation") + '</h3></div><span class="severity severity-' + this._escape(severity) + '">' +
-      this._escape(severity) + '</span></div>' +
+      (kind === "information" ? "Information only" : kind === "question" ? "A quick decision" : status === "WAITING" ? "Waiting on someone else" : status === "DONE" ? "Completed matter" : status === "DISMISSED" ? "Dismissed item" : "Your next step") +
+      '</span><h3>' + this._escape(this._title(task)) + '</h3></div><span class="severity severity-' + this._escape(kind === "question" && task.severity_source !== "user" ? "normal" : severity) + '">' +
+      this._escape(kind === 'question' ? 'Confirm' : kind === 'information' ? 'Reference' : severity) + '</span></div>' +
       '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
-      '</div>' + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
-  }
-
-  _actionSections(items) {
-    const active = items.filter((task) => ["OPEN", "WAITING"].includes(String(task.status || "").toUpperCase()));
-    const selected = active.find((task) => task.id === this._selectedMatterId) || active[0] || items.find((task) => task.id === this._selectedMatterId) || items[0];
-    if (selected) this._selectedMatterId = selected.id;
-    const sideItems = items.filter((task) => task.id !== selected?.id);
-    const tile = (task) => {
-      const id = this._escape(task.id);
-      const status = String(task.status || "OPEN").toUpperCase();
-      const events = Array.isArray(task.timeline_events) ? task.timeline_events : [];
-      const latest = events[events.length - 1];
-      const when = latest && Number(latest.observed_at) > 0
-        ? new Date(Number(latest.observed_at) * 1000).toLocaleDateString()
-        : "";
-      return '<button class="matter-link' + (task.id === this._selectedMatterId ? " selected" : "") +
-        '" type="button" data-matter="' + id + '" aria-pressed="' + (task.id === this._selectedMatterId) + '">' +
-        '<span class="matter-link-top"><span class="matter-status status-' + this._escape(status.toLowerCase()) + '">' +
-        this._escape(status === "WAITING" ? "Waiting" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") +
-        '</span>' + (task.due_date ? '<span class="matter-date">' + this._escape(this._formatDate(task.due_date)) + '</span>' : "") + '</span>' +
-        '<strong>' + this._escape(task.title || "Untitled obligation") + '</strong>' +
-        (latest ? '<span class="matter-latest">' + (when ? this._escape(when) + " · " : "") + this._escape(latest.title || "Email update") + '</span>' : "") +
-        '<span class="matter-messages">' + (Array.isArray(task.source_message_ids) ? task.source_message_ids.length : 0) + ' related messages</span></button>';
-    };
-    const closed = sideItems.filter((task) => ["DONE", "DISMISSED"].includes(String(task.status || "").toUpperCase()));
-    const open = sideItems.filter((task) => !["DONE", "DISMISSED"].includes(String(task.status || "").toUpperCase()));
-    const rail = open.map(tile).join("") || '<div class="rail-empty">No other open matters for this day.</div>';
-    const resolved = closed.length
-      ? '<details class="resolved"><summary>Recently closed · ' + closed.length + '</summary><div class="resolved-items">' + closed.map(tile).join("") + '</div></details>'
-      : "";
-    if (!selected) return '<div class="empty"><strong>No tasks for this day</strong><span>Choose another date above, or view matters with no due date.</span></div>';
-    return '<div class="matter-layout"><section class="matter-main"><div class="focus-label"><span class="focus-mark"></span>Selected matter</div>' +
-      this._taskCard(selected, true) + '</section><aside class="matter-rail"><div class="rail-heading"><div><span class="eyebrow">Your day</span><h2>Other matters</h2></div><span class="rail-count">' + open.length + '</span></div>' +
-      rail + resolved + '</aside></div>';
+      '</div>' + (kind === 'information' ? '<p class="matter-explanation">Quote emails do not establish the renewal date of your current policy. No renewal action is required from these quotes alone.</p>' : '') + this._confirmationMarkup(task) + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
   }
 
   _render() {
@@ -204,36 +188,9 @@ class LifeOSPATaskCard extends HTMLElement {
     this._reviewPendingTaskIds = new Set(Array.isArray(attrs.review_pending_task_ids) ? attrs.review_pending_task_ids.map(String) : []);
     this._reviewFailedTaskIds = new Set(Array.isArray(attrs.review_failed_task_ids) ? attrs.review_failed_task_ids.map(String) : []);
     const items = Array.isArray(attrs.items) ? attrs.items.filter((x) => x && x.id) : [];
-    if (!this._selectedDate) {
-      const today = this._dateKey(new Date());
-      const weekStart = this._startOfWeek();
-      const weekDates = Array.from({ length: 7 }, (_, index) => {
-        const date = new Date(weekStart);
-        date.setDate(weekStart.getDate() + index);
-        return this._dateKey(date);
-      });
-      const weekSet = new Set(weekDates);
-      const active = items.filter((task) =>
-        ["OPEN", "WAITING"].includes(String(task.status || "").toUpperCase()) && !task.snoozed
-      );
-      const dated = [...new Set(active.map((task) => this._taskDate(task.due_date)).filter((date) => weekSet.has(date)))].sort();
-      this._selectedDate = dated.find((date) => date >= today) || dated[0] ||
-        (active.some((task) => !this._taskDate(task.due_date)) ? "no-date" : today);
-    }
     const needs = Number(attrs.needs_me || 0);
     const waiting = Number(attrs.waiting_on_others || 0);
     const overdue = Number(attrs.overdue || 0);
-    const activeFilter = this._countFilter || "";
-    const filterNames = { needs: "Need action", waiting: "Waiting", overdue: "Overdue" };
-    const filteredItems = activeFilter ? items.filter((task) => {
-      const status = String(task.status || "OPEN").toUpperCase();
-      const active = ["OPEN", "WAITING"].includes(status) && !task.snoozed;
-      const due = this._taskDate(task.due_date);
-      if (activeFilter === "needs") return status === "OPEN" && !task.snoozed;
-      if (activeFilter === "waiting") return status === "WAITING" && !task.snoozed;
-      if (activeFilter === "overdue") return active && due && due < this._dateKey(new Date());
-      return false;
-    }) : [];
     const style = [
       ':host{display:block;color:var(--primary-text-color)}ha-card{padding:16px}',
       '.summary{color:var(--secondary-text-color);margin:4px 0 12px;line-height:1.45}',
@@ -291,6 +248,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '.trail{margin:18px 0 12px;padding:15px 0 0;border-top:1px solid var(--divider-color)}.trail-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:13px}.trail-heading h4{font-size:1rem;margin:1px 0 0}.trail-heading .eyebrow{color:var(--primary-color)}.timeline{position:relative;padding:0 0 6px 5px}.timeline:before{content:"";position:absolute;top:7px;bottom:17px;left:9px;width:1px;background:var(--divider-color)}.timeline-event{position:relative;display:flex;gap:11px;padding:0 0 15px;min-width:0}.event-dot{position:relative;z-index:1;flex:0 0 9px;width:9px;height:9px;margin-top:5px;border:2px solid var(--primary-color);border-radius:50%;background:var(--card-background-color)}.timeline-event:last-child .event-dot{background:var(--primary-color)}.event-copy{display:grid;gap:3px;min-width:0}.event-copy time{font-size:.72rem;color:var(--secondary-text-color)}.event-copy strong{font-size:.9rem;line-height:1.35;font-weight:550;overflow-wrap:anywhere}.event-copy em,.event-status{font-style:normal;font-size:.72rem;color:var(--secondary-text-color)}.trail-empty{font-size:.82rem;color:var(--secondary-text-color);padding:4px 0 13px}',
       '.resolved{margin-top:12px;border-top:1px solid var(--divider-color);padding-top:10px}.resolved summary{font-size:.76rem}.resolved-items{max-height:300px;overflow:auto}.rail-empty{padding:12px 8px;color:var(--secondary-text-color);font-size:.79rem;line-height:1.4}',
       '@media(max-width:760px){.page-head{display:block}.page-head>.count-row{justify-content:flex-start;margin-top:12px}.matter-layout{grid-template-columns:1fr}.matter-rail{order:2}.matter-main{order:1}}',
+      '.daily-counts{border:1px solid var(--divider-color);border-radius:12px;padding:14px;font-size:.95rem;background:var(--secondary-background-color)}.freshness{color:var(--secondary-text-color);font-size:.72rem}.overview-tabs{display:flex;flex-wrap:wrap;gap:5px;margin:16px 0}.overview-tabs button,.back-matters{font:inherit;min-height:44px;padding:8px 12px;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color)}.overview-tabs button[aria-pressed="true"]{border-color:var(--primary-color);color:var(--primary-color)}.overview-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}.overview-tile{font:inherit;text-align:left;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-left:4px solid var(--primary-color);border-radius:12px;padding:16px;display:grid;gap:8px;min-width:0}.overview-tile strong{font-size:1.04rem;overflow-wrap:anywhere}.overview-tile>span:not(.eyebrow){font-size:.8rem;color:var(--secondary-text-color)}.overview-tile .tile-link{color:var(--primary-color)!important}.kind-question{border-left-color:#e6ad35}.kind-question .eyebrow{color:#e6ad35}.kind-information,.kind-waiting,.kind-closed{border-left-color:var(--secondary-text-color)}.back-matters{margin-bottom:14px}.decision{margin:18px 0;padding:15px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color)}.decision h4{margin:0 0 8px}.decision p,.matter-explanation{font-size:.87rem;line-height:1.5}.decision dl{font-size:.8rem;display:grid;grid-template-columns:1fr 1.3fr;gap:10px;margin:16px 0}.decision dd{margin:0}.decision dt,.decision-note{color:var(--secondary-text-color)}.decision a{color:var(--primary-color);font-size:.82rem}.decision-buttons{display:grid;gap:10px;margin-top:16px}.decision-buttons button{min-height:48px;font:inherit;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color);padding:10px}.decision-buttons button[aria-pressed="true"]{outline:2px solid var(--primary-color)}.decision-buttons button[data-action="signin_yes"]{background:var(--primary-color);color:var(--text-primary-color,#fff)}.decision-buttons button[data-action="signin_no"]{border-color:#e6ad35;color:#e6ad35}.controls button{min-height:44px}',
     ].join("");
     if (this._config.compact) {
       this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card><h2>' +
@@ -302,61 +260,25 @@ class LifeOSPATaskCard extends HTMLElement {
         '<a class="open-link" href="/lifeos/personal-assistant">Open Personal Assistant →</a></ha-card>';
       return;
     }
-    const shownItems = items.filter((task) => {
-      const due = this._taskDate(task.due_date);
-      return this._selectedDate === "no-date" ? !due : due === this._selectedDate;
-    });
-    const selectedDateLabel = this._selectedDate === "no-date"
-      ? "No due date"
-      : this._formatDate(this._selectedDate, { weekday: "long", day: "numeric", month: "long" });
-    this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card>' +
-      '<div class="page-head"><div class="page-copy"><div class="page-kicker">LifeOS · Personal Assistant</div><h1>' +
-      this._escape(this._config.title || "Your matters") + '</h1><p>Follow each task from the first message to the next step.</p></div>' +
-      '<div class="count-row"><button class="count" type="button" data-filter="needs" aria-pressed="' + (activeFilter === "needs") + '"><strong>' + needs + '</strong><span>Need action</span></button>' +
-      '<button class="count" type="button" data-filter="waiting" aria-pressed="' + (activeFilter === "waiting") + '"><strong>' + waiting + '</strong><span>Waiting</span></button>' +
-      '<button class="count" type="button" data-filter="overdue" aria-pressed="' + (activeFilter === "overdue") + '"><strong>' + overdue + '</strong><span>Overdue</span></button></div></div>' +
-      (activeFilter
-        ? '<section class="count-results"><div class="task-summary"><span class="summary-chip">Showing ' + this._escape(filterNames[activeFilter]) + '</span><span class="summary-chip">' + filteredItems.length + ' matters listed</span></div><div class="task-grid">' +
-          (filteredItems.map((task) => this._taskCard(task, false)).join("") || '<div class="empty"><strong>No matching matters in the current task view</strong></div>') +
-          '</div><button class="clear-filter" type="button" data-clear-filter>Back to date view</button></section>'
-        : this._weekStrip(items)) +
-      '<div class="no-date-row"><button class="no-date' + (this._selectedDate === "no-date" ? " selected" : "") +
-      '" type="button" data-day="no-date" aria-pressed="' + (this._selectedDate === "no-date") + '">' +
-      "Show matters with no due date" + '</button></div>' +
-      '<div class="task-summary"><span class="summary-chip">Showing ' + this._escape(selectedDateLabel) + '</span>' +
-      '<span class="summary-chip">' + shownItems.length + (shownItems.length === 1 ? " open matter" : " open matters") + '</span>' +
-      '</div>' + this._actionSections(shownItems) + '</ha-card>';
+    const questions = items.filter(task => this._kind(task) === "question" && !task.snoozed).length;
+    const actions = items.filter(task => this._kind(task) === "action" && !task.snoozed).length;
+    const waitingCount = items.filter(task => this._kind(task) === "waiting" && !task.snoozed).length;
+    const unavailable = !sensor || ["unavailable","unknown"].includes(sensor.state);
+    this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card><div class="page-head"><div class="page-copy"><div class="page-kicker">LifeOS · Personal Assistant</div>' +
+      '<h1>Your day</h1><p>Here’s what needs your attention.</p></div></div>' +
+      (unavailable ? '<div class="empty" role="alert"><strong>PA information is unavailable</strong><span>Current matters could not be checked. This does not mean there is nothing to do.</span></div>' :
+        '<div class="daily-counts">' + questions + ' questions · ' + actions + ' actions · ' + waitingCount + ' waiting</div>' +
+        '<p class="freshness">Updated ' + this._escape(attrs.generated_time ? new Date(attrs.generated_time * 1000).toLocaleString() : "time unavailable") + '</p>' + (Number(attrs.total_matters) > items.length ? '<p class="freshness">Showing ' + items.length + ' of ' + Number(attrs.total_matters) + ' matters, in attention order.</p>' : '') + this._overviewMarkup(items)) + '</ha-card>';
+    this.shadowRoot.querySelectorAll("button[data-tab]").forEach(button => button.addEventListener("click", () => {
+      this._overviewTab = button.dataset.tab; this._selectedMatterId = null; this._render();
+    }));
+    this.shadowRoot.querySelector("button[data-back-matters]")?.addEventListener("click", () => { this._selectedMatterId = null; this._render(); });
     const samplesButton = document.createElement("button");
     samplesButton.type = "button";
     samplesButton.textContent = "Review email suggestions";
     samplesButton.className = "count";
     samplesButton.addEventListener("click", () => this._showEmailSamples());
     (this.shadowRoot.querySelector(".page-copy") || this.shadowRoot.querySelector("ha-card"))?.append(samplesButton);
-    this.shadowRoot.querySelectorAll("button[data-filter]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._countFilter = this._countFilter === button.dataset.filter ? "" : button.dataset.filter;
-        this._render();
-      });
-    });
-    this.shadowRoot.querySelectorAll("button[data-clear-filter]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._countFilter = "";
-        this._render();
-      });
-    });
-    this.shadowRoot.querySelectorAll("button[data-day]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._selectedDate = button.dataset.day;
-        this._render();
-      });
-    });
-    this.shadowRoot.querySelectorAll("button[data-week]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this._weekOffset = (this._weekOffset || 0) + Number(button.dataset.week);
-        this._selectedDate = this._dateKey(this._startOfWeek(this._weekOffset));
-        this._render();
-      });
-    });
     this.shadowRoot.querySelectorAll("button[data-matter]").forEach((button) => {
       button.addEventListener("click", () => {
         this._selectedMatterId = button.dataset.matter;
@@ -647,13 +569,16 @@ class LifeOSPATaskCard extends HTMLElement {
   }
 
   async _act(button) {
-    const action = button.dataset.action;
+    let action = button.dataset.action;
     const taskId = button.dataset.id;
     const task = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
     if (!task) return;
     const label = task.title || taskId;
     const data = { action, task_id: taskId, note: "", until: "", severity: "", due_date: "" };
-    if (action === "review") {
+    if (action.startsWith("signin_")) {
+      data.note = button.dataset.event || "";
+      if (!/^[a-f0-9]{64}$/.test(data.note)) return;
+    } else if (action === "review") {
       this._showTaskReview(task);
       return;
     } else if (action === "junk") {
@@ -701,5 +626,5 @@ window.customCards = window.customCards || [];
 window.customCards.push({
   type: "lifeos-pa-task-card",
   name: "LifeOS PA Tasks",
-  description: "Grouped personal assistant tasks with weekly due-date navigation",
+  description: "Source-backed matters, questions and daily actions",
 });

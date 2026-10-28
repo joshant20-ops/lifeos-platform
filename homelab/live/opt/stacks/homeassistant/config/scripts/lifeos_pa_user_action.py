@@ -13,7 +13,7 @@ import lifeos_pa_user_state
 from lifeos_pa_user_state import mutate_action
 
 STATE = Path("/config/www/lifeos_tasks.json")
-ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "junk", "review"}
+ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "junk", "review", "signin_yes", "signin_no", "signin_unsure"}
 _ACTION_STAGE = "startup"
 _SAFE_REASONS = {
     "task_view_unavailable_or_stale",
@@ -64,10 +64,15 @@ def main():
     if payload.get("schema") != "lifeos_tasks_v3" or not generated or time.time() - generated > 7 * 3600:
         raise ValueError("task_view_unavailable_or_stale")
     _ACTION_STAGE = "task_identity_validate"
-    rows = (payload.get("tasks") or []) + (payload.get("resolved") or [])
+    rows = (payload.get("tasks") or []) + (payload.get("resolved") or []) + (payload.get("informational") or [])
     task = next((row for row in rows if isinstance(row, dict) and row.get("id") == args.task_id), None)
     if task is None:
         raise ValueError("task_id_not_in_current_view")
+    if args.action.startswith("signin_"):
+        if not any(event.get("id")==unquote_plus(args.note) for event in task.get("sign_in_events") or [] if isinstance(event,dict)):
+            raise ValueError("signin_event_not_in_current_view")
+    if task.get("obligation_suppressed") and args.action not in {"review","comment"}:
+        raise ValueError("informational_action_not_allowed")
     if args.action == "review":
         _ACTION_STAGE = "review_request_validate"
         if str(task.get("status") or "").upper() not in {"OPEN", "WAITING", "DONE", "DISMISSED"}:
