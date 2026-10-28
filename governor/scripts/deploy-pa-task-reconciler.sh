@@ -44,6 +44,23 @@ Unit=lifeos-task-reconciler.service
 [Install]
 WantedBy=multi-user.target
 UNIT
+
+# Copy the existing shadow report into HA's private authenticated review directory.
+# No inference, mailbox sync, task promotion or new sample is triggered here.
+python3 - <<'PY'
+import json, pathlib, sys
+sys.path.insert(0, '/home/joshan/lifeos-platform')
+from governor.emailops_adapter import write_private_json
+source=pathlib.Path('/home/joshan/.local/share/lifeos/emailops-shadow/shadow-report.json')
+if source.exists():
+    assert not source.is_symlink() and source.stat().st_size <= 2*1024*1024
+    report=json.loads(source.read_text())
+    assert report.get('schema')=='lifeos_emailops_comparison_v1' and report.get('mode')=='shadow'
+    assert isinstance(report.get('results'),list) and 1 <= len(report['results']) <= 8
+    write_private_json('/opt/stacks/homeassistant/config/lifeos-pa-state/emailops-shadow/samples.json',report)
+    print('EMAILOPS_SAMPLE_REVIEW_PUBLISHED='+str(len(report['results'])))
+PY
+
 systemctl daemon-reload
 systemctl enable --now lifeos-task-reconciler.timer >/dev/null
 install -d -o joshan -g joshan -m 0700 /opt/stacks/homeassistant/config/lifeos-pa-state/junk-requests

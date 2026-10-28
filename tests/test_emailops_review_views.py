@@ -35,7 +35,7 @@ class ReviewViewTests(unittest.TestCase):
         async def scenario():
             hass = Hass()
             self.assertTrue(await component.async_setup(hass, {}))
-            self.assertEqual(len(hass.views), 2)
+            self.assertEqual(len(hass.views), 3)
             self.assertTrue(all(view.hass is hass and view.requires_auth for view in hass.views))
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -50,7 +50,7 @@ class ReviewViewTests(unittest.TestCase):
                 (component.EMAILOPS_PREVIEWS / 'synthetic-task.json').write_text(json.dumps({**common,
                     'schema': 'lifeos_emailops_shadow_task_v1', 'summary': 'Synthetic summary',
                     'proposals': [{'title': 'Synthetic suggestion', 'due_date': None}]}))
-                for view in hass.views:
+                for view in hass.views[:2]:
                     response = await view.get(None, 'synthetic-task')
                     self.assertEqual(response.status, 200)
                     self.assertIn('no-store', response.headers['Cache-Control'])
@@ -58,6 +58,21 @@ class ReviewViewTests(unittest.TestCase):
                 await hass.views[0].delete(None, 'synthetic-task')
                 self.assertFalse((component.PREVIEWS / 'synthetic-task.json').exists())
                 self.assertEqual(hass.calls, 3)
+                sample = component.EMAILOPS_PREVIEWS / "samples.json"
+                sample.write_text(json.dumps({"schema":"lifeos_emailops_comparison_v1","mode":"shadow",
+                    "generated_at":int(time.time()),"results":[{"source_message_ids":["<unmatched@example.test>"],
+                    "matched_task_ids":[],"summary":"<script>synthetic</script>","proposals":[]}]}))
+                sample.chmod(0o600)
+                response = await hass.views[2].get(None)
+                self.assertEqual(response.status,200)
+                self.assertIn("private",response.headers["Cache-Control"])
+                payload = json.loads(response.body)
+                self.assertEqual(len(payload["samples"]),1)
+                self.assertFalse(payload["samples"][0]["matched"])
+                sample.unlink()
+                sample.symlink_to(component.PREVIEWS / "missing.json")
+                with self.assertRaises(component.web.HTTPNotFound):
+                    await hass.views[2].get(None)
         asyncio.run(scenario())
 
 

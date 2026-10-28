@@ -97,6 +97,31 @@ def audit(token, fetcher=fetch):
                 'preview_cache_policy_invalid')
         require(json.loads(body) == expected_preview(payload), 'served_preview_mismatch')
         checked += 1
+
+    # Verify every sample, including unmatched mail, through the real auth boundary.
+    state_paths=[HA / 'www/lifeos_tasks.json',
+                 HA / 'lifeos-pa-state/user_state.json']
+    before={str(p):digest(p) if p.exists() else None for p in state_paths}
+    status, _, _ = fetcher('/api/lifeos_emailops_samples')
+    require(status in {401,403}, 'anonymous_samples_not_denied')
+    status, headers, raw = fetcher('/api/lifeos_emailops_samples', token)
+    require(status == 200, 'samples_unavailable')
+    require('no-store' in headers.get('Cache-Control','') and 'private' in headers.get('Cache-Control',''), 'samples_cache_invalid')
+    samples=json.loads(raw)
+    require(samples.get('schema')=='lifeos_emailops_samples_v1'
+            and samples.get('generated_at')==report['generated_at']
+            and len(samples.get('samples',[]))==len(report['results']), 'sample_report_mismatch')
+    for served, expected in zip(samples['samples'],report['results']):
+        require(served['source_message_id']==expected['source_message_ids'][0]
+                and served['matched']==bool(expected['matched_task_ids'])
+                and served['summary']==str(expected.get('summary') or '')[:4000]
+                and served['proposals']==[{'title':str(p.get('title') or '')[:300],'due_date':p.get('due_date')} for p in expected.get('proposals',[])[:20] if isinstance(p,dict)]
+                and served['lifecycle']=='UNKNOWN', 'sample_source_mismatch')
+    require(before=={str(p):digest(p) if p.exists() else None for p in state_paths}, 'review_changed_authoritative_state')
+    print('EMAILOPS_REVIEW_SAMPLES='+str(len(samples['samples'])))
+    print('EMAILOPS_REVIEW_UNMATCHED='+str(sum(not row['matched'] for row in samples['samples'])))
+    print('EMAILOPS_REVIEW_STATE=UNCHANGED')
+
     return checked
 
 

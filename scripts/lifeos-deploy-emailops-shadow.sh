@@ -111,6 +111,7 @@ report = json.loads((profile / 'shadow-report.json').read_text())
 destination = pathlib.Path('/opt/stacks/homeassistant/config/lifeos-pa-state/emailops-shadow')
 for task_id, preview in task_previews(report).items():
     write_private_json(destination / (task_id + '.json'), preview)
+write_private_json(destination / 'samples.json', report)
 print('EMAILOPS_PRIVATE_REVIEW=READY')
 PY
 lifeos-secret exec homeassistant.long_lived_access_token HA_TOKEN /usr/bin/python3 "$REPO/governor/emailops_review_audit.py"
