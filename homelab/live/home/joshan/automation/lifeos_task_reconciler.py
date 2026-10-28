@@ -22,7 +22,7 @@ sys.path.insert(0,str(REPO))
 from governor import ai_broker
 from lifeos_email_paperless_selective import secret, paperless_token
 from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state, explicit_tracking
-from governor.pa_source_disposition import KINDS, non_obligation_kind, task_quality_category
+from governor.pa_source_disposition import KINDS, non_obligation_kind, non_obligation_decision, task_quality_category
 
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
@@ -156,13 +156,15 @@ def refresh_sign_in_events(task,sources):
 
 def hold_source_non_obligation(task,sources,user_state):
     ids=task_source_message_ids(task)
-    kinds={source:non_obligation_kind(sources[source]) for source in ids if source in sources}
+    decisions={source:non_obligation_decision(sources[source]) for source in ids if source in sources}
+    kinds={source:decision[0] for source,decision in decisions.items()}
     entry=(user_state.get("obligations") or {}).get(task.get("id"))
     protected=explicit_tracking(entry)
     user_closed=isinstance(entry,dict) and entry.get("status_override") in {"DONE","DISMISSED"}
     task["source_disposition_checks"]={"sources":len(ids),"missing":len(ids)-len(kinds),
         "non_obligation":sum(bool(kind) for kind in kinds.values()),"user_tracking":protected,"user_closed":user_closed,
-        "kind_counts":{kind:sum(value==kind for value in kinds.values()) for kind in sorted(KINDS)}}
+        "kind_counts":{kind:sum(value==kind for value in kinds.values()) for kind in sorted(KINDS)},
+        "reason_counts":{reason:sum(decision[1]==reason for decision in decisions.values()) for reason in ("mandatory_request","accepted_commitment","transactional_or_subject_uncertainty","unclassified")}}
     prior=task.get("obligation_suppressed")
     managed=prior in KINDS or prior=="non_obligation_updates"
     if prior=="quote_only_no_verified_policy" or task.get("sign_in_events"):
@@ -787,6 +789,9 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
         "lookup_failed":0,"lookup_query_errors":0,
     }
     result={}
+    archive_mailboxes_checked=0
+    archive_exact_matches=0
+    chosen_mailbox=None
     lookup_phase="mailbox_select"
     _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
     try:
@@ -804,94 +809,110 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
                     continue
                 if status=="OK":
                     selected=True
+                    chosen_mailbox=mailbox
                     break
         if not selected:
             raise RuntimeError("imap_all_mail_unavailable")
-        for message_id in sorted(message_ids):
-            lookup_phase="header_search"
-            _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
-            # IMAP4.uid passes search arguments verbatim (unlike search()).
-            # Quote search strings explicitly so RFC822 Message-IDs with <>/@
-            # remain one valid IMAP astring.
-            quoted_message_id='"'+message_id.replace("\\","\\\\").replace('"','\\"')+'"'
-            try:
-                status,rows=client.uid("search","HEADER","Message-ID",quoted_message_id)
-            except imaplib.IMAP4.error:
-                lookup_query_errors+=1
-                status,rows="NO",[]
-            matches=rows[0].split() if status=="OK" and rows else []
-            if len(matches)!=1:
-                # Gmail's message-ID search operator is a fallback for servers
-                # that do not match RFC822 header values consistently. The
-                # fetched RFC822 header is still checked against the exact ID.
-                raw_message_id=message_id[1:-1]
-                lookup_phase="gmail_raw_search"
-                _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
-                quoted_gmail_query='"rfc822msgid:'+raw_message_id.replace("\\","\\\\").replace('"','\\"')+'"'
+        # Only the fresh owned session may select archive folders. Shared
+        # caller sessions retain their existing selected-mailbox state.
+        mailbox_sequence=[None]+([name for name in ("[Gmail]/All Mail","[GoogleMail]/All Mail") if name!=chosen_mailbox] if owns_client else [])
+        for archive_mailbox in mailbox_sequence:
+            if not (message_ids-set(result)):
+                break
+            if archive_mailbox is not None:
+                archive_mailboxes_checked+=1
                 try:
-                    status,rows=client.uid("search","X-GM-RAW",quoted_gmail_query
-                    )
+                    status,_=client.select(archive_mailbox,readonly=True)
+                except imaplib.IMAP4.error:
+                    continue
+                if status!="OK":
+                    continue
+            for message_id in sorted(message_ids-set(result)):
+                lookup_phase="header_search"
+                _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
+                # IMAP4.uid passes search arguments verbatim (unlike search()).
+                # Quote search strings explicitly so RFC822 Message-IDs with <>/@
+                # remain one valid IMAP astring.
+                quoted_message_id='"'+message_id.replace("\\","\\\\").replace('"','\\"')+'"'
+                try:
+                    status,rows=client.uid("search","HEADER","Message-ID",quoted_message_id)
                 except imaplib.IMAP4.error:
                     lookup_query_errors+=1
                     status,rows="NO",[]
                 matches=rows[0].split() if status=="OK" and rows else []
-            if len(matches)!=1:
-                # Some Gmail IMAP deployments do not return results for either
-                # exact Message-ID search form. Use the saved source date to
-                # scan a small mailbox window, then require an exact RFC822
-                # Message-ID match before accepting any email as task evidence.
-                try:
-                    source_date=parsedate_to_datetime(source_dates.get(message_id,"")).date()
-                except (TypeError,ValueError,OverflowError):
-                    source_date=None
-                date_uids=[]
-                if source_date:
-                    start=(source_date-timedelta(days=1)).strftime("%d-%b-%Y")
-                    end=(source_date+timedelta(days=2)).strftime("%d-%b-%Y")
-                    date_windows+=1
-                    lookup_phase="date_window_search"
+                if len(matches)!=1:
+                    # Gmail's message-ID search operator is a fallback for servers
+                    # that do not match RFC822 header values consistently. The
+                    # fetched RFC822 header is still checked against the exact ID.
+                    raw_message_id=message_id[1:-1]
+                    lookup_phase="gmail_raw_search"
                     _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
+                    quoted_gmail_query='"rfc822msgid:'+raw_message_id.replace("\\","\\\\").replace('"','\\"')+'"'
                     try:
-                        status,rows=client.uid("search","SINCE",start,"BEFORE",end)
+                        status,rows=client.uid("search","X-GM-RAW",quoted_gmail_query
+                        )
                     except imaplib.IMAP4.error:
                         lookup_query_errors+=1
                         status,rows="NO",[]
-                    date_uids=(rows[0].split() if status=="OK" and rows else [])[-200:]
-                    date_window_uids+=len(date_uids)
-                matches=date_uids
-            if not matches:
-                continue
-            for uid in matches:
-                fetch_attempts+=1
-                lookup_phase="message_fetch"
-                _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
-                try:
-                    status,data=client.uid("fetch",uid,"(RFC822)")
-                except imaplib.IMAP4.error:
-                    lookup_query_errors+=1
+                    matches=rows[0].split() if status=="OK" and rows else []
+                if len(matches)!=1:
+                    # Some Gmail IMAP deployments do not return results for either
+                    # exact Message-ID search form. Use the saved source date to
+                    # scan a small mailbox window, then require an exact RFC822
+                    # Message-ID match before accepting any email as task evidence.
+                    try:
+                        source_date=parsedate_to_datetime(source_dates.get(message_id,"")).date()
+                    except (TypeError,ValueError,OverflowError):
+                        source_date=None
+                    date_uids=[]
+                    if source_date:
+                        start=(source_date-timedelta(days=1)).strftime("%d-%b-%Y")
+                        end=(source_date+timedelta(days=2)).strftime("%d-%b-%Y")
+                        date_windows+=1
+                        lookup_phase="date_window_search"
+                        _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
+                        try:
+                            status,rows=client.uid("search","SINCE",start,"BEFORE",end)
+                        except imaplib.IMAP4.error:
+                            lookup_query_errors+=1
+                            status,rows="NO",[]
+                        date_uids=(rows[0].split() if status=="OK" and rows else [])[-200:]
+                        date_window_uids+=len(date_uids)
+                    matches=date_uids
+                if not matches:
                     continue
-                if status!="OK" or not data:
-                    continue
-                raw=next((row[1] for row in data if isinstance(row,tuple) and len(row)>1),None)
-                if not raw:
-                    continue
-                message=email.message_from_bytes(raw)
-                actual_id=str(message.get("Message-ID","")).strip()
-                if actual_id.casefold()!=message_id.casefold():
-                    continue
-                exact_id_matches+=1
-                result[message_id]={
-                    "from":str(message.get("From",""))[:300],
-                    "bulk_mail":bool(message.get("List-Unsubscribe") or message.get("List-Id") or str(message.get("Precedence") or "").lower() in {"bulk","list"}),
-                    "subject":str(message.get("Subject",""))[:500],
-                    "date":str(message.get("Date",""))[:100],
-                    "message_id":actual_id[:300],
-                    "in_reply_to":str(message.get("In-Reply-To",""))[:500],
-                    "references":str(message.get("References",""))[:2000],
-                    "source_ref":actual_id[:300],
-                    "body":text_of(message),
-                }
-                break
+                for uid in matches:
+                    fetch_attempts+=1
+                    lookup_phase="message_fetch"
+                    _SOURCE_LOOKUP_DIAGNOSTICS["lookup_phase"]=lookup_phase
+                    try:
+                        status,data=client.uid("fetch",uid,"(RFC822)")
+                    except imaplib.IMAP4.error:
+                        lookup_query_errors+=1
+                        continue
+                    if status!="OK" or not data:
+                        continue
+                    raw=next((row[1] for row in data if isinstance(row,tuple) and len(row)>1),None)
+                    if not raw:
+                        continue
+                    message=email.message_from_bytes(raw)
+                    actual_id=str(message.get("Message-ID","")).strip()
+                    if actual_id.casefold()!=message_id.casefold():
+                        continue
+                    exact_id_matches+=1
+                    if archive_mailbox is not None or chosen_mailbox in {"[Gmail]/All Mail","[GoogleMail]/All Mail"}:archive_exact_matches+=1
+                    result[message_id]={
+                        "from":str(message.get("From",""))[:300],
+                        "bulk_mail":bool(message.get("List-Unsubscribe") or message.get("List-Id") or str(message.get("Precedence") or "").lower() in {"bulk","list"}),
+                        "subject":str(message.get("Subject",""))[:500],
+                        "date":str(message.get("Date",""))[:100],
+                        "message_id":actual_id[:300],
+                        "in_reply_to":str(message.get("In-Reply-To",""))[:500],
+                        "references":str(message.get("References",""))[:2000],
+                        "source_ref":actual_id[:300],
+                        "body":text_of(message),
+                    }
+                    break
     finally:
         if owns_client:
             try:client.logout()
@@ -907,6 +928,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
     print("TASK_STALE_SOURCE_LOOKUP_DATE_UIDS="+str(date_window_uids),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_FETCH_ATTEMPTS="+str(fetch_attempts),flush=True)
     print("TASK_STALE_SOURCE_LOOKUP_EXACT_MATCHES="+str(exact_id_matches),flush=True)
+    print("TASK_STALE_SOURCE_LOOKUP_ARCHIVE_EXACT_MATCHES="+str(archive_exact_matches),flush=True)
     _SOURCE_LOOKUP_DIAGNOSTICS={
         "tasks_seen":tasks_seen,"tasks_with_source_ids":tasks_with_source_ids,
         "tasks_without_source_ids":tasks_without_source_ids,"tasks_with_primary":tasks_with_primary,
@@ -918,7 +940,7 @@ def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
         "date_windows":date_windows,"date_window_uids":date_window_uids,
         "fetch_attempts":fetch_attempts,"exact_id_matches":exact_id_matches,
         "lookup_failed":0,"lookup_query_errors":lookup_query_errors,
-        "lookup_phase":"complete",
+        "lookup_phase":"complete","archive_mailboxes_checked":archive_mailboxes_checked,"archive_exact_matches":archive_exact_matches,
     }
     return result
 

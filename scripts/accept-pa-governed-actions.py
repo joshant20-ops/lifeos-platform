@@ -404,6 +404,13 @@ def main():
     for kind in kinds:
         print("PA_QUALITY_HELD_"+kind.upper()+"="+str(sum(row.get("obligation_suppressed")==kind for row in rows)))
     print("PA_QUALITY_LOOKUP_MISSING="+str(sum(bool((row.get("source_disposition_checks") or {}).get("missing")) for row in rows)))
+    from governor.pa_source_disposition import task_quality_category
+    for category in kinds:
+        candidates=[row for row in rows if task_quality_category(row)==category and row.get("status") in {"OPEN","WAITING"} and not row.get("obligation_suppressed")]
+        print("PA_QUALITY_ACTIVE_CANDIDATES_"+category.upper()+"="+str(len(candidates)))
+        for reason in ("mandatory_request","accepted_commitment","transactional_or_subject_uncertainty","unclassified"):
+            print("PA_QUALITY_"+category.upper()+"_"+reason.upper()+"="+str(sum((row.get("source_disposition_checks") or {}).get("reason_counts",{}).get(reason,0) for row in candidates)))
+    print("PA_QUALITY_ARCHIVE_SOURCES="+str(final_payload.get("source_lookup_diagnostics",{}).get("archive_exact_matches",0)))
     print("PA_QUALITY_PRIVATE_SOURCE_BOUNDARY=PASS")
     print("PA_OVERVIEW_RUNTIME=PASS")
     print("GATE_H_LIVE_ACCEPTANCE=PASS")

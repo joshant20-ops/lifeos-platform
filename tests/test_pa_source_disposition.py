@@ -62,6 +62,7 @@ class SourceDispositionTests(unittest.TestCase):
             message('Please track your parcel and investigate the problem.'),
             message('Use promo code to accept the offer.',subject='Settlement offer for your complaint'),
             message('Thank you for applying. Explore more job opportunities. Unsubscribe.'),
+            message("I've applied. Quoted message: Applications are now open. Apply now. Unsubscribe."),
             message('Your order has shipped. Return your old device by Friday.'),
             message('Please settle your invoice by Friday. Special offer: 25% off your next order. Unsubscribe.',subject='Payment reminder'),
             message('Please renew your policy by Friday. Special offer: 25% off travel cover. Unsubscribe.',subject='Renew your policy'),
@@ -123,5 +124,61 @@ class SourceDispositionTests(unittest.TestCase):
         row={**task(),'due_date':'2026-07-20'}
         self.assertFalse(reconciler.hold_source_non_obligation(row,{'<source@example.test>':message('Please submit the evidence we requested.')},{}))
         self.assertEqual(row['status'],'OPEN')
+
+class ArchiveSourceTests(unittest.TestCase):
+    class Mailbox:
+        def __init__(self,wrong=False):
+            self.box='INBOX';self.selected=[];self.logged_out=False;self.wrong=wrong
+        def login(self,*args):return 'OK',[]
+        def select(self,box,readonly=False):
+            assert readonly is True
+            self.box=box;self.selected.append(box)
+            return ('OK',[]) if box in {'INBOX','[Gmail]/All Mail'} else ('NO',[])
+        def uid(self,command,*args):
+            if command=='search':return 'OK',[b'41' if self.box=='[Gmail]/All Mail' else b'']
+            if command=='fetch':
+                from email.message import EmailMessage
+                msg=EmailMessage();msg['Message-ID']='<other@example.test>' if self.wrong else '<archive@example.test>'
+                msg['From']='sender@example.test';msg['Subject']='Synthetic archive source';msg.set_content('Archived source content')
+                return 'OK',[(b'41 (RFC822)',msg.as_bytes())]
+            raise AssertionError('unexpected command')
+        def logout(self):self.logged_out=True
+
+    def archive_task(self):
+        return {'id':'archive-task','source_message_ids':['<archive@example.test>'],'email_message_id':'<archive@example.test>'}
+
+    def test_archived_source_is_found_even_when_inbox_select_succeeds(self):
+        client=self.Mailbox()
+        with patch.object(reconciler.imaplib,'IMAP4_SSL',return_value=client),patch.object(reconciler,'secret',return_value='synthetic'):
+            found=reconciler.fetch_existing_task_source_emails([self.archive_task()])
+        self.assertEqual(set(found),{'<archive@example.test>'})
+        self.assertEqual(client.selected,['INBOX','[Gmail]/All Mail'])
+        self.assertTrue(client.logged_out)
+        self.assertEqual(reconciler._SOURCE_LOOKUP_DIAGNOSTICS['archive_exact_matches'],1)
+
+    def test_initial_all_mail_fallback_is_counted(self):
+        client=self.Mailbox();select=client.select
+        def choose(box,readonly=False):
+            result=select(box,readonly)
+            return ('NO',[]) if box=='INBOX' else result
+        client.select=choose
+        with patch.object(reconciler.imaplib,'IMAP4_SSL',return_value=client),patch.object(reconciler,'secret',return_value='synthetic'):
+            found=reconciler.fetch_existing_task_source_emails([self.archive_task()])
+        self.assertEqual(set(found),{'<archive@example.test>'})
+        self.assertEqual(reconciler._SOURCE_LOOKUP_DIAGNOSTICS['archive_exact_matches'],1)
+
+    def test_archive_header_must_match_exact_requested_source(self):
+        client=self.Mailbox(wrong=True)
+        with patch.object(reconciler.imaplib,'IMAP4_SSL',return_value=client),patch.object(reconciler,'secret',return_value='synthetic'):
+            found=reconciler.fetch_existing_task_source_emails([self.archive_task()])
+        self.assertEqual(found,{})
+        self.assertEqual(reconciler._SOURCE_LOOKUP_DIAGNOSTICS['archive_exact_matches'],0)
+
+    def test_shared_selected_session_is_never_reselected_or_closed(self):
+        client=self.Mailbox()
+        found=reconciler.fetch_existing_task_source_emails([self.archive_task()],client=client)
+        self.assertEqual(found,{})
+        self.assertEqual(client.selected,[])
+        self.assertFalse(client.logged_out)
 
 if __name__=='__main__':unittest.main()

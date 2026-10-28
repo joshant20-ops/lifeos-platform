@@ -84,3 +84,12 @@ Native acceptance reports fixed per-kind held counts and verifies zero known
 optional-source rows remain actionable without a user decision. This is a
 bounded source correction, not representative-corpus or general classification
 acceptance. Missing or ambiguous sources stay unresolved for later review.
+
+
+Exact saved-source lookups start in Inbox on a fresh owned IMAP session. If
+source IDs remain missing, that owned session checks the fixed Gmail All Mail
+names read-only, searching only missing exact IDs (with bounded existing date
+fallback). A caller-owned selected session is never reselected or closed. Every
+retrieved RFC822 Message-ID must match before the source is accepted. This does
+not scan arbitrary mailboxes or change flags, labels, read state or contents.
+Only aggregate recovered/missing-source and disposition-reason counts are logged.
