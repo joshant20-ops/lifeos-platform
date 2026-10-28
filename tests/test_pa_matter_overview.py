@@ -37,6 +37,12 @@ class MatterOverviewTests(unittest.TestCase):
         self.assertIsNone(event["email_received_at"])
         self.assertIsNone(event["device"])
 
+    def test_real_ha_sensor_allows_all_overview_attributes(self):
+        package=(ROOT/"homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml").read_text()
+        attributes=package.split("      json_attributes:",1)[1]
+        for key in ("items","reference_items","questions","information","total_matters"):
+            self.assertIn("        - "+key+"\n",attributes)
+
     def test_native_card_guard_accepts_the_actual_dynamic_button_implementation(self):
         # The attribute is assembled from an answer value at render time.
         card=(ROOT/"homeassistant/www/lifeos-pa-task-card.js").read_text()
@@ -116,7 +122,12 @@ class MatterOverviewTests(unittest.TestCase):
             with patch.object(sensor,"TASKS",path),patch.object(sensor,"read_user_state",return_value={"obligations":{}}),contextlib.redirect_stdout(out):sensor.main()
             view=json.loads(out.getvalue())
             self.assertEqual(view["questions"],1);self.assertEqual(view["information"],1)
-            self.assertEqual(len(view["items"]),2)
+            self.assertEqual(len(view["items"]),1)
+            self.assertEqual(len(view["reference_items"]),1)
+            self.assertFalse(any(item.get("obligation_suppressed") for item in view["items"]))
+            # The old card sees only items and chooses OPEN/WAITING rows. A
+            # retained quote must stay out even before the JS module refreshes.
+            self.assertNotIn("quote",[item["id"] for item in view["items"] if item.get("status") in {"OPEN","WAITING"}])
             self.assertNotIn("body",json.dumps(view))
 
 if __name__=="__main__": unittest.main()

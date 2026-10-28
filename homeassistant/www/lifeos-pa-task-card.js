@@ -31,6 +31,12 @@ class LifeOSPATaskCard extends HTMLElement {
 
   _entity() { return this._config.entity || "sensor.lifeos_pa_task_attention"; }
 
+  _items(attrs = this._hass?.states[this._entity()]?.attributes || {}) {
+    const rows = [...(Array.isArray(attrs.items) ? attrs.items : []), ...(Array.isArray(attrs.reference_items) ? attrs.reference_items : [])];
+    const seen = new Set();
+    return rows.filter(row => row && row.id && !seen.has(row.id) && seen.add(row.id));
+  }
+
   _kind(task) {
     if (task.obligation_suppressed) return "information";
     if (["DONE", "DISMISSED"].includes(String(task.status).toUpperCase())) return "closed";
@@ -187,7 +193,7 @@ class LifeOSPATaskCard extends HTMLElement {
     this._junkFailedTaskIds = new Set(Array.isArray(attrs.junk_action_failed_task_ids) ? attrs.junk_action_failed_task_ids.map(String) : []);
     this._reviewPendingTaskIds = new Set(Array.isArray(attrs.review_pending_task_ids) ? attrs.review_pending_task_ids.map(String) : []);
     this._reviewFailedTaskIds = new Set(Array.isArray(attrs.review_failed_task_ids) ? attrs.review_failed_task_ids.map(String) : []);
-    const items = Array.isArray(attrs.items) ? attrs.items.filter((x) => x && x.id) : [];
+    const items = this._items(attrs);
     const needs = Number(attrs.needs_me || 0);
     const waiting = Number(attrs.waiting_on_others || 0);
     const overdue = Number(attrs.overdue || 0);
@@ -421,7 +427,7 @@ class LifeOSPATaskCard extends HTMLElement {
   }
 
   async _requestTaskReview(dialog, taskId) {
-    const task = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+    const task = this._items().find((x) => x.id === taskId);
     if (!task) return;
     const alreadyPending = this._reviewPendingTaskIds.has(String(taskId));
     const refresh = dialog.querySelector("[data-review-refresh]");
@@ -443,7 +449,7 @@ class LifeOSPATaskCard extends HTMLElement {
         if (attempts++ >= 60) {
           this._reviewPendingTaskIds.delete(String(taskId));
           dialog._reviewBusyText = "Local analysis has not finished after 10 minutes. It may still be queued; close and reopen this task to check or retry.";
-          const latest = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId) || task;
+          const latest = this._items().find((x) => x.id === taskId) || task;
           dialog.innerHTML = this._reviewDialogMarkup(latest, dialog._reviewBusyText, dialog._reviewPreviews || []);
           this._bindReviewDialog(dialog, taskId);
           return;
@@ -451,7 +457,7 @@ class LifeOSPATaskCard extends HTMLElement {
         await this._hass.callService("homeassistant", "update_entity", { entity_id: this._entity() }).catch(() => {});
         await this._loadReviewPreviews(dialog, taskId);
         await new Promise((resolve) => window.setTimeout(resolve, 10000));
-        const latest = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+        const latest = this._items().find((x) => x.id === taskId);
         if (!latest) return;
         if (latest.ai_review && Number(latest.ai_review.generated_at || 0) > priorGeneratedAt) {
           this._reviewPendingTaskIds.delete(String(taskId));
@@ -512,7 +518,7 @@ class LifeOSPATaskCard extends HTMLElement {
       if (!dialog.open || payload?.schema !== "lifeos_pa_task_previews_v1" || payload.task_id !== taskId || !Array.isArray(payload.documents)) return false;
       if (JSON.stringify(payload.documents) === JSON.stringify(dialog._reviewPreviews || null)) return true;
       dialog._reviewPreviews = payload.documents;
-      const latest = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+      const latest = this._items().find((x) => x.id === taskId);
       if (latest) {
         dialog.innerHTML = this._reviewDialogMarkup(latest, dialog._reviewBusyText || "", dialog._reviewPreviews);
         this._bindReviewDialog(dialog, taskId);
@@ -529,7 +535,7 @@ class LifeOSPATaskCard extends HTMLElement {
       if (!dialog.open || payload?.schema !== "lifeos_emailops_shadow_task_v1" || payload.task_id !== taskId || payload.mode !== "shadow") return;
       if (!this._emailopsReports) this._emailopsReports = new Map();
       this._emailopsReports.set(taskId, payload);
-      const task = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+      const task = this._items().find((x) => x.id === taskId);
       if (task) {
         dialog.innerHTML = this._reviewDialogMarkup(task, dialog._reviewBusyText || "", dialog._reviewPreviews || []);
         this._bindReviewDialog(dialog, taskId);
@@ -571,7 +577,7 @@ class LifeOSPATaskCard extends HTMLElement {
   async _act(button) {
     let action = button.dataset.action;
     const taskId = button.dataset.id;
-    const task = (this._hass.states[this._entity()]?.attributes?.items || []).find((x) => x.id === taskId);
+    const task = this._items().find((x) => x.id === taskId);
     if (!task) return;
     const label = task.title || taskId;
     const data = { action, task_id: taskId, note: "", until: "", severity: "", due_date: "" };

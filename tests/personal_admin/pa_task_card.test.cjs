@@ -38,3 +38,10 @@ test('answers send event-scoped overlay actions without generic completion',asyn
  await card._act({dataset:{action:'signin_no',id:'alert',event:event.id}});
  assert.equal(calls[0][2].action,'signin_no');assert.equal(calls[0][2].note,event.id);assert.equal(calls.length,2);
 });
+
+test('new card reads separate reference channel and deduplicates rollout overlap',()=>{
+ const card=new Card();card._config={};const quote={id:'quote',status:'OPEN',obligation_suppressed:'quote_only_no_verified_policy'};
+ const rows=card._items({items:[alert],reference_items:[quote]});assert.equal(rows.length,2);
+ card._overviewTab='reference';assert.match(card._overviewMarkup(rows),/data-matter="quote"/);
+ assert.equal(card._items({items:[quote],reference_items:[quote]}).length,1);
+});
