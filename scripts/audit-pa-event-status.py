@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Read-only Pi-local event-status audit. Emit aggregate enums/counts only."""
+import json
+from datetime import date
+from pathlib import Path
+import sys
+
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from governor.pa_source_disposition import task_quality_category
+
+
+def event_counts(payload,today=None):
+    today=today or date.today()
+    counts={key:0 for key in ('CANDIDATES','REVIEW_QUESTIONS','PAST_EVENT_QUESTIONS','SOURCE_REVIEW_QUESTIONS','UNVERIFIED_PAST_ACTIONS','RESPONSE_GUARDED_PAST_ACTIONS','NOTICE_VERIFIED_PAST_ACTIONS')}
+    for bucket in ('tasks','resolved','informational'):
+        for row in payload.get(bucket) or []:
+            if not isinstance(row,dict) or row.get('status') not in {'OPEN','WAITING'} or row.get('obligation_suppressed') or task_quality_category(row)!='scheduled_event':
+                continue
+            counts['CANDIDATES']+=1
+            flag=row.get('confirmation_required')
+            if flag:
+                counts['REVIEW_QUESTIONS']+=1
+                if flag=='past_event_status':counts['PAST_EVENT_QUESTIONS']+=1
+                if flag=='source_unavailable':counts['SOURCE_REVIEW_QUESTIONS']+=1
+                continue
+            try:past=date.fromisoformat(str(row.get('due_date')))<today
+            except (TypeError,ValueError):past=False
+            if not past or row.get('due_date_source') in {'user','paperless_policy'} or row.get('user_tracking') or row.get('status_source')=='user':continue
+            counts['UNVERIFIED_PAST_ACTIONS']+=1
+            checks=row.get('source_disposition_checks') or {}
+            if (checks.get('reason_counts') or {}).get('mandatory_request'):counts['RESPONSE_GUARDED_PAST_ACTIONS']+=1
+            if checks.get('sources',0)>0 and checks.get('event_notices')==checks.get('sources'):counts['NOTICE_VERIFIED_PAST_ACTIONS']+=1
+    return counts
+
+
+def main():
+    path=Path('/home/joshan/automation/state/lifeos_personal_tasks.json')
+    try:
+        payload=json.loads(path.read_text())
+        counts=event_counts(payload)
+    except Exception:
+        print('PA_EVENT_AUDIT=UNAVAILABLE')
+        return 1
+    for key,value in counts.items():print('PA_EVENT_'+key+'='+str(value))
+    print('PA_EVENT_AUDIT=PASS')
+    return 0
+
+
+if __name__=='__main__':raise SystemExit(main())
