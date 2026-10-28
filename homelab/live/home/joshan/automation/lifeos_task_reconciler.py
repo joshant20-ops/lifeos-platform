@@ -668,6 +668,14 @@ def load_previous():
             # valid links without restoring legacy broad-search false matches.
             if str(item.get("machine_status") or "").upper() in {"OPEN","WAITING","DONE","DISMISSED"}:
                 item["status"]=item["machine_status"]
+            if "machine_due_date" in item:
+                item["due_date"]=item.pop("machine_due_date")
+                item["due_date_source"]=item.pop("machine_due_date_source",None)
+                if item.pop("machine_date_confirmation_required",False):item["date_confirmation_required"]=True
+                else:item.pop("date_confirmation_required",None)
+            if "machine_severity" in item:
+                item["severity"]=item.pop("machine_severity")
+                item["severity_source"]=item.pop("machine_severity_source",None)
             item.pop("status_source",None); item.pop("status_set_at",None)
             item.pop("severity_source",None); item.pop("due_date_source",None)
             previous[str(item["id"])]=item

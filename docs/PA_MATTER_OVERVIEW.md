@@ -128,3 +128,13 @@ projection semantics are used for structured assistant matches, including target
 queries; empty due lists never fall back to raw uncertain dates. Reviewing an
 unavailable source needs the user even if the underlying process is waiting on
 another party; the original source status remains in canonical state.
+
+
+Owner date/priority projections retain independent machine-base values, including
+whether the base date was unverified. Bounded source replay restores those base
+values before fresh source reconciliation and reapplies current owner decisions
+afterwards. This prevents an acceptance test's temporary override becoming source
+state after its overlay is restored. Native acceptance checks restored projected
+values against the unchanged source record. Historical dates with no independent
+proof remain labelled Saved date / unverified; this does not claim recovery of
+previously overwritten source values or invent old dates from message age.
