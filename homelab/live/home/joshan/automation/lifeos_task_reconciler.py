@@ -86,6 +86,27 @@ def has_explicit_no_action_required(compact):
         re.IGNORECASE,
     ))
 
+def insurance_quote_only(message):
+    """Quote offers alone cannot establish an existing-policy renewal obligation."""
+    subject=html.unescape(str(message.get("subject") or ""))
+    body=html.unescape(" ".join(str(message.get(k) or "") for k in ("body","text","snippet")))
+    text=re.sub(r"<[^>]*>"," ",subject+" "+body)
+    if not re.search(r"\b(?:insurance|insurer|policy|cover)\b",text,re.I):return False
+    quote=bool(re.search(r"\b(?:quotes?|quotations?)\b",subject,re.I) or re.search(r"\b(?:this is (?:only |just )?a quote|not (?:an? )?(?:insurance )?policy)\b",text,re.I))
+    policy=bool(re.search(r"\b(?:your (?:current|existing) policy|your policy (?:expires|ends|renews)|renewal (?:notice|invitation)|certificate of (?:motor )?insurance|policy (?:has been issued|is now active)|cover is (?:now )?in force)\b",text,re.I))
+    request=bool(re.search(r"\b(?:please|you (?:must|need to))\s+(?:review|confirm|correct|provide|send|pay|sign)\b",text,re.I))
+    return quote and not policy and not request
+
+
+def hold_quote_only_obligation(task,sources):
+    ids=task_source_message_ids(task)
+    if (not insurance_matter(task) or not ids or task.get("due_date_source")=="paperless_policy"
+            or not all(source in sources and insurance_quote_only(sources[source]) for source in ids)):
+        return False
+    task["obligation_suppressed"]="quote_only_no_verified_policy"
+    return True
+
+
 def classify(compact):
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
 {"relevant":true|false,"actionable":true|false,"title":"short task or event","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short matter topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
@@ -99,6 +120,8 @@ EMAIL:
     if str(d.get("status")) not in {"OPEN","WAITING","DONE","NONE"}: raise ValueError("invalid status")
     severity=str(d.get("severity","normal")).lower()
     d["severity"]=severity if severity in {"low","normal","high"} else "normal"
+    if insurance_quote_only(compact):
+        d.update(actionable=False,status="NONE",relevant=True,due_date=None,reason="Quote offer is informational, not a policy renewal obligation.")
     explicit_no_action=has_explicit_no_action_required(compact)
     if explicit_no_action:
         # Explicit source wording outranks a model guess that an FYI notice
@@ -356,7 +379,8 @@ def reconcile_insurance_policy_due_date(task):
         if not isinstance(document,dict):
             continue
         content=str(document.get("content") or "")
-        if re.search(r"\b(?:insurance|policy|cover|renewal)\b",content,re.I):
+        if (not insurance_quote_only({"subject":document.get("title",""),"body":content})
+                and re.search(r"\b(?:insurance|policy|cover|renewal)\b",content,re.I)):
             dates.update(policy_renewal_dates(content))
     # Require one clear date. If evidence is absent, unreadable, or conflicting,
     # keep the matter open without falsely labeling the reminder overdue.
@@ -526,7 +550,7 @@ def effective_status(old,new_status):
 def load_previous():
     try:
         data=json.loads(STATE.read_text())
-        rows=(data.get("tasks") or [])+(data.get("resolved") or [])
+        rows=(data.get("tasks") or [])+(data.get("resolved") or [])+(data.get("informational") or [])
         previous={}
         for x in rows:
             if not isinstance(x,dict) or not x.get("id"): continue
@@ -1588,7 +1612,12 @@ def _run_reconciler():
     # their exact Message-IDs so stale no-action tasks can be corrected promptly.
     extra_sources={}
     try:
-        extra_sources=fetch_existing_task_source_emails(tasks.values(),fetched_by_message_id)
+        source_tasks=list(tasks.values())
+        for task in tasks.values():
+            if insurance_matter(task):
+                for source_id in task_source_message_ids(task):
+                    source_tasks.append({"source_message_ids":[source_id],"email_message_id":source_id,"updated_from_email":task.get("updated_from_email")})
+        extra_sources=fetch_existing_task_source_emails(source_tasks,fetched_by_message_id)
         fetched_by_message_id.update(extra_sources)
     except Exception as exc:
         _SOURCE_LOOKUP_DIAGNOSTICS["lookup_failed"]=1
@@ -1659,16 +1688,25 @@ def _run_reconciler():
         }
         record_source_event(tasks[task_id],msg,d,observed)
         reconcile_insurance_policy_due_date(tasks[task_id])
+    quote_holds=0
+    for task in tasks.values():
+        source_ids=task_source_message_ids(task)
+        if (task.get("due_date_source")=="paperless_policy" or
+                any(source in fetched_by_message_id and not insurance_quote_only(fetched_by_message_id[source]) for source in source_ids)):
+            task.pop("obligation_suppressed",None)
+        if hold_quote_only_obligation(task,fetched_by_message_id):quote_holds+=1
+    print("TASK_QUOTE_ONLY_OBLIGATIONS_HELD="+str(quote_holds),flush=True)
     cutoff=int(time.time())-STALE_DAYS*86400
     tasks={k:v for k,v in tasks.items() if has_valid_source_email(v) and (int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE")}
-    open_tasks=[x for x in tasks.values() if x.get("status")!="DONE"]
+    informational=[x for x in tasks.values() if x.get("obligation_suppressed")]
+    open_tasks=[x for x in tasks.values() if x.get("status")!="DONE" and not x.get("obligation_suppressed")]
     resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
     lookup_diagnostics=dict(_SOURCE_LOOKUP_DIAGNOSTICS)
     lookup_diagnostics["previous_tasks_loaded"]=previous_tasks_loaded
     lookup_diagnostics["tasks_before_publish"]=len(tasks)
     lookup_diagnostics["open_tasks_before_publish"]=len(open_tasks)
-    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"source_lookup_diagnostics":lookup_diagnostics,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
+    payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"informational":informational,"source_lookup_diagnostics":lookup_diagnostics,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     payload=apply_user_state(payload,read_user_state())
     set_failure_stage("persist_publish")
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)

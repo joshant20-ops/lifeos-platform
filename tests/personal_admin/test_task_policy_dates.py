@@ -70,3 +70,32 @@ def test_missing_or_ambiguous_policy_date_clears_unverified_email_date(monkeypat
     assert reconciler.reconcile_insurance_policy_due_date(task)
     assert task["due_date"] is None
     assert task["due_date_source"] == "unverified_insurance_policy"
+
+
+def test_quote_offer_is_not_a_policy_renewal():
+    quote={"subject":"Your car insurance renewal quote","body":"Your quote expires on 20 November 2026."}
+    assert reconciler.insurance_quote_only(quote)
+    assert not reconciler.insurance_quote_only({"subject":"Your renewal quote","body":"Your current policy expires on 20 November 2026. Please review the renewal."})
+    assert not reconciler.insurance_quote_only({"subject":"Insurance quote correction","body":"Please provide your correct address."})
+
+
+def test_quote_document_cannot_supply_policy_due_date(monkeypatch):
+    task={"title":"Car insurance renewal","email_message_id":"<quote@example.test>",
+          "source_message_ids":["<quote@example.test>"],"paperless_evidence":[{"document_id":83}]}
+    monkeypatch.setattr(reconciler,"_paperless_document",lambda _id: {
+        "id":83,"title":"Your insurance quote","content":"Message-ID: <quote@example.test>\nExpiry date: 20 November 2026."})
+    reconciler.reconcile_insurance_policy_due_date(task)
+    assert task["due_date"] is None
+    assert task["due_date_source"]=="unverified_insurance_policy"
+
+
+def test_multi_message_quote_hold_requires_every_source_and_preserves_notes():
+    task={"title":"Car insurance renewal","source_message_ids":["<a@example.test>","<b@example.test>"],
+          "timeline_events":[],"comments":["keep this note"]}
+    quote={"subject":"Car insurance quote","body":"Your quotation is ready."}
+    assert not reconciler.hold_quote_only_obligation(task,{"<a@example.test>":quote})
+    assert reconciler.hold_quote_only_obligation(task,{"<a@example.test>":quote,"<b@example.test>":quote})
+    assert task["comments"]==["keep this note"]
+    assert len(task["source_message_ids"])==2
+    task["due_date_source"]="paperless_policy"
+    assert not reconciler.hold_quote_only_obligation(task,{"<a@example.test>":quote,"<b@example.test>":quote})
