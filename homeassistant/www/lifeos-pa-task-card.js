@@ -331,7 +331,7 @@ class LifeOSPATaskCard extends HTMLElement {
     samplesButton.textContent = "Review email suggestions";
     samplesButton.className = "count";
     samplesButton.addEventListener("click", () => this._showEmailSamples());
-    this.shadowRoot.querySelector("ha-card")?.append(samplesButton);
+    (this.shadowRoot.querySelector(".page-copy") || this.shadowRoot.querySelector("ha-card"))?.append(samplesButton);
     this.shadowRoot.querySelectorAll("button[data-filter]").forEach((button) => {
       button.addEventListener("click", () => {
         this._countFilter = this._countFilter === button.dataset.filter ? "" : button.dataset.filter;

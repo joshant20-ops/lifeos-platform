@@ -52,7 +52,7 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
                         if token is None: return 401, {}, b''
                         return 200, {'Cache-Control':'no-store, private'}, json.dumps({
                             'schema':'lifeos_emailops_samples_v1','generated_at':generated,'samples':[
-                                {'source_message_id':'<sample@example.test>','matched':True,'summary':'PRIVATE_SENTINEL'}]}).encode()
+                                {'source_message_id':'<sample@example.test>','matched':True,'summary':'PRIVATE_SENTINEL','proposals':[],'lifecycle':'UNKNOWN'}]}).encode()
                     if token is None:
                         return (200 if fault == 'anonymous' else 401), {}, b''
                     self.assertEqual(token, 'secret-fixture')
