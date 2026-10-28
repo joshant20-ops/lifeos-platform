@@ -246,5 +246,14 @@ def main():
         categories={"CONNECTION_REFUSED":r"ECONNREFUSED|connection refused","TIMEOUT":r"timeout|timed out","HTTP_AUTH":r"status code (401|403)","HTTP_NOT_FOUND":r"status code 404","HTTP_SERVER":r"status code 5[0-9][0-9]"}
         print("MONITORING_PREDBAT_FAILURES="+json.dumps({k:bool(re.search(pattern,raw,re.I)) for k,pattern in categories.items()}))
     except Exception: print("MONITORING_PREDBAT_DIAGNOSTIC=UNAVAILABLE")
+
+    try:
+        path=Path("/opt/stacks/homeassistant/config/www/lifeos_tasks.json")
+        if path.is_symlink() or path.stat().st_size>8*1024*1024: raise ValueError("unsafe")
+        tasks=json.loads(path.read_text())
+        held=[row for row in tasks.get("informational",[]) if row.get("obligation_suppressed")=="quote_only_no_verified_policy"]
+        exposed=[row for row in tasks.get("tasks",[]) if row.get("obligation_suppressed")=="quote_only_no_verified_policy"]
+        print("PA_QUOTE_PROJECTION=" + json.dumps({"held_informational":len(held),"held_still_actionable":len(exposed),"errors":tasks.get("errors"),"age_seconds":int(__import__("time").time())-int(tasks.get("generated_time") or 0)}))
+    except Exception: print("PA_QUOTE_PROJECTION=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
