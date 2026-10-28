@@ -9,7 +9,7 @@ user-facing task summaries plus stable provenance.
 """
 from __future__ import annotations
 import email, errno, hashlib, html, imaplib, json, os, re, socket, ssl, subprocess, sys, time
-from email.utils import parsedate_to_datetime
+from email.utils import parsedate_to_datetime, parseaddr
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
@@ -71,6 +71,8 @@ def text_of(msg):
 
 def has_explicit_no_action_required(compact):
     """Detect clear no-action language in plain text or HTML email content."""
+    if sign_in_event(compact):
+        return False
     text=" ".join(
         str(compact.get(field) or "")
         for field in ("subject","snippet","body","text")
@@ -109,7 +111,55 @@ def hold_quote_only_obligation(task,sources):
     return True
 
 
+def sign_in_event(message):
+    """Recognise a reported OpenAI sign-in, not generic advice or an OTP.
+
+    Sender naming is a routing hint, not sender authentication. No email URLs
+    are trusted, and an email timestamp is never called a sign-in timestamp.
+    """
+    sender=parseaddr(str(message.get("from") or ""))[1].lower()
+    domain=sender.rpartition("@")[2]
+    if domain != "openai.com" and not domain.endswith(".openai.com"):
+        return None
+    source_id=str(message.get("message_id") or "")
+    if not source_id.startswith("<") or not source_id.endswith(">") or "@" not in source_id:
+        return None
+    subject=html.unescape(str(message.get("subject") or ""))
+    body=html.unescape(str(message.get("body") or ""))
+    text=re.sub(r"<[^>]*>"," ",subject+"\n"+body)
+    text=re.sub(r"[\u200b-\u200f\ufeff]","",text)
+    if re.search(r"\b(?:one[- ]time (?:password|code)|verification code|password reset|reset your password)\b",subject,re.I):
+        return None
+    if not re.search(r"\b(?:login|log in|sign[- ]?in)\b",text,re.I):
+        return None
+    if not re.search(r"\b(?:new (?:login|sign[- ]?in)|did you (?:just )?(?:log|sign) in|(?:login|sign[- ]?in) (?:detected|from a new device)|was this you)\b",text,re.I):
+        return None
+    try: received=int(parsedate_to_datetime(str(message.get("date") or "")).timestamp())
+    except (TypeError,ValueError,OverflowError): received=None
+    return {"id":hashlib.sha256(source_id.encode()).hexdigest(),
+            "source_message_id":source_id,"provider":"OpenAI",
+            "email_received_at":received,
+            "device":None,"location":None,"sign_in_time":None}
+
+
+def refresh_sign_in_events(task,sources):
+    existing={event["source_message_id"]:event for event in task.get("sign_in_events") or [] if isinstance(event,dict) and event.get("source_message_id")}
+    ids=task_source_message_ids(task)
+    for source_id in ids:
+        if source_id in sources:
+            event=sign_in_event(sources[source_id])
+            if event:existing[source_id]=event
+            else:existing.pop(source_id,None)
+    task["sign_in_events"]=[existing[key] for key in ids if key in existing][-20:]
+
+
 def classify(compact):
+    event=sign_in_event(compact)
+    if event:
+        return {"relevant":True,"actionable":True,"title":"Was this OpenAI sign-in you?",
+                "status":"OPEN","due_date":None,"counterparty":"OpenAI",
+                "topic":"Account sign-in "+event["id"][:16],"severity":"normal",
+                "evidence_query":"","reason":"Source email reports a sign-in requiring user confirmation."}
     prompt="""You are LifeOS local personal-administration task extraction. Decide whether this email creates, updates, or completes something the user must track. Ignore marketing, newsletters, OTPs, FYI-only mail and ordinary parcel tracking. Return JSON only:
 {"relevant":true|false,"actionable":true|false,"title":"short task or event","status":"OPEN|WAITING|DONE|NONE","due_date":"YYYY-MM-DD or null","counterparty":"short name or null","topic":"stable short matter topic","severity":"LOW|NORMAL|HIGH","evidence_query":"terms useful for Paperless search","reason":"short"}
 Mark relevant=true for a meaningful update to an existing matter, including informational updates that do not create an obligation. Mark relevant=false for junk, marketing, newsletters, OTPs, generic FYI and ordinary parcel tracking. Do not create obligations from informative events. Do not invent dates or completion. A request, deadline, renewal, claim, appointment preparation, payment/action required, application/process awaiting another party, or explicit resolution may be trackable. Use DONE only when the email itself clearly resolves the tracked matter.
@@ -407,7 +457,7 @@ def persist_task_paperless_evidence(task):
         except (FileNotFoundError,json.JSONDecodeError,OSError):
             continue
         changed=False
-        for bucket in ("tasks","resolved"):
+        for bucket in ("tasks","resolved", "informational"):
             for row in payload.get(bucket) or []:
                 if isinstance(row,dict) and row.get("id")==task_id:
                     row["paperless_evidence"]=list(task.get("paperless_evidence") or [])[:10]
@@ -1616,7 +1666,7 @@ def _run_reconciler():
     try:
         source_tasks=list(tasks.values())
         for task in tasks.values():
-            if insurance_matter(task):
+            if insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events"):
                 for source_id in task_source_message_ids(task):
                     source_tasks.append({"source_message_ids":[source_id],"email_message_id":source_id,"updated_from_email":task.get("updated_from_email")})
         extra_sources=fetch_existing_task_source_emails(source_tasks,fetched_by_message_id)
@@ -1637,6 +1687,9 @@ def _run_reconciler():
     no_action_source_emails=0
     no_action_tasks_removed=0
     for task_id,task in list(tasks.items()):
+        refresh_sign_in_events(task,fetched_by_message_id)
+        if task.get("sign_in_events"):
+            continue
         source_message=task_cleanup_source_message_id(task)
         source=fetched_by_message_id.get(source_message)
         if source and has_explicit_no_action_required(source):
@@ -1690,6 +1743,9 @@ def _run_reconciler():
         }
         record_source_event(tasks[task_id],msg,d,observed)
         reconcile_insurance_policy_due_date(tasks[task_id])
+    for task in tasks.values():
+        refresh_sign_in_events(task,fetched_by_message_id)
+    print("PA_SIGNIN_MATTERS="+str(sum(bool(task.get("sign_in_events")) for task in tasks.values())),flush=True)
     quote_holds=0
     for task in tasks.values():
         source_ids=task_source_message_ids(task)
@@ -1702,7 +1758,7 @@ def _run_reconciler():
     tasks={k:v for k,v in tasks.items() if has_valid_source_email(v) and (int(v.get("observed_at") or int(time.time()))>=cutoff or v.get("status")!="DONE")}
     informational=[x for x in tasks.values() if x.get("obligation_suppressed")]
     open_tasks=[x for x in tasks.values() if x.get("status")!="DONE" and not x.get("obligation_suppressed")]
-    resolved=[x for x in tasks.values() if x.get("status")=="DONE"]
+    resolved=[x for x in tasks.values() if x.get("status")=="DONE" and not x.get("obligation_suppressed")]
     open_tasks.sort(key=lambda x:(x.get("due_date") or "9999-99-99",x["title"]))
     lookup_diagnostics=dict(_SOURCE_LOOKUP_DIAGNOSTICS)
     lookup_diagnostics["previous_tasks_loaded"]=previous_tasks_loaded

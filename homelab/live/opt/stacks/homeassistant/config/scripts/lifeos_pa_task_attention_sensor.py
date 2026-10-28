@@ -110,19 +110,23 @@ def main():
         generated = int(payload.get("generated_time") or 0)
         if not generated or time.time() - generated > 7 * 3600:
             raise ValueError("stale")
-        all_tasks = (payload.get("tasks") or []) + (payload.get("resolved") or [])
+        all_tasks = (payload.get("tasks") or []) + (payload.get("resolved") or []) + (payload.get("informational") or [])
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source")}, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason") }, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ][:100]
+        questions=sum(any(e.get("answer")!="yes" for e in x.get("sign_in_events") or []) and not any(e.get("answer")=="no" for e in x["sign_in_events"]) and x.get("status") in {"OPEN","WAITING"} and not x.get("snoozed") and not x.get("obligation_suppressed") for x in items)
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"
         out = {
             "state": state,
             **counts,
+            "questions": questions,
+            "information": sum(bool(x.get("obligation_suppressed")) for x in items),
             "briefing": str(briefing.get("summary") or "Briefing unavailable."),
             "items": items,
+            "total_matters": len(all_tasks),
             "junk_action_pending_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests"),
             "junk_action_failed_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests/failed"),
             "review_pending_task_ids": junk_task_ids("/config/lifeos-pa-state/review-requests"),
