@@ -49,10 +49,18 @@ test('new card reads separate reference channel and deduplicates rollout overlap
 
 test('non-quote references explain the correct category without renewal language',()=>{
  const card=new Card();card._config={};
- for(const kind of ['marketing_offer','routine_delivery','optional_opportunity']){
+ for(const kind of ['marketing_offer','routine_delivery','optional_opportunity','optional_feedback','optional_change_window']){
   const html=card._taskCard({id:'reference',status:'OPEN',title:'Synthetic action',obligation_suppressed:kind});
   assert.doesNotMatch(html,/Renewal date/);assert.doesNotMatch(html,/Overdue/);assert.match(html,/Track this/);
  }
+});
+
+test('past event status asks about follow-up without asserting overdue or completion',()=>{
+ const card=new Card();card._config={};
+ const row={id:'event',status:'OPEN',title:'Review past event: Directions hearing',original_title:'Directions hearing',confirmation_required:'past_event_status',date_confirmation_required:true,due_date:null,extracted_date:'2026-09-23'};
+ assert.equal(card._kind(row),'question');
+ const tiles=card._overviewMarkup([row]);assert.match(tiles,/anything left to do after this event/);assert.doesNotMatch(tiles,/Overdue/);
+ const detail=card._taskCard(row);assert.match(detail,/does not establish an overdue task or prove that it happened/);assert.match(detail,/Saved date · unverified/);assert.match(detail,/Yes, track this/);assert.doesNotMatch(detail,/data-action="close"/);
 });
 
 test('unconfirmed commitments are questions with context, never overdue action cards',()=>{

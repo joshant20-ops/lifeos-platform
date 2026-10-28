@@ -123,16 +123,16 @@ def main():
             if item.get("date_confirmation_required") and not item["date_verified"]:
                 item["extracted_date"]=item.get("due_date")
                 item["due_date"]=None
-            if flag in {"optional_commitment","source_unavailable"} and item.get("status") in {"OPEN","WAITING"}:
+            if flag in {"optional_commitment","source_unavailable","past_event_status"} and item.get("status") in {"OPEN","WAITING"}:
                 item["original_title"]=item.get("title")
                 if not item.get("date_confirmation_required"):item["extracted_date"]=item.get("due_date")
-                item["title"]=("Confirm whether to track: " if flag=="optional_commitment" else "Review source for: ")+str(item.get("title") or "Source matter")
+                item["title"]=("Confirm whether to track: " if flag=="optional_commitment" else "Review past event: " if flag=="past_event_status" else "Review source for: ")+str(item.get("title") or "Source matter")
                 if not item["date_verified"]:item["due_date"]=None
         # Older cached cards interpret every OPEN row in items as an action.
         # Retained information must have its own channel across UI upgrades.
         items=[item for item in projected_items if not item.get("obligation_suppressed")][:100]
         reference_items=[item for item in projected_items if item.get("obligation_suppressed")][:100]
-        questions=sum((x.get("confirmation_required") in {"optional_commitment","source_unavailable"} or any(e.get("answer")!="yes" for e in x.get("sign_in_events") or []) and not any(e.get("answer")=="no" for e in x["sign_in_events"])) and x.get("status") in {"OPEN","WAITING"} and not x.get("snoozed") and not x.get("obligation_suppressed") for x in items)
+        questions=sum((x.get("confirmation_required") in {"optional_commitment","source_unavailable","past_event_status"} or any(e.get("answer")!="yes" for e in x.get("sign_in_events") or []) and not any(e.get("answer")=="no" for e in x["sign_in_events"])) and x.get("status") in {"OPEN","WAITING"} and not x.get("snoozed") and not x.get("obligation_suppressed") for x in items)
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"
         out = {
             "state": state,
