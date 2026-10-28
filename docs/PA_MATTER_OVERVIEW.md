@@ -93,3 +93,38 @@ fallback). A caller-owned selected session is never reselected or closed. Every
 retrieved RFC822 Message-ID must match before the source is accepted. This does
 not scan arbitrary mailboxes or change flags, labels, read state or contents.
 Only aggregate recovered/missing-source and disposition-reason counts are logged.
+
+
+## Unconfirmed commitments and unavailable sources
+
+A source-verified application-related candidate that is still unclassified by
+these guards is presented as a question, unless mandatory, accepted-commitment
+or transactional uncertainty signals require preserving it as an action. Missing
+source messages are explicitly flagged for review. No row is completed, deleted
+or dismissed by either flag. The original title, sources, notes and extracted
+date remain available; an optional commitment's extracted date does not enter
+obligation overdue counts before the user accepts it. Unknown extracted dates
+are labelled rather than asserted as personal deadlines.
+
+Yes, track this and No, not something I need to do use existing reopen/dismiss
+user overlay actions. The explicit user answer survives source replay. This
+creates a small user decision, not a fabricated commitment or assumed completion.
+The current source and commitment uncertainty are visible in the real HA entity
+and covered by native question-count and source-parity acceptance.
+
+
+During a mixed-version rollout, the sensor prefixes unconfirmed rows with
+Confirm whether to track / Review source for and excludes their extracted dates
+from the legacy deadline field. New clients receive separate original-title and
+extracted-date context. Old cached clients therefore cannot falsely present an
+unconfirmed application as a plain overdue personal obligation. Source records
+and saved user decisions are retained without changing their original dates.
+
+
+Tracking acceptance and date verification are separate. Yes clears the tracking
+question, while an unverified extracted date remains context until an explicit
+user due-date override or a verified policy date replaces it. Shared attention
+projection semantics are used for structured assistant matches, including targeted
+queries; empty due lists never fall back to raw uncertain dates. Reviewing an
+unavailable source needs the user even if the underlying process is waiting on
+another party; the original source status remains in canonical state.

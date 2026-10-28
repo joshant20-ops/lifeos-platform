@@ -54,3 +54,23 @@ test('non-quote references explain the correct category without renewal language
   assert.doesNotMatch(html,/Renewal date/);assert.doesNotMatch(html,/Overdue/);assert.match(html,/Track this/);
  }
 });
+
+test('unconfirmed commitments are questions with context, never overdue action cards',()=>{
+ const card=new Card();card._config={};
+ const row={id:'role',title:'Apply for a trustee position',status:'OPEN',due_date:'2026-07-20',confirmation_required:'optional_commitment'};
+ assert.equal(card._kind(row),'question');assert.match(card._overviewMarkup([row]),/Do you want to pursue this/);
+ assert.match(card._overviewMarkup([row]),/Apply for a trustee position/);assert.doesNotMatch(card._overviewMarkup([row]),/Overdue/);
+ const detail=card._taskCard(row);assert.match(detail,/Extracted date/);assert.match(detail,/Yes, track this/);assert.match(detail,/No, not something I need to do/);assert.doesNotMatch(detail,/data-action="close"/);
+});
+test('source-unavailable questions preserve the original matter and source link',()=>{
+ const card=new Card();card._config={};const row={...alert,sign_in_events:[],confirmation_required:'source_unavailable'};
+ assert.match(card._taskCard(row),/could not retrieve every original source/);
+ assert.match(card._taskCard(row),/rfc822msgid/);
+});
+test('answering a commitment question dispatches the existing user overlay action',async()=>{
+ const card=new Card();card._config={};const calls=[];
+ const row={id:'role',status:'OPEN',confirmation_required:'optional_commitment'};
+ card._hass={states:{'sensor.lifeos_pa_task_attention':{attributes:{items:[row]}}},callService:async(...args)=>calls.push(args)};
+ await card._act({dataset:{id:'role',action:'dismiss'}});
+ assert.equal(calls[0][2].action,'dismiss');assert.equal(calls[0][2].task_id,'role');
+});

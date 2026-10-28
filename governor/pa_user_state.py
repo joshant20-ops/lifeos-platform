@@ -218,7 +218,11 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
             continue
         task = dict(original)
         task_id = str(task.get("id") or "")
+        if task.get("due_date_source")=="paperless_policy":
+            task.pop("date_confirmation_required",None)
         entry = obligations.get(task_id)
+        if explicit_tracking(entry):
+            task.pop("confirmation_required",None)
         events=[dict(event) for event in task.get("sign_in_events") or [] if isinstance(event,dict)]
         decisions=(entry or {}).get("signin_decisions") or {}
         for event in events:
@@ -287,6 +291,7 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
         if entry.get("due_date_override"):
             task["due_date"] = str(entry["due_date_override"])
             task["due_date_source"] = "user"
+            task.pop("date_confirmation_required",None)
         task["user_state_revision"] = int(state.get("revision") or 0)
         result.append(task)
     return result
@@ -295,6 +300,11 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
 def _project_task(task, now_ts, today):
     status = str(task.get("status", "")).upper()
     due = task.get("due_date")
+    confirmation=task.get("confirmation_required") if status in {"OPEN","WAITING"} else None
+    extracted_date=due
+    date_verified=task.get("due_date_source") in {"user","paperless_policy"}
+    if (confirmation=="optional_commitment" or task.get("date_confirmation_required")) and not date_verified:
+        due=None
     days_until = None
     try:
         days_until = (date.fromisoformat(str(due)) - today).days if due else None
@@ -326,8 +336,11 @@ def _project_task(task, now_ts, today):
         severity = "normal"
     projected = {
         "id": str(task.get("id", "")),
-        "title": str(task.get("title") or "Untitled task")[:160],
-        "status": status,
+        "title": (("Confirm whether to track: " if confirmation=="optional_commitment" else "Review source for: " if confirmation=="source_unavailable" else "") + str(task.get("title") or "Untitled task"))[:200],
+        "confirmation_required": confirmation,
+        "extracted_date": extracted_date,
+        "status": "OPEN" if confirmation else status,
+        "source_status": status,
         "due_date": due,
         "severity": severity,
         "priority_score": {"low": 1, "normal": 2, "high": 3}[severity] * urgency,
@@ -351,6 +364,12 @@ def _project_task(task, now_ts, today):
     }
     return projected
 
+
+
+def project_task_for_attention(task, now_ts=None):
+    """Render source rows with the same commitment/date semantics as attention."""
+    now_ts=int(now_ts if now_ts is not None else time.time())
+    return _project_task(task,now_ts,datetime.fromtimestamp(now_ts).date())
 
 
 def order_tasks_for_attention(task_rows, now_ts=None):
@@ -445,7 +464,7 @@ def daily_briefing(attention):
                 picked.append({k: task.get(k) for k in (
                     "id", "title", "status", "due_date", "severity", "source",
                     "source_refs", "paperless_evidence", "status_source",
-                    "user_comments", "snoozed_until",
+                    "user_comments", "snoozed_until", "confirmation_required", "extracted_date",
                 )})
             if len(picked) >= 5:
                 break
@@ -482,8 +501,8 @@ def apply_user_state(payload, state=None):
             base["status"] = base["machine_status"]
         base.pop("status_source", None)
         base.pop("status_set_at", None)
-        base.pop("severity_source", None)
-        base.pop("due_date_source", None)
+        if base.get("severity_source")=="user":base.pop("severity_source",None)
+        if base.get("due_date_source")=="user":base.pop("due_date_source",None)
         machine_rows.append(base)
     effective = apply_user_annotations(machine_rows, state, now_ts=generated)
     information=apply_user_annotations(payload.get("informational") or [],state,now_ts=generated)

@@ -109,6 +109,33 @@ class MatterOverviewTests(unittest.TestCase):
                     with self.assertRaisesRegex(ValueError,"informational_action_not_allowed"):bridge.main()
                 drop.assert_not_called();mutate.assert_not_called()
 
+    def test_sensor_exposes_unconfirmed_date_as_context_not_legacy_deadline(self):
+        sensor_path=ROOT/"homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py"
+        with patch.dict(sys.modules,{"lifeos_pa_user_state":state}):
+            spec=importlib.util.spec_from_file_location("commitment_sensor",sensor_path);sensor=importlib.util.module_from_spec(spec);spec.loader.exec_module(sensor)
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"view.json";task={"id":"role","title":"Apply for a role","status":"OPEN","confirmation_required":"optional_commitment","due_date":"2026-07-20"}
+            path.write_text(json.dumps(payload(task)));out=io.StringIO()
+            with patch.object(sensor,"TASKS",path),patch.object(sensor,"read_user_state",return_value={"obligations":{}}),contextlib.redirect_stdout(out):sensor.main()
+            view=json.loads(out.getvalue());item=view["items"][0]
+            self.assertEqual(view["questions"],1);self.assertEqual(item["due_date"],None)
+            self.assertEqual(item["extracted_date"],"2026-07-20")
+            self.assertEqual(item["original_title"],"Apply for a role")
+            self.assertTrue(item["title"].startswith("Confirm whether to track:"))
+            self.assertEqual(view["overdue"],0)
+
+    def test_sensor_keeps_verified_deadline_when_email_requires_review(self):
+        sensor_path=ROOT/"homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py"
+        with patch.dict(sys.modules,{"lifeos_pa_user_state":state}):
+            spec=importlib.util.spec_from_file_location("verified_date_sensor",sensor_path);sensor=importlib.util.module_from_spec(spec);spec.loader.exec_module(sensor)
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"view.json";task={"id":"policy","title":"Check policy","status":"OPEN","confirmation_required":"source_unavailable","due_date":"2026-07-20","due_date_source":"paperless_policy"}
+            path.write_text(json.dumps(payload(task)));out=io.StringIO()
+            with patch.object(sensor,"TASKS",path),patch.object(sensor,"read_user_state",return_value={"obligations":{}}),contextlib.redirect_stdout(out):sensor.main()
+            item=json.loads(out.getvalue())["items"][0]
+            self.assertTrue(item["date_verified"])
+            self.assertEqual(item["due_date"],"2026-07-20")
+
     def test_sensor_projects_information_and_questions_without_body(self):
         sensor_path=ROOT/"homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py"
         with patch.dict(sys.modules,{"lifeos_pa_user_state":state}):

@@ -144,3 +144,17 @@ def test_assistant_model_conversation_uses_native_local_json_schema(monkeypatch)
     assert calls == [{"privacy": "local-only", "task_class": "normal", "response_format": bridge.ASSISTANT_RESPONSE_SCHEMA}]
     assert bridge.ASSISTANT_RESPONSE_SCHEMA["additionalProperties"] is False
     assert "reply" in bridge.ASSISTANT_RESPONSE_SCHEMA["required"]
+
+
+def test_unconfirmed_commitment_never_reappears_via_due_fallback_or_target(monkeypatch,tmp_path):
+    mod=load_bridge(monkeypatch,tmp_path);now=1736899200
+    payload={"schema":"lifeos_tasks_v3","generated_time":now,"tasks":[{"id":"synthetic-role","title":"Apply for a trustee role","status":"OPEN","due_date":"2024-07-20","confirmation_required":"optional_commitment","date_confirmation_required":True,"observed_at":now,"source_message_ids":["<role@example.test>"]}],"resolved":[]}
+    due=mod.pa_structured_answer("What is overdue?",payload=payload,now_ts=now)
+    assert due["result_count"]==0
+    targeted=mod.pa_structured_answer("What needs me about synthetic-role?",payload=payload,now_ts=now)
+    assert targeted["result_ids"]==["synthetic-role"]
+    assert "Confirm whether to track:" in targeted["reply"]
+    assert "; due " not in targeted["reply"]
+    changed=mod.pa_structured_answer("What changed?",payload=payload,now_ts=now)
+    assert "Confirm whether to track:" in changed["reply"]
+    assert "; due " not in changed["reply"]

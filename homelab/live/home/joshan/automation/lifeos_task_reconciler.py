@@ -182,6 +182,28 @@ def hold_source_non_obligation(task,sources,user_state):
     return False
 
 
+def flag_unconfirmed_commitment(task,user_state):
+    task.pop("confirmation_required",None)
+    entry=(user_state.get("obligations") or {}).get(task.get("id"))
+    date_verified=bool(isinstance(entry,dict) and entry.get("due_date_override")) or task.get("due_date_source")=="paperless_policy"
+    if date_verified:
+        task.pop("date_confirmation_required",None)
+    if (task.get("obligation_suppressed") or task.get("sign_in_events") or explicit_tracking(entry)
+            or isinstance(entry,dict) and entry.get("status_override") in {"DONE","DISMISSED"}
+            or task.get("status") not in {"OPEN","WAITING"}):
+        return
+    checks=task.get("source_disposition_checks") or {}
+    if checks.get("missing",0)>0:
+        task["confirmation_required"]="source_unavailable"
+        if task.get("due_date") and not date_verified:task["date_confirmation_required"]=True
+    elif task_quality_category(task)=="optional_opportunity" and not date_verified:
+        reasons=checks.get("reason_counts") or {}
+        if (checks.get("sources",0)>0 and reasons.get("unclassified",0)>0
+                and not any(reasons.get(key,0) for key in ("mandatory_request","accepted_commitment","transactional_or_subject_uncertainty"))):
+            task["confirmation_required"]="optional_commitment"
+            if task.get("due_date") and not date_verified:task["date_confirmation_required"]=True
+
+
 def classify(compact):
     event=sign_in_event(compact)
     if event:
@@ -1787,6 +1809,7 @@ def _run_reconciler():
             "id":task_id,"identity_semantic":key(d),"thread_root_id":thread_root(msg),
             "title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
             "status":status,"due_date":d.get("due_date") or old.get("due_date"),
+            "date_confirmation_required":old.get("date_confirmation_required"),
             "counterparty":d.get("counterparty") or old.get("counterparty"),
             "topic":d.get("topic") or old.get("topic"),"severity":d.get("severity") or old.get("severity") or "normal","source":"gmail",
             "email_message_id":str(msg.get("message_id",""))[:300],
@@ -1814,6 +1837,7 @@ def _run_reconciler():
     for task in tasks.values():
         if task.get("status") in {"OPEN","WAITING"} or task.get("obligation_suppressed"):
             hold_source_non_obligation(task,fetched_by_message_id,user_state)
+            flag_unconfirmed_commitment(task,user_state)
     for kind in sorted(KINDS):
         print("PA_QUALITY_HELD_"+kind.upper()+"="+str(sum(task.get("obligation_suppressed")==kind for task in tasks.values())),flush=True)
     cutoff=int(time.time())-STALE_DAYS*86400

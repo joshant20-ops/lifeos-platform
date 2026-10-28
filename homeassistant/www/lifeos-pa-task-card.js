@@ -40,6 +40,7 @@ class LifeOSPATaskCard extends HTMLElement {
   _kind(task) {
     if (task.obligation_suppressed) return "information";
     if (["DONE", "DISMISSED"].includes(String(task.status).toUpperCase())) return "closed";
+    if (["optional_commitment","source_unavailable"].includes(task.confirmation_required)) return "question";
     if ((task.sign_in_events || []).some(e => e.answer !== "yes")) return task.sign_in_events.some(e => e.answer === "no") ? "action" : "question";
     return String(task.status).toUpperCase() === "WAITING" ? "waiting" : "action";
   }
@@ -56,9 +57,22 @@ class LifeOSPATaskCard extends HTMLElement {
 
   _title(task) {
     if (task.obligation_suppressed) return this._referenceInfo(task)[0];
+    if (this._kind(task) === "question" && task.confirmation_required)
+      return task.confirmation_required === "source_unavailable" ? "Does this still need tracking?" : "Do you want to pursue this?";
     if ((task.sign_in_events || []).some(e => e.answer !== "yes") && this._kind(task) !== "closed")
       return this._kind(task) === "question" ? "Was this OpenAI sign-in you?" : "Secure your OpenAI account";
     return task.title || "Untitled matter";
+  }
+
+  _commitmentMarkup(task) {
+    if (!["optional_commitment","source_unavailable"].includes(task.confirmation_required) || this._kind(task) === "closed") return "";
+    const id=this._escape(task.id), missing=task.confirmation_required === "source_unavailable";
+    const source=(task.source_message_ids || [])[0];
+    const query=encodeURIComponent("rfc822msgid:"+String(source || "").replace(/[<>]/g,""));
+    return '<section class="decision"><h4>' + (missing ? 'Do you still need to track this?' : 'Do you want to take this on?') + '</h4><p><strong>' + this._escape(task.original_title || task.title || 'Source matter') + '</strong></p><p>' +
+      (missing ? (task.date_verified ? 'LifeOS could not retrieve every original email. Independently verified date evidence is retained; review the source status.' : 'LifeOS could not retrieve every original source message. The status and extracted date need checking.') : 'LifeOS has not established that this is a personal commitment. An invitation or application deadline alone is not enough.') +
+      '</p><div class="decision-buttons"><button data-action="reopen" data-id="' + id + '">Yes, track this</button><button data-action="dismiss" data-id="' + id + '">No, not something I need to do</button></div>' +
+      (source ? '<a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + query + '">View original source email ↗</a>' : '') + '</section>';
   }
 
   _confirmationMarkup(task) {
@@ -95,9 +109,9 @@ class LifeOSPATaskCard extends HTMLElement {
     const tiles = shown.map(task => {
       const kind = this._kind(task), due = this._taskDate(task.due_date);
       return '<button type="button" class="overview-tile kind-' + kind + '" data-matter="' + this._escape(task.id) + '"><span class="eyebrow">' + labels[kind] + (task.snoozed ? ' · Snoozed' : '') +
-        '</span><strong>' + this._escape(this._title(task)) + '</strong><span>' +
-        this._escape(kind === "information" ? "No action required · Sources retained" : kind === "waiting" ? "Awaiting progress or a reply" : kind === "closed" ? task.status === "DONE" ? "Completed" : "Dismissed" : due ? (due < today ? "Overdue · " : "Due · ") + this._formatDate(due) : "No confirmed deadline") +
-        '</span><span class="tile-link">' + (kind === "question" ? "Review sign-in" : "Open matter") + ' →</span></button>';
+        '</span><strong>' + this._escape(this._title(task)) + '</strong>' + (task.confirmation_required ? '<span>' + this._escape(task.original_title || task.title || 'Source matter') + '</span>' : '') + '<span>' +
+        this._escape(kind === "information" ? "No action required · Sources retained" : kind === "waiting" ? "Awaiting progress or a reply" : kind === "closed" ? task.status === "DONE" ? "Completed" : "Dismissed" : task.confirmation_required ? (task.confirmation_required === "source_unavailable" ? "Source needs review" : "Personal commitment unconfirmed") : due ? (due < today ? "Overdue · " : "Due · ") + this._formatDate(due) : "No confirmed deadline") +
+        '</span><span class="tile-link">' + (kind === "question" ? (task.confirmation_required ? "Answer question" : "Review sign-in") : "Open matter") + ' →</span></button>';
     }).join("");
     return '<nav class="overview-tabs" aria-label="Matter views">' + tabs + '</nav>' +
       (selected ? '<button type="button" class="back-matters" data-back-matters>← Back to ' + this._escape(tab === "all" ? "all matters" : tab) + '</button>' + this._taskCard(selected, true) :
@@ -109,7 +123,7 @@ class LifeOSPATaskCard extends HTMLElement {
     const id = this._escape(task.id);
     const status = String(task.status || "OPEN").toUpperCase();
     const severity = String(task.severity || "normal").toLowerCase();
-    const due = this._taskDate(task.due_date);
+    const due = this._taskDate((task.confirmation_required || task.date_confirmation_required) ? task.extracted_date || task.due_date : task.due_date);
     const timelineEvents = (Array.isArray(task.timeline_events) ? task.timeline_events : []).slice(-20);
     const comments = Array.isArray(task.user_comments) ? task.user_comments.slice(-10) : [];
     const sourceRefs = Array.isArray(task.source_message_ids) ? task.source_message_ids : [];
@@ -133,7 +147,7 @@ class LifeOSPATaskCard extends HTMLElement {
         this._escape(when || "Earlier") + '</time><strong>' +
         this._escape(event?.title || "Email update") + '</strong>' +
         (event?.event_kind === "information" ? '<em>Information update</em>' : "") +
-        (eventStatus && eventStatus !== "NONE" ? '<span class="event-status">' + this._escape(kind === "information" ? "Previous extraction · now information" : eventStatus === "WAITING" ? "Waiting for reply" : eventStatus === "DONE" ? "Completed" : "Action needed") + '</span>' : "") +
+        (eventStatus && eventStatus !== "NONE" ? '<span class="event-status">' + this._escape(kind === "information" ? "Previous extraction · now information" : task.confirmation_required ? "Previous extraction · awaiting confirmation" : eventStatus === "WAITING" ? "Waiting for reply" : eventStatus === "DONE" ? "Completed" : "Action needed") + '</span>' : "") +
         '</div></div>';
     }).join("");
     const latest = timelineEvents[timelineEvents.length - 1];
@@ -159,7 +173,7 @@ class LifeOSPATaskCard extends HTMLElement {
     if (timeline && !featured) supporting.push('<details><summary>Full timeline · ' + timelineEvents.length + '</summary><div class="support-body timeline">' + timeline + '</div></details>');
     if (noteMarkup) supporting.push('<details><summary>Your notes · ' + (task.user_comment_count || comments.length) + '</summary><div class="support-body">' + noteMarkup + '</div></details>');
     const snooze = task.snoozed_until ? '<span class="tag muted">Snoozed until ' + this._escape(this._formatDate(task.snoozed_until)) + '</span>' : "";
-    const dueTag = kind === "information" ? '<span class="tag muted">' + this._escape(this._referenceInfo(task)[1]) + '</span>' : due ? '<span class="tag ' + (due < this._dateKey(new Date()) ? "overdue" : "") + '">' +
+    const dueTag = task.confirmation_required && task.date_verified ? '<span class="tag">Verified deadline · ' + this._escape(this._formatDate(due)) + '</span>' : task.confirmation_required || task.date_confirmation_required ? '<span class="tag muted">' + (due ? 'Extracted date · ' + this._escape(this._formatDate(due)) : 'No confirmed deadline') + '</span>' : kind === "information" ? '<span class="tag muted">' + this._escape(this._referenceInfo(task)[1]) + '</span>' : due ? '<span class="tag ' + (due < this._dateKey(new Date()) ? "overdue" : "") + '">' +
       (due < this._dateKey(new Date()) ? "Overdue · " : "Due · ") + this._escape(this._formatDate(due)) + '</span>' :
       '<span class="tag muted">No due date</span>';
     const statusTag = '<span class="tag status-' + this._escape(status.toLowerCase()) + '">' + this._escape(kind === "information" ? "Information only" : kind === "question" ? "Awaiting confirmation" : status === "WAITING" ? "Waiting for reply" : status === "DONE" ? "Completed" : status === "DISMISSED" ? "Dismissed" : "Needs action") + '</span>';
@@ -167,6 +181,8 @@ class LifeOSPATaskCard extends HTMLElement {
     const reviewLabel = task.emailops_shadow_available ? "Review · EmailOps" : "Review";
     const primaryActions = kind === "information"
       ? '<button data-action="reopen" data-id="' + id + '">Track this</button><button data-action="review" data-id="' + id + '">' + reviewLabel + '</button><button data-action="comment" data-id="' + id + '">Add note</button>'
+      : task.confirmation_required && !closed
+      ? '<button data-action="comment" data-id="' + id + '">Add note</button>'
       : (task.sign_in_events || []).some(e => e.answer !== "yes") && !closed
       ? '<button data-action="review" data-id="' + id + '">' + reviewLabel + '</button><button data-action="comment" data-id="' + id + '">Add note</button>'
       : closed
@@ -191,7 +207,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
-      '</div>' + (kind === 'information' ? '<p class="matter-explanation">' + this._escape(this._referenceInfo(task)[2]) + '</p>' : '') + this._confirmationMarkup(task) + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
+      '</div>' + (kind === 'information' ? '<p class="matter-explanation">' + this._escape(this._referenceInfo(task)[2]) + '</p>' : '') + this._commitmentMarkup(task) + this._confirmationMarkup(task) + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
   }
 
   _render() {
@@ -596,6 +612,8 @@ class LifeOSPATaskCard extends HTMLElement {
     if (action.startsWith("signin_")) {
       data.note = button.dataset.event || "";
       if (!/^[a-f0-9]{64}$/.test(data.note)) return;
+    } else if (["reopen","dismiss"].includes(action) && task.confirmation_required) {
+      // The labelled answer is the explicit user decision; no whole-source inference.
     } else if (action === "review") {
       this._showTaskReview(task);
       return;

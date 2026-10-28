@@ -367,7 +367,7 @@ def main():
     information=[item for item in items if item.get("obligation_suppressed")]
     active_ids={item["id"] for key in ("needs_me","waiting_on_others","due_overdue","upcoming") for item in final_payload.get("attention",{}).get(key,[])}
     assert not any(item["id"] in active_ids for item in information)
-    questions=[item for item in items if any(event.get("answer")!="yes" for event in item.get("sign_in_events") or []) and item.get("status") in {"OPEN","WAITING"} and not item.get("snoozed") and not item.get("obligation_suppressed") and not any(event.get("answer")=="no" for event in item["sign_in_events"])]
+    questions=[item for item in items if (item.get("confirmation_required") in {"optional_commitment","source_unavailable"} or any(event.get("answer")!="yes" for event in item.get("sign_in_events") or []) and not any(event.get("answer")=="no" for event in item.get("sign_in_events") or [])) and item.get("status") in {"OPEN","WAITING"} and not item.get("snoozed") and not item.get("obligation_suppressed")]
     assert final_view.get("questions")==len(questions)
     assert final_view.get("information")==len(information)
     source_by_id={item["id"]:item for key in ("tasks","resolved","informational") for item in final_payload.get(key,[])}
@@ -378,6 +378,12 @@ def main():
         assert {event["id"] for event in item.get("sign_in_events") or []}=={event["id"] for event in source_row.get("sign_in_events") or []}
     card_text=CARD.read_text()
     assert all(marker in card_text for marker in ("_overviewMarkup", "data-tab", "signin_yes", "signin_no", "Not sure — review activity", "Renewal date: not confirmed"))
+    for item in items:
+        if item.get("confirmation_required") in {"optional_commitment","source_unavailable"} and item.get("status") in {"OPEN","WAITING"}:
+            assert item.get("date_verified") or item.get("due_date") is None, "unconfirmed_deadline_exposed_to_legacy_client"
+            assert str(item.get("title") or "").startswith(("Confirm whether to track: ","Review source for: ")), "unconfirmed_commitment_not_labelled"
+    assert not any(item.get("date_confirmation_required") and not item.get("date_verified") and item.get("due_date") for item in items), "unverified_date_exposed_as_deadline"
+    print("PA_QUALITY_QUESTION_LEGACY_COMPATIBILITY=PASS")
     live_entity=live_hass_projection(final_payload.get("generated_time"))
     for key in ("items","reference_items","questions","information","total_matters"):
         assert live_entity.get(key)==final_view.get(key), "overview_ha_entity_projection_mismatch"
@@ -411,6 +417,8 @@ def main():
         for reason in ("mandatory_request","accepted_commitment","transactional_or_subject_uncertainty","unclassified"):
             print("PA_QUALITY_"+category.upper()+"_"+reason.upper()+"="+str(sum((row.get("source_disposition_checks") or {}).get("reason_counts",{}).get(reason,0) for row in candidates)))
     print("PA_QUALITY_ARCHIVE_SOURCES="+str(final_payload.get("source_lookup_diagnostics",{}).get("archive_exact_matches",0)))
+    print("PA_QUALITY_COMMITMENT_QUESTIONS="+str(sum(row.get("confirmation_required")=="optional_commitment" and row.get("status") in {"OPEN","WAITING"} for row in rows)))
+    print("PA_QUALITY_SOURCE_REVIEW_QUESTIONS="+str(sum(row.get("confirmation_required")=="source_unavailable" and row.get("status") in {"OPEN","WAITING"} for row in rows)))
     print("PA_QUALITY_PRIVATE_SOURCE_BOUNDARY=PASS")
     print("PA_OVERVIEW_RUNTIME=PASS")
     print("GATE_H_LIVE_ACCEPTANCE=PASS")
