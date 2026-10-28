@@ -138,7 +138,7 @@ class LifeOSEmailOpsSamplesView(HomeAssistantView):
             samples = []
             for row in payload["results"]:
                 ids = row.get("source_message_ids")
-                if not isinstance(ids, list) or len(ids) != 1 or not re.fullmatch(r"<[^<>\\s\\x00-\\x1f]{1,298}>", str(ids[0])):
+                if not isinstance(ids, list) or len(ids) != 1 or not re.fullmatch(r"<[^<>\s\x00-\x1f]{1,298}>", str(ids[0])):
                     raise ValueError("identity")
                 samples.append({
                     "source_message_id": ids[0],
