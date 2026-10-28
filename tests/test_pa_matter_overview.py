@@ -37,6 +37,12 @@ class MatterOverviewTests(unittest.TestCase):
         self.assertIsNone(event["email_received_at"])
         self.assertIsNone(event["device"])
 
+    def test_real_ha_sensor_allows_all_overview_attributes(self):
+        package=(ROOT/"homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml").read_text()
+        attributes=package.split("      json_attributes:",1)[1]
+        for key in ("items","reference_items","questions","information","total_matters"):
+            self.assertIn("        - "+key+"\n",attributes)
+
     def test_native_card_guard_accepts_the_actual_dynamic_button_implementation(self):
         # The attribute is assembled from an answer value at render time.
         card=(ROOT/"homeassistant/www/lifeos-pa-task-card.js").read_text()

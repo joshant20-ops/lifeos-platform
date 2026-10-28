@@ -88,6 +88,27 @@ def hass_projection():
     return json.loads(result)
 
 
+def live_hass_projection(generated_time):
+    """Read the actual HA entity without logging its private attributes/token."""
+    code = """
+import json, os, sys, time, urllib.request
+base='http://127.0.0.1:8123/api/'
+headers={'Authorization':'Bearer '+os.environ['HA_TOKEN'],'Content-Type':'application/json'}
+request=urllib.request.Request(base+'services/homeassistant/update_entity',data=json.dumps({'entity_id':'sensor.lifeos_pa_task_attention'}).encode(),headers=headers,method='POST')
+with urllib.request.urlopen(request,timeout=5) as response: response.read()
+for attempt in range(20):
+    request=urllib.request.Request(base+'states/sensor.lifeos_pa_task_attention',headers=headers)
+    with urllib.request.urlopen(request,timeout=5) as response: entity=json.load(response)
+    attributes=entity.get('attributes') or {}
+    if entity.get('state') in {'attention','clear'} and attributes.get('generated_time')==int(sys.argv[1]) and all(key in attributes for key in ('reference_items','questions','information','total_matters')):
+        print(json.dumps(attributes));break
+    time.sleep(1)
+else: raise RuntimeError('ha_overview_entity_not_ready')
+"""
+    result=run(['/usr/local/sbin/lifeos-secret','exec','homeassistant.long_lived_access_token','HA_TOKEN','/usr/bin/python3','-c',code,str(int(generated_time))],timeout=90)
+    return json.loads(result)
+
+
 def assistant_query(question):
     body = json.dumps({
         "messages": [{"role": "user", "content": question}],
@@ -356,6 +377,10 @@ def main():
         assert {event["id"] for event in item.get("sign_in_events") or []}=={event["id"] for event in source_row.get("sign_in_events") or []}
     card_text=CARD.read_text()
     assert all(marker in card_text for marker in ("_overviewMarkup", "data-tab", "signin_yes", "signin_no", "Not sure — review activity", "Renewal date: not confirmed"))
+    live_entity=live_hass_projection(final_payload.get("generated_time"))
+    for key in ("items","reference_items","questions","information","total_matters"):
+        assert live_entity.get(key)==final_view.get(key), "overview_ha_entity_projection_mismatch"
+    print("PA_OVERVIEW_ACTUAL_HA_ENTITY=PASS")
     expected_resource="/local/lifeos-pa-task-card.js?v="+hashlib.sha256(CARD.read_bytes()).hexdigest()[:12]
     assert any(resource.get("id")=="lifeos-pa-task-card" and resource.get("type")=="module" and resource.get("url")==expected_resource for resource in read_json(RESOURCES).get("data",{}).get("items",[])), "overview_card_resource_version_mismatch"
     print("PA_OVERVIEW_CARD_VERSION=PASS")

@@ -53,6 +53,10 @@ command_line:
         - snoozed
         - briefing
         - items
+        - reference_items
+        - questions
+        - information
+        - total_matters
         - source
         - generated_time
         - age_seconds
