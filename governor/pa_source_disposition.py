@@ -25,7 +25,7 @@ def non_obligation_decision(message):
     required = re.search(r"\b(?:action (?:is )?required|requires your (?:action|response)|you (?:must|need to|are required to)\s+(?:pay|sign|submit|provide|attend|respond|apply|renew|reply|collect)|please\s+(?:provide|send|pay|sign|confirm|correct|upload|track|investigate|check|settle|renew|respond|reply|return|complete|verify|repay)|signature required|reschedule|delivery (?:(?:is|has been) )?(?:failed|exception|problem|attempted|delayed)|(?:could not|couldn't|unable to) deliver|collect (?:your|the) (?:parcel|package)|customs (?:fee|charge))\b", text, re.I)
     # A polite survey invitation is not an obligation. Strong personal duties
     # still win, including a real duty embedded beside an optional invitation.
-    strong_required = re.search(r"\b(?:must|shall|mandatory|compulsory|action (?:is )?required|requires your (?:action|response)|you (?:need to|are required to)\b|signature required|reschedule|delivery (?:(?:is|has been) )?(?:failed|exception|problem|attempted|delayed)|(?:could not|couldn't|unable to) deliver|customs (?:fee|charge))", text, re.I)
+    strong_required = re.search(r"\b(?:must\b|shall\b|mandatory\b|compulsory\b|action (?:is )?required|requires your (?:action|response)|you (?:need to|are required to)\b|signature required|reschedule|delivery (?:(?:is|has been) )?(?:failed|exception|problem|attempted|delayed)|(?:could not|couldn't|unable to) deliver|customs (?:fee|charge))", text, re.I)
     if strong_required:
         return None,"mandatory_request"
     # Real application/booking/claim activity is not a voluntary invitation.

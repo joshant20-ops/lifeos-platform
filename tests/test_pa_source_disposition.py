@@ -26,6 +26,7 @@ class SourceDispositionTests(unittest.TestCase):
     def test_feedback_and_conditional_change_windows_are_information(self):
         cases=[
             ('Please rate your meals for next month. Unsubscribe.','optional_feedback'),
+            ('Please rate your meals with mustard and shallots.','optional_feedback'),
             ('Please complete our optional survey. Tell us what you think.','optional_feedback'),
             ('If you would like to make changes to your meal plan, do so before Tuesday 1pm.','optional_change_window'),
             ('You can still edit your weekly box until Tuesday.','optional_change_window'),
