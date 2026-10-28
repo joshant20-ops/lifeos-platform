@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 ROOT=Path(__file__).resolve().parents[1]
 sys.path[:0]=[str(ROOT),str(ROOT/'homelab/live/home/joshan/automation')]
-from governor.pa_source_disposition import non_obligation_kind
+from governor.pa_source_disposition import non_obligation_kind, event_source_evidence
 from governor import pa_user_state as user_state
 import lifeos_task_reconciler as reconciler
 
@@ -67,6 +67,15 @@ class SourceDispositionTests(unittest.TestCase):
 
     def test_html_campaign_wording_is_normalised(self):
         self.assertEqual(non_obligation_kind(message('<p>Claim <b>25% off</b></p><p>Unsubscribe</p>')),'marketing_offer')
+
+    def test_event_date_requires_positive_source_schedule_and_exact_date_match(self):
+        source=message('The hearing is scheduled for 23 September 2026.')
+        self.assertEqual(event_source_evidence(source,'2026-09-23')['event_date_matches'],True)
+        self.assertEqual(event_source_evidence(source,'2026-09-24')['event_date_matches'],False)
+        self.assertEqual(event_source_evidence(message('The hearing is scheduled for 23/09/2026.'),'2026-09-23')['event_date_matches'],True)
+        self.assertEqual(event_source_evidence(message('The invoice is due on 23 September 2026.'),'2026-09-23')['event_scheduled'],False)
+        self.assertTrue(event_source_evidence(message('The hearing is scheduled for 23 September 2026. Please file evidence by 25 September 2026.'),'2026-09-23')['event_action_deadline'])
+        self.assertTrue(event_source_evidence(message('The hearing is scheduled for 23 September 2026. The evidence submission closes on 23 September 2026.'),'2026-09-23')['event_action_deadline'])
 
     def test_routine_tracking_is_information_not_completion(self):
         for text in ['Your parcel is out for delivery. Track your parcel.','Your order has been delivered.','Your package has shipped.','Delivery status update.']:
@@ -171,6 +180,18 @@ class CommitmentReviewTests(unittest.TestCase):
         view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[row]}, {})
         self.assertEqual(view['attention']['counts']['overdue'],0)
         self.assertIn('Review past event:',view['attention']['needs_me'][0]['title'])
+
+    def test_past_event_question_retains_required_response_warning_and_priority(self):
+        row={**task(),'title':'Directions hearing for a case','due_date':'2026-09-23','severity':'high'}
+        source=message('The hearing date is 23 September 2026. Please file the requested evidence.')
+        reconciler.hold_source_non_obligation(row,{'<source@example.test>':source},{})
+        reconciler.flag_unconfirmed_commitment(row,{})
+        self.assertEqual(row['confirmation_required'],'past_event_status')
+        self.assertTrue(row['source_response_required'])
+        self.assertEqual(row['severity'],'high')
+        view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[row]}, {})
+        self.assertEqual(view['attention']['counts']['overdue'],0)
+        self.assertEqual(view['attention']['needs_me'][0]['severity'],'high')
         accepted={'obligations':{row['id']:{'status_override':'OPEN'}}}
         reconciler.flag_unconfirmed_commitment(row,accepted)
         view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[row]}, accepted)
@@ -182,13 +203,20 @@ class CommitmentReviewTests(unittest.TestCase):
             ('Directions hearing','The hearing is scheduled. File your evidence by Friday.','2026-09-23'),
             ('Medical appointment','The appointment is scheduled. Send your consent form.','2026-09-23'),
             ('Directions hearing','The hearing is scheduled. Evidence is required.','2026-09-23'),
-            ('Directions hearing','The hearing is scheduled for next year.','2099-09-23'),
+            ('Directions hearing','The hearing is scheduled for 23 September 2026.','2026-09-23'),
+            ('Directions hearing','The hearing is scheduled for 23 September 2026. File your evidence by 25 September 2026.','2026-09-23'),
+            ('Hearing fee','Your invoice is due on 23 September 2026.','2026-09-23'),
+            ('Directions hearing','The hearing is scheduled for 23 September 2026.','2099-09-23'),
         ]:
             with self.subTest(title=title,body=body):
                 row={**task(),'title':title,'due_date':due}
                 reconciler.hold_source_non_obligation(row,{'<source@example.test>':message(body)},{})
                 reconciler.flag_unconfirmed_commitment(row,{})
-                self.assertNotIn('confirmation_required',row)
+                if title=='Prepare for hearing' or due.startswith('2099') or 'invoice' in body.lower() or 'by friday' in body.lower() or 'by 25 september' in body.lower() or 'send your consent' in body.lower() or 'is required' in body.lower():
+                    self.assertNotIn('confirmation_required',row)
+                else:
+                    self.assertEqual(row['confirmation_required'],'past_event_status')
+                    self.assertEqual(row['source_response_required'],('file your evidence' in body.lower()))
 
     def test_uncertain_feedback_candidate_is_question_not_title_based_suppression(self):
         row={**task(),'title':'Rate meals for next month','due_date':'2026-09-15'}

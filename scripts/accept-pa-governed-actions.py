@@ -384,6 +384,7 @@ def main():
         source_row=source_by_id.get(item.get("id"))
         assert source_row is not None, "overview_source_row_missing"
         assert item.get("obligation_suppressed")==source_row.get("obligation_suppressed")
+        assert item.get("source_response_required")==source_row.get("source_response_required"), "overview_response_warning_source_parity"
         assert {event["id"] for event in item.get("sign_in_events") or []}=={event["id"] for event in source_row.get("sign_in_events") or []}
     card_text=CARD.read_text()
     assert all(marker in card_text for marker in ("_overviewMarkup", "data-tab", "signin_yes", "signin_no", "Not sure — review activity", "Renewal date: not confirmed"))
@@ -431,6 +432,12 @@ def main():
     elapsed_questions=[item for item in items if item.get("confirmation_required")=="past_event_status" and item.get("status") in {"OPEN","WAITING"}]
     assert all(item.get("due_date") is None and item.get("extracted_date") for item in elapsed_questions), "past_event_exposed_as_overdue_deadline"
     print("PA_QUALITY_PAST_EVENT_QUESTIONS="+str(len(elapsed_questions)))
+    response_warnings=[item for item in elapsed_questions if item.get("source_response_required")]
+    assert len(response_warnings)==sum(
+        (checks:=source_by_id.get(item.get("id"),{}).get("source_disposition_checks") or {}).get("event_notices",0)!=checks.get("sources",0)
+        or any((checks.get("reason_counts") or {}).get(reason,0) for reason in ("mandatory_request","accepted_commitment","transactional_or_subject_uncertainty"))
+        for item in elapsed_questions), "past_event_response_warning_parity"
+    print("PA_QUALITY_PAST_EVENT_RESPONSE_WARNINGS="+str(len(response_warnings)))
     print("PA_QUALITY_PAST_EVENT_DEADLINE_SEPARATION=PASS")
     print("PA_QUALITY_PRIVATE_SOURCE_BOUNDARY=PASS")
     print("PA_OVERVIEW_RUNTIME=PASS")

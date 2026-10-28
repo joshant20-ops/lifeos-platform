@@ -60,7 +60,8 @@ test('past event status asks about follow-up without asserting overdue or comple
  const row={id:'event',status:'OPEN',title:'Review past event: Directions hearing',original_title:'Directions hearing',confirmation_required:'past_event_status',date_confirmation_required:true,due_date:null,extracted_date:'2026-09-23'};
  assert.equal(card._kind(row),'question');
  const tiles=card._overviewMarkup([row]);assert.match(tiles,/anything left to do after this event/);assert.doesNotMatch(tiles,/Overdue/);
- const detail=card._taskCard(row);assert.match(detail,/does not establish an overdue task or prove that it happened/);assert.match(detail,/Saved date · unverified/);assert.match(detail,/Yes, track this/);assert.doesNotMatch(detail,/data-action="close"/);
+ const detail=card._taskCard(row);assert.match(detail,/does not establish an overdue task or prove that it happened/);assert.match(detail,/Saved date · unverified/);assert.match(detail,/Yes, keep tracking/);assert.doesNotMatch(detail,/data-action="close"/);
+ const warned=card._taskCard({...row,source_response_required:true,severity:'high'});assert.match(warned,/source needs checking for any required response or follow-up/);assert.match(warned,/saved date is unverified/);assert.match(warned,/severity-high/);
 });
 
 test('unconfirmed commitments are questions with context, never overdue action cards',()=>{

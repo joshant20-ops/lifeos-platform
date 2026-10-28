@@ -156,3 +156,16 @@ Native acceptance checks the actual HA entity, question labels, separate saved
 dates, aggregate feedback/change dispositions and elapsed-event question count.
 An already loaded older HA custom element still requires a full client reload;
 server deployment cannot replace JavaScript already executing on a phone.
+
+## Past event dates and source requests
+
+An old saved date is not automatically treated as a response deadline for a
+hearing or appointment. The source must identify a scheduled event and repeat
+the same date; every exact source must be available; and there must not be a
+separate explicit response deadline. Otherwise, the existing actionable matter
+and deadline remain visible. When the date matches an event and follow-up remains
+uncertain, the dashboard asks the user to review status, retains source-action
+signals and existing high priority, labels the date unverified, and never marks
+the matter complete. A user-set or independently verified policy date remains
+authoritative. The read-only Pi audit reports aggregate counts for these cases;
+it does not emit source text, titles, IDs or secrets.
