@@ -34,7 +34,7 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
                 generated = int(time.time()) - (90000 if fault == 'stale' else 0)
                 report = root / 'report.json'
                 report.write_text(json.dumps({'schema': 'lifeos_emailops_comparison_v1', 'mode': 'shadow',
-                    'generated_at': generated, 'results': [{'matched_task_ids': ['synthetic-task']}]}))
+                    'generated_at': generated, 'results': [{'matched_task_ids': ['synthetic-task'], 'source_message_ids':['<sample@example.test>'], 'summary':'PRIVATE_SENTINEL'}]}))
                 preview = ha / 'lifeos-pa-state/emailops-shadow/synthetic-task.json'
                 preview.parent.mkdir(parents=True)
                 payload = {'schema': 'lifeos_emailops_shadow_task_v1', 'task_id': 'synthetic-task',
@@ -48,6 +48,11 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
                         return (401 if fault == 'credential' else 200), {}, b'{}'
                     if path.startswith('/local/'):
                         return 200, {}, b'wrong' if fault == 'card' else b'fixture'
+                    if path == '/api/lifeos_emailops_samples':
+                        if token is None: return 401, {}, b''
+                        return 200, {'Cache-Control':'no-store, private'}, json.dumps({
+                            'schema':'lifeos_emailops_samples_v1','generated_at':generated,'samples':[
+                                {'source_message_id':'<sample@example.test>','matched':True,'summary':'PRIVATE_SENTINEL'}]}).encode()
                     if token is None:
                         return (200 if fault == 'anonymous' else 401), {}, b''
                     self.assertEqual(token, 'secret-fixture')
@@ -59,7 +64,7 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
                             audit.audit('secret-fixture', fetcher)
                     else:
                         self.assertEqual(audit.audit('secret-fixture', fetcher), 1)
-                        self.assertEqual([token for _, token in calls], ['secret-fixture', None, None, 'secret-fixture'])
+                        self.assertEqual([token for _, token in calls], ['secret-fixture', None, None, 'secret-fixture', None, 'secret-fixture'])
 
     def test_redirects_are_not_followed_with_a_credential(self):
         self.assertIsNone(audit.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://example.test'))

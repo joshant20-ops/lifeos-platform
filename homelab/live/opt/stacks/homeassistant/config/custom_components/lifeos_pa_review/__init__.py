@@ -112,7 +112,52 @@ class LifeOSPATaskReviewPreviewView(HomeAssistantView):
         return response
 
 
+
+class LifeOSEmailOpsSamplesView(HomeAssistantView):
+    """Private review of every sampled analysis, including unmatched sources."""
+    url = "/api/lifeos_emailops_samples"
+    name = "api:lifeos_emailops_samples"
+    requires_auth = True
+
+    def __init__(self, hass):
+        self.hass = hass
+
+    async def get(self, request):
+        path = EMAILOPS_PREVIEWS / "samples.json"
+        try:
+            def read():
+                if path.is_symlink() or path.stat().st_size > 2 * 1024 * 1024:
+                    raise ValueError("unsafe")
+                return json.loads(path.read_text())
+            payload = await self.hass.async_add_executor_job(read)
+            age = time.time() - int(payload.get("generated_at") or 0)
+            if (payload.get("schema") != "lifeos_emailops_comparison_v1"
+                    or payload.get("mode") != "shadow" or not 0 <= age < 7 * 86400
+                    or not isinstance(payload.get("results"), list) or len(payload["results"]) > 8):
+                raise ValueError("invalid")
+            samples = []
+            for row in payload["results"]:
+                ids = row.get("source_message_ids")
+                if not isinstance(ids, list) or len(ids) != 1 or not re.fullmatch(r"<[^<>\\s\\x00-\\x1f]{1,298}>", str(ids[0])):
+                    raise ValueError("identity")
+                samples.append({
+                    "source_message_id": ids[0],
+                    "matched": bool(row.get("matched_task_ids")),
+                    "summary": str(row.get("summary") or "")[:4000],
+                    "proposals": [{"title":str(item.get("title") or "")[:300], "due_date":item.get("due_date")}
+                                  for item in row.get("proposals", [])[:20] if isinstance(item,dict)],
+                    "lifecycle":"UNKNOWN",
+                })
+        except (OSError, ValueError, TypeError, KeyError):
+            raise web.HTTPNotFound()
+        response = web.json_response({"schema":"lifeos_emailops_samples_v1",
+                                      "generated_at":payload["generated_at"], "samples":samples})
+        response.headers["Cache-Control"] = "no-store, private"
+        response.headers["Pragma"] = "no-cache"
+        return response
+
 async def async_setup(hass, config):
     hass.http.register_view(LifeOSPATaskReviewPreviewView(hass))
     hass.http.register_view(LifeOSEmailOpsShadowView(hass))
+    hass.http.register_view(LifeOSEmailOpsSamplesView(hass))
     return True

@@ -326,6 +326,12 @@ class LifeOSPATaskCard extends HTMLElement {
       '<div class="task-summary"><span class="summary-chip">Showing ' + this._escape(selectedDateLabel) + '</span>' +
       '<span class="summary-chip">' + shownItems.length + (shownItems.length === 1 ? " open matter" : " open matters") + '</span>' +
       '</div>' + this._actionSections(shownItems) + '</ha-card>';
+    const samplesButton = document.createElement("button");
+    samplesButton.type = "button";
+    samplesButton.textContent = "Review email suggestions";
+    samplesButton.className = "count";
+    samplesButton.addEventListener("click", () => this._showEmailSamples());
+    this.shadowRoot.querySelector("ha-card")?.append(samplesButton);
     this.shadowRoot.querySelectorAll("button[data-filter]").forEach((button) => {
       button.addEventListener("click", () => {
         this._countFilter = this._countFilter === button.dataset.filter ? "" : button.dataset.filter;
@@ -607,6 +613,37 @@ class LifeOSPATaskCard extends HTMLElement {
         this._bindReviewDialog(dialog, taskId);
       }
     } catch (_) { /* A task without a shadow sample keeps its normal review. */ }
+  }
+
+
+  async _showEmailSamples() {
+    const dialog = document.createElement("dialog");
+    dialog.setAttribute("aria-label", "Email suggestion review");
+    dialog.innerHTML = '<p>Loading private samples…</p><button type="button">Close</button>';
+    dialog.querySelector("button").onclick = () => dialog.close();
+    this.shadowRoot.append(dialog);
+    this._activeReviewDialog = dialog;
+    dialog.addEventListener("close", () => { dialog.remove(); this._activeReviewDialog = null; this._render(); });
+    dialog.showModal();
+    try {
+      const payload = await this._hass.callApi("GET", "lifeos_emailops_samples");
+      if (!dialog.open) return;
+      if (payload?.schema !== "lifeos_emailops_samples_v1" || !Array.isArray(payload.samples)) throw new Error();
+      dialog.innerHTML = '<h2>Email suggestion review</h2><p>Comparison only. No task or mailbox changes.</p><p>Sampled ' +
+        this._escape(new Date(payload.generated_at * 1000).toLocaleString()) + '</p>' +
+        payload.samples.map((sample, i) => {
+          const query = encodeURIComponent("rfc822msgid:" + String(sample.source_message_id).replace(/[<>]/g, ""));
+          return '<section><h3>Sample ' + (i + 1) + (sample.matched ? ' · Existing task source' : ' · Not linked to a task') +
+            '</h3><a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + query +
+            '">Open source email</a><p>' + this._escape(sample.summary || "No summary provided.") +
+            '</p><h4>Suggested obligations</h4>' + (sample.proposals.length ? '<ul>' + sample.proposals.map(p =>
+              '<li>' + this._escape(p.title) + (p.due_date ? ' · ' + this._escape(p.due_date) : '') + '</li>').join('') +
+              '</ul>' : '<p>No obligation suggested.</p>') + '<p>Completion not assessed.</p></section>';
+        }).join('') + '<button type="button" data-samples-close>Close</button>';
+      dialog.querySelector("[data-samples-close]").onclick = () => dialog.close();
+    } catch (_) {
+      if (dialog.open) dialog.querySelector("p").textContent = "No current sample is available. Existing tasks are unchanged.";
+    }
   }
 
   async _act(button) {
