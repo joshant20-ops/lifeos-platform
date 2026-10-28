@@ -72,8 +72,8 @@ class LifeOSPATaskCard extends HTMLElement {
     const source=(task.source_message_ids || [])[0];
     const query=encodeURIComponent("rfc822msgid:"+String(source || "").replace(/[<>]/g,""));
     return '<section class="decision"><h4>' + (past ? 'Is there any follow-up still needed?' : missing ? 'Do you still need to track this?' : 'Do you want to take this on?') + '</h4><p><strong>' + this._escape(task.original_title || task.title || 'Source matter') + '</strong></p><p>' +
-      (past ? 'The saved date is in the past and the source describes a scheduled event. That does not establish an overdue task or prove that it happened. Check the current status and any follow-up.' : missing ? (task.date_verified ? 'LifeOS could not retrieve every original email. Independently verified date evidence is retained; review the source status.' : 'LifeOS could not retrieve every original source message. The status and extracted date need checking.') : 'LifeOS has not established that this is a personal commitment. An invitation or application deadline alone is not enough.') +
-      '</p><div class="decision-buttons"><button data-action="reopen" data-id="' + id + '">Yes, track this</button><button data-action="dismiss" data-id="' + id + '">No, not something I need to do</button></div>' +
+      (past ? (task.source_response_required ? 'The source needs checking for any required response or follow-up. The saved date is unverified and may be the event date, not the response deadline. Check what remains outstanding and set a verified due date if needed.' : 'The saved date is in the past and the source describes a scheduled event. That does not establish an overdue task or prove that it happened. Check the current status and any follow-up.') : missing ? (task.date_verified ? 'LifeOS could not retrieve every original email. Independently verified date evidence is retained; review the source status.' : 'LifeOS could not retrieve every original source message. The status and extracted date need checking.') : 'LifeOS has not established that this is a personal commitment. An invitation or application deadline alone is not enough.') +
+      '</p><div class="decision-buttons"><button data-action="reopen" data-id="' + id + '">' + (past ? 'Yes, keep tracking' : 'Yes, track this') + '</button><button data-action="dismiss" data-id="' + id + '">' + (past ? 'No, no further action' : 'No, not something I need to do') + '</button></div>' +
       (source ? '<a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + query + '">View original source email ↗</a>' : '') + '</section>';
   }
 
@@ -204,8 +204,8 @@ class LifeOSPATaskCard extends HTMLElement {
       '</div>';
     return '<article class="task' + (featured ? ' featured' : '') + '"><div class="task-top"><div><span class="eyebrow">' +
       (kind === "information" ? "Information only" : kind === "question" ? "A quick decision" : status === "WAITING" ? "Waiting on someone else" : status === "DONE" ? "Completed matter" : status === "DISMISSED" ? "Dismissed item" : "Your next step") +
-      '</span><h3>' + this._escape(this._title(task)) + '</h3></div><span class="severity severity-' + this._escape(kind === "question" && task.severity_source !== "user" ? "normal" : severity) + '">' +
-      this._escape(kind === 'question' ? 'Confirm' : kind === 'information' ? 'Reference' : severity) + '</span></div>' +
+      '</span><h3>' + this._escape(this._title(task)) + '</h3></div><span class="severity severity-' + this._escape(kind === "question" && !task.source_response_required && task.severity_source !== "user" ? "normal" : severity) + '">' +
+      this._escape(kind === 'question' ? (task.confirmation_required === 'past_event_status' && task.source_response_required ? severity : 'Confirm') : kind === 'information' ? 'Reference' : severity) + '</span></div>' +
       '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
