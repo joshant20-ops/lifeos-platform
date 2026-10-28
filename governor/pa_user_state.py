@@ -310,7 +310,7 @@ def _project_task(task, now_ts, today):
     confirmation=task.get("confirmation_required") if status in {"OPEN","WAITING"} else None
     extracted_date=due
     date_verified=task.get("due_date_source") in {"user","paperless_policy"}
-    if (confirmation=="optional_commitment" or task.get("date_confirmation_required")) and not date_verified:
+    if (confirmation in {"optional_commitment","past_event_status"} or task.get("date_confirmation_required")) and not date_verified:
         due=None
     days_until = None
     try:

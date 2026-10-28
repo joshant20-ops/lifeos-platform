@@ -21,7 +21,7 @@ def validate_payload(payload,now=None):
 
 def event_counts(payload,today=None):
     today=today or date.today()
-    counts={key:0 for key in ('CANDIDATES','REVIEW_QUESTIONS','PAST_EVENT_QUESTIONS','SOURCE_REVIEW_QUESTIONS','UNVERIFIED_PAST_ACTIONS','RESPONSE_GUARDED_PAST_ACTIONS','NOTICE_VERIFIED_PAST_ACTIONS')}
+    counts={key:0 for key in ('CANDIDATES','REVIEW_QUESTIONS','PAST_EVENT_QUESTIONS','SOURCE_REVIEW_QUESTIONS','PAST_EVENT_RESPONSE_WARNINGS','UNVERIFIED_PAST_ACTIONS','RESPONSE_GUARDED_PAST_ACTIONS','SCHEDULED_SOURCE_DATE_MATCHED_ACTIONS','SCHEDULED_SOURCE_DATE_MISMATCH_ACTIONS','ACTION_DEADLINE_SOURCE_ACTIONS','NOTICE_VERIFIED_PAST_ACTIONS')}
     for bucket in ('tasks','resolved','informational'):
         for row in payload.get(bucket) or []:
             if not isinstance(row,dict) or row.get('status') not in {'OPEN','WAITING'} or row.get('obligation_suppressed') or task_quality_category(row)!='scheduled_event':
@@ -32,6 +32,7 @@ def event_counts(payload,today=None):
                 counts['REVIEW_QUESTIONS']+=1
                 if flag=='past_event_status':counts['PAST_EVENT_QUESTIONS']+=1
                 if flag=='source_unavailable':counts['SOURCE_REVIEW_QUESTIONS']+=1
+                if flag=='past_event_status' and row.get('source_response_required'):counts['PAST_EVENT_RESPONSE_WARNINGS']+=1
                 continue
             try:past=date.fromisoformat(str(row.get('due_date')))<today
             except (TypeError,ValueError):past=False
@@ -39,6 +40,10 @@ def event_counts(payload,today=None):
             counts['UNVERIFIED_PAST_ACTIONS']+=1
             checks=row.get('source_disposition_checks') or {}
             if (checks.get('reason_counts') or {}).get('mandatory_request'):counts['RESPONSE_GUARDED_PAST_ACTIONS']+=1
+            if checks.get('event_schedules',0)==checks.get('sources',0) and checks.get('sources',0)>0:
+                if checks.get('event_date_matches',0)==checks.get('sources',0):counts['SCHEDULED_SOURCE_DATE_MATCHED_ACTIONS']+=1
+                else:counts['SCHEDULED_SOURCE_DATE_MISMATCH_ACTIONS']+=1
+            if checks.get('event_action_deadlines',0)>0:counts['ACTION_DEADLINE_SOURCE_ACTIONS']+=1
             if checks.get('sources',0)>0 and checks.get('event_notices')==checks.get('sources'):counts['NOTICE_VERIFIED_PAST_ACTIONS']+=1
     return counts
 

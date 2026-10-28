@@ -5,6 +5,7 @@ or mixed-source evidence remains untouched. No private text leaves this module.
 """
 import html
 import re
+from datetime import date
 
 KINDS = {"marketing_offer", "routine_delivery", "optional_opportunity", "optional_feedback", "optional_change_window"}
 
@@ -69,13 +70,61 @@ def non_obligation_decision(message):
     return None,"unclassified"
 
 
-def event_notice(message):
-    """A scheduled event is not proof of an outstanding response or completion."""
+def event_source_evidence(message, due_date=None):
+    """Return safe booleans for a scheduled event/date and separate action signal."""
     text = _text(message)
     event = re.search(r"\b(?:hearing|appointment|meeting)\b", text, re.I)
-    response = re.search(r"\b(?:pay|submit|provide|send|prepare|file|respond|reply|confirm|complete|sign|deadline|(?:payment|submission|response|evidence|documents?)\s+(?:is |are )?(?:due|required|outstanding))\b", text, re.I)
-    scheduled = re.search(r"\b(?:scheduled|will (?:be held|take place)|listed for|arranged|hearing (?:on|date)|appointment (?:on|at)|meeting (?:on|at))\b", text, re.I)
-    return bool(event and scheduled and not response)
+    deadline_phrase = re.search(r"\b(?:evidence|submission|response|filing|payment|invoice|application|claim|documents?|deadline|time limit)\b.{0,60}\b(?:closes?|closing|ends?|due|required|outstanding|expires?|payable|return by|no later than)\b",text,re.I)
+    action = re.search(r"\b(?:deadline|you (?:must|shall|need to|are required to)\s+(?:pay|submit|provide|send|prepare|file|respond|reply|confirm|complete|sign|attend)|please\s+(?:pay|submit|provide|send|prepare|file|respond|reply|confirm|complete|sign|attend)|(?:pay|submit|provide|send|prepare|file|respond|reply|confirm|complete|sign)\s+(?:your|the|this|evidence|documents?)|(?:invoice|payment|balance|bill|submission|response|evidence|documents?|consent|fee)\s+(?:is |are )?(?:due|required|outstanding))\b", text,re.I)
+    action_deadline = bool(deadline_phrase or (action and re.search(r"\b(?:by|before|until|within\s+\d+\s+(?:days?|weeks?)|deadline|due|no later than)\b",text,re.I)))
+    action = action or deadline_phrase
+    scheduled = re.search(r"\b(?:scheduled|will (?:be held|take place)|listed for|arranged|(?:hearing|appointment|meeting)\s+(?:on|at|date|:)|date of (?:the )?(?:hearing|appointment|meeting))\b", text, re.I)
+    if not event or not scheduled:
+        return {"event_scheduled":False,"event_date_matches":False,"event_action_signal":bool(action),"event_action_deadline":action_deadline}
+    matches_due = False
+    try:
+        expected = date.fromisoformat(str(due_date))
+    except (TypeError,ValueError):
+        expected = None
+    if expected:
+        start=max(0,event.start()-80)
+        stop=min(len(text),max(event.end(),scheduled.end())+160)
+        context=text[start:stop]
+        date_tokens=[]
+        date_tokens.extend(re.findall(r"\b\d{4}-\d{2}-\d{2}\b",context))
+        date_tokens.extend(m.group(0) for m in re.finditer(r"\b(\d{1,2})(?:st|nd|rd|th)?[\s/-]+(\d{1,2})[\s/-]+(\d{2,4})\b",context,re.I))
+        month=r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)"
+        date_tokens.extend(m.group(0) for m in re.finditer(r"\b(?:\d{1,2}(?:st|nd|rd|th)?\s+"+month+r"(?:\s+\d{2,4})?|"+month+r"\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s+\d{2,4})?)\b",context,re.I))
+        for token in date_tokens:
+            candidate=None
+            try:candidate=date.fromisoformat(token)
+            except ValueError:pass
+            if candidate is None:
+                digits=re.fullmatch(r"(\d{1,2})[\s/-]+(\d{1,2})[\s/-]+(\d{2,4})",token)
+                if digits:
+                    a,b,y=map(int,digits.groups())
+                    if y<100:y+=2000
+                    for day,month_num in ((a,b),(b,a)):
+                        try:candidate=date(y,month_num,day);break
+                        except ValueError:continue
+            if candidate is None:
+                clean=re.sub(r"(\d)(st|nd|rd|th)\b",r"\1",token,flags=re.I).replace(",","")
+                for fmt in ("%d %B %Y","%d %b %Y","%B %d %Y","%b %d %Y","%d %B","%d %b","%B %d","%b %d"):
+                    try:
+                        parsed=__import__("datetime").datetime.strptime(clean,fmt)
+                        candidate=date(expected.year if "%Y" not in fmt else parsed.year,parsed.month,parsed.day)
+                        break
+                    except ValueError:continue
+            if candidate==expected:
+                matches_due=True
+                break
+    return {"event_scheduled":True,"event_date_matches":matches_due,"event_action_signal":bool(action),"event_action_deadline":action_deadline}
+
+
+def event_notice(message):
+    """Whether a source is a scheduled event notice without response signals."""
+    evidence=event_source_evidence(message)
+    return evidence.get("event_scheduled") and not evidence.get("event_action_signal")
 
 
 def non_obligation_kind(message):
