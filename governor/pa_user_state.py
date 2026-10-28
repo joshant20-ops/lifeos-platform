@@ -286,9 +286,16 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
         else:
             task.pop("snoozed_until", None)
         if entry.get("severity_override") in SEVERITIES:
+            if "machine_severity" not in task:
+                task["machine_severity"]=task.get("severity")
+                task["machine_severity_source"]=task.get("severity_source")
             task["severity"] = entry["severity_override"]
             task["severity_source"] = "user"
         if entry.get("due_date_override"):
+            if "machine_due_date" not in task:
+                task["machine_due_date"]=task.get("due_date")
+                task["machine_due_date_source"]=task.get("due_date_source")
+                task["machine_date_confirmation_required"]=bool(task.get("date_confirmation_required"))
             task["due_date"] = str(entry["due_date_override"])
             task["due_date_source"] = "user"
             task.pop("date_confirmation_required",None)
@@ -499,6 +506,17 @@ def apply_user_state(payload, state=None):
         base = dict(row)
         if str(base.get("status_source") or "") in {"user", "user_confirmation"} and base.get("machine_status"):
             base["status"] = base["machine_status"]
+        # A projected owner decision is not the underlying source value.
+        if "machine_due_date" in base:
+            base["due_date"]=base["machine_due_date"]
+            base["due_date_source"]=base.get("machine_due_date_source")
+            if base.get("machine_date_confirmation_required"):
+                base["date_confirmation_required"]=True
+            else:
+                base.pop("date_confirmation_required",None)
+        if "machine_severity" in base:
+            base["severity"]=base["machine_severity"]
+            base["severity_source"]=base.get("machine_severity_source")
         base.pop("status_source", None)
         base.pop("status_set_at", None)
         if base.get("severity_source")=="user":base.pop("severity_source",None)

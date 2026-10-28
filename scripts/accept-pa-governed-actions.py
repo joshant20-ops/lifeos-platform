@@ -352,6 +352,15 @@ def main():
             restored = run_reconciler()
             if read_json(PUBLISHED) != restored:
                 raise RuntimeError("post_test_restore_projection_mismatch")
+            restored_rows=list(restored.get("tasks") or [])+list(restored.get("resolved") or [])+list(restored.get("informational") or [])
+            restored_task=next((row for row in restored_rows if row.get("id")==task_id),None)
+            same_source=bool(restored_task) and all(restored_task.get(key)==task.get(key) for key in ("observed_at","updated_from_email","source_message_ids"))
+            if same_source:
+                assert restored_task.get("due_date")==task.get("due_date") or restored_task.get("due_date_source")=="paperless_policy", "test_due_override_leaked"
+                assert restored_task.get("severity")==task.get("severity"), "test_severity_override_leaked"
+                print("GATE_H_TEST_PROJECTION_VALUES_RESTORED=PASS")
+            else:
+                print("GATE_H_TEST_PROJECTION_VALUES_RESTORED=SOURCE_CHANGED")
             print("GATE_H_TEST_STATE_CLEANUP=PASS")
 
     # Read-only acceptance of the new matter overview against the real projection.

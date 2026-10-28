@@ -174,6 +174,30 @@ class CommitmentReviewTests(unittest.TestCase):
         self.assertEqual(view['attention']['counts']['overdue'],1)
         self.assertEqual(view['attention']['needs_me'][0]['due_date'],'2026-07-20')
 
+    def test_source_date_and_priority_restore_after_temporary_owner_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            overlay_path=Path(directory)/'overlay.json';view_path=Path(directory)/'view.json'
+            original={**task(),'due_date':'2026-07-20','severity':'normal','date_confirmation_required':True}
+            empty={'schema':user_state.SCHEMA,'obligations':{}}
+            user_state.mutate_action(original['id'],'due_date',due_date='2026-11-01',path=overlay_path)
+            user_state.mutate_action(original['id'],'severity',severity='high',path=overlay_path)
+            projected=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[original]},user_state.read_user_state(overlay_path))
+            self.assertEqual(projected['tasks'][0]['due_date'],'2026-11-01')
+            self.assertEqual(projected['tasks'][0]['machine_due_date'],'2026-07-20')
+            self.assertEqual(projected['tasks'][0]['machine_severity'],'normal')
+            clean=user_state.apply_user_state(projected,empty)['tasks'][0]
+            self.assertEqual(clean['due_date'],'2026-07-20');self.assertEqual(clean['severity'],'normal')
+            self.assertTrue(clean['date_confirmation_required'])
+            view_path.write_text(json.dumps(projected))
+            with patch.object(reconciler,'STATE',view_path):replayed=reconciler.load_previous()[original['id']]
+            self.assertEqual(replayed['due_date'],'2026-07-20');self.assertEqual(replayed['severity'],'normal')
+            self.assertNotIn('machine_due_date',replayed)
+            # A genuine new source/date can replace the recovered base before
+            # the owner's continuing preference is applied again.
+            replayed['due_date']='2026-08-01'
+            newer=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[replayed]},user_state.read_user_state(overlay_path))
+            self.assertEqual(newer['tasks'][0]['machine_due_date'],'2026-08-01')
+
     def test_required_application_evidence_stays_actionable(self):
         row={**task(),'title':'Apply for a trustee position'}
         reconciler.hold_source_non_obligation(row,{'<source@example.test>':message('Please provide identification for your application.')},{})
