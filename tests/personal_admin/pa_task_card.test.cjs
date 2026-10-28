@@ -23,8 +23,9 @@ test('information stays in reference without completion or junk controls',()=>{
  const card=new Card();card._config={};const quote={id:'quote',title:'Renew policy',status:'OPEN',obligation_suppressed:'quote_only_no_verified_policy'};
  assert.doesNotMatch(card._overviewMarkup([quote]),/data-matter="quote"/);
  card._overviewTab='reference';assert.match(card._overviewMarkup([quote]),/data-matter="quote"/);
- assert.doesNotMatch(card._taskCard(quote),/data-action="(?:close|junk|reopen)"/);
+ assert.doesNotMatch(card._taskCard(quote),/data-action="(?:close|junk)"/);
  assert.match(card._taskCard(quote),/Renewal date: not confirmed/);
+ assert.match(card._taskCard(quote),/Track this/);
 });
 test('source context is escaped and does not infer location or sign-in time',()=>{
  const card=new Card();card._config={}; const html=card._taskCard(alert);
@@ -44,4 +45,12 @@ test('new card reads separate reference channel and deduplicates rollout overlap
  const rows=card._items({items:[alert],reference_items:[quote]});assert.equal(rows.length,2);
  card._overviewTab='reference';assert.match(card._overviewMarkup(rows),/data-matter="quote"/);
  assert.equal(card._items({items:[quote],reference_items:[quote]}).length,1);
+});
+
+test('non-quote references explain the correct category without renewal language',()=>{
+ const card=new Card();card._config={};
+ for(const kind of ['marketing_offer','routine_delivery','optional_opportunity']){
+  const html=card._taskCard({id:'reference',status:'OPEN',title:'Synthetic action',obligation_suppressed:kind});
+  assert.doesNotMatch(html,/Renewal date/);assert.doesNotMatch(html,/Overdue/);assert.match(html,/Track this/);
+ }
 });

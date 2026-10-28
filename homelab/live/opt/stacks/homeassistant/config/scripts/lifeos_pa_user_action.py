@@ -71,7 +71,7 @@ def main():
     if args.action.startswith("signin_"):
         if not any(event.get("id")==unquote_plus(args.note) for event in task.get("sign_in_events") or [] if isinstance(event,dict)):
             raise ValueError("signin_event_not_in_current_view")
-    if task.get("obligation_suppressed") and args.action not in {"review","comment"}:
+    if task.get("obligation_suppressed") and args.action not in {"review","comment","reopen"}:
         raise ValueError("informational_action_not_allowed")
     if args.action == "review":
         _ACTION_STAGE = "review_request_validate"
