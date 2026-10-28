@@ -1,0 +1,21 @@
+name: LifeOS PA read-only event status audit
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/lifeos-pa-event-status-audit.yml'
+      - 'scripts/audit-pa-event-status.py'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Count event status categories without disclosing sources
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -m unittest discover -s tests -p test_pa_event_status_audit.py -q
+          python3 scripts/audit-pa-event-status.py
