@@ -4,9 +4,19 @@ import json
 from datetime import date
 from pathlib import Path
 import sys
+import time
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from governor.pa_source_disposition import task_quality_category
+
+
+def validate_payload(payload,now=None):
+    now=time.time() if now is None else now
+    if not isinstance(payload,dict) or payload.get('schema')!='lifeos_tasks_v3':raise ValueError('invalid_projection')
+    generated=payload.get('generated_time')
+    if isinstance(generated,bool) or not isinstance(generated,(int,float)) or not 0<=now-generated<=7*3600:raise ValueError('projection_not_fresh')
+    if not all(isinstance(payload.get(bucket),list) for bucket in ('tasks','resolved','informational')):raise ValueError('invalid_projection_buckets')
+    return payload
 
 
 def event_counts(payload,today=None):
@@ -36,12 +46,13 @@ def event_counts(payload,today=None):
 def main():
     path=Path('/home/joshan/automation/state/lifeos_personal_tasks.json')
     try:
-        payload=json.loads(path.read_text())
+        payload=validate_payload(json.loads(path.read_text()))
         counts=event_counts(payload)
     except Exception:
         print('PA_EVENT_AUDIT=UNAVAILABLE')
         return 1
     for key,value in counts.items():print('PA_EVENT_'+key+'='+str(value))
+    print('PA_EVENT_VIEW_FRESH=PASS')
     print('PA_EVENT_AUDIT=PASS')
     return 0
 

@@ -17,4 +17,5 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
+          python3 -m unittest discover -s tests -p test_pa_event_status_audit.py -q
           python3 scripts/audit-pa-event-status.py
