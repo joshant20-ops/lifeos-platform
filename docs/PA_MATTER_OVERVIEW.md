@@ -138,3 +138,21 @@ state after its overlay is restored. Native acceptance checks restored projected
 values against the unchanged source record. Historical dates with no independent
 proof remain labelled Saved date / unverified; this does not claim recovery of
 previously overwritten source values or invent old dates from message age.
+
+
+Optional feedback and meal/order change windows are source-only informational
+updates, not personal obligations. A survey needs positive optional or customer
+feedback context; clinical, licence, identity and other concrete duties remain
+protected. A separate request in the same message outranks optional content.
+Unclassified feedback/change candidates ask about tracking instead of silently
+assuming commitment. Missing or mixed source evidence cannot create a hold.
+
+A past scheduled-event candidate asks whether follow-up is still needed only
+when all retrieved sources are event notices without a concrete response or
+deadline. This is neither completion nor cancellation. The saved date remains
+unverified context, separate from obligation overdue counts; independently
+verified or owner-set deadlines and explicit owner decisions retain precedence.
+Native acceptance checks the actual HA entity, question labels, separate saved
+dates, aggregate feedback/change dispositions and elapsed-event question count.
+An already loaded older HA custom element still requires a full client reload;
+server deployment cannot replace JavaScript already executing on a phone.

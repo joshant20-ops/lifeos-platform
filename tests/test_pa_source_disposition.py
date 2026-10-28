@@ -23,6 +23,41 @@ def task():
 
 
 class SourceDispositionTests(unittest.TestCase):
+    def test_feedback_and_conditional_change_windows_are_information(self):
+        cases=[
+            ('Please rate your meals for next month. Unsubscribe.','optional_feedback'),
+            ('Please rate your meals with mustard and shallots.','optional_feedback'),
+            ('Please complete our optional survey. Tell us what you think.','optional_feedback'),
+            ('If you would like to make changes to your meal plan, do so before Tuesday 1pm.','optional_change_window'),
+            ('You can still edit your weekly box until Tuesday.','optional_change_window'),
+            ('Last chance to make changes to your order.','optional_change_window'),
+        ]
+        for body,kind in cases:
+            with self.subTest(body=body):
+                self.assertEqual(non_obligation_kind(message(body)),kind)
+                row=task();row['due_date']='2026-08-25'
+                reconciler.hold_source_non_obligation(row,{'<source@example.test>':message(body)},{})
+                self.assertEqual(row['obligation_suppressed'],kind)
+                view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[],'informational':[row]}, {})
+                self.assertEqual(view['attention']['counts']['overdue'],0)
+                self.assertEqual(view['informational'][0]['due_date'],'2026-08-25')
+
+    def test_optional_requests_cannot_hide_a_separate_duty(self):
+        for body in [
+            'Please rate your meals. Please pay the balance by Friday.',
+            'Please complete this optional survey. Your annual return must be filed by Friday.',
+            'You can still edit your meal plan. Update the allergen information by Friday to receive your order.',
+            'Please rate your meal and provide identification before delivery.',
+            'Please complete this questionnaire before your operation.',
+            'Please complete this survey as a condition of your licence.',
+            'You must complete our survey for your claim. Unsubscribe.',
+            'If you want to edit your order, do so today. Your payment is due tomorrow.',
+            'Please complete our survey. Please confirm the missing details.',
+            'You can edit your meal plan. Please provide identification.',
+            'Please rate your experience. Return your loan device by Friday.',
+        ]:
+            with self.subTest(body=body):self.assertIsNone(non_obligation_kind(message(body)))
+
     def test_offer_expiry_is_not_personal_deadline(self):
         source=message('Claim 25% off with promo code. Offer ends tomorrow. Unsubscribe.')
         self.assertEqual(non_obligation_kind(source),'marketing_offer')
@@ -126,6 +161,42 @@ class SourceDispositionTests(unittest.TestCase):
         self.assertEqual(row['status'],'OPEN')
 
 class CommitmentReviewTests(unittest.TestCase):
+    def test_past_event_is_a_status_question_never_assumed_complete(self):
+        row={**task(),'title':'Directions hearing for a case','due_date':'2026-09-23'}
+        sources={'<source@example.test>':message('The hearing is scheduled for 23 September 2026.')}
+        reconciler.hold_source_non_obligation(row,sources,{})
+        reconciler.flag_unconfirmed_commitment(row,{})
+        self.assertEqual(row['confirmation_required'],'past_event_status')
+        self.assertEqual(row['status'],'OPEN');self.assertEqual(row['due_date'],'2026-09-23')
+        view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[row]}, {})
+        self.assertEqual(view['attention']['counts']['overdue'],0)
+        self.assertIn('Review past event:',view['attention']['needs_me'][0]['title'])
+        accepted={'obligations':{row['id']:{'status_override':'OPEN'}}}
+        reconciler.flag_unconfirmed_commitment(row,accepted)
+        view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[row]}, accepted)
+        self.assertEqual(view['attention']['counts']['overdue'],0)
+
+    def test_event_wording_never_hides_required_response_or_future_event(self):
+        for title,body,due in [
+            ('Prepare for hearing','The hearing is scheduled. Please submit evidence.','2026-09-23'),
+            ('Directions hearing','The hearing is scheduled. File your evidence by Friday.','2026-09-23'),
+            ('Medical appointment','The appointment is scheduled. Send your consent form.','2026-09-23'),
+            ('Directions hearing','The hearing is scheduled. Evidence is required.','2026-09-23'),
+            ('Directions hearing','The hearing is scheduled for next year.','2099-09-23'),
+        ]:
+            with self.subTest(title=title,body=body):
+                row={**task(),'title':title,'due_date':due}
+                reconciler.hold_source_non_obligation(row,{'<source@example.test>':message(body)},{})
+                reconciler.flag_unconfirmed_commitment(row,{})
+                self.assertNotIn('confirmation_required',row)
+
+    def test_uncertain_feedback_candidate_is_question_not_title_based_suppression(self):
+        row={**task(),'title':'Rate meals for next month','due_date':'2026-09-15'}
+        reconciler.hold_source_non_obligation(row,{'<source@example.test>':message('Your monthly update.')},{})
+        reconciler.flag_unconfirmed_commitment(row,{})
+        self.assertNotIn('obligation_suppressed',row)
+        self.assertEqual(row['confirmation_required'],'optional_commitment')
+
     def unknown_role(self):
         row={**task(),'title':'Apply for a trustee position','due_date':'2026-07-20'}
         reconciler.hold_source_non_obligation(row,{'<source@example.test>':message('Election details for members.')},{})

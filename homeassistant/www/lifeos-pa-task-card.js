@@ -40,7 +40,7 @@ class LifeOSPATaskCard extends HTMLElement {
   _kind(task) {
     if (task.obligation_suppressed) return "information";
     if (["DONE", "DISMISSED"].includes(String(task.status).toUpperCase())) return "closed";
-    if (["optional_commitment","source_unavailable"].includes(task.confirmation_required)) return "question";
+    if (["optional_commitment","source_unavailable","past_event_status"].includes(task.confirmation_required)) return "question";
     if ((task.sign_in_events || []).some(e => e.answer !== "yes")) return task.sign_in_events.some(e => e.answer === "no") ? "action" : "question";
     return String(task.status).toUpperCase() === "WAITING" ? "waiting" : "action";
   }
@@ -50,6 +50,8 @@ class LifeOSPATaskCard extends HTMLElement {
       quote_only_no_verified_policy: ["Insurance quotes received", "Renewal date: not confirmed", "Quote emails do not establish the renewal date of your current policy. No renewal action is required from these quotes alone."],
       marketing_offer: ["Promotional offer received", "Optional offer", "An offer or discount is optional. Its expiry date is not a personal deadline."],
       routine_delivery: ["Delivery status update", "Information only", "Routine tracking is information. No required follow-up was found in these source messages."],
+      optional_feedback: ["Feedback invitation", "Optional feedback", "A rating or survey request is optional. It does not create a personal deadline."],
+      optional_change_window: ["Meal or order change window", "Optional change", "A cutoff for optional changes is information. No change was requested or required by these sources."],
       optional_opportunity: ["Optional opportunity", "No commitment recorded", "An invitation to apply is optional. These source messages do not show that you accepted or applied."],
     };
     return kinds[task.obligation_suppressed] || ["Information update", "Information only", "Source updates are retained for reference."];
@@ -58,19 +60,19 @@ class LifeOSPATaskCard extends HTMLElement {
   _title(task) {
     if (task.obligation_suppressed) return this._referenceInfo(task)[0];
     if (this._kind(task) === "question" && task.confirmation_required)
-      return task.confirmation_required === "source_unavailable" ? "Does this still need tracking?" : "Do you want to pursue this?";
+      return task.confirmation_required === "past_event_status" ? "Is there anything left to do after this event?" : task.confirmation_required === "source_unavailable" ? "Does this still need tracking?" : "Do you want to pursue this?";
     if ((task.sign_in_events || []).some(e => e.answer !== "yes") && this._kind(task) !== "closed")
       return this._kind(task) === "question" ? "Was this OpenAI sign-in you?" : "Secure your OpenAI account";
     return task.title || "Untitled matter";
   }
 
   _commitmentMarkup(task) {
-    if (!["optional_commitment","source_unavailable"].includes(task.confirmation_required) || this._kind(task) === "closed") return "";
-    const id=this._escape(task.id), missing=task.confirmation_required === "source_unavailable";
+    if (!["optional_commitment","source_unavailable","past_event_status"].includes(task.confirmation_required) || this._kind(task) === "closed") return "";
+    const id=this._escape(task.id), missing=task.confirmation_required === "source_unavailable", past=task.confirmation_required === "past_event_status";
     const source=(task.source_message_ids || [])[0];
     const query=encodeURIComponent("rfc822msgid:"+String(source || "").replace(/[<>]/g,""));
-    return '<section class="decision"><h4>' + (missing ? 'Do you still need to track this?' : 'Do you want to take this on?') + '</h4><p><strong>' + this._escape(task.original_title || task.title || 'Source matter') + '</strong></p><p>' +
-      (missing ? (task.date_verified ? 'LifeOS could not retrieve every original email. Independently verified date evidence is retained; review the source status.' : 'LifeOS could not retrieve every original source message. The status and extracted date need checking.') : 'LifeOS has not established that this is a personal commitment. An invitation or application deadline alone is not enough.') +
+    return '<section class="decision"><h4>' + (past ? 'Is there any follow-up still needed?' : missing ? 'Do you still need to track this?' : 'Do you want to take this on?') + '</h4><p><strong>' + this._escape(task.original_title || task.title || 'Source matter') + '</strong></p><p>' +
+      (past ? 'The saved date is in the past and the source describes a scheduled event. That does not establish an overdue task or prove that it happened. Check the current status and any follow-up.' : missing ? (task.date_verified ? 'LifeOS could not retrieve every original email. Independently verified date evidence is retained; review the source status.' : 'LifeOS could not retrieve every original source message. The status and extracted date need checking.') : 'LifeOS has not established that this is a personal commitment. An invitation or application deadline alone is not enough.') +
       '</p><div class="decision-buttons"><button data-action="reopen" data-id="' + id + '">Yes, track this</button><button data-action="dismiss" data-id="' + id + '">No, not something I need to do</button></div>' +
       (source ? '<a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + query + '">View original source email ↗</a>' : '') + '</section>';
   }
@@ -110,7 +112,7 @@ class LifeOSPATaskCard extends HTMLElement {
       const kind = this._kind(task), due = this._taskDate(task.due_date);
       return '<button type="button" class="overview-tile kind-' + kind + '" data-matter="' + this._escape(task.id) + '"><span class="eyebrow">' + labels[kind] + (task.snoozed ? ' · Snoozed' : '') +
         '</span><strong>' + this._escape(this._title(task)) + '</strong>' + (task.confirmation_required ? '<span>' + this._escape(task.original_title || task.title || 'Source matter') + '</span>' : '') + '<span>' +
-        this._escape(kind === "information" ? "No action required · Sources retained" : kind === "waiting" ? "Awaiting progress or a reply" : kind === "closed" ? task.status === "DONE" ? "Completed" : "Dismissed" : task.confirmation_required ? (task.confirmation_required === "source_unavailable" ? "Source needs review" : "Personal commitment unconfirmed") : due ? (due < today ? "Overdue · " : "Due · ") + this._formatDate(due) : "No confirmed deadline") +
+        this._escape(kind === "information" ? "No action required · Sources retained" : kind === "waiting" ? "Awaiting progress or a reply" : kind === "closed" ? task.status === "DONE" ? "Completed" : "Dismissed" : task.confirmation_required ? (task.confirmation_required === "source_unavailable" ? "Source needs review" : task.confirmation_required === "past_event_status" ? "Event status needs checking" : "Personal commitment unconfirmed") : due ? (due < today ? "Overdue · " : "Due · ") + this._formatDate(due) : "No confirmed deadline") +
         '</span><span class="tile-link">' + (kind === "question" ? (task.confirmation_required ? "Answer question" : "Review sign-in") : "Open matter") + ' →</span></button>';
     }).join("");
     return '<nav class="overview-tabs" aria-label="Matter views">' + tabs + '</nav>' +

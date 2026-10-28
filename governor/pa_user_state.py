@@ -343,7 +343,7 @@ def _project_task(task, now_ts, today):
         severity = "normal"
     projected = {
         "id": str(task.get("id", "")),
-        "title": (("Confirm whether to track: " if confirmation=="optional_commitment" else "Review source for: " if confirmation=="source_unavailable" else "") + str(task.get("title") or "Untitled task"))[:200],
+        "title": (("Confirm whether to track: " if confirmation=="optional_commitment" else "Review source for: " if confirmation=="source_unavailable" else "Review past event: " if confirmation=="past_event_status" else "") + str(task.get("title") or "Untitled task"))[:200],
         "confirmation_required": confirmation,
         "extracted_date": extracted_date,
         "status": "OPEN" if confirmation else status,

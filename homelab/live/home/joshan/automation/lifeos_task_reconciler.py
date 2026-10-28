@@ -22,7 +22,7 @@ sys.path.insert(0,str(REPO))
 from governor import ai_broker
 from lifeos_email_paperless_selective import secret, paperless_token
 from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state, explicit_tracking
-from governor.pa_source_disposition import KINDS, non_obligation_kind, non_obligation_decision, task_quality_category
+from governor.pa_source_disposition import KINDS, non_obligation_kind, non_obligation_decision, task_quality_category, event_notice
 
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
@@ -164,6 +164,7 @@ def hold_source_non_obligation(task,sources,user_state):
     task["source_disposition_checks"]={"sources":len(ids),"missing":len(ids)-len(kinds),
         "non_obligation":sum(bool(kind) for kind in kinds.values()),"user_tracking":protected,"user_closed":user_closed,
         "kind_counts":{kind:sum(value==kind for value in kinds.values()) for kind in sorted(KINDS)},
+        "event_notices":sum(event_notice(sources[source]) for source in ids if source in sources),
         "reason_counts":{reason:sum(decision[1]==reason for decision in decisions.values()) for reason in ("mandatory_request","accepted_commitment","transactional_or_subject_uncertainty","unclassified")}}
     prior=task.get("obligation_suppressed")
     managed=prior in KINDS or prior=="non_obligation_updates"
@@ -196,7 +197,13 @@ def flag_unconfirmed_commitment(task,user_state):
     if checks.get("missing",0)>0:
         task["confirmation_required"]="source_unavailable"
         if task.get("due_date") and not date_verified:task["date_confirmation_required"]=True
-    elif task_quality_category(task)=="optional_opportunity" and not date_verified:
+    elif task_quality_category(task)=="scheduled_event" and not date_verified:
+        try: elapsed=date.fromisoformat(str(task.get("due_date")))<date.today()
+        except (TypeError,ValueError):elapsed=False
+        if elapsed and checks.get("sources",0)>0 and checks.get("event_notices")==checks.get("sources"):
+            task["confirmation_required"]="past_event_status"
+            task["date_confirmation_required"]=True
+    elif task_quality_category(task) in {"optional_opportunity","optional_feedback","optional_change_window"} and not date_verified:
         reasons=checks.get("reason_counts") or {}
         if (checks.get("sources",0)>0 and reasons.get("unclassified",0)>0
                 and not any(reasons.get(key,0) for key in ("mandatory_request","accepted_commitment","transactional_or_subject_uncertainty"))):
