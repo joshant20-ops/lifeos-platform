@@ -92,7 +92,7 @@ def insurance_quote_only(message):
     body=html.unescape(" ".join(str(message.get(k) or "") for k in ("body","text","snippet")))
     text=re.sub(r"<[^>]*>"," ",subject+" "+body)
     if not re.search(r"\b(?:insurance|insurer|policy|cover)\b",text,re.I):return False
-    quote=bool(re.search(r"\b(?:quotes?|quotations?)\b",subject,re.I) or re.search(r"\b(?:this is (?:only |just )?a quote|not (?:an? )?(?:insurance )?policy)\b",text,re.I))
+    quote=bool(re.search(r"\b(?:quotes?|quotations?)\b",subject,re.I) or re.search(r"\b(?:this is (?:only |just )?a quote|your (?:insurance )?quotes?|(?:insurance|renewal) quotes?|quotation (?:reference|details)|not (?:an? )?(?:insurance )?policy)\b",text,re.I))
     policy=bool(re.search(r"\b(?:your (?:current|existing) policy|your policy (?:expires|ends|renews)|renewal (?:notice|invitation)|certificate of (?:motor )?insurance|policy (?:has been issued|is now active)|cover is (?:now )?in force)\b",text,re.I))
     request=bool(re.search(r"\b(?:please|you (?:must|need to))\s+(?:review|confirm|correct|provide|send|pay|sign)\b",text,re.I))
     return quote and not policy and not request
@@ -100,6 +100,8 @@ def insurance_quote_only(message):
 
 def hold_quote_only_obligation(task,sources):
     ids=task_source_message_ids(task)
+    if insurance_matter(task):
+        task["quote_source_diagnostics"]={"sources":len(ids),"missing":sum(source not in sources for source in ids),"quote_only":sum(source in sources and insurance_quote_only(sources[source]) for source in ids),"verified_policy_date":task.get("due_date_source")=="paperless_policy"}
     if (not insurance_matter(task) or not ids or task.get("due_date_source")=="paperless_policy"
             or not all(source in sources and insurance_quote_only(sources[source]) for source in ids)):
         return False

@@ -99,3 +99,7 @@ def test_multi_message_quote_hold_requires_every_source_and_preserves_notes():
     assert len(task["source_message_ids"])==2
     task["due_date_source"]="paperless_policy"
     assert not reconciler.hold_quote_only_obligation(task,{"<a@example.test>":quote,"<b@example.test>":quote})
+
+
+def test_quote_offer_in_body_with_generic_renewal_subject():
+    assert reconciler.insurance_quote_only({"subject":"Car insurance renewal reminder","body":"Your insurance quotes are ready. Compare your quote before it expires."})

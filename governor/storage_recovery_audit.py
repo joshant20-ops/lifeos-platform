@@ -253,7 +253,7 @@ def main():
         tasks=json.loads(path.read_text())
         held=[row for row in tasks.get("informational",[]) if row.get("obligation_suppressed")=="quote_only_no_verified_policy"]
         exposed=[row for row in tasks.get("tasks",[]) if row.get("obligation_suppressed")=="quote_only_no_verified_policy"]
-        print("PA_QUOTE_PROJECTION=" + json.dumps({"active_insurance_renewals":sum(bool(re.search(r"insurance",str(row.get("title") or ""),re.I) and re.search(r"renew",str(row.get("title") or ""),re.I)) for row in tasks.get("tasks",[])),"held_informational":len(held),"held_still_actionable":len(exposed),"errors":tasks.get("errors"),"age_seconds":int(__import__("time").time())-int(tasks.get("generated_time") or 0)}))
+        print("PA_QUOTE_PROJECTION=" + json.dumps({"source_checks":[row["quote_source_diagnostics"] for row in tasks.get("tasks",[])+tasks.get("informational",[]) if isinstance(row.get("quote_source_diagnostics"),dict)],"active_insurance_renewals":sum(bool(re.search(r"insurance",str(row.get("title") or ""),re.I) and re.search(r"renew",str(row.get("title") or ""),re.I)) for row in tasks.get("tasks",[])),"held_informational":len(held),"held_still_actionable":len(exposed),"errors":tasks.get("errors"),"age_seconds":int(__import__("time").time())-int(tasks.get("generated_time") or 0)}))
     except Exception: print("PA_QUOTE_PROJECTION=UNAVAILABLE")
     print("RECOVERY_DIAGNOSTIC_MUTATIONS=NONE")
 if __name__ == "__main__": main()
