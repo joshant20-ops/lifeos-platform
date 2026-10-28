@@ -10,7 +10,7 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ai_broker import BrokerError, generate
-from pa_user_state import apply_user_state, mutate_action, read_user_state
+from pa_user_state import apply_user_state, mutate_action, read_user_state, project_task_for_attention
 import re
 
 PRIVACY_DOMAIN_POLICY_PATH = pathlib.Path(os.environ.get("LIFEOS_PRIVACY_DOMAIN_POLICY", pathlib.Path(__file__).with_name("privacy-domain-policy.json")))
@@ -140,27 +140,25 @@ def pa_structured_answer(question, payload=None, now_ts=None):
     attention=payload.get("attention") if isinstance(payload.get("attention"),dict) else {}
     now_ts=int(now_ts if now_ts is not None else time.time())
     if route=="needs_me":
-        items=list(attention.get("needs_me") or [x for x in payload.get("tasks",[]) if x.get("status")=="OPEN"])
+        items=list(attention.get("needs_me") or [])
         if query_term:
             tokens=[x for x in re.findall(r"[a-z0-9]+",query_term) if len(x)>1]
             # Attention cards intentionally truncate titles. Resolve targeted
             # retrieval against the full v3 rows, then exclude non-open and
             # snoozed obligations using the same derived status/attention view.
             snoozed_ids={str(x.get("id") or "") for x in (attention.get("snoozed") or []) if isinstance(x,dict)}
-            full_rows=[x for x in payload.get("tasks",[]) if isinstance(x,dict) and str(x.get("status") or "").upper()=="OPEN" and str(x.get("id") or "") not in snoozed_ids]
-            items=[x for x in full_rows if tokens and all(t in " ".join(str(x.get(k) or "") for k in ("title","topic","counterparty","id")).lower() for t in tokens)]
+            full_rows=[x for x in payload.get("tasks",[]) if isinstance(x,dict) and project_task_for_attention(x,now_ts).get("status")=="OPEN" and str(x.get("id") or "") not in snoozed_ids]
+            items=[project_task_for_attention(x,now_ts) for x in full_rows if tokens and all(t in " ".join(str(x.get(k) or "") for k in ("title","topic","counterparty","id")).lower() for t in tokens)]
         label="Needs me"
     elif route=="waiting_on_others":
-        items=list(attention.get("waiting_on_others") or [x for x in payload.get("tasks",[]) if x.get("status")=="WAITING"])
+        items=list(attention.get("waiting_on_others") or [])
         label="Waiting on others"
     elif route=="due":
         items=list(attention.get("due_overdue") or [])+list(attention.get("upcoming") or [])
-        if not items:
-            items=[x for x in payload.get("tasks",[]) if x.get("status") in {"OPEN","WAITING"} and x.get("due_date")]
         label="Due soon or overdue"
     elif route=="changed":
         all_items=list(payload.get("tasks",[]))+list(payload.get("resolved",[]))
-        items=[x for x in all_items if 0<=now_ts-int(x.get("observed_at") or 0)<=7*86400]
+        items=[project_task_for_attention(x,now_ts) for x in all_items if 0<=now_ts-int(x.get("observed_at") or 0)<=7*86400]
         items.sort(key=lambda x:(-int(x.get("observed_at") or 0),str(x.get("id",""))))
         label="Observed in source messages during the last seven days"
     else:
@@ -173,7 +171,7 @@ def pa_structured_answer(question, payload=None, now_ts=None):
             evidence_text=" ".join(str(x.get(k) or "") for x in evidence if isinstance(x,dict) for k in ("title","document_id"))
             haystack=(text+" "+evidence_text).lower()
             if tokens and all(token in haystack for token in tokens):
-                items.append(task)
+                items.append(project_task_for_attention(task,now_ts))
         label="Paperless evidence references"
     unique=[]
     seen=set()

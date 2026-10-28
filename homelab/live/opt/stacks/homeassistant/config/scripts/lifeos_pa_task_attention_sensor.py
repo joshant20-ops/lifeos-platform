@@ -114,14 +114,25 @@ def main():
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         projected_items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason") }, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required") }, "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ]
+        for item in projected_items:
+            flag=item.get("confirmation_required")
+            item["date_verified"]=item.get("due_date_source") in {"user","paperless_policy"}
+            if item.get("date_confirmation_required") and not item["date_verified"]:
+                item["extracted_date"]=item.get("due_date")
+                item["due_date"]=None
+            if flag in {"optional_commitment","source_unavailable"} and item.get("status") in {"OPEN","WAITING"}:
+                item["original_title"]=item.get("title")
+                if not item.get("date_confirmation_required"):item["extracted_date"]=item.get("due_date")
+                item["title"]=("Confirm whether to track: " if flag=="optional_commitment" else "Review source for: ")+str(item.get("title") or "Source matter")
+                if not item["date_verified"]:item["due_date"]=None
         # Older cached cards interpret every OPEN row in items as an action.
         # Retained information must have its own channel across UI upgrades.
         items=[item for item in projected_items if not item.get("obligation_suppressed")][:100]
         reference_items=[item for item in projected_items if item.get("obligation_suppressed")][:100]
-        questions=sum(any(e.get("answer")!="yes" for e in x.get("sign_in_events") or []) and not any(e.get("answer")=="no" for e in x["sign_in_events"]) and x.get("status") in {"OPEN","WAITING"} and not x.get("snoozed") and not x.get("obligation_suppressed") for x in items)
+        questions=sum((x.get("confirmation_required") in {"optional_commitment","source_unavailable"} or any(e.get("answer")!="yes" for e in x.get("sign_in_events") or []) and not any(e.get("answer")=="no" for e in x["sign_in_events"])) and x.get("status") in {"OPEN","WAITING"} and not x.get("snoozed") and not x.get("obligation_suppressed") for x in items)
         state = "attention" if counts["needs_me"] or counts["overdue"] else "clear"
         out = {
             "state": state,

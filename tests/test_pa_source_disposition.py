@@ -125,6 +125,81 @@ class SourceDispositionTests(unittest.TestCase):
         self.assertFalse(reconciler.hold_source_non_obligation(row,{'<source@example.test>':message('Please submit the evidence we requested.')},{}))
         self.assertEqual(row['status'],'OPEN')
 
+class CommitmentReviewTests(unittest.TestCase):
+    def unknown_role(self):
+        row={**task(),'title':'Apply for a trustee position','due_date':'2026-07-20'}
+        reconciler.hold_source_non_obligation(row,{'<source@example.test>':message('Election details for members.')},{})
+        return row
+
+    def test_unknown_commitment_becomes_question_not_overdue_obligation(self):
+        row=self.unknown_role();reconciler.flag_unconfirmed_commitment(row,{})
+        self.assertEqual(row['confirmation_required'],'optional_commitment')
+        view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','generated_time':1793180000,'tasks':[row]}, {'obligations':{}})
+        self.assertEqual(view['attention']['counts']['overdue'],0)
+        self.assertIn('Confirm whether to track:',view['attention']['needs_me'][0]['title'])
+        self.assertEqual(row['due_date'],'2026-07-20')
+
+    def test_yes_confirms_tracking_without_verifying_an_unavailable_date(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'state.json';row={**task(),'due_date':'2026-07-20'}
+            reconciler.hold_source_non_obligation(row,{},{});reconciler.flag_unconfirmed_commitment(row,{})
+            self.assertTrue(row['date_confirmation_required'])
+            user_state.mutate_action(row['id'],'reopen',path=path)
+            view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','generated_time':1793180000,'tasks':[row]},user_state.read_user_state(path))
+            current=view['tasks'][0]
+            self.assertNotIn('confirmation_required',current)
+            self.assertTrue(current['date_confirmation_required'])
+            self.assertEqual(view['attention']['counts']['overdue'],0)
+            self.assertIsNone(view['attention']['needs_me'][0]['due_date'])
+            user_state.mutate_action(row['id'],'due_date',due_date='2026-07-20',path=path)
+            dated=user_state.apply_user_state(view,user_state.read_user_state(path))
+            self.assertEqual(dated['attention']['counts']['overdue'],1)
+            self.assertNotIn('date_confirmation_required',dated['tasks'][0])
+
+    def test_waiting_process_source_review_is_a_question_needing_the_user(self):
+        row={**task(),'status':'WAITING'}
+        reconciler.hold_source_non_obligation(row,{},{});reconciler.flag_unconfirmed_commitment(row,{})
+        view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[row]}, {'obligations':{}})
+        self.assertEqual(view['attention']['counts']['needs_me'],1)
+        self.assertEqual(view['attention']['needs_me'][0]['source_status'],'WAITING')
+        self.assertEqual(view['tasks'][0]['status'],'WAITING')
+
+    def test_verified_policy_deadline_survives_missing_email_review(self):
+        row={**task(),'due_date':'2026-07-20','due_date_source':'paperless_policy','date_confirmation_required':True}
+        reconciler.hold_source_non_obligation(row,{},{});reconciler.flag_unconfirmed_commitment(row,{})
+        self.assertEqual(row['confirmation_required'],'source_unavailable')
+        self.assertNotIn('date_confirmation_required',row)
+        view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','generated_time':1793180000,'tasks':[row]}, {'obligations':{}})
+        self.assertEqual(view['tasks'][0]['due_date_source'],'paperless_policy')
+        self.assertEqual(view['attention']['counts']['overdue'],1)
+        self.assertEqual(view['attention']['needs_me'][0]['due_date'],'2026-07-20')
+
+    def test_required_application_evidence_stays_actionable(self):
+        row={**task(),'title':'Apply for a trustee position'}
+        reconciler.hold_source_non_obligation(row,{'<source@example.test>':message('Please provide identification for your application.')},{})
+        reconciler.flag_unconfirmed_commitment(row,{})
+        self.assertNotIn('confirmation_required',row)
+
+    def test_missing_source_is_reviewed_never_auto_closed(self):
+        row=task();reconciler.hold_source_non_obligation(row,{},{});reconciler.flag_unconfirmed_commitment(row,{})
+        self.assertEqual(row['confirmation_required'],'source_unavailable');self.assertEqual(row['status'],'OPEN')
+
+    def test_explicit_answer_survives_replay_and_preserves_sources(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path=Path(directory)/'state.json';row=self.unknown_role();reconciler.flag_unconfirmed_commitment(row,{})
+            original_sources=list(row['source_message_ids'])
+            for action,expected in [('reopen','OPEN'),('dismiss','DISMISSED')]:
+                user_state.mutate_action(row['id'],action,path=path)
+                overlay=user_state.read_user_state(path)
+                view=user_state.apply_user_state({'schema':'lifeos_tasks_v3','tasks':[row]},overlay)
+                result=(view['tasks']+view['resolved'])[0]
+                self.assertEqual(result['status'],expected)
+                if action=='reopen':self.assertNotIn('confirmation_required',result)
+                reconciler.flag_unconfirmed_commitment(row,overlay)
+                self.assertNotIn('confirmation_required',row)
+                self.assertEqual(row['source_message_ids'],original_sources)
+
+
 class ArchiveSourceTests(unittest.TestCase):
     class Mailbox:
         def __init__(self,wrong=False):
