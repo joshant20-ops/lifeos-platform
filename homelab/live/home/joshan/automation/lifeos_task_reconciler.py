@@ -132,7 +132,7 @@ def sign_in_event(message):
         return None
     if not re.search(r"\b(?:login|log in|sign[- ]?in)\b",text,re.I):
         return None
-    if not re.search(r"\b(?:new (?:login|sign[- ]?in)|did you (?:just )?(?:log|sign) in|(?:login|sign[- ]?in) (?:detected|from a new device)|was this you)\b",text,re.I):
+    if not re.search(r"\b(?:new (?:login|sign[- ]?in)|did you (?:just )?(?:log|sign) in|(?:login|sign[- ]?in) (?:alert|attempt|detected|from a new device))\b",text,re.I):
         return None
     try: received=int(parsedate_to_datetime(str(message.get("date") or "")).timestamp())
     except (TypeError,ValueError,OverflowError): received=None

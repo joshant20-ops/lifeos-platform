@@ -31,11 +31,21 @@ class MatterOverviewTests(unittest.TestCase):
         with patch.object(reconciler.ai_broker,"_ollama",side_effect=AssertionError("no inference needed")):
             self.assertTrue(reconciler.classify(source())["actionable"])
         self.assertFalse(reconciler.has_explicit_no_action_required(source()))
-        for message in [source(subject="Your verification code",body="Your one-time code is 123456"),source(subject="Account security",body="Enable MFA to protect your account"),source(subject="Password changed",body="Was this you?"),source(**{"from":"OpenAI <sender@example.test>"})]:
+        for message in [source(subject="Your verification code",body="Your one-time code is 123456"),source(subject="Account security",body="Enable MFA to protect your account"),source(subject="Password changed",body="Was this you? Sign in to review your account."),source(**{"from":"OpenAI <sender@example.test>"})]:
             self.assertIsNone(reconciler.sign_in_event(message))
         event=reconciler.sign_in_event(source(date="invalid"))
         self.assertIsNone(event["email_received_at"])
         self.assertIsNone(event["device"])
+
+    def test_native_card_guard_accepts_the_actual_dynamic_button_implementation(self):
+        # The attribute is assembled from an answer value at render time.
+        card=(ROOT/"homeassistant/www/lifeos-pa-task-card.js").read_text()
+        audit=(ROOT/"scripts/accept-pa-governed-actions.py").read_text()
+        import ast
+        tree=ast.parse(audit)
+        marker_tuples=[node for node in ast.walk(tree) if isinstance(node,ast.Tuple) and any(isinstance(value,ast.Constant) and value.value=="_overviewMarkup" for value in node.elts)]
+        self.assertEqual(len(marker_tuples),1)
+        self.assertTrue(all(marker in card for marker in ast.literal_eval(marker_tuples[0])))
 
     def test_all_yes_replay_and_new_alert_remain_event_scoped(self):
         a,b=source(),source("b")

@@ -351,7 +351,7 @@ def main():
         assert item.get("obligation_suppressed")==source_row.get("obligation_suppressed")
         assert {event["id"] for event in item.get("sign_in_events") or []}=={event["id"] for event in source_row.get("sign_in_events") or []}
     card_text=CARD.read_text()
-    assert all(marker in card_text for marker in ("_overviewMarkup", "data-tab", "signin_yes", "signin_no", "signin_unsure", "Renewal date: not confirmed"))
+    assert all(marker in card_text for marker in ("_overviewMarkup", "data-tab", "signin_yes", "signin_no", "Not sure — review activity", "Renewal date: not confirmed"))
     print("PA_OVERVIEW_UNIQUE_MATTERS=PASS")
     print("PA_OVERVIEW_INFORMATION="+str(len(information)))
     print("PA_OVERVIEW_QUESTIONS="+str(len(questions)))
