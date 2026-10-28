@@ -92,8 +92,8 @@ def insurance_quote_only(message):
     body=html.unescape(" ".join(str(message.get(k) or "") for k in ("body","text","snippet")))
     text=re.sub(r"<[^>]*>"," ",subject+" "+body)
     if not re.search(r"\b(?:insurance|insurer|policy|cover)\b",text,re.I):return False
-    quote=bool(re.search(r"\b(?:quote|quotation)\b",subject,re.I) or re.search(r"\b(?:this is (?:only |just )?a quote|not (?:an? )?(?:insurance )?policy)\b",text,re.I))
-    policy=bool(re.search(r"\b(?:your (?:current|existing) policy|certificate of (?:motor )?insurance|policy (?:has been issued|is now active)|cover is (?:now )?in force)\b",text,re.I))
+    quote=bool(re.search(r"\b(?:quotes?|quotations?)\b",subject,re.I) or re.search(r"\b(?:this is (?:only |just )?a quote|not (?:an? )?(?:insurance )?policy)\b",text,re.I))
+    policy=bool(re.search(r"\b(?:your (?:current|existing) policy|your policy (?:expires|ends|renews)|renewal (?:notice|invitation)|certificate of (?:motor )?insurance|policy (?:has been issued|is now active)|cover is (?:now )?in force)\b",text,re.I))
     request=bool(re.search(r"\b(?:please|you (?:must|need to))\s+(?:review|confirm|correct|provide|send|pay|sign)\b",text,re.I))
     return quote and not policy and not request
 
