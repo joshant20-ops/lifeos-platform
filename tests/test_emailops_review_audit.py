@@ -64,7 +64,7 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
                             audit.audit('secret-fixture', fetcher)
                     else:
                         self.assertEqual(audit.audit('secret-fixture', fetcher), 1)
-                        self.assertEqual([token for _, token in calls], ['secret-fixture', None, None, 'secret-fixture', None, 'secret-fixture'])
+                        self.assertEqual([token for _, token in calls], ['secret-fixture', None, 'secret-fixture', None, 'secret-fixture', None, 'secret-fixture'])
 
     def test_redirects_are_not_followed_with_a_credential(self):
         self.assertIsNone(audit.NoRedirect().redirect_request(None, None, 302, '', {}, 'https://example.test'))
@@ -82,3 +82,13 @@ class EmailOpsReviewAuditTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SampleRouteReadinessTests(unittest.TestCase):
+    def test_temporary_missing_route_is_bounded_and_auth_failure_is_not_retried(self):
+        replies=iter([404,503,200])
+        calls=[]
+        audit.wait_for_sample_route('synthetic',lambda path,token:(next(replies),{},b''),calls.append)
+        self.assertEqual(calls,[3,3])
+        with self.assertRaisesRegex(audit.AuditFailure,'samples_readiness_http'):
+            audit.wait_for_sample_route('synthetic',lambda path,token:(401,{},b''),lambda _:self.fail('must not retry'))
