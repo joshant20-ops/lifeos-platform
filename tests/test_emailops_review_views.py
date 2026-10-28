@@ -62,6 +62,7 @@ class ReviewViewTests(unittest.TestCase):
                 sample.write_text(json.dumps({"schema":"lifeos_emailops_comparison_v1","mode":"shadow",
                     "generated_at":int(time.time()),"results":[{"source_message_ids":["<unmatched@example.test>"],
                     "matched_task_ids":[],"summary":"<script>synthetic</script>","proposals":[]}]}))
+                sample.chmod(0o600)
                 response = await hass.views[2].get(None)
                 self.assertEqual(response.status,200)
                 self.assertIn("private",response.headers["Cache-Control"])

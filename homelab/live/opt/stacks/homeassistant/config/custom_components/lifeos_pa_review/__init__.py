@@ -126,10 +126,11 @@ class LifeOSEmailOpsSamplesView(HomeAssistantView):
         path = EMAILOPS_PREVIEWS / "samples.json"
         try:
             def read():
-                if path.is_symlink() or path.stat().st_size > 2 * 1024 * 1024:
+                if path.is_symlink() or path.stat().st_size > 2 * 1024 * 1024 or path.stat().st_mode & 0o077:
                     raise ValueError("unsafe")
                 return json.loads(path.read_text())
             payload = await self.hass.async_add_executor_job(read)
+            if not isinstance(payload, dict): raise ValueError("invalid")
             age = time.time() - int(payload.get("generated_at") or 0)
             if (payload.get("schema") != "lifeos_emailops_comparison_v1"
                     or payload.get("mode") != "shadow" or not 0 <= age < 7 * 86400
@@ -137,6 +138,7 @@ class LifeOSEmailOpsSamplesView(HomeAssistantView):
                 raise ValueError("invalid")
             samples = []
             for row in payload["results"]:
+                if not isinstance(row, dict): raise ValueError("invalid")
                 ids = row.get("source_message_ids")
                 if not isinstance(ids, list) or len(ids) != 1 or not re.fullmatch(r"<[^<>\s\x00-\x1f]{1,298}>", str(ids[0])):
                     raise ValueError("identity")
