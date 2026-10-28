@@ -335,7 +335,11 @@ def main():
     # Read-only acceptance of the new matter overview against the real projection.
     final_view=hass_projection()
     final_payload=current_view()
-    items=final_view.get("items") or []
+    actionable_items=final_view.get("items") or []
+    reference_items=final_view.get("reference_items") or []
+    assert not any(item.get("obligation_suppressed") for item in actionable_items), "overview_legacy_action_channel_contains_information"
+    assert all(item.get("obligation_suppressed") for item in reference_items), "overview_reference_channel_invalid"
+    items=actionable_items+reference_items
     ids=[item["id"] for item in items]
     assert len(ids)==len(set(ids)), "overview_duplicate_matter"
     information=[item for item in items if item.get("obligation_suppressed")]
@@ -352,11 +356,15 @@ def main():
         assert {event["id"] for event in item.get("sign_in_events") or []}=={event["id"] for event in source_row.get("sign_in_events") or []}
     card_text=CARD.read_text()
     assert all(marker in card_text for marker in ("_overviewMarkup", "data-tab", "signin_yes", "signin_no", "Not sure — review activity", "Renewal date: not confirmed"))
+    expected_resource="/local/lifeos-pa-task-card.js?v="+hashlib.sha256(CARD.read_bytes()).hexdigest()[:12]
+    assert any(resource.get("id")=="lifeos-pa-task-card" and resource.get("type")=="module" and resource.get("url")==expected_resource for resource in read_json(RESOURCES).get("data",{}).get("items",[])), "overview_card_resource_version_mismatch"
+    print("PA_OVERVIEW_CARD_VERSION=PASS")
     print("PA_OVERVIEW_UNIQUE_MATTERS=PASS")
     print("PA_OVERVIEW_INFORMATION="+str(len(information)))
     print("PA_OVERVIEW_QUESTIONS="+str(len(questions)))
     print("PA_OVERVIEW_SIGNIN_SOURCES="+str(sum(len(item.get("sign_in_events") or []) for item in items)))
     print("PA_OVERVIEW_INFORMATION_NONACTIONABLE=PASS")
+    print("PA_OVERVIEW_CACHED_CARD_COMPATIBILITY=PASS")
     print("PA_OVERVIEW_SOURCE_PARITY=PASS")
     print("PA_OVERVIEW_RUNTIME=PASS")
     print("GATE_H_LIVE_ACCEPTANCE=PASS")

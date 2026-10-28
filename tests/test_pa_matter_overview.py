@@ -116,7 +116,12 @@ class MatterOverviewTests(unittest.TestCase):
             with patch.object(sensor,"TASKS",path),patch.object(sensor,"read_user_state",return_value={"obligations":{}}),contextlib.redirect_stdout(out):sensor.main()
             view=json.loads(out.getvalue())
             self.assertEqual(view["questions"],1);self.assertEqual(view["information"],1)
-            self.assertEqual(len(view["items"]),2)
+            self.assertEqual(len(view["items"]),1)
+            self.assertEqual(len(view["reference_items"]),1)
+            self.assertFalse(any(item.get("obligation_suppressed") for item in view["items"]))
+            # The old card sees only items and chooses OPEN/WAITING rows. A
+            # retained quote must stay out even before the JS module refreshes.
+            self.assertNotIn("quote",[item["id"] for item in view["items"] if item.get("status") in {"OPEN","WAITING"}])
             self.assertNotIn("body",json.dumps(view))
 
 if __name__=="__main__": unittest.main()

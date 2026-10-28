@@ -3,7 +3,9 @@
 The PA page opens a concise daily list, then opens one selected matter on demand.
 Today includes undated and due/overdue actions and questions; Upcoming shows
 future dated work; Waiting keeps source-derived waiting matters separate;
-Reference shows retained quote-only information. All matters includes closed
+Reference shows retained quote-only information. Reference rows are published in
+`reference_items`, never the legacy actionable `items` channel, so an old cached
+card cannot present them as tasks during rollout. All matters includes closed
 and snoozed rows. The existing bounded sensor projection is retained; if there
 are more than 100 matters, the page states how many are shown. No second task
 manager, source store or classifier service is introduced.
