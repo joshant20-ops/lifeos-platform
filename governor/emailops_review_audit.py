@@ -59,6 +59,18 @@ def expected_preview(payload):
     }
 
 
+
+def wait_for_sample_route(token, fetcher=fetch, pause=time.sleep):
+    """HTTP can be ready before HA registers custom integration routes."""
+    for attempt in range(60):
+        status, _, _ = fetcher('/api/lifeos_emailops_samples', token)
+        if status == 200:
+            return
+        require(status in {404,503}, 'samples_readiness_http')
+        if attempt < 59:
+            pause(3)
+    raise AuditFailure('samples_route_not_ready')
+
 def audit(token, fetcher=fetch):
     status, _, _ = fetcher('/api/', token)
     require(status == 200, 'ha_credential_rejected' if status in {401, 403} else 'ha_api_unavailable')
@@ -78,6 +90,7 @@ def audit(token, fetcher=fetch):
             'report_not_fresh')
     task_ids = {task_id for result in report['results'] for task_id in result['matched_task_ids']}
     require(bool(task_ids) and len(task_ids) <= 600, 'matched_tasks_invalid')
+    wait_for_sample_route(token, fetcher)
     checked = 0
     for task_id in sorted(task_ids):
         require(isinstance(task_id, str) and TASK_ID.fullmatch(task_id), 'task_id_invalid')
