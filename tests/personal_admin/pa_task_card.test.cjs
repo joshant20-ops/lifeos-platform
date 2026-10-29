@@ -84,22 +84,25 @@ test('answering a commitment question dispatches the existing user overlay actio
  assert.equal(calls[0][2].action,'dismiss');assert.equal(calls[0][2].task_id,'role');
 });
 
-
-test('waiting matters show who and what is pending, and state when context is missing',()=>{
+test('waiting matters expose missing context explicitly',()=>{
  const card=new Card();card._config={};card._overviewTab='waiting';
- const row={id:'order',title:'Order 3000462335 placed',status:'WAITING',waiting_context:{
-  counterparty:'Store & Co',topic:'Order 3000462335',reason:'Await the dispatch confirmation, then check the tracking link.'
- }};
- const tile=card._overviewMarkup([row]);
- assert.match(tile,/Waiting on Store &amp; Co/);
- assert.match(tile,/dispatch confirmation/);
- const detail=card._taskCard(row);
- assert.match(detail,/What is this waiting for\?/);
- assert.match(detail,/Waiting on<\/strong> Store &amp; Co/);
- assert.match(detail,/LifeOS source assessment/);
- assert.match(detail,/check the tracking link/);
- assert.doesNotMatch(detail,/<script>/);
- const unclear={id:'unknown-wait',title:'Waiting matter',status:'WAITING'};
- assert.match(card._taskCard(unclear),/expected reply or next step was not captured/i);
- assert.match(card._overviewMarkup([unclear]),/Expected reply or next step not recorded/);
+ const task={id:'synthetic-order',title:'Order TEST1042 placed',status:'WAITING'};
+ const detail=card._taskCard(task,true);
+ assert.match(detail,/At a glance/);
+ assert.match(detail,/Sender not available/);
+ assert.match(detail,/Message details have not been captured/);
+ assert.match(detail,/No next step has been confirmed/);
+ assert.match(card._overviewMarkup([task]),/Expected reply or next step not recorded/);
+});
+
+test('source-backed details show sender and contents without expanding evidence',()=>{
+ const card=new Card();card._config={};
+ const task={id:'synthetic-order',title:'Order placed',status:'WAITING',source_context:{sender:'Device Shop <orders@example.test>',subject:'Order TEST1042 confirmed',summary:'Two smart relays ordered for collection.',waiting_for:'Collection-ready email',next_step:'Bring the order reference when collecting.'}};
+ const detail=card._taskCard(task,true);
+ assert.match(detail,/Device Shop &lt;orders@example.test&gt;/);
+ assert.match(detail,/Two smart relays ordered for collection/);
+ assert.match(detail,/Collection-ready email/);
+ assert.match(detail,/Bring the order reference/);
+ assert.ok(detail.indexOf('At a glance')<detail.indexOf('The story so far'));
+ assert.match(card._waitingSummary(task),/Two smart relays/);
 });

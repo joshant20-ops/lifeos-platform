@@ -101,6 +101,18 @@ def project_waiting_context(task):
         "reason": " ".join(str(task.get("reason") or "").split())[:240],
     }
 
+
+def project_source_context(task):
+    context = task.get("source_context") or {}
+    ids = set(task.get("source_message_ids") or [])
+    if task.get("email_message_id"):
+        ids.add(task["email_message_id"])
+    if not isinstance(context, dict) or not context.get("message_id") or context["message_id"] not in ids:
+        return None
+    return {key: " ".join(str(context.get(key) or "").split())[:limit]
+            for key, limit in (("sender", 200), ("subject", 240), ("sent_at", 100),
+                               ("summary", 400), ("waiting_for", 240), ("next_step", 240))}
+
 def main():
     try:
         payload = apply_user_state(json.loads(TASKS.read_text()), read_user_state())
@@ -123,7 +135,7 @@ def main():
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         projected_items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required") }, "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required") }, "source_context": project_source_context(x), "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ]
         for item in projected_items:

@@ -93,10 +93,26 @@ class LifeOSPATaskCard extends HTMLElement {
     }).join("");
   }
 
+
+  _sourceContextMarkup(task) {
+    const context = task.source_context && typeof task.source_context === "object" ? task.source_context : {};
+    const rows = [
+      ["From", context.sender || "Sender not available in the saved source"],
+      ["About", context.summary || context.subject || "Message details have not been captured"],
+      ["Email subject", context.summary ? context.subject : ""],
+      ["Sent", context.sent_at],
+      ["Waiting for", this._kind(task) === "waiting" ? (context.waiting_for || "The source does not state a specific pending response or event.") : ""],
+      ["Your next step", this._kind(task) === "waiting" ? (context.next_step || "No next step has been confirmed from this source.") : ""],
+    ].filter(([, value]) => value);
+    return '<section class="source-context"><h4>At a glance</h4>' + rows.map(([label, value]) =>
+      '<p><strong>' + this._escape(label) + '</strong> ' + this._escape(value) + '</p>').join("") + '</section>';
+  }
+
   _waitingSummary(task) {
     const context = task.waiting_context && typeof task.waiting_context === "object" ? task.waiting_context : {};
-    const party = String(context.counterparty || "").trim();
-    const reason = String(context.reason || "").trim();
+    const source = task.source_context || {};
+    const party = String(source.sender || context.counterparty || "").trim();
+    const reason = String(source.summary || context.reason || "").trim();
     if (party && reason) return "Waiting on " + party + " · " + reason;
     if (reason) return reason;
     if (party) return "Waiting on " + party + "; expected reply or next step not recorded.";
@@ -234,7 +250,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
-      '</div>' + this._waitingMarkup(task) + (kind === 'information' ? '<p class="matter-explanation">' + this._escape(this._referenceInfo(task)[2]) + '</p>' : '') + this._commitmentMarkup(task) + this._confirmationMarkup(task) + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
+      '</div>' + this._sourceContextMarkup(task) + (kind === 'information' ? '<p class="matter-explanation">' + this._escape(this._referenceInfo(task)[2]) + '</p>' : '') + this._commitmentMarkup(task) + this._confirmationMarkup(task) + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
   }
 
   _render() {
