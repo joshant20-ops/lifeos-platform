@@ -1787,6 +1787,40 @@ EMAIL DATA:
     task["source_context"] = context
 
 
+
+def backfill_shared_order_references(tasks, sources):
+    """Recognise a known order ID in another exact source from the same supplier."""
+    groups={}
+    for task in tasks.values():
+        context=task.get("source_context") or {}
+        source_id=context.get("message_id")
+        source=sources.get(source_id)
+        if not source or source_id not in task_source_message_ids(task):
+            continue
+        sender=source_header(source.get("from"),200)
+        name,address=parseaddr(sender)
+        domain=address.lower().rpartition("@")[2]
+        display=normalize_counterparty(name)
+        supplier=(domain,display)
+        if display in {"shelly","shellyeurope"}:
+            supplier=("supplier","shelly")
+        if not domain or not display:
+            continue
+        groups.setdefault(supplier,[]).append((task,source))
+    matches=0
+    for rows in groups.values():
+        known={ref for _,source in rows for ref in order_reference_ids(source) if len(ref)>=6}
+        for task,source in rows:
+            text=" ".join(str(source.get(key) or "") for key in ("subject","body")).upper()
+            refs=set(task.get("verified_order_refs") or [])
+            for ref in known:
+                if re.search(r"(?<![A-Z0-9])"+re.escape(ref)+r"(?![A-Z0-9])",text):
+                    if ref not in refs:matches+=1
+                    refs.add(ref)
+            task["verified_order_refs"]=sorted(refs)
+    return matches
+
+
 def _run_reconciler():
     set_failure_stage("state_load")
     previous=load_previous()
@@ -1971,6 +2005,7 @@ def _run_reconciler():
     source_summary_budget=[6]
     for task in tasks.values():
         refresh_source_context(task,fetched_by_message_id,source_summary_budget)
+    print("PA_ORDER_REFERENCE_BACKFILLS="+str(backfill_shared_order_references(tasks,fetched_by_message_id)),flush=True)
     print("PA_SOURCE_CONTEXT_PRESENT="+str(sum(bool((task.get("source_context") or {}).get("sender")) for task in tasks.values())),flush=True)
     print("PA_SIGNIN_MATTERS="+str(sum(bool(task.get("sign_in_events")) for task in tasks.values())),flush=True)
     quote_holds=0
