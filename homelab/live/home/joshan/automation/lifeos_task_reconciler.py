@@ -94,7 +94,7 @@ class _VisibleEmailHTML(HTMLParser):
 def text_of(msg):
     plain=[]; rich=[]
     for part in msg.walk():
-        if part.get_filename() or part.get_content_type() not in {"text/plain","text/html"}:
+        if part.get_filename() or part.get_content_maintype() != "text":
             continue
         try:
             text=(part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8","replace")
