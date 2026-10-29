@@ -10,6 +10,7 @@ user-facing task summaries plus stable provenance.
 from __future__ import annotations
 import email, errno, hashlib, html, imaplib, json, os, re, socket, ssl, subprocess, sys, time
 from email.header import decode_header, make_header
+from html.parser import HTMLParser
 from email.utils import parsedate_to_datetime, parseaddr
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -63,12 +64,52 @@ def parse_json(raw):
         if a>=0 and b>a:return json.loads(s[a:b+1])
         raise
 
+class _VisibleEmailHTML(HTMLParser):
+    """Keep visible email text before applying the model-input size limit."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts=[]
+        self.hidden=0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in {"head","style","script","title"}:
+            self.hidden+=1
+        if not self.hidden:
+            if tag in {"br","p","div","tr","td","th","li","table","h1","h2","h3"}:
+                self.parts.append("\n")
+            if tag=="img":
+                self.parts.append(" "+(dict(attrs).get("alt") or "")+" ")
+
+    def handle_endtag(self, tag):
+        if tag in {"head","style","script","title"}:
+            self.hidden=max(0,self.hidden-1)
+        elif not self.hidden and tag in {"p","div","tr","td","th","li","table"}:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+
 def text_of(msg):
-    chunks=[]
-    for p in msg.walk():
-        if p.get_content_maintype()=="text" and not p.get_filename():
-            try: chunks.append((p.get_payload(decode=True) or b"").decode(p.get_content_charset() or "utf-8","replace"))
-            except Exception: pass
+    plain=[]; rich=[]
+    for part in msg.walk():
+        if part.get_filename() or part.get_content_maintype() != "text":
+            continue
+        try:
+            text=(part.get_payload(decode=True) or b"").decode(part.get_content_charset() or "utf-8","replace")
+            if part.get_content_type()=="text/html":
+                parser=_VisibleEmailHTML();parser.feed(text);parser.close()
+                text=" ".join("".join(parser.parts).split())
+                if text:rich.append(text)
+            elif text.strip():
+                plain.append(text.strip())
+        except (LookupError, UnicodeError, ValueError):
+            continue
+    # CSS/template markup must never consume the 12k source-text budget before
+    # the actual order contents. Retain plain text first, plus distinct visible
+    # HTML details when the alternatives differ.
+    chunks=plain+([text for text in rich if text not in plain])
     return "\n".join(chunks)[:12000]
 
 def has_explicit_no_action_required(compact):
@@ -1676,7 +1717,7 @@ def process_task_review_requests():
 def order_reference_ids(message):
     text = " ".join(str(message.get(key) or "") for key in ("subject", "body"))
     values = set()
-    for match in re.finditer(r"\border\s*(?:(?:id|no\.?|number|ref(?:erence)?)\s*)?[:#=-]?\s*([A-Z0-9][A-Z0-9/_-]{3,39})\b", text, re.I):
+    for match in re.finditer(r"\border\s*(?:(?:id|no\.?|number|ref(?:erence)?)\s*)?(?:is\s*)?(?:[:#=-]\s*)*([A-Z0-9][A-Z0-9/_-]{3,39})\b", text, re.I):
         value = re.sub(r"[^A-Z0-9]", "", match.group(1).upper())
         if any(char.isdigit() for char in value):
             values.add(value)
@@ -1718,7 +1759,7 @@ def refresh_source_context(task, sources, summary_budget):
         "briefing_version": old.get("briefing_version") if old.get("message_id") == source_id else None,
     }
     if (str(task.get("status") or "").upper() == "WAITING"
-            and context["briefing_version"] != 1 and summary_budget[0] > 0):
+            and context["briefing_version"] != 2 and summary_budget[0] > 0):
         summary_budget[0] -= 1
         schema = {"type": "object", "properties": {
             key: {"type": "string"} for key in ("summary", "waiting_for", "next_step")
@@ -1738,12 +1779,46 @@ EMAIL DATA:
                 raise ValueError("empty source briefing")
             for key, limit in (("summary", 400), ("waiting_for", 240), ("next_step", 240)):
                 context[key] = " ".join(result[key].split())[:limit]
-            context["briefing_version"] = 1
+            context["briefing_version"] = 2
         except Exception:
             # Metadata remains useful when inference is unavailable. Retry the
             # missing briefing on a later bounded run; never log private output.
             pass
     task["source_context"] = context
+
+
+
+def backfill_shared_order_references(tasks, sources):
+    """Recognise a known order ID in another exact source from the same supplier."""
+    groups={}
+    for task in tasks.values():
+        context=task.get("source_context") or {}
+        source_id=context.get("message_id")
+        source=sources.get(source_id)
+        if not source or source_id not in task_source_message_ids(task):
+            continue
+        sender=source_header(source.get("from"),200)
+        name,address=parseaddr(sender)
+        domain=address.lower().rpartition("@")[2]
+        display=normalize_counterparty(name)
+        supplier=(domain,display)
+        if display in {"shelly","shellyeurope"}:
+            supplier=("supplier","shelly")
+        if not domain or not display:
+            continue
+        groups.setdefault(supplier,[]).append((task,source))
+    matches=0
+    for rows in groups.values():
+        known={ref for _,source in rows for ref in order_reference_ids(source) if len(ref)>=6}
+        for task,source in rows:
+            text=" ".join(str(source.get(key) or "") for key in ("subject","body")).upper()
+            refs=set(task.get("verified_order_refs") or [])
+            for ref in known:
+                if re.search(r"(?<![A-Z0-9])"+re.escape(ref)+r"(?![A-Z0-9])",text):
+                    if ref not in refs:matches+=1
+                    refs.add(ref)
+            task["verified_order_refs"]=sorted(refs)
+    return matches
 
 
 def _run_reconciler():
@@ -1930,6 +2005,7 @@ def _run_reconciler():
     source_summary_budget=[6]
     for task in tasks.values():
         refresh_source_context(task,fetched_by_message_id,source_summary_budget)
+    print("PA_ORDER_REFERENCE_BACKFILLS="+str(backfill_shared_order_references(tasks,fetched_by_message_id)),flush=True)
     print("PA_SOURCE_CONTEXT_PRESENT="+str(sum(bool((task.get("source_context") or {}).get("sender")) for task in tasks.values())),flush=True)
     print("PA_SIGNIN_MATTERS="+str(sum(bool(task.get("sign_in_events")) for task in tasks.values())),flush=True)
     quote_holds=0

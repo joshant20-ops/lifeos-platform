@@ -403,12 +403,14 @@ def main():
     shelly_rows=[row for row in source_by_id.values()
                  if row.get("status") in {"OPEN","WAITING"}
                  and "shelly" in str((row.get("source_context") or {}).get("sender") or row.get("counterparty") or "").lower()
-                 and not row.get("obligation_suppressed")]
+                 ]
     groups={}
     for row in shelly_rows:
         for ref in row.get("verified_order_refs") or []:
             groups.setdefault(ref,set()).add(row["id"])
-    print("PA_SHELLY_ACTIVE_MATTERS="+str(len(shelly_rows)))
+    print("PA_SHELLY_VISIBLE_MATTERS="+str(len(shelly_rows)))
+    print("PA_SHELLY_ACTIVE_MATTERS="+str(sum(not row.get("obligation_suppressed") for row in shelly_rows)))
+    print("PA_SHELLY_INFORMATION_MATTERS="+str(sum(bool(row.get("obligation_suppressed")) for row in shelly_rows)))
     print("PA_SHELLY_SAME_ORDER_GROUPS="+str(sum(len(ids)>1 for ids in groups.values())))
     print("PA_SHELLY_ORDER_IDENTITY_COVERAGE="+str(sum(bool(row.get("verified_order_refs")) for row in shelly_rows)))
 

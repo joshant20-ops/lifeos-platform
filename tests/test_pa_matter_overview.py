@@ -90,6 +90,35 @@ class MatterOverviewTests(unittest.TestCase):
         self.assertEqual(len(sensor.project_source_context(task)['sender']),200)
         self.assertNotIn('message_id',sensor.project_source_context(task))
 
+    def test_html_template_cannot_truncate_the_actual_order_contents(self):
+        markup='<html><head><style>'+('x'*14000)+'</style></head><body><p>Order number is: # TEST1042</p><table><tr><td>Two smart relays</td></tr></table><script>ignore_me()</script></body></html>'
+        msg=reconciler.email.message_from_string('Content-Type: text/html; charset=utf-8\n\n'+markup)
+        text=reconciler.text_of(msg)
+        self.assertIn('Two smart relays',text)
+        self.assertNotIn('ignore_me',text)
+        self.assertLess(len(text),200)
+        self.assertEqual(reconciler.order_reference_ids({'body':text}),{'TEST1042'})
+
+    def test_html_order_metadata_and_plain_text_remain_readable(self):
+        for label in ('Order: # TEST1042','Order No.: TEST1042','Order number is TEST1042','Order #TEST1042'):
+            self.assertEqual(reconciler.order_reference_ids({'subject':label}),{'TEST1042'})
+        msg=reconciler.email.message_from_string('Content-Type: text/plain; charset=utf-8\n\nOrder TEST2042 contains one relay.')
+        self.assertIn('one relay',reconciler.text_of(msg))
+        msg=reconciler.email.message_from_string('Content-Type: text/html; charset=utf-8\n\n<p>Ready</p><img alt><img alt="Smart relay">')
+        self.assertIn('Smart relay',reconciler.text_of(msg))
+
+    def test_shared_order_reference_requires_exact_token_and_same_supplier(self):
+        def sample(key,body,sender='Shop <orders@shop.example.test>'):
+            message=source(key,**{'from':sender,'subject':'Order update','body':body})
+            task={'id':key,'source_message_ids':[message['message_id']],'source_context':{'message_id':message['message_id']},'verified_order_refs':sorted(reconciler.order_reference_ids(message))}
+            return task,message
+        rows=[sample('a','Order TEST1042 created'),sample('b','Reference: TEST1042, two relays'),sample('c','Reference: XTEST1042X'),sample('d','TEST1042','Other <orders@other.example.test>')]
+        tasks={task['id']:task for task,_ in rows};sources={message['message_id']:message for _,message in rows}
+        self.assertEqual(reconciler.backfill_shared_order_references(tasks,sources),1)
+        self.assertEqual(tasks['b']['verified_order_refs'],['TEST1042'])
+        self.assertEqual(tasks['c']['verified_order_refs'],[])
+        self.assertEqual(tasks['d']['verified_order_refs'],[])
+
     def test_native_card_guard_accepts_the_actual_dynamic_button_implementation(self):
         # The attribute is assembled from an answer value at render time.
         card=(ROOT/"homeassistant/www/lifeos-pa-task-card.js").read_text()
@@ -205,3 +234,4 @@ class MatterOverviewTests(unittest.TestCase):
             self.assertNotIn("body",json.dumps(view))
 
 if __name__=="__main__": unittest.main()
+
