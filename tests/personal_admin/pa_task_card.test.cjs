@@ -83,3 +83,23 @@ test('answering a commitment question dispatches the existing user overlay actio
  await card._act({dataset:{id:'role',action:'dismiss'}});
  assert.equal(calls[0][2].action,'dismiss');assert.equal(calls[0][2].task_id,'role');
 });
+
+
+test('waiting matters show who and what is pending, and state when context is missing',()=>{
+ const card=new Card();card._config={};card._overviewTab='waiting';
+ const row={id:'order',title:'Order 3000462335 placed',status:'WAITING',waiting_context:{
+  counterparty:'Store & Co',topic:'Order 3000462335',reason:'Await the dispatch confirmation, then check the tracking link.'
+ }};
+ const tile=card._overviewMarkup([row]);
+ assert.match(tile,/Waiting on Store &amp; Co/);
+ assert.match(tile,/dispatch confirmation/);
+ const detail=card._taskCard(row);
+ assert.match(detail,/What is this waiting for\\?/);
+ assert.match(detail,/Waiting on<\\/strong> Store &amp; Co/);
+ assert.match(detail,/LifeOS source assessment/);
+ assert.match(detail,/check the tracking link/);
+ assert.doesNotMatch(detail,/<script>/);
+ const unclear={id:'unknown-wait',title:'Waiting matter',status:'WAITING'};
+ assert.match(card._taskCard(unclear),/expected reply or next step was not captured/i);
+ assert.match(card._overviewMarkup([unclear]),/Expected reply or next step not recorded/);
+});

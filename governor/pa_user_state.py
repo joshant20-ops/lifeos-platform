@@ -354,6 +354,11 @@ def _project_task(task, now_ts, today):
         "due_bucket": due_bucket,
         "stale_days": stale_days,
         "source": str(task.get("source") or "gmail"),
+        "waiting_context": ({
+            "counterparty": " ".join(str(task.get("counterparty") or "").split())[:100],
+            "topic": " ".join(str(task.get("topic") or "").split())[:120],
+            "reason": " ".join(str(task.get("reason") or "").split())[:240],
+        } if status == "WAITING" else None),
         "source_refs": sorted(set(str(x)[:300] for x in (task.get("source_message_ids") or []) if x))[:5],
         "paperless_evidence": [
             {"document_id": x.get("document_id"), "title": str(x.get("title") or "")[:120]}
@@ -472,6 +477,7 @@ def daily_briefing(attention):
                     "id", "title", "status", "due_date", "severity", "source",
                     "source_refs", "paperless_evidence", "status_source",
                     "user_comments", "snoozed_until", "confirmation_required", "extracted_date",
+                    "waiting_context",
                 )})
             if len(picked) >= 5:
                 break
@@ -523,6 +529,9 @@ def apply_user_state(payload, state=None):
         if base.get("due_date_source")=="user":base.pop("due_date_source",None)
         machine_rows.append(base)
     effective = apply_user_annotations(machine_rows, state, now_ts=generated)
+    for row in effective:
+        if str(row.get("status") or "").upper() != "WAITING":
+            row.pop("waiting_context", None)
     information=apply_user_annotations(payload.get("informational") or [],state,now_ts=generated)
     # Explicit user tracking is a personal commitment, even when the source
     # itself is optional. Never silently demote an active user decision.
