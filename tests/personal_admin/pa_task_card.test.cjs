@@ -94,8 +94,8 @@ test('waiting matters show who and what is pending, and state when context is mi
  assert.match(tile,/Waiting on Store &amp; Co/);
  assert.match(tile,/dispatch confirmation/);
  const detail=card._taskCard(row);
- assert.match(detail,/What is this waiting for\\?/);
- assert.match(detail,/Waiting on<\\/strong> Store &amp; Co/);
+ assert.match(detail,/What is this waiting for\?/);
+ assert.match(detail,/Waiting on<\/strong> Store &amp; Co/);
  assert.match(detail,/LifeOS source assessment/);
  assert.match(detail,/check the tracking link/);
  assert.doesNotMatch(detail,/<script>/);
