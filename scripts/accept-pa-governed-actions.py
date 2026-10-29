@@ -398,6 +398,55 @@ def main():
     for key in ("items","reference_items","questions","information","total_matters"):
         assert live_entity.get(key)==final_view.get(key), "overview_ha_entity_projection_mismatch"
     print("PA_OVERVIEW_ACTUAL_HA_ENTITY=PASS")
+    waiting_rows=[item for item in items if item.get("status")=="WAITING" and not item.get("obligation_suppressed")]
+    for item in waiting_rows:
+        context=item.get("source_context") or {}
+        assert context.get("sender") and context.get("subject"), "waiting_sender_or_subject_missing"
+        assert context.get("summary"), "waiting_plain_language_summary_missing"
+        source_context=source_by_id[item["id"]].get("source_context") or {}
+        assert all(context.get(key)==source_context.get(key) for key in ("sender","subject","summary","waiting_for","next_step")), "waiting_source_context_parity"
+
+    # Render the actual private HA rows with the deployed card. Pass data over
+    # stdin and retain no content in logs, even when the renderer fails.
+    import shutil
+    node=shutil.which("node")
+    if not node:
+        candidates=list(pathlib.Path("/opt/actions-runner-lifeos/externals").glob("node*/bin/node"))
+        node=str(sorted(candidates)[-1]) if candidates else None
+    assert node, "waiting_card_renderer_unavailable"
+    renderer=r"""
+const fs=require('node:fs'),vm=require('node:vm');
+try {
+ let Card;
+ const context={HTMLElement:class {},customElements:{define:(_name,value)=>{Card=value;}},window:{location:{protocol:'http:',hostname:'local.invalid'}},Intl,Date,Set,Map};
+ vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8'),context);
+ const card=new Card();card._config={};
+ for(const item of JSON.parse(fs.readFileSync(0,'utf8'))){
+  const output=card._taskCard(item,true),source=item.source_context;
+  if(!output.includes('At a glance') || !output.includes(card._escape(source.sender)) || !output.includes(card._escape(source.summary)))process.exit(1);
+ }
+} catch (_) {process.exit(1);}
+"""
+    render_check=subprocess.run([node,"-e",renderer,str(CARD)],
+        input=json.dumps(waiting_rows),capture_output=True,text=True,timeout=30)
+    assert render_check.returncode==0, "waiting_actual_ha_rows_not_visible_in_card"
+    print("PA_WAITING_DETAILS_RENDER_ACTUAL_HA=PASS")
+    print("PA_WAITING_SOURCE_CONTEXT_ACTUAL_HA=PASS")
+    print("PA_WAITING_SOURCE_CONTEXT_COUNT="+str(len(waiting_rows)))
+    # Compare private order identifiers locally. Never print identifiers, email
+    # addresses, subjects or the task records into the Actions log.
+    shelly_rows=[row for row in source_by_id.values()
+                 if row.get("status") in {"OPEN","WAITING"}
+                 and "shelly" in str((row.get("source_context") or {}).get("sender") or row.get("counterparty") or "").lower()
+                 and not row.get("obligation_suppressed")]
+    groups={}
+    for row in shelly_rows:
+        for ref in row.get("verified_order_refs") or []:
+            groups.setdefault(ref,set()).add(row["id"])
+    print("PA_SHELLY_ACTIVE_MATTERS="+str(len(shelly_rows)))
+    print("PA_SHELLY_SAME_ORDER_GROUPS="+str(sum(len(ids)>1 for ids in groups.values())))
+    print("PA_SHELLY_ORDER_IDENTITY_COVERAGE="+str(sum(bool(row.get("verified_order_refs")) for row in shelly_rows)))
+
     expected_resource="/local/lifeos-pa-task-card.js?v="+hashlib.sha256(CARD.read_bytes()).hexdigest()[:12]
     assert any(resource.get("id")=="lifeos-pa-task-card" and resource.get("type")=="module" and resource.get("url")==expected_resource for resource in read_json(RESOURCES).get("data",{}).get("items",[])), "overview_card_resource_version_mismatch"
     print("PA_OVERVIEW_CARD_VERSION=PASS")

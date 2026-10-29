@@ -54,6 +54,42 @@ class MatterOverviewTests(unittest.TestCase):
         self.assertIsNone(sensor.project_waiting_context({**source,"status":"OPEN"}))
         self.assertLessEqual(len(sensor.project_waiting_context({**source,"reason":"r"*500})["reason"]),240)
 
+    def test_source_context_backfills_verified_email_without_changing_obligation(self):
+        msg=source('order',**{'from':'=?UTF-8?Q?Device_Shop?= <orders@example.test>','subject':'Order TEST1042 confirmed','body':'Order TEST1042 contains two smart relays.'})
+        task={'id':'synthetic-order','status':'WAITING','due_date':None,'email_message_id':msg['message_id'],'source_message_ids':[msg['message_id']]}
+        answer={'summary':'Two smart relays ordered.','waiting_for':'Collection-ready email','next_step':''}
+        with patch.object(reconciler.ai_broker,'_ollama',return_value=json.dumps(answer)) as model:
+            reconciler.refresh_source_context(task,{msg['message_id']:msg},[1])
+            self.assertEqual(task['source_context']['sender'],'Device Shop <orders@example.test>')
+            self.assertEqual(task['source_context']['summary'],answer['summary'])
+            self.assertEqual(task['status'],'WAITING')
+            self.assertIsNone(task['due_date'])
+            self.assertEqual(task['verified_order_refs'],['TEST1042'])
+            reconciler.refresh_source_context(task,{msg['message_id']:msg},[1])
+            self.assertEqual(model.call_count,1)
+
+    def test_source_context_identity_budget_and_failure_boundaries(self):
+        msg=source('order',subject='Order TEST1042 confirmed')
+        task={'id':'synthetic-order','status':'WAITING','email_message_id':msg['message_id'],'source_message_ids':[msg['message_id']]}
+        with patch.object(reconciler.ai_broker,'_ollama',side_effect=RuntimeError('private model content')) as model:
+            reconciler.refresh_source_context(task,{msg['message_id']:{**msg,'message_id':'<other@example.test>'}},[1])
+            self.assertNotIn('source_context',task)
+            reconciler.refresh_source_context(task,{msg['message_id']:msg},[0])
+            model.assert_not_called()
+            reconciler.refresh_source_context(task,{msg['message_id']:msg},[1])
+            self.assertEqual(task['source_context']['subject'],msg['subject'])
+            self.assertIsNone(task['source_context']['briefing_version'])
+        self.assertNotEqual(reconciler.order_reference_ids(msg),reconciler.order_reference_ids(source(subject='Order TEST2042 confirmed')))
+
+    def test_source_context_sensor_requires_provenance_and_bounds_fields(self):
+        spec=importlib.util.spec_from_file_location('pa_context_sensor',ROOT/'homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py')
+        sensor=importlib.util.module_from_spec(spec);spec.loader.exec_module(sensor)
+        task={'source_message_ids':['<a@example.test>'],'source_context':{'message_id':'<b@example.test>','sender':'x'*500}}
+        self.assertIsNone(sensor.project_source_context(task))
+        task['source_context']['message_id']='<a@example.test>'
+        self.assertEqual(len(sensor.project_source_context(task)['sender']),200)
+        self.assertNotIn('message_id',sensor.project_source_context(task))
+
     def test_native_card_guard_accepts_the_actual_dynamic_button_implementation(self):
         # The attribute is assembled from an answer value at render time.
         card=(ROOT/"homeassistant/www/lifeos-pa-task-card.js").read_text()
