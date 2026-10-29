@@ -237,3 +237,30 @@ def test_ha_user_action_shell_command_uses_env_executable():
     assert command_lines[1].strip().startswith(
         "python3 /config/scripts/lifeos_pa_user_action.py"
     )
+
+
+def test_waiting_projection_carries_source_context_only_for_waiting_matters():
+    now = 1792497600
+    waiting = {
+        **task("WAITING", "tesla-check"),
+        "counterparty": "Tesla",
+        "topic": "Vehicle order identity check",
+        "reason": "Wait for the identity-check email after vehicle assignment.",
+    }
+    view = user_state.apply_user_state(
+        {"schema": "lifeos_tasks_v3", "generated_time": now, "tasks": [waiting], "resolved": []},
+        {"schema": user_state.SCHEMA, "revision": 0, "obligations": {}},
+    )
+    expected = {
+        "counterparty": "Tesla",
+        "topic": "Vehicle order identity check",
+        "reason": "Wait for the identity-check email after vehicle assignment.",
+    }
+    assert view["attention"]["waiting_on_others"][0]["waiting_context"] == expected
+    assert view["briefing"]["items"][0]["waiting_context"] == expected
+
+    open_view = user_state.apply_user_state(
+        {"schema": "lifeos_tasks_v3", "generated_time": now, "tasks": [task()], "resolved": []},
+        {"schema": user_state.SCHEMA, "revision": 0, "obligations": {}},
+    )
+    assert open_view["attention"]["needs_me"][0]["waiting_context"] is None

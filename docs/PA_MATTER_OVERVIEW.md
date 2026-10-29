@@ -6,9 +6,12 @@ future dated work; Waiting keeps source-derived waiting matters separate;
 Reference shows retained quote-only information. Reference rows are published in
 `reference_items`, never the legacy actionable `items` channel, so an old cached
 card cannot present them as tasks during rollout. All matters includes closed
-and snoozed rows. The existing bounded sensor projection is retained; if there
-are more than 100 matters, the page states how many are shown. No second task
-manager, source store or classifier service is introduced.
+and snoozed rows. Waiting details show the known counterparty, matter topic and
+LifeOS's short source assessment. If the source does not establish the expected
+reply or next step, the card says so and keeps the source link visible. No date or
+next action is invented. The existing bounded sensor projection is retained; if
+there are more than 100 matters, the page states how many are shown. No second
+task manager, source store or classifier service is introduced.
 
 Question, action, waiting, information and closed are presentation types. Source
 status, source evidence and persistent user annotations retain their authority.

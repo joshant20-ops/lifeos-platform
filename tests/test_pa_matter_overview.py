@@ -43,6 +43,17 @@ class MatterOverviewTests(unittest.TestCase):
         for key in ("items","reference_items","questions","information","total_matters"):
             self.assertIn("        - "+key+"\n",attributes)
 
+    def test_waiting_context_is_bounded_and_only_projected_for_waiting_items(self):
+        sensor_path=ROOT/"homelab/live/opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py"
+        spec=importlib.util.spec_from_file_location("pa_attention_sensor_waiting_test",sensor_path)
+        sensor=importlib.util.module_from_spec(spec);spec.loader.exec_module(sensor)
+        source={"status":"WAITING","counterparty":" Tesla  Motors ","topic":" Vehicle order ","reason":" Await the identity-check email after assignment. "}
+        self.assertEqual(sensor.project_waiting_context(source),{
+            "counterparty":"Tesla Motors","topic":"Vehicle order","reason":"Await the identity-check email after assignment."
+        })
+        self.assertIsNone(sensor.project_waiting_context({**source,"status":"OPEN"}))
+        self.assertLessEqual(len(sensor.project_waiting_context({**source,"reason":"r"*500})["reason"]),240)
+
     def test_native_card_guard_accepts_the_actual_dynamic_button_implementation(self):
         # The attribute is assembled from an answer value at render time.
         card=(ROOT/"homeassistant/www/lifeos-pa-task-card.js").read_text()
