@@ -13,8 +13,13 @@ def main():
             body = response.read(4097)
             if response.status != 200 or len(body) > 4096:
                 raise ValueError('invalid ping response')
-            if json.loads(body).get('success') is not True:
+            payload = json.loads(body)
+            if not isinstance(payload, dict) or payload.get('success') is not True:
                 raise ValueError('ping unsuccessful')
+        with opener.open('http://127.0.0.1:13378/status', timeout=10) as response:
+            payload = json.loads(response.read(4096))
+            if not isinstance(payload, dict) or payload.get('app') != 'audiobookshelf' or payload.get('serverVersion') != '2.37.2' or payload.get('isInit') is not True:
+                raise ValueError('wrong application or uninitialized server')
         print('AUDIOBOOKS_HTTP=PASS')
         print('AUDIOBOOKS_PING=PASS')
         print('PLAYBACK_VERIFIED=NO')
