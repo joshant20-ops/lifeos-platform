@@ -47,6 +47,7 @@
 ## Source Stacks Present
 
 - `adguard`
+- `audiobookshelf`
 - `homeassistant`
 - `lifeos-energy`
 - `lifeos-engineer-ui`
