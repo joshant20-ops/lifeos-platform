@@ -118,6 +118,38 @@ class AccessAuditTests(unittest.TestCase):
                 self.assertIn('NPM_VAULTWARDEN_ROUTE=ABSENT', output)
                 self.assertIn('NPM_HA_ROUTE=ABSENT', output)
 
+    def test_loopback_vs_lan_probes_emit_only_bounded_codes(self):
+        output = io.StringIO()
+        calls = []
+        def command(*args):
+            calls.append(args)
+            if args[0] == 'ip':
+                return '1.1.1.1 via PRIVATE_GATEWAY dev eth0 src 192.0.2.1 uid 0\n'
+            if args[0] == '/usr/bin/docker':
+                return json.dumps({'app': 'audiobookshelf', 'isInit': True})
+            resolved = args[args.index('--resolve') + 1]
+            if resolved == 'ha.lan:80:127.0.0.1':
+                return '403'
+            if resolved == 'vaultwarden.lan:443:127.0.0.1':
+                return 'not-a-code never-print-this-test-secret 192.0.2.1'
+            if resolved == 'ha.lan:80:192.0.2.1':
+                return '200'
+            raise subprocess.CalledProcessError(1, args, stderr='never-print-private-error')
+        with patch.object(AUDIT, 'certificates', return_value=[]), patch.object(AUDIT.OPENER, 'open', return_value=Response([])), patch.object(AUDIT, 'command', side_effect=command), contextlib.redirect_stdout(output):
+            AUDIT.main()
+        text = output.getvalue()
+        self.assertIn('NPM_HA_LOOPBACK_HTTP=403', text)
+        self.assertIn('NPM_VAULTWARDEN_LOOPBACK_HTTP=INVALID', text)
+        self.assertIn('NPM_HA_LAN_HTTP=200', text)
+        self.assertIn('NPM_VAULTWARDEN_LAN_HTTP=UNAVAILABLE', text)
+        self.assertNotIn('192.0.2.1', text)
+        self.assertNotIn('PRIVATE_GATEWAY', text)
+        self.assertNotIn('never-print-', text)
+        curl_calls = [args for args in calls if args[0] == '/usr/bin/curl']
+        self.assertEqual(len(curl_calls), 4)
+        self.assertTrue(all('--max-time' in args and args[args.index('--max-time') + 1] == '10' for args in curl_calls))
+        self.assertTrue(all(args[args.index('-o') + 1] == '/dev/null' for args in curl_calls))
+
     def test_root_and_no_arguments_required_before_discovery(self):
         with patch.object(AUDIT.os, 'geteuid', return_value=1000):
             with self.assertRaises(ValueError):
