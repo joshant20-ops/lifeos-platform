@@ -5,6 +5,7 @@ import importlib.machinery
 import io
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import types
@@ -419,6 +420,24 @@ class InstallationTransactionTests(unittest.TestCase):
             INSTALL.main()
         self.assertIn('AUDIOBOOKS_ROLLBACK=FAILED_OPERATOR_REQUIRED', self.output.getvalue())
         self.assertTrue((self.root / 'initial-admin.json').exists())
+
+
+class AudiobookPersistenceBoundaryTests(unittest.TestCase):
+    def test_all_private_state_is_outside_public_snapshot_scan_roots(self):
+        scanner = (REPOSITORY / 'homelab/live/usr/local/sbin/lifeos-github-sync').read_text()
+        block = re.search(r'(?m)^ROOTS=\(\n(.*?)^\)', scanner, re.DOTALL)
+        self.assertIsNotNone(block, 'public snapshot ROOTS must remain inspectable')
+        roots = [Path(value) for value in re.findall(r'"([^"\n]+)"', block.group(1))]
+        self.assertTrue(roots, 'cannot silently pass with no scanner roots')
+        state = Path('/mnt/docker-data/audiobookshelf')
+        self.assertEqual(INSTALL.ROOT, state)
+        compose = (REPOSITORY / 'services/audiobookshelf/compose.yaml').read_text()
+        sources = [Path(value.strip()) for value in re.findall(r'(?m)^\s+source: (.+)$', compose)]
+        self.assertEqual(set(sources), {state / name for name in ('config', 'metadata', 'audiobooks')})
+        for source in [state, *sources]:
+            for root in roots:
+                with self.subTest(source=str(source), scanner_root=str(root)):
+                    self.assertFalse(source.is_relative_to(root), 'private audiobook state would be copied into public Git')
 
 
 class AudiobookGatewayBoundaryTests(unittest.TestCase):
