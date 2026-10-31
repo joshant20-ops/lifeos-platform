@@ -27,6 +27,7 @@
 - `homeassistant` — `372d991e5888`
 - `lifeos-agent-canvas` — `ghcr.io/openhands/agent-canvas:1.23.0`
 - `lifeos-agent-canvas-tls` — `nginx:1.29-alpine`
+- `lifeos-audiobooks-audiobookshelf-1` — `b897c33f0597`
 - `lifeos-energy` — `d7933b4b7e5d`
 - `matter-server` — `ghcr.io/home-assistant-libs/python-matter-server:stable`
 - `mosquitto` — `6f8d8a947c50`
@@ -81,5 +82,5 @@
 - Personal Privacy Guardian profiles/data
 
 ## Snapshot Coverage
-- Managed files: 267
+- Managed files: 283
 
