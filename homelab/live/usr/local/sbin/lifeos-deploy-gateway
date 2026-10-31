@@ -16,6 +16,10 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
+    'backup-audiobooks': {
+        'script': 'scripts/lifeos-backup-audiobooks.sh',
+        'privileged': True,
+    },
     'configure-audiobooks-access': {
         'script': 'scripts/lifeos-configure-audiobooks-access.sh',
         'privileged': True,
