@@ -8,6 +8,7 @@ on:
         required: true
         type: choice
         options:
+          - configure-audiobooks-access
           - audit-audiobooks-access
           - install-audiobooks
           - discover-house-status
@@ -81,7 +82,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
       (github.event_name == 'issues' && (
-        ((github.event.issue.title == 'LifeOS Deploy: install-audiobooks' || github.event.issue.title == 'LifeOS Deploy: audit-audiobooks-access') &&
+        ((github.event.issue.title == 'LifeOS Deploy: install-audiobooks' || github.event.issue.title == 'LifeOS Deploy: audit-audiobooks-access' || github.event.issue.title == 'LifeOS Deploy: configure-audiobooks-access') &&
          contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.issue.author_association)) ||
         github.event.issue.title == 'LifeOS Deploy: discover-house-status' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-house-status-dashboard' ||
@@ -125,7 +126,8 @@ jobs:
       # any job can be created.
       LIFEOS_OPERATION: >-
         ${{ github.event_name == 'push' && (github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/house-status-dashboard') && 'deploy-house-status-dashboard' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/house-status-dashboard') && 'deploy-house-status-dashboard' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/ha-control-bridge') && 'deploy-ha-control-bridge' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || github.event.head_commit.added && contains(github.event.head_commit.added, 'deploy-triggers/tower-metrics') && 'deploy-tower-metrics' || github.event.head_commit.modified && contains(github.event.head_commit.modified, 'governor/privacy-domain-policy.json') && 'deploy-governor-managed-engineer' || github.event.head_commit.added && contains(github.event.head_commit.added, 'governor/privacy-domain-policy.json') && 'deploy-governor-managed-engineer' || 'deploy-energy-opportunity-api') || github.event_name == 'issues' &&
-        (github.event.issue.title == 'LifeOS Deploy: audit-audiobooks-access' && 'audit-audiobooks-access' ||
+        (github.event.issue.title == 'LifeOS Deploy: configure-audiobooks-access' && 'configure-audiobooks-access' ||
+        github.event.issue.title == 'LifeOS Deploy: audit-audiobooks-access' && 'audit-audiobooks-access' ||
         github.event.issue.title == 'LifeOS Deploy: install-audiobooks' && 'install-audiobooks' ||
         github.event.issue.title == 'LifeOS Deploy: discover-house-status' && 'discover-house-status' ||
         github.event.issue.title == 'LifeOS Deploy: deploy-house-status-dashboard' && 'deploy-house-status-dashboard' ||
@@ -188,7 +190,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           mkdir -p "$RUNNER_TEMP/lifeos-evidence"
-          if [[ "$LIFEOS_OPERATION" == "audit-audiobooks-access" || "$LIFEOS_OPERATION" == "install-audiobooks" || "$LIFEOS_OPERATION" == "repair-native-smart" || "$LIFEOS_OPERATION" == "storage-boot-prepare" || "$LIFEOS_OPERATION" == "storage-restore-matter" || "$LIFEOS_OPERATION" == "storage-verify-runtime" || "$LIFEOS_OPERATION" == "storage-preserve-sd-source" || "$LIFEOS_OPERATION" == "storage-remove-stale-copies" || "$LIFEOS_OPERATION" == "storage-inspect-backup-evidence" || "$LIFEOS_OPERATION" == "storage-audit-pi-state" || "$LIFEOS_OPERATION" == "storage-stage-opt-stacks" || "$LIFEOS_OPERATION" == "storage-activate-opt-stacks" || "$LIFEOS_OPERATION" == "storage-rollback-opt-stacks" || "$LIFEOS_OPERATION" == "storage-finalize-opt-stacks" || "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then
+          if [[ "$LIFEOS_OPERATION" == "configure-audiobooks-access" || "$LIFEOS_OPERATION" == "audit-audiobooks-access" || "$LIFEOS_OPERATION" == "install-audiobooks" || "$LIFEOS_OPERATION" == "repair-native-smart" || "$LIFEOS_OPERATION" == "storage-boot-prepare" || "$LIFEOS_OPERATION" == "storage-restore-matter" || "$LIFEOS_OPERATION" == "storage-verify-runtime" || "$LIFEOS_OPERATION" == "storage-preserve-sd-source" || "$LIFEOS_OPERATION" == "storage-remove-stale-copies" || "$LIFEOS_OPERATION" == "storage-inspect-backup-evidence" || "$LIFEOS_OPERATION" == "storage-audit-pi-state" || "$LIFEOS_OPERATION" == "storage-stage-opt-stacks" || "$LIFEOS_OPERATION" == "storage-activate-opt-stacks" || "$LIFEOS_OPERATION" == "storage-rollback-opt-stacks" || "$LIFEOS_OPERATION" == "storage-finalize-opt-stacks" || "$LIFEOS_OPERATION" == "audit-paperless-runtime" || "$LIFEOS_OPERATION" == "restore-paperless" ]]; then
             # Bootstrap the reviewed main-branch allow-list into the root-owned gateway.
             # The installer enforces a clean canonical main checkout and fixed source path.
             sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-install-github-runner-gateway.sh
