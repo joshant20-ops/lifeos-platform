@@ -159,10 +159,10 @@ def verify(ca):
         raise ValueError('unauthenticated API not rejected')
 
 
-def existing_routes():
+def existing_routes(address):
     codes = {}
     for name, scheme, port in [('ha.lan', 'http', 80), ('vaultwarden.lan', 'https', 443)]:
-        codes[name] = run('/usr/bin/curl', '--noproxy', '*', '--resolve', name + ':' + str(port) + ':127.0.0.1', '-k', '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '10', scheme + '://' + name + '/')
+        codes[name] = run('/usr/bin/curl', '--noproxy', '*', '--resolve', name + ':' + str(port) + ':' + address, '-k', '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '10', scheme + '://' + name + '/')
         if codes[name] not in ('200', '301', '302', '303', '307', '308', '401'):
             raise ValueError('existing application not ready')
     return codes
@@ -176,11 +176,11 @@ def main():
     dns = module('dns_helper', REPO / 'scripts/lifeos-configure-ai-dns.py')
     native = module('install_helpers', REPO / 'services/audiobookshelf/install.py')
     before = native.snapshot()
-    routes_before = existing_routes()
-    base = audit.adguard_base()
     address = dns.pi_ipv4()
     if not ipaddress.ip_address(address).is_private:
         raise ValueError('private Pi address required')
+    routes_before = existing_routes(address)
+    base = audit.adguard_base()
     rows = api(base, '/control/rewrite/list')
     if not isinstance(rows, list):
         raise ValueError('invalid rewrite list')
@@ -254,7 +254,7 @@ def main():
                 if attempt == 9:
                     raise
                 time.sleep(1)
-        if existing_routes() != routes_before:
+        if existing_routes(address) != routes_before:
             raise ValueError('existing route regression')
         after = native.snapshot()
         if any(after.get(name) != value for name, value in before.items()):
