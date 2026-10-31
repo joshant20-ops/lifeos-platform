@@ -42,7 +42,7 @@ jobs:
             PyYAML
 
       - name: Audiobooks first-install transaction tests
-        run: python3 -m unittest -v tests.test_audiobooks_install
+        run: python3 -m unittest -v tests.test_audiobooks_install tests.test_audiobooks_access
 
       - name: Control-plane regression tests
         run: |
