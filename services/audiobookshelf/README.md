@@ -9,14 +9,21 @@ supply Audible's catalogue or convert Kindle Unlimited loans.
 
 ## Current state
 
-SERVER_INSTALLED_CLIENT_ACCEPTANCE_INCOMPLETE. Recovery run 41156142441\nverified initialization, pinned ARM64 image and unchanged baseline containers at\n2026-10-31 01:36:58 GMT. Private HTTPS route and phone playback are not configured\nor verified, no books have been added, and the new directory is not yet included\nin the existing backup roots. Overall task remains unfinished pending private\naccess configuration, backup inclusion and first-book acceptance.\n\nLive preflight passed in run 41155054137. Initial
+SERVER_INSTALLED_CLIENT_ACCEPTANCE_INCOMPLETE. Recovery run 41156142441
+verified initialization, pinned ARM64 image and unchanged baseline containers at
+2026-10-31 01:36:58 GMT. Private HTTPS route and phone playback are not configured
+or verified, no books have been added, and the new directory is not yet included
+in the existing backup roots. Overall task remains unfinished pending private
+access configuration, backup inclusion and first-book acceptance.
+
+Live preflight passed in run 41155054137. Initial
 installation run 41155468002 failed startup verification and rolled back the new
 project, preserving its local data. Runtime and phone acceptance remain open. The failed initial pre-login stack
 at /opt/stacks/audiobookshelf remains untouched. New private app state lives
 at /mnt/docker-data/audiobookshelf, outside the nightly source scanner roots,
 so future book metadata, credentials and text sidecars cannot enter snapshots.
 The first-install transaction resolves and records an immutable image digest,
-checks ARM64, initializes a random-password admin on an dedicated bootstrap
+checks ARM64, initializes a random-password admin on a dedicated bootstrap
 bridge (separate from the shared proxy), then attaches the initialized service to reverse_proxy. Credentials
 remain in root-only `/mnt/docker-data/audiobookshelf/initial-admin.json`; never
 copy that file to GitHub or include it in logs. Retrieve the password locally
