@@ -16,6 +16,10 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
+    'audit-audiobooks-access': {
+        'script': 'scripts/lifeos-audit-audiobooks-access.sh',
+        'privileged': True,
+    },
     'install-audiobooks': {
         'script': 'scripts/lifeos-install-audiobooks.sh',
         'privileged': True,
