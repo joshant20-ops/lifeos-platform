@@ -18,6 +18,8 @@ REPO = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location('configure_audiobooks_access_test', REPO / 'services/audiobookshelf/configure_access.py')
 ACCESS = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ACCESS)
+REAL_EXISTING_ROUTES = ACCESS.existing_routes
+REAL_VERIFY = ACCESS.verify
 BASELINE = {'existing': ('original-start', 'healthy')}
 ADDRESS = '192.0.2.1'  # RFC 5737 synthetic documentation address, never a live host.
 
@@ -271,6 +273,26 @@ class ConfigureAccessTransactionTests(unittest.TestCase):
             ACCESS.main()
         self.assertNotIn('AUDIOBOOKS_PUBLIC_CA_PEM_B64=', self.output.getvalue())
         self.assertIn('EXISTING_LOCAL_CA_REUSED=YES', self.output.getvalue())
+
+    def test_existing_route_helper_uses_private_lan_resolve_target(self):
+        with patch.object(ACCESS, 'run', side_effect=['200', '200']) as command:
+            self.assertEqual(REAL_EXISTING_ROUTES(ADDRESS), {'ha.lan': '200', 'vaultwarden.lan': '200'})
+        self.assertEqual(len(command.call_args_list), 2)
+        for call, name, port in zip(command.call_args_list, ('ha.lan', 'vaultwarden.lan'), (80, 443)):
+            args = call.args
+            self.assertEqual(args[args.index('--resolve') + 1], name + ':' + str(port) + ':' + ADDRESS)
+            self.assertEqual(args[args.index('-o') + 1], '/dev/null')
+            self.assertEqual(args[args.index('--max-time') + 1], '10')
+
+    def test_new_audiobook_verifier_keeps_strict_loopback_tls(self):
+        with patch.object(ACCESS, 'run', side_effect=[json.dumps({'app': 'audiobookshelf', 'isInit': True}), '401']) as command:
+            REAL_VERIFY(self.ca)
+        self.assertEqual(len(command.call_args_list), 2)
+        for call in command.call_args_list:
+            args = call.args
+            self.assertEqual(args[args.index('--resolve') + 1], 'audiobooks.lan:443:127.0.0.1')
+            self.assertEqual(args[args.index('--cacert') + 1], str(self.ca))
+            self.assertNotIn('-k', args)
 
     def test_gateway_rejects_arbitrary_configure_arguments(self):
         loader = importlib.machinery.SourceFileLoader('configure_access_gateway_test', str(REPO / 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'))
