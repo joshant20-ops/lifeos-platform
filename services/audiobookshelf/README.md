@@ -10,14 +10,22 @@ supply Audible's catalogue or convert Kindle Unlimited loans.
 ## Current state
 
 SOURCE_PREPARED, NOT DEPLOYED. No Pi runtime evidence has been collected.
+The first-install transaction resolves and records an immutable image digest,
+checks ARM64, initializes a random-password admin on an isolated bootstrap
+network, then attaches the initialized service to reverse_proxy. Credentials
+remain in root-only `/opt/stacks/audiobookshelf/initial-admin.json`; never
+copy that file to GitHub or include it in logs. Retrieve the password locally
+and change it after login. The installer refuses existing audiobook state
+rather than upgrading or overwriting it.
+
 Version 2.37.2 was verified against the upstream latest release on 2026-10-31 GMT.
-The version tag must be resolved to an immutable registry digest and its
-linux/arm64 manifest verified before activation. Do not substitute `latest`.
+The first-install operation resolves the version tag to an immutable registry
+digest and verifies the pulled image is linux/arm64 before starting it. Do not substitute `latest`.
 
 ## Installation contract for the reviewed Pi executor
 
 Follow repository AGENTS.md, Watchman and existing broker boundaries. There is
-currently no audiobook operation in the fixed deployment allowlist. This folder
+a fixed `install-audiobooks` operation in the deployment allowlist. This folder
 is deliberately outside the active Ansible inventory: merging source must not
 silently modify running services. Do not invoke Docker through an arbitrary
 workflow or expand a privileged gateway without its separate review.
@@ -35,9 +43,10 @@ refuse automatic directory creation, avoiding accidental data on an unmounted
 storage path. Confirm the image architecture and effective write permissions;
 no UID/GID or host ownership is assumed by this candidate.
 
-The HTTP port is loopback-only. First create the root account over an approved
-private tunnel before exposing a proxy route. Enter the password directly in
-the application; never put credentials or account tokens in GitHub or logs.
+The HTTP port is loopback-only. The installer creates the admin account before
+joining the proxy network. Retrieve its password locally using your normal
+privileged access, then enter it directly in the application; never put
+credentials or account tokens in GitHub or logs.
 Then configure Nginx Proxy Manager to proxy a private HTTPS hostname to
 lifeos-audiobooks:80 on reverse_proxy, with WebSocket support enabled. Restrict
 access to LAN/VPN using the existing network policy. Do not create a public

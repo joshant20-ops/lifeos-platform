@@ -16,6 +16,10 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
+    'install-audiobooks': {
+        'script': 'scripts/lifeos-install-audiobooks.sh',
+        'privileged': True,
+    },
     'deploy-emailops-shadow': {
         'script': 'scripts/lifeos-deploy-emailops-shadow.sh',
         'privileged': True,

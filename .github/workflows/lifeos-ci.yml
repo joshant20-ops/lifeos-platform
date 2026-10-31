@@ -41,6 +41,9 @@ jobs:
             'aiohttp>=3.9,<4' \
             PyYAML
 
+      - name: Audiobooks first-install transaction tests
+        run: python3 -m unittest -v tests.test_audiobooks_install
+
       - name: Control-plane regression tests
         run: |
           python3 -m unittest -v \
