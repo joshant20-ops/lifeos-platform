@@ -1,0 +1,40 @@
+# Deployment candidate: activate only through the reviewed Pi control plane.
+name: lifeos-audiobooks
+services:
+  audiobookshelf:
+    image: ghcr.io/advplyr/audiobookshelf:2.37.2
+    restart: unless-stopped
+    environment:
+      TZ: Europe/London
+    ports:
+      - "127.0.0.1:13378:80"
+    volumes:
+      - type: bind
+        source: /opt/stacks/audiobookshelf/config
+        target: /config
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /opt/stacks/audiobookshelf/metadata
+        target: /metadata
+        bind:
+          create_host_path: false
+      - type: bind
+        source: /opt/stacks/audiobookshelf/audiobooks
+        target: /audiobooks
+        bind:
+          create_host_path: false
+    networks:
+      reverse_proxy:
+        aliases:
+          - lifeos-audiobooks
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  reverse_proxy:
+    external: true
