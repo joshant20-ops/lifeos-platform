@@ -9,19 +9,28 @@ supply Audible's catalogue or convert Kindle Unlimited loans.
 
 ## Current state
 
-SERVER_INSTALLED_CLIENT_ACCEPTANCE_INCOMPLETE. Recovery run 41156142441
-verified initialization, pinned ARM64 image and unchanged baseline containers at
-2026-10-31 01:36:58 GMT. Private HTTPS route and phone playback are not configured
-or verified, no books have been added, and the new directory is not yet included
-in the existing backup roots. Overall task remains unfinished pending private
-access configuration, backup inclusion and first-book acceptance.
+SERVER_PRIVATE_ACCESS_AND_INITIAL_BACKUP_VERIFIED. Private DNS, strict TLS
+hostname/chain, initialized backend, unauthorized API rejection, unchanged
+HA/Vaultwarden routes and baseline containers passed in runtime run41193852311.
+The encrypted initial backup, actual SQLite/manifest decryption comparison,
+audiobook restart and scheduled dataset inclusion passed in run41193910338
+at 2026-10-31 10:43:48 GMT, after certificate creation.
 
-Live preflight passed in run 41155054137. Initial
-installation run 41155468002 failed startup verification and rolled back the new
-project, preserving its local data. Runtime and phone acceptance remain open. The failed initial pre-login stack
-at /opt/stacks/audiobookshelf remains untouched. New private app state lives
-at /mnt/docker-data/audiobookshelf, outside the nightly source scanner roots,
-so future book metadata, credentials and text sidecars cannot enter snapshots.
+Overall task: BLOCKED_USER_ACTION_REQUIRED for Android CA installation and
+private first login. No books have been added, and actual phone/offline playback
+and progress synchronization remain unverified. PHONE.md has the device steps.
+The new generic public CA certificate was supplied separately in ChatGPT;
+private keys and the administrator password remain on the Pi.
+
+New app state lives at /mnt/docker-data/audiobookshelf, outside public source
+snapshot roots. The original failed /opt/stacks/audiobookshelf state is preserved.
+Initial install and routing refusals were diagnosed and recovered through reviewed
+changes; their resolved attempts do not constitute current outstanding work.
+
+The existing nightly backup now includes the dataset. Only the initial checkpoint
+is proven quiesced and restored; later live-copy consistency limits are explicit
+in PHONE.md.
+
 The first-install transaction resolves and records an immutable image digest,
 checks ARM64, initializes a random-password admin on a dedicated bootstrap
 bridge (separate from the shared proxy), then attaches the initialized service to reverse_proxy. Credentials
@@ -67,8 +76,8 @@ credentials or account tokens in GitHub or logs.
 Then configure Nginx Proxy Manager to proxy a private HTTPS hostname to
 lifeos-audiobooks:80 on reverse_proxy, with WebSocket support enabled. Restrict
 access to LAN/VPN using the existing network policy. Do not create a public
-router port forward. TODO: executor must discover the existing private hostname,
-certificate method and access policy; none is assumed in this repository.
+router port forward. The configured private hostname is audiobooks.lan; PHONE.md documents its local
+certificate trust and the private-only proxy policy.
 
 ## Books and phone
 
