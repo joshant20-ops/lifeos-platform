@@ -11,7 +11,7 @@ import time
 import urllib.request
 
 REPO = Path('/home/joshan/lifeos-platform')
-ROOT = Path('/opt/stacks/audiobookshelf')
+ROOT = Path('/mnt/docker-data/audiobookshelf')
 IMAGE = 'ghcr.io/advplyr/audiobookshelf:2.37.2'
 DOCKER = '/usr/bin/docker'
 PROJECT = 'lifeos-audiobooks'
@@ -62,6 +62,31 @@ def snapshot():
     return {v['Id']: (v['State']['StartedAt'], v['State'].get('Health', {}).get('Status')) for v in values}
 
 
+def resumable_bootstrap(source):
+    if ROOT.is_symlink() or not ROOT.is_dir():
+        raise ValueError('existing audiobook state preserved; inspect before retry')
+    if {p.name for p in ROOT.iterdir()} - {'config', 'metadata', 'audiobooks', 'compose.yaml', 'startup.log'}:
+        raise ValueError('existing audiobook state is not uninitialized bootstrap')
+    for path in [ROOT, *(ROOT / name for name in ('config', 'metadata', 'audiobooks'))]:
+        if path.is_symlink() or not path.is_dir() or path.stat().st_uid != 0 or path.stat().st_mode & 0o777 != 0o700:
+            raise ValueError('unsafe bootstrap directory')
+    path = ROOT / 'compose.yaml'
+    if path.is_symlink() or not path.is_file() or path.stat().st_uid != 0 or path.stat().st_mode & 0o777 != 0o600:
+        raise ValueError('unsafe bootstrap definition')
+    log = ROOT / 'startup.log'
+    if log.exists() or log.is_symlink():
+        if log.is_symlink() or not log.is_file() or log.stat().st_uid != 0 or log.stat().st_mode & 0o777 != 0o600:
+            raise ValueError('unsafe bootstrap log')
+    actual = path.read_text()
+    found = re.findall(r'ghcr.io/advplyr/audiobookshelf@sha256:[a-f0-9]{64}', actual)
+    if len(found) != 1:
+        raise ValueError('unrecognized bootstrap image')
+    expected = source.replace(IMAGE, found[0]).replace('reverse_proxy', 'audiobooks_bootstrap')
+    if actual not in (expected.replace('external: true', 'internal: true'), expected.replace('external: true', 'internal: false')):
+        raise ValueError('unrecognized bootstrap definition')
+    return found[0]
+
+
 def main():
     if os.geteuid() != 0 or len(sys.argv) != 1:
         raise ValueError('root and no arguments required')
@@ -78,8 +103,8 @@ def main():
         raise ValueError('storage device mismatch')
     if os.statvfs('/opt/stacks').f_bavail * os.statvfs('/opt/stacks').f_frsize < 5 * 1024**3:
         raise ValueError('less than 5 GiB available')
-    if ROOT.exists() or ROOT.is_symlink():
-        raise ValueError('existing audiobook state preserved; inspect before retry')
+    source = (REPO / 'services/audiobookshelf/compose.yaml').read_text()
+    resume_digest = resumable_bootstrap(source) if ROOT.exists() or ROOT.is_symlink() else None
     run(DOCKER, 'network', 'inspect', 'reverse_proxy')
     before = snapshot()
     # Refuse a conflicting project or occupied listening port before writing data.
@@ -88,19 +113,21 @@ def main():
     import socket
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 13378))
-    run(DOCKER, 'pull', '--platform', 'linux/arm64', IMAGE)
-    info = json.loads(run(DOCKER, 'image', 'inspect', IMAGE))[0]
+    requested_image = resume_digest or IMAGE
+    run(DOCKER, 'pull', '--platform', 'linux/arm64', requested_image)
+    info = json.loads(run(DOCKER, 'image', 'inspect', requested_image))[0]
     if info.get('Architecture') != 'arm64' or info.get('Os') != 'linux':
         raise ValueError('wrong image architecture')
     digest = next((x for x in info.get('RepoDigests', []) if re.fullmatch(r'ghcr.io/advplyr/audiobookshelf@sha256:[a-f0-9]{64}', x)), None)
-    if not digest:
+    if not digest or (resume_digest and digest != resume_digest):
         raise ValueError('immutable image digest unavailable')
-    compose = (REPO / 'services/audiobookshelf/compose.yaml').read_text().replace(IMAGE, digest)
+    compose = source.replace(IMAGE, digest)
     # Never put the uninitialized server on the shared proxy network.
-    bootstrap = compose.replace('reverse_proxy', 'audiobooks_bootstrap').replace('external: true', 'internal: true')
-    ROOT.mkdir(mode=0o700)
-    for name in ('config', 'metadata', 'audiobooks'):
-        (ROOT / name).mkdir(mode=0o700)
+    bootstrap = compose.replace('reverse_proxy', 'audiobooks_bootstrap').replace('external: true', 'internal: false')
+    if not resume_digest:
+        ROOT.mkdir(mode=0o700)
+        for name in ('config', 'metadata', 'audiobooks'):
+            (ROOT / name).mkdir(mode=0o700)
     path = ROOT / 'compose.yaml'
     path.write_text(bootstrap)
     def dc(*args):
@@ -151,6 +178,10 @@ def main():
     except Exception:
         if started:
             try:
+                (ROOT / 'startup.log').write_text(dc('logs', '--no-color', '--tail', '200'))
+            except Exception:
+                print('AUDIOBOOKS_LOCAL_LOG_CAPTURE=FAILED')
+            try:
                 dc('down')
                 print('AUDIOBOOKS_ROLLBACK=PASS_DATA_PRESERVED')
             except Exception:
@@ -164,4 +195,6 @@ if __name__ == '__main__':
     except Exception as exc:
         print('AUDIOBOOKS_INSTALL=FAIL')
         print('AUDIOBOOKS_ERROR_CLASS=' + type(exc).__name__)
+        if isinstance(exc, ValueError):
+            print('AUDIOBOOKS_ERROR_REASON=' + str(exc).replace(' ', '_'))
         sys.exit(1)

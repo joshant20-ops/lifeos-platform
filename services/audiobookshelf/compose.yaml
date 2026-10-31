@@ -10,17 +10,17 @@ services:
       - "127.0.0.1:13378:80"
     volumes:
       - type: bind
-        source: /opt/stacks/audiobookshelf/config
+        source: /mnt/docker-data/audiobookshelf/config
         target: /config
         bind:
           create_host_path: false
       - type: bind
-        source: /opt/stacks/audiobookshelf/metadata
+        source: /mnt/docker-data/audiobookshelf/metadata
         target: /metadata
         bind:
           create_host_path: false
       - type: bind
-        source: /opt/stacks/audiobookshelf/audiobooks
+        source: /mnt/docker-data/audiobookshelf/audiobooks
         target: /audiobooks
         bind:
           create_host_path: false
