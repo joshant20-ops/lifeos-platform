@@ -9,7 +9,7 @@ supply Audible's catalogue or convert Kindle Unlimited loans.
 
 ## Current state
 
-INSTALLATION_INCOMPLETE. Live preflight passed in run 41155054137. Initial
+SERVER_INSTALLED_CLIENT_ACCEPTANCE_INCOMPLETE. Recovery run 41156142441\nverified initialization, pinned ARM64 image and unchanged baseline containers at\n2026-10-31 01:36:58 GMT. Private HTTPS route and phone playback are not configured\nor verified, no books have been added, and the new directory is not yet included\nin the existing backup roots. Overall task remains unfinished pending private\naccess configuration, backup inclusion and first-book acceptance.\n\nLive preflight passed in run 41155054137. Initial
 installation run 41155468002 failed startup verification and rolled back the new
 project, preserving its local data. Runtime and phone acceptance remain open. The failed initial pre-login stack
 at /opt/stacks/audiobookshelf remains untouched. New private app state lives
