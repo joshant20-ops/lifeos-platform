@@ -62,6 +62,22 @@ def main():
         matches = [p.read_text() for p in configs if has_server_name(p.read_text(), host)]
         print('NPM_' + label + '_ROUTE=' + ('PRESENT' if matches else 'ABSENT'))
         print('NPM_' + label + '_TLS=' + ('YES' if any('ssl_certificate ' in s for s in matches) else 'NO'))
+    addresses = [('LOOPBACK', '127.0.0.1')]
+    try:
+        route = command('ip', '-4', 'route', 'get', '1.1.1.1')
+        source = re.search(r'\bsrc\s+(\d{1,3}(?:\.\d{1,3}){3})\b', route)
+        if source:
+            addresses.append(('LAN', source.group(1)))
+    except (OSError, subprocess.SubprocessError):
+        pass
+    for label, address in addresses:
+        for name, scheme, port, host_label in [('ha.lan', 'http', 80, 'HA'), ('vaultwarden.lan', 'https', 443, 'VAULTWARDEN')]:
+            try:
+                code = command('/usr/bin/curl', '--noproxy', '*', '--resolve', name + ':' + str(port) + ':' + address, '-k', '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '10', scheme + '://' + name + '/').strip()
+                code = code if re.fullmatch('[0-9]{3}', code) else 'INVALID'
+            except (OSError, subprocess.SubprocessError):
+                code = 'UNAVAILABLE'
+            print('NPM_' + host_label + '_' + label + '_HTTP=' + code)
     print('NPM_AUDIOBOOKS_CERT_READY=' + ('YES' if certificates() else 'NO'))
     try:
         with OPENER.open(adguard_base() + '/control/rewrite/list', timeout=10) as response:
