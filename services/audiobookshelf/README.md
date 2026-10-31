@@ -9,14 +9,21 @@ supply Audible's catalogue or convert Kindle Unlimited loans.
 
 ## Current state
 
-SOURCE_PREPARED, NOT DEPLOYED. No Pi runtime evidence has been collected.
+INSTALLATION_INCOMPLETE. Live preflight passed in run 41155054137. Initial
+installation run 41155468002 failed startup verification and rolled back the new
+project, preserving its local data. Runtime and phone acceptance remain open. The failed initial pre-login stack
+at /opt/stacks/audiobookshelf remains untouched. New private app state lives
+at /mnt/docker-data/audiobookshelf, outside the nightly source scanner roots,
+so future book metadata, credentials and text sidecars cannot enter snapshots.
 The first-install transaction resolves and records an immutable image digest,
-checks ARM64, initializes a random-password admin on an isolated bootstrap
-network, then attaches the initialized service to reverse_proxy. Credentials
-remain in root-only `/opt/stacks/audiobookshelf/initial-admin.json`; never
+checks ARM64, initializes a random-password admin on an dedicated bootstrap
+bridge (separate from the shared proxy), then attaches the initialized service to reverse_proxy. Credentials
+remain in root-only `/mnt/docker-data/audiobookshelf/initial-admin.json`; never
 copy that file to GitHub or include it in logs. Retrieve the password locally
 and change it after login. The installer refuses existing audiobook state
-rather than upgrading or overwriting it.
+rather than upgrading or overwriting it. The recovery path accepts only the
+exact root-owned uninitialized bootstrap definition and its existing immutable
+image digest; completed or credential-bearing state is refused for review.
 
 Version 2.37.2 was verified against the upstream latest release on 2026-10-31 GMT.
 The first-install operation resolves the version tag to an immutable registry
@@ -36,9 +43,12 @@ job is in flight, TCP 13378 is unused, and reverse_proxy exists. Record existing
 container health and verify local persistent storage has sufficient capacity.
 Do not restart Docker or any existing service to install this application.
 
-The approved installer must create only /opt/stacks/audiobookshelf and its
+The approved installer must create only /mnt/docker-data/audiobookshelf and its
 config, metadata and audiobooks children, resolve the image digest, validate
-Compose, then start only project lifeos-audiobooks. Bind mounts deliberately
+Compose, then start only project lifeos-audiobooks. Bootstrap uses an ordinary dedicated
+bridge with loopback-only publication: an internal-only Docker network can lose
+published port bindings on affected Docker versions. See
+https://github.com/moby/moby/discussions/53256. Bind mounts deliberately
 refuse automatic directory creation, avoiding accidental data on an unmounted
 storage path. Confirm the image architecture and effective write permissions;
 no UID/GID or host ownership is assumed by this candidate.
@@ -92,6 +102,8 @@ this stack. Stop only this project for a consistent initial filesystem backup;
 protect any embedded application backup because it contains private state.
 Verify restoration in an isolated instance before relying on it.
 
+On failure, recent container logs are saved only in root-private startup.log
+before removing the project; those logs must not be copied to public evidence.
 For a failed first installation, remove its private proxy route and stop/remove
 only project lifeos-audiobooks. Preserve all three data directories for diagnosis.
 Never use `down -v` or remove existing backups. Before upgrades, record the prior
