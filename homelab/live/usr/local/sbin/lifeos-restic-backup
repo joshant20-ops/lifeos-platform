@@ -17,7 +17,8 @@ restic backup \
     /usr/local/bin \
     /opt/stacks \
     /mnt/docker-data/automation/repos \
-    /mnt/docker-data/automation/secrets
+    /mnt/docker-data/automation/secrets \
+    /mnt/docker-data/audiobookshelf
 
 restic forget \
     --tag lifeos-pi5 \
