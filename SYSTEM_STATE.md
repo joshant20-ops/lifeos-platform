@@ -36,6 +36,7 @@
 - `paperless-paperless-1` — `ghcr.io/paperless-ngx/paperless-ngx:latest`
 - `paperless-redis-1` — `redis:7`
 - `predbat` — `31413752bb3e`
+- `qbittorrent` — `lscr.io/linuxserver/qbittorrent:latest`
 - `uptime-kuma` — `3d632903e6af`
 - `vaultwarden` — `efb3cde96201`
 - `zwave-js-ui` — `86f418050ce6`
