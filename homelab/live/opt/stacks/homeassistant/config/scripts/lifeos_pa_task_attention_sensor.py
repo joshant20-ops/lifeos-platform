@@ -174,7 +174,7 @@ def derive_projects(rows, source_attention=None):
         outcome = next((str(row["intended_outcome"]) for row in members if row.get("intended_outcome")), None)
         by_id = {str(row["id"]): row for row in members}
         def summary(ids, field):
-            return [str((by_id[i].get("source_context") or {}).get(field) or by_id[i].get("reason") or by_id[i].get("title") or "Details unknown")[:400] for i in ids]
+            return [str((project_source_context(by_id[i]) or {}).get(field) or by_id[i].get("reason") or by_id[i].get("title") or "Details unknown")[:400] for i in ids]
         projects.append({"id": "project-" + hashlib.sha256(json.dumps(key).encode()).hexdigest()[:20],
                          "name": members[0].get("topic") or members[0].get("title") or "Source matter",
                          "intended_outcome": outcome, "lifecycle": "candidate" if not outcome else "complete" if attention == "COMPLETE" else "active",

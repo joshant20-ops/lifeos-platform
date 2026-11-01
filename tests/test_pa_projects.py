@@ -110,6 +110,28 @@ class ProjectsTests(unittest.TestCase):
         row['status']='DONE'
         self.assertEqual(self.project([row])['lifecycle'],'complete')
 
+    def test_order_reference_is_supplier_scoped_and_ambiguous_sets_do_not_bridge(self):
+        a,b=matter('a'),matter('b')
+        for row in (a,b):
+            row['case_reference_ids']=[];row['verified_order_refs']=['ORDER42']
+        b['counterparty']='Unrelated supplier'
+        self.assertEqual(len(sensor.derive_projects([a,b])['projects']),2)
+        b['counterparty']=a['counterparty'];b['verified_order_refs'].append('ORDER43')
+        self.assertEqual(len(sensor.derive_projects([a,b])['projects']),2)
+
+    def test_unverified_context_and_malformed_event_do_not_invent_facts(self):
+        row=matter(reason='Await source review', source_context={'message_id':'<wrong@example.test>', 'waiting_for':'Fabricated assignment'})
+        row['timeline_events']=[{**event('order'), 'observed_at':'bad'}]
+        p=self.project([row])
+        self.assertEqual(p['waiting_on'],['Await source review'])
+        self.assertEqual(p['timeline'],[])
+
+    def test_duplicate_channel_rows_and_confirmation_question(self):
+        row=matter(confirmation_required='source_unavailable')
+        p=self.project([row,row])
+        self.assertEqual(p['attention'],'ACTION')
+        self.assertEqual(p['open_count'],1)
+
     def test_ha_attribute_and_runtime_acceptance_include_projection(self):
         self.assertIn('        - projects_view\n',(ROOT/'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml').read_text())
         self.assertIn('PA_PROJECTS_ACTUAL_HA_ENTITY=PASS',(ROOT/'scripts/accept-pa-governed-actions.py').read_text())
