@@ -100,7 +100,7 @@ for attempt in range(20):
     request=urllib.request.Request(base+'states/sensor.lifeos_pa_task_attention',headers=headers)
     with urllib.request.urlopen(request,timeout=5) as response: entity=json.load(response)
     attributes=entity.get('attributes') or {}
-    if entity.get('state') in {'attention','clear'} and attributes.get('generated_time')==int(sys.argv[1]) and all(key in attributes for key in ('reference_items','questions','information','total_matters')):
+    if entity.get('state') in {'attention','clear'} and attributes.get('generated_time')==int(sys.argv[1]) and all(key in attributes for key in ('reference_items','questions','information','total_matters','projects_view')):
         print(json.dumps(attributes));break
     time.sleep(1)
 else: raise RuntimeError('ha_overview_entity_not_ready')
@@ -398,6 +398,25 @@ def main():
     for key in ("items","reference_items","questions","information","total_matters"):
         assert live_entity.get(key)==final_view.get(key), "overview_ha_entity_projection_mismatch"
     print("PA_OVERVIEW_ACTUAL_HA_ENTITY=PASS")
+    projects_view = final_view.get("projects_view") or {}
+    assert projects_view.get("schema") == "lifeos_projects_projection_v1", "projects_schema_missing"
+    assert live_entity.get("projects_view") == projects_view, "projects_actual_entity_mismatch"
+    projects = projects_view.get("projects") or []
+    projected_ids = [mid for project in projects for mid in project["matter_ids"]]
+    assert len(projected_ids) == len(set(projected_ids)), "projects_duplicate_matter"
+    assert set(projected_ids) == set(source_by_id), "projects_source_coverage"
+    for project in projects:
+        assert set(project["matter_ids"]) == {p["matter_id"] for p in project["provenance"]}
+        for kind, mids in project["buckets"].items():
+            for mid in mids:
+                row = source_by_id[mid]
+                if kind == "COMPLETE": assert row.get("status") == "DONE" and not row.get("obligation_suppressed")
+                if row.get("obligation_suppressed"): assert kind == "INFORMATION"
+        assert "_projectsMarkup" in card_text and "data-project" in card_text
+    print("PA_PROJECTS_ACTUAL_HA_ENTITY=PASS")
+    print("PA_PROJECTS_SOURCE_COVERAGE=PASS")
+    print("PA_PROJECTS_MULTI_SOURCE=" + str(sum(len(p["provenance"]) > 1 or any(len(e["source_message_ids"]) > 1 for e in p["timeline"]) for p in projects)))
+
     # Compare private order identifiers locally. Never print identifiers, email
     # addresses, subjects or the task records into the Actions log.
     shelly_rows=[row for row in source_by_id.values()

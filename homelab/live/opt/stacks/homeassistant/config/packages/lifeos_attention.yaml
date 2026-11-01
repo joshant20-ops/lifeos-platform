@@ -57,6 +57,7 @@ command_line:
         - questions
         - information
         - total_matters
+        - projects_view
         - source
         - generated_time
         - age_seconds

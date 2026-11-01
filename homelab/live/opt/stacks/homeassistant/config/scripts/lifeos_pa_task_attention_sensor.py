@@ -113,6 +113,85 @@ def project_source_context(task):
             for key, limit in (("sender", 200), ("subject", 240), ("sent_at", 100),
                                ("summary", 400), ("waiting_for", 240), ("next_step", 240))}
 
+def derive_projects(rows, source_attention=None):
+    """Rebuildable read model over effective PA rows; never updates task authority.
+
+    No fuzzy/provider calls. Unspecified finite outcomes remain candidates.
+    Matching proof stays local alongside existing evidence navigation.
+    """
+    import hashlib
+    def norm(value):
+        return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
+    groups = {}
+    seen = set()
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("id") or row["id"] in seen:
+            continue
+        seen.add(row["id"])
+        refs = sorted(set(str(v).upper() for v in (row.get("case_reference_ids") or []) + (row.get("verified_order_refs") or []) if v))
+        party, topic = norm(row.get("counterparty")), norm(row.get("topic"))
+        # A complete reference set prevents transitive bridging through an
+        # ambiguous multi-reference message. Counterparty alone never joins.
+        if refs:
+            key, rule = ("reference", "case" if row.get("case_reference_ids") else party, tuple(refs)), "exact_reference_set"
+        elif party and topic:
+            key, rule = ("topic", party, topic), "exact_counterparty_topic"
+        else:
+            key, rule = ("matter", str(row["id"])), "accepted_matter"
+        groups.setdefault(key, (rule, []))[1].append(row)
+    projects = []
+    for key, (rule, members) in sorted(groups.items(), key=lambda pair: str(pair[0])):
+        members = sorted(members, key=lambda row: str(row["id"]))
+        buckets = {name: [] for name in ("ACTION", "WAITING", "WATCH", "INFORMATION", "COMPLETE")}
+        events = {}
+        provenance = []
+        for row in members:
+            status = str(row.get("status") or "").upper()
+            kind = ("INFORMATION" if row.get("obligation_suppressed") or status in {"NONE", "DISMISSED"}
+                    else "COMPLETE" if status == "DONE" else "WATCH" if row.get("snoozed")
+                    else "ACTION" if row.get("confirmation_required") and status in {"OPEN", "WAITING"}
+                    else "WAITING" if status == "WAITING" else "ACTION" if status == "OPEN" else "WATCH")
+            buckets[kind].append(str(row["id"]))
+            ids = sorted(set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set()))
+            provenance.append({"matter_id": row["id"], "rule": rule, "source_message_ids": ids,
+                               "case_reference_ids": row.get("case_reference_ids") or [],
+                               "verified_order_refs": row.get("verified_order_refs") or []})
+            for event in row.get("timeline_events") or []:
+                if not isinstance(event, dict) or not event.get("message_id") or event["message_id"] not in ids:
+                    continue
+                try:
+                    observed = int(event.get("observed_at") or 0)
+                except (TypeError, ValueError):
+                    continue
+                # Consolidate same accepted update, retain all source identities.
+                signature = (str(event.get("title") or "Email update"), str(event.get("status") or "NONE"), str(event.get("event_kind") or "information"))
+                update = events.setdefault(signature, {"title": signature[0], "status": signature[1], "event_kind": signature[2], "observed_at": 0, "source_dates": [], "source_message_ids": [], "matter_ids": []})
+                update["observed_at"] = max(update["observed_at"], observed)
+                for field, value in (("source_dates", event.get("date")), ("source_message_ids", event["message_id"]), ("matter_ids", row["id"])):
+                    if value and value not in update[field]: update[field].append(value)
+        timeline = sorted(events.values(), key=lambda event: (event["observed_at"], event["title"]))
+        attention = next((name for name in ("ACTION", "WAITING", "WATCH") if buckets[name]), "INFORMATION" if buckets["INFORMATION"] else "COMPLETE")
+        outcome = next((str(row["intended_outcome"]) for row in members if row.get("intended_outcome")), None)
+        by_id = {str(row["id"]): row for row in members}
+        def summary(ids, field):
+            return [str((by_id[i].get("source_context") or {}).get(field) or by_id[i].get("reason") or by_id[i].get("title") or "Details unknown")[:400] for i in ids]
+        projects.append({"id": "project-" + hashlib.sha256(json.dumps(key).encode()).hexdigest()[:20],
+                         "name": members[0].get("topic") or members[0].get("title") or "Source matter",
+                         "intended_outcome": outcome, "lifecycle": "candidate" if not outcome else "complete" if attention == "COMPLETE" else "active",
+                         "attention": attention, "buckets": buckets, "matter_ids": list(by_id),
+                         "next_action": summary(buckets["ACTION"], "next_step"),
+                         "waiting_on": summary(buckets["WAITING"], "waiting_for"),
+                         "open_count": sum(len(buckets[name]) for name in ("ACTION", "WAITING", "WATCH")),
+                         "completed_count": len(buckets["COMPLETE"]), "timeline": timeline,
+                         "latest_update": timeline[-1] if timeline else None,
+                         "uncertainties": (["Finite intended outcome not confirmed"] if not outcome else []) + (["Source evidence missing"] if any(not p["source_message_ids"] for p in provenance) else []),
+                         "provenance": provenance})
+    return {"schema": "lifeos_projects_projection_v1", "projects": projects,
+            "attention": {kind: [{"project_id": p["id"], "matter_id": mid} for p in projects for mid in p["buckets"][kind]] for kind in ("ACTION", "WAITING", "WATCH", "INFORMATION", "COMPLETE")},
+            "recently_completed_ids": [row["id"] for row in (source_attention or {}).get("recently_completed", [])],
+            "due_soon_ids": [row["id"] for row in (source_attention or {}).get("upcoming", [])]}
+
+
 def main():
     try:
         payload = apply_user_state(json.loads(TASKS.read_text()), read_user_state())
@@ -164,6 +243,7 @@ def main():
             "items": items,
             "reference_items": reference_items,
             "total_matters": len(all_tasks),
+            "projects_view": derive_projects([{**x, "snoozed": x.get("id") in snoozed_ids} for x in all_tasks], attention),
             "junk_action_pending_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests"),
             "junk_action_failed_task_ids": junk_task_ids("/config/lifeos-pa-state/junk-requests/failed"),
             "review_pending_task_ids": junk_task_ids("/config/lifeos-pa-state/review-requests"),
