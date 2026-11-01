@@ -91,7 +91,6 @@ for view in views:
             markdown('Execution safety',
                 "## {{ states('sensor.lifeos_control_state') }}\n"
                 "**GitHub runner:** {{ state_attr('sensor.lifeos_control_state','github_runner')['state'] if state_attr('sensor.lifeos_control_state','github_runner') else 'unknown' }}  \n"
-                "**Semaphore:** {{ state_attr('sensor.lifeos_control_state','semaphore')['state'] if state_attr('sensor.lifeos_control_state','semaphore') else 'unknown' }}  \n"
                 "**Blocked jobs:** {{ state_attr('sensor.lifeos_control_state','blocked_count') or 0 }}  \n"
                 "**Blocker:** {{ state_attr('sensor.lifeos_control_state','blocker') or 'none' }}")
         ]
@@ -99,7 +98,6 @@ for view in views:
         view['cards'] = [
             markdown('Automation hosts',
                 "**Pi runner:** {{ state_attr('sensor.lifeos_control_state','github_runner')['state'] if state_attr('sensor.lifeos_control_state','github_runner') else 'unknown' }}  \n"
-                "**Semaphore:** {{ state_attr('sensor.lifeos_control_state','semaphore')['state'] if state_attr('sensor.lifeos_control_state','semaphore') else 'unknown' }}  \n"
                 "**Latest automation:** {{ state_attr('sensor.lifeos_control_state','automation')['state'] if state_attr('sensor.lifeos_control_state','automation') else 'unknown' }}")
         ]
     elif title == 'Network':
