@@ -134,6 +134,14 @@ class LifeOSPATaskCard extends HTMLElement {
     return '<section class="waiting-context"><h4>What is this waiting for?</h4>' + lines.join("") + '</section>';
   }
 
+  _projectInformation(project) {
+    return (project.timeline || []).filter(event => event.event_kind === "information");
+  }
+
+  _projectObserved(value) {
+    return Number(value) > 0 ? new Date(Number(value) * 1000).toUTCString() : "Observation time unknown";
+  }
+
   _projectsMarkup(view, items) {
     const esc = value => this._escape(value);
     const projects = Array.isArray(view?.projects) ? view.projects : [];
@@ -145,18 +153,20 @@ class LifeOSPATaskCard extends HTMLElement {
         projects.flatMap(p => (p.buckets[kind] || []).filter(id => kind !== "COMPLETE" || (view.recently_completed_ids || []).includes(id)).map(id => {
           const row = items.find(x => x.id === id);
           return '<button class="overview-tile" data-project="' + esc(p.id) + '"><strong>' + esc(row?.title || "Matter details unavailable") + '</strong><span>' + esc(p.name) + '</span></button>';
-        })).join("") + '</section>').join("") + '<details><summary>All matters and controls</summary>' + this._overviewMarkup(items) + '</details>';
+        })).join("") + (kind === "INFORMATION" ? projects.flatMap(p => this._projectInformation(p).map(event =>
+          '<button class="overview-tile" data-project="' + esc(p.id) + '"><strong>' + esc(event.title) + '</strong><span>' + esc(p.name) + ' · Information update, no new action</span></button>')).join("") : '') + '</section>').join("") + '<details><summary>All matters and controls</summary>' + this._overviewMarkup(items) + '</details>';
     }
     if (!selected) return nav + '<section class="overview-list">' + (projects.map(p =>
       '<button class="overview-tile" data-project="' + esc(p.id) + '"><span class="eyebrow">' + esc(p.attention) + ' · ' + esc(p.lifecycle) + '</span><strong>' + esc(p.name) + '</strong><span>' + esc(p.intended_outcome || "Outcome not confirmed · project candidate") + '</span><span>' + p.open_count + ' open · ' + p.completed_count + ' complete</span><span>Next: ' + esc(p.next_action.join("; ") || "No current action") + '</span><span>Waiting: ' + esc(p.waiting_on.join("; ") || "None recorded") + '</span><span>Latest: ' + esc(p.latest_update?.title || "No recorded update") + '</span></button>').join("") || '<p>No project candidates available.</p>') + '</section>';
     return nav + '<button data-project="">← All projects</button><h2>' + esc(selected.name) + '</h2><h3>Overview</h3><p>' + esc(selected.intended_outcome || "Finite outcome not confirmed") + '</p><p>' + esc(selected.attention) + ' · ' + esc(selected.lifecycle) + '</p>' +
       (items.some(row => row.id === selected.anchor_matter_id) ? '<button data-action="project_outcome" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.intended_outcome ? 'Edit intended outcome' : 'Confirm finite outcome') + '</button>' + (selected.intended_outcome ? '<button data-action="' + (selected.lifecycle === 'complete' ? 'project_reopen' : 'project_complete') + '" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.lifecycle === 'complete' ? 'Reopen outcome' : 'Confirm outcome complete') + '</button>' : '') : '<p>Outcome controls require the anchor matter in the current display window.</p>') +
       selected.uncertainties.map(x => '<p role="note">' + esc(x) + '</p>').join("") +
-      '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · observed ' + esc(new Date(e.observed_at * 1000).toUTCString()) + '</span></div>').join("") || '<p>No source-backed timeline recorded.</p>') +
+      '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · observed ' + esc(this._projectObserved(e.observed_at)) + '</span></div>').join("") || '<p>No source-backed timeline recorded.</p>') +
       Object.entries({ACTION:"Actions",WAITING:"Waiting",WATCH:"Watching",INFORMATION:"Information",COMPLETE:"Complete"}).map(([kind,label]) => '<section><h3>' + label + '</h3>' + (selected.buckets[kind].map(id => {
         const row = items.find(x => x.id === id);
         return row ? this._taskCard(row, true) : '<p>Matter detail outside current display window.</p>';
-      }).join("") || '<p>None recorded.</p>') + '</section>').join("") +
+      }).join("") || (kind === "INFORMATION" && this._projectInformation(selected).length ? "" : '<p>None recorded.</p>')) +
+        (kind === "INFORMATION" ? this._projectInformation(selected).map(event => '<p>' + esc(event.title) + ' · ' + event.source_message_ids.length + ' supporting sources · no new action</p>').join("") : '') + '</section>').join("") +
       '<details><summary>Why this project? Evidence and grouping</summary><p>Derived from accepted PA matters using deterministic relationships. Source links are on each matter above.</p>' + selected.provenance.map(p => '<p>' + esc(p.matter_id) + ' · ' + esc(p.rule) + ' · ' + p.source_message_ids.length + ' source messages</p>').join("") + '</details>';
   }
 
