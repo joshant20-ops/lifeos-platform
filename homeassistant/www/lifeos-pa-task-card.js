@@ -145,6 +145,38 @@ class LifeOSPATaskCard extends HTMLElement {
     return Number(value) > 0 ? new Date(Number(value) * 1000).toUTCString() : "Observation time unknown";
   }
 
+  _attentionProjectMarkup(project, items) {
+    const esc = value => this._escape(value);
+    const memberIds = Array.isArray(project.matter_ids) ? project.matter_ids : [...new Set(Object.values(project.buckets || {}).flat())];
+    const byId = new Map(items.map(item => [item.id, item]));
+    const actionIds = project.buckets.ACTION || [];
+    const questions = actionIds.filter(id => byId.has(id) && this._kind(byId.get(id)) === "question").length;
+    const informationUpdates = this._projectInformation(project);
+    const counts = [
+      [actionIds.length - questions, "recorded action", "recorded actions"],
+      [questions, "question", "questions"],
+      [(project.buckets.WAITING || []).length, "waiting", "waiting"],
+      [(project.buckets.WATCH || []).length, "watched", "watched"],
+      [(project.buckets.INFORMATION || []).length, "information item", "information items"],
+      [(project.buckets.COMPLETE || []).length, "completed item", "completed items"],
+      [informationUpdates.length, "information update", "information updates"],
+    ].filter(([count]) => count).map(([count,one,many]) => count + " " + (count === 1 ? one : many)).join(" · ");
+    const next = [...new Set(project.next_action || [])].slice(0, 1).join("; ");
+    const waiting = [...new Set(project.waiting_on || [])].slice(0, 2).join("; ");
+    const children = memberIds.map(id => {
+      const row = byId.get(id), key = project.id + ":" + id;
+      const kind = row ? this._kind(row) : "unknown";
+      const label = {action:"Recorded action",question:"Needs review",waiting:"Waiting",information:"Information",closed:"Closed",unknown:"Details unavailable"}[kind];
+      return '<details class="attention-item" data-attention-item="' + esc(key) + '"' + (this._attentionExpanded?.has(key) ? ' open' : '') + '><summary><span class="eyebrow">' + esc(label) + '</span><strong>' + esc(row ? this._title(row) : "Matter details outside the current display window") + '</strong></summary>' +
+        (row ? this._taskCard(row, true, true) : '<p>Open the project for available evidence.</p>') + '</details>';
+    }).join("");
+    const updates = informationUpdates.map(event => '<p>' + esc(event.title) + ' · Information update, no new action</p>').join("");
+    return '<details class="attention-project" data-attention-project="' + esc(project.id) + '"' + (this._attentionExpanded?.has(project.id) ? ' open' : '') + '><summary class="overview-tile"><span class="eyebrow">' + esc(project.attention) + '</span><strong>' + esc(project.name) + '</strong><span>' + esc(counts || "No current items") + '</span>' +
+      (next ? '<span>Next: ' + esc(next) + '</span>' : project.attention === "WAITING" ? '<span>No current action is recorded for you.</span>' : '') +
+      (waiting ? '<span>Waiting: ' + esc(waiting) + '</span>' : '') +
+      '<span class="tile-link">Expand ' + memberIds.length + ' related items and sources</span></summary><div class="attention-contents"><button type="button" class="count" data-project="' + esc(project.id) + '">Open project overview and timeline</button>' + children + updates + '</div></details>';
+  }
+
   _projectsMarkup(view, items) {
     const esc = value => this._escape(value);
     const projects = Array.isArray(view?.projects) ? view.projects : [];
@@ -152,12 +184,11 @@ class LifeOSPATaskCard extends HTMLElement {
     const nav = '<nav class="overview-tabs" aria-label="LifeOS views"><button data-product="projects">Projects</button><button data-product="attention">Attention</button></nav>';
     if (this._productView === "attention") {
       const labels = {ACTION:"Needs you", WAITING:"Waiting on others", WATCH:"Watching", INFORMATION:"Information", COMPLETE:"Recently completed"};
-      return nav + Object.entries(labels).map(([kind,label]) => '<section><h3>' + label + '</h3>' +
-        projects.flatMap(p => (p.buckets[kind] || []).filter(id => kind !== "COMPLETE" || (view.recently_completed_ids || []).includes(id)).map(id => {
-          const row = items.find(x => x.id === id);
-          return '<button class="overview-tile" data-project="' + esc(p.id) + '"><strong>' + esc(row?.title || "Matter details unavailable") + '</strong><span>' + esc(p.name) + '</span></button>';
-        })).join("") + (kind === "INFORMATION" ? projects.flatMap(p => this._projectInformation(p).map(event =>
-          '<button class="overview-tile" data-project="' + esc(p.id) + '"><strong>' + esc(event.title) + '</strong><span>' + esc(p.name) + ' · Information update, no new action</span></button>')).join("") : '') + '</section>').join("") + '<details><summary>All matters and controls</summary>' + this._overviewMarkup(items) + '</details>';
+      return nav + Object.entries(labels).map(([kind,label]) => {
+        const grouped = projects.filter(project => project.attention === kind && (kind !== "COMPLETE" || (project.buckets.COMPLETE || []).some(id => (view.recently_completed_ids || []).includes(id))));
+        if (!grouped.length && kind !== "ACTION") return "";
+        return '<section><h3>' + label + '</h3><div class="overview-list">' + (grouped.map(project => this._attentionProjectMarkup(project, items)).join("") || '<p class="freshness">No project currently needs your attention.</p>') + '</div></section>';
+      }).join("") + '<details><summary>All matters and controls</summary>' + this._overviewMarkup(items) + '</details>';
     }
     if (!selected) return nav + '<section class="overview-list">' + (projects.map(p =>
       '<button class="overview-tile" data-project="' + esc(p.id) + '"><span class="eyebrow">' + esc(p.attention) + ' · ' + esc(p.lifecycle) + '</span><strong>' + esc(p.name) + '</strong><span>' + esc(p.intended_outcome || "Outcome not confirmed · project candidate") + '</span><span>' + p.open_count + ' open · ' + p.completed_count + ' complete</span><span>Next: ' + esc(p.next_action.join("; ") || "No current action") + '</span><span>Waiting: ' + esc(p.waiting_on.join("; ") || "None recorded") + '</span><span>Latest: ' + esc(p.latest_update?.title || "No recorded update") + '</span></button>').join("") || '<p>No project candidates available.</p>') + '</section>';
@@ -376,6 +407,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '.trail{margin:18px 0 12px;padding:15px 0 0;border-top:1px solid var(--divider-color)}.trail-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-bottom:13px}.trail-heading h4{font-size:1rem;margin:1px 0 0}.trail-heading .eyebrow{color:var(--primary-color)}.timeline{position:relative;padding:0 0 6px 5px}.timeline:before{content:"";position:absolute;top:7px;bottom:17px;left:9px;width:1px;background:var(--divider-color)}.timeline-event{position:relative;display:flex;gap:11px;padding:0 0 15px;min-width:0}.event-dot{position:relative;z-index:1;flex:0 0 9px;width:9px;height:9px;margin-top:5px;border:2px solid var(--primary-color);border-radius:50%;background:var(--card-background-color)}.timeline-event:last-child .event-dot{background:var(--primary-color)}.event-copy{display:grid;gap:3px;min-width:0}.event-copy time{font-size:.72rem;color:var(--secondary-text-color)}.event-copy strong{font-size:.9rem;line-height:1.35;font-weight:550;overflow-wrap:anywhere}.event-copy em,.event-status{font-style:normal;font-size:.72rem;color:var(--secondary-text-color)}.trail-empty{font-size:.82rem;color:var(--secondary-text-color);padding:4px 0 13px}',
       '.resolved{margin-top:12px;border-top:1px solid var(--divider-color);padding-top:10px}.resolved summary{font-size:.76rem}.resolved-items{max-height:300px;overflow:auto}.rail-empty{padding:12px 8px;color:var(--secondary-text-color);font-size:.79rem;line-height:1.4}',
       '@media(max-width:760px){.page-head{display:block}.page-head>.count-row{justify-content:flex-start;margin-top:12px}.matter-layout{grid-template-columns:1fr}.matter-rail{order:2}.matter-main{order:1}}',
+      '.attention-project{min-width:0;align-self:start}.attention-project>summary{list-style:none;cursor:pointer}.attention-project>summary::-webkit-details-marker{display:none}.attention-project[open]>summary{border-bottom-left-radius:0;border-bottom-right-radius:0}.attention-contents{border:1px solid var(--divider-color);border-top:0;border-radius:0 0 12px 12px;padding:12px;min-width:0}.attention-item{margin-top:10px;border-top:1px solid var(--divider-color);padding-top:10px}.attention-item>summary{cursor:pointer;overflow-wrap:anywhere;min-height:44px}.attention-item>summary strong{display:block;font-size:.9rem;margin-top:4px}.attention-item .task{margin-top:10px}',
       '.daily-counts{border:1px solid var(--divider-color);border-radius:12px;padding:14px;font-size:.95rem;background:var(--secondary-background-color)}.freshness{color:var(--secondary-text-color);font-size:.72rem}.overview-tabs{display:flex;flex-wrap:wrap;gap:5px;margin:16px 0}.overview-tabs button,.back-matters{font:inherit;min-height:44px;padding:8px 12px;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color)}.overview-tabs button[aria-pressed="true"]{border-color:var(--primary-color);color:var(--primary-color)}.overview-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:12px}.overview-tile{font:inherit;text-align:left;background:var(--card-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-left:4px solid var(--primary-color);border-radius:12px;padding:16px;display:grid;gap:8px;min-width:0}.overview-tile strong{font-size:1.04rem;overflow-wrap:anywhere}.overview-tile>span:not(.eyebrow){font-size:.8rem;color:var(--secondary-text-color)}.overview-tile .tile-link{color:var(--primary-color)!important}.waiting-summary{font-size:.76rem;color:var(--secondary-text-color);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}.source-context{margin:14px 0;padding:14px;border-left:3px solid var(--primary-color);background:var(--secondary-background-color);border-radius:8px}.source-context h4{margin:0 0 8px}.source-context p{margin:6px 0}.kind-question{border-left-color:#e6ad35}.kind-question .eyebrow{color:#e6ad35}.kind-information,.kind-waiting,.kind-closed{border-left-color:var(--secondary-text-color)}.back-matters{margin-bottom:14px}.decision{margin:18px 0;padding:15px;border:1px solid var(--divider-color);border-radius:12px;background:var(--secondary-background-color)}.decision h4{margin:0 0 8px}.decision p,.matter-explanation{font-size:.87rem;line-height:1.5}.decision dl{font-size:.8rem;display:grid;grid-template-columns:1fr 1.3fr;gap:10px;margin:16px 0}.decision dd{margin:0}.decision dt,.decision-note{color:var(--secondary-text-color)}.decision a{color:var(--primary-color);font-size:.82rem}.decision-buttons{display:grid;gap:10px;margin-top:16px}.decision-buttons button{min-height:48px;font:inherit;border:1px solid var(--divider-color);border-radius:9px;background:var(--card-background-color);color:var(--primary-text-color);padding:10px}.decision-buttons button[aria-pressed="true"]{outline:2px solid var(--primary-color)}.decision-buttons button[data-action="signin_yes"]{background:var(--primary-color);color:var(--text-primary-color,#fff)}.decision-buttons button[data-action="signin_no"]{border-color:#e6ad35;color:#e6ad35}.controls button{min-height:44px}',
     ].join("");
     if (this._config.compact) {
@@ -397,6 +429,12 @@ class LifeOSPATaskCard extends HTMLElement {
       (unavailable ? '<div class="empty" role="alert"><strong>PA information is unavailable</strong><span>Current matters could not be checked. This does not mean there is nothing to do.</span></div>' :
         '<div class="daily-counts">' + questions + (questions === 1 ? ' question · ' : ' questions · ') + actions + (actions === 1 ? ' action · ' : ' actions · ') + waitingCount + ' waiting</div>' +
         '<p class="freshness">Updated ' + this._escape(attrs.generated_time ? new Date(attrs.generated_time * 1000).toLocaleString() : "time unavailable") + '</p>' + (Number(attrs.total_matters) > items.length ? '<p class="freshness">Showing ' + items.length + ' of ' + Number(attrs.total_matters) + ' matters, in attention order.</p>' : '') + (attrs.projects_view ? this._projectsMarkup(attrs.projects_view, items) : this._overviewMarkup(items))) + '</ha-card>';
+    this.shadowRoot.querySelectorAll("details[data-attention-project], details[data-attention-item]").forEach(details => details.addEventListener("toggle", () => {
+      if (!details.isConnected) return;
+      this._attentionExpanded ||= new Set();
+      const key = details.dataset.attentionProject || details.dataset.attentionItem;
+      if (details.open) this._attentionExpanded.add(key); else this._attentionExpanded.delete(key);
+    }));
     this.shadowRoot.querySelectorAll("button[data-product]").forEach(button => button.addEventListener("click", () => {
       this._productView = button.dataset.product; this._selectedProjectId = null; this._render();
     }));

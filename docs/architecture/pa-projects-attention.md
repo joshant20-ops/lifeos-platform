@@ -71,3 +71,10 @@ Membership is an explicit anchor link. Only the anchor owns the outcome; child m
 The owner clarified the financing relationship beyond the original sender-scoped set. Reuse the existing anchor/confirmation schema: a separate, date-bounded membership-only decision links the identified current PCP/identity finance matters to the existing purchase. It does not copy lender ledger data, classify mail, create a financial authority, clear source-review uncertainty, or infer that a finance step is complete/waiting.
 
 Only the current explicitly identified vehicle-finance labels are selected; unrelated lender products and future same-company records are excluded. Original status/waiting decisions, comments, dates and priority stay unchanged. A private pre-change overlay backup, a confirmation reference and per-member annotation fingerprints provide idempotence, rollback and preservation evidence. Provenance distinguishes the original reviewed state decision from the later relationship-only decision. Native validation checks the union of accepted memberships, not a permanently frozen nine-member project.
+
+
+## Attention presentation grouping correction
+
+Owner phone review showed that the Attention list still rendered one top-level card per underlying item, despite correct shared membership. A repeated project subtitle is not a grouped user experience. Attention now renders exactly one collapsed disclosure per project in its primary Attention category, with action/question/waiting/information counts and a concise summary. All underlying items, existing controls and source links are available inside nested disclosures. Mixed-state projects do not appear repeatedly in several categories. Expansion state survives sensor refreshes.
+
+This is presentation only: no grouping/status/source/user-state migration. Synthetic contracts and native rendering of the actual private HA payload assert one visible parent structure for the confirmed project, all expected child items, default collapse and no duplicate project cards. Hash/served-version checks remain required; browser/phone visual acceptance is still a separate owner check.

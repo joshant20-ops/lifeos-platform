@@ -567,10 +567,30 @@ for(const project of attrs.projects_view.projects){
  const html=card._projectsMarkup(attrs.projects_view,card._items(attrs));
  if(!html.includes('Why this project?') || html.includes('<h3>Waiting</h3><p>None recorded.</p>') || html.includes('Finite intended outcome not confirmed')) throw Error('project_render_contract_failed');
 }
+
+card._productView='attention';card._selectedProjectId=null;
+const attention=card._projectsMarkup(attrs.projects_view,card._items(attrs));
+const ids=[...attention.matchAll(/data-attention-project="([^"]+)"/g)].map(match=>match[1]);
+if(ids.length!==new Set(ids).size)throw Error('duplicate_attention_project_cards');
+for(const project of attrs.projects_view.projects){
+ if(project.attention!=='COMPLETE' && ids.filter(id=>id===project.id).length!==1)throw Error('attention_project_not_grouped');
+}
+const owner=attrs.projects_view.projects.find(project=>project.provenance.some(proof=>proof.confirmation_ref==='owner-case-7b984ebd6829403dbd18c575a29f4b32'));
+if(!owner || ids.filter(id=>id===owner.id).length!==1)throw Error('owner_attention_card_not_single');
+if(!attention.includes('<details class="attention-project" data-attention-project="'+owner.id+'"><summary'))throw Error('owner_attention_card_not_collapsed');
+const children=[...attention.matchAll(/data-attention-item="([^"]+)"/g)].filter(match=>match[1].startsWith(owner.id+':')).length;
+if(children!==owner.matter_ids.length)throw Error('owner_attention_children_missing');
+console.log(JSON.stringify({project_cards:ids.length,owner_cards:1,owner_children:children}));
 """
     project_rendered = subprocess.run([node, "-e", project_render, str(CARD)], input=json.dumps(live_entity), text=True, capture_output=True, timeout=30)
     assert project_rendered.returncode == 0, "actual_project_render_failed"
     print("PA_PROJECTS_RENDER_ACTUAL_HA=PASS")
+    attention_render_counts = json.loads(project_rendered.stdout)
+    assert attention_render_counts["owner_cards"] == 1 and attention_render_counts["owner_children"] == len(owner_project["matter_ids"])
+    print("PA_ATTENTION_RENDER_ACTUAL_HA=PASS")
+    print("PA_ATTENTION_OWNER_PROJECT_CARDS=1")
+    print("PA_ATTENTION_OWNER_CHILD_ITEMS=" + str(attention_render_counts["owner_children"]))
+
     print("PA_WAITING_DETAILS_RENDER_ACTUAL_HA=PASS")
     print("PA_WAITING_SOURCE_CONTEXT_ACTUAL_HA=PASS")
     print("PA_WAITING_SOURCE_CONTEXT_COUNT="+str(len(waiting_rows)))
