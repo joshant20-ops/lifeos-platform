@@ -18,6 +18,14 @@ def row(mid, title, day=28, **kw):
 
 
 class CompletionEvidenceTests(unittest.TestCase):
+    def test_encoded_source_headers_and_positive_identity_check_are_recognised(self):
+        from email.header import Header
+        message=source('encoded','',subject=Header('Finance application DEMO123 approved — update','utf-8').encode())
+        self.assertIn('approval',reconciler.completion_steps(message))
+        self.assertIn('identity',reconciler.completion_steps(source('id','Your identity check has been completed.')))
+        self.assertNotIn('identity',reconciler.completion_steps(source('id','Check whether your identity check has been completed.')))
+        self.assertIn('approval',reconciler.completion_steps(source('app','Your application DEMO123 has been approved.'),'PCP finance approval'))
+        self.assertNotIn('approval',reconciler.completion_steps(source('app','Your application DEMO123 has been approved.'),'Job application'))
     def test_private_recovery_copy_is_immutable_and_does_not_replace_projection(self):
         import json, tempfile
         from pathlib import Path
@@ -52,9 +60,14 @@ class CompletionEvidenceTests(unittest.TestCase):
         self.assertEqual(b['status'],'OPEN')
         self.assertEqual(next(p for p in projects[0]['provenance'] if p['matter_id']=='partner')['verified_order_links'][0]['source_message_id'],'<partner@example.test>')
         self.assertEqual(sensor.derive_projects([b,a]),sensor.derive_projects([a,b]))
+        partner['subject']='Your Example Motors order DEMO123'
+        partner['body']='Partner order PARTNER42 has been dispatched.'
+        reconciler.correlate_named_supplier_orders(tasks,sources)
+        self.assertEqual(len(sensor.derive_projects([a,b])['projects']),1)
         reconciler.correlate_named_supplier_orders(tasks,{shop['message_id']:shop})
         self.assertEqual(len(sensor.derive_projects(list(tasks.values()))['projects']),1)
         partner['body']='An update from Example Motors, no order reference.'
+        partner['subject']='Synthetic update'
         reconciler.correlate_named_supplier_orders(tasks,sources)
         self.assertNotIn('verified_order_links',b)
         self.assertEqual(len(sensor.derive_projects(list(tasks.values()))['projects']),2)

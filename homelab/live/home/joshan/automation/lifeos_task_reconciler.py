@@ -761,12 +761,12 @@ def current_source_text(message):
             break
         if not line.lstrip().startswith(">"):
             lines.append(line)
-    subject = str(message.get("subject") or "")
+    subject = source_header(message.get("subject"), 500)
     if re.match(r"\s*(?:re|fw|fwd)\s*:", subject, re.I): subject = ""
     return subject + "\n" + "\n".join(lines)
 
 
-def completion_steps(message):
+def completion_steps(message, context=""):
     """Positive statements about a specific completed step, never a project."""
     patterns = {
         "identity": r"\bidentity(?: verification| check)?\s+(?:(?:has been|is|was)\s+)?(?:successfully\s+)?(?:verified|completed|complete|successful)\b|\b(?:we|you)(?: have|'ve)?\s+(?:successfully\s+)?(?:verified|completed)\s+(?:your |the )?identity(?: verification| check)?\b",
@@ -777,10 +777,14 @@ def completion_steps(message):
     found = set()
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", current_source_text(message)):
         # Conditional/future/negative statements are not completion evidence.
-        if "?" in sentence or re.search(r"\b(?:not|never|failed|pending|awaiting|once|when|if|will|please|must|need|required|before|after|until|can|could|would|should|may|might|ensure|check|whether|declined|rejected|cancelled|withdrawn|revoked|reversed|previously)\b|\b(?:hasn['’]t|isn['’]t|wasn['’]t|haven['’]t)\b", sentence, re.I):
+        if "?" in sentence or re.match(r"\s*(?:ensure|check|confirm|verify)\b", sentence, re.I) or re.search(r"\b(?:not|never|failed|pending|awaiting|once|when|if|will|please|must|need|required|before|after|until|can|could|would|should|may|might|ensure|whether|declined|rejected|cancelled|withdrawn|revoked|reversed|previously)\b|\b(?:hasn['’]t|isn['’]t|wasn['’]t|haven['’]t)\b", sentence, re.I):
             continue
         for step, pattern in patterns.items():
             if re.search(pattern, sentence, re.I): found.add(step)
+        # Accepted matter context identifies the application type; the positive
+        # approval itself must still be explicit in this exact source.
+        if re.search(r"\b(?:finance|credit|pcp)\b", context + " " + current_source_text(message), re.I) and re.search(r"\b(?:your |the )?application(?:\s+for\s+(?:finance|credit|pcp))?(?:\s+(?:number|reference|ref))?(?:\s+[A-Z0-9-]*\d[A-Z0-9-]*)?\s+(?:(?:has been|is|was)\s+)?approved\b|\bwe(?: have|'ve)?\s+(?:successfully )?approved\s+(?:your |the )?application\b", sentence, re.I):
+            found.add("approval")
     return found
 
 
@@ -834,7 +838,7 @@ def reconcile_completion_evidence(tasks, sources, user_state):
             source = sources.get(mid)
             if not source or source.get("message_id") != mid: continue
             timestamp = source_time(source.get("date"))
-            for step in completion_steps(source):
+            for step in completion_steps(source, " ".join(str(row.get(key) or "") for key in ("title", "topic"))):
                 if timestamp: evidence.append((origin, mid, source, step, timestamp))
     for step in ("identity", "signing", "approval", "delivery"):
         counts[step + "_sources"] = len({mid for _, mid, _, name, _ in evidence if name == step})
@@ -1886,7 +1890,7 @@ def process_task_review_requests():
 
 
 def order_reference_ids(message):
-    text = " ".join(str(message.get(key) or "") for key in ("subject", "body"))
+    text = source_header(message.get("subject"), 500) + " " + str(message.get("body") or "")
     values = set()
     for match in re.finditer(r"\border\s*(?:(?:id|no\.?|number|ref(?:erence)?)\s*)?(?:is\s*)?(?:[:#=-]\s*)*([A-Z0-9][A-Z0-9/_-]{3,39})\b", text, re.I):
         value = re.sub(r"[^A-Z0-9]", "", match.group(1).upper())
@@ -2051,7 +2055,7 @@ def backfill_shared_order_references(tasks, sources):
     return matches
 
 
-def correlate_named_supplier_orders(tasks, sources):
+def correlate_named_supplier_orders(tasks, sources, diagnostics=None):
     """Recover explicit retailer/order mentions in a partner's exact source.
 
     Additional partner references remain intact. A named retailer AND one exact
@@ -2059,6 +2063,12 @@ def correlate_named_supplier_orders(tasks, sources):
     orders/retailers remain ambiguous; company alone never supplies a link.
     """
     known = {}
+    diagnostics = diagnostics if diagnostics is not None else {}
+    for key in ("retailer_sources", "retailer_multi_order_sources", "retailer_subject_scopes", "retailer_named_links", "retailer_candidates"):
+        diagnostics[key] = 0
+    def reported_retailer(row):
+        text = " ".join(str(row.get(key) or "") for key in ("title", "topic", "counterparty")) + " " + str((row.get("source_context") or {}).get("sender") or "")
+        return "hobibear" in re.sub(r'(.)\1+', r'\1', re.sub(r'[^a-z0-9]', '', text.lower()))
     for row in tasks.values():
         for mid in task_source_message_ids(row):
             source = sources.get(mid)
@@ -2068,8 +2078,14 @@ def correlate_named_supplier_orders(tasks, sources):
             domain = address.lower().rpartition("@")[2]
             supplier = address.lower() if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else domain
             label = " ".join(re.findall(r"[a-z0-9]+", name.lower()))
-            if len(refs) == 1 and supplier and len(label) >= 4 and label not in {"support", "customer service", "orders", "noreply", "no reply", "delivery", "notifications"}:
-                known.setdefault((supplier, next(iter(refs))), []).append((label, mid))
+            labels = {label} - {"support", "service", "customer service", "customer support", "support team", "sales", "orders", "noreply", "no reply", "delivery", "notifications"}
+            party = " ".join(re.findall(r"[a-z0-9]+", str(row.get("counterparty") or "").lower()))
+            # A generic display name can use an accepted counterparty only
+            # when that exact name is also a source-domain label.
+            if party and party.replace(" ", "") in domain.split(".") and supplier != address.lower(): labels.add(party)
+            if len(refs) == 1 and supplier:
+                for label in labels:
+                    if len(label) >= 4: known.setdefault((supplier, next(iter(refs))), []).append((label, mid))
     linked = 0
     retained_ids = {mid for row in tasks.values() for mid in task_source_message_ids(row)}
     for row in tasks.values():
@@ -2080,8 +2096,17 @@ def correlate_named_supplier_orders(tasks, sources):
         for mid in task_source_message_ids(row):
             source = sources.get(mid)
             if not source or source.get("message_id") != mid: continue
-            if len(order_reference_ids(source)) != 1: continue
-            for paragraph in re.split(r"\n\s*\n", current_source_text(source)):
+            if reported_retailer(row):
+                diagnostics["retailer_sources"] += 1
+                diagnostics["retailer_multi_order_sources"] += int(len(order_reference_ids(source)) > 1)
+            subject = source_header(source.get("subject"), 500)
+            paragraphs = re.split(r"\n\s*\n", current_source_text(source)) if len(order_reference_ids(source)) == 1 else []
+            # A single explicit retailer/order in a new subject has its own
+            # scope; additional partner references in the body stay intact.
+            if len(order_reference_ids({"subject": subject})) == 1 and not re.match(r"\s*(?:re|fw|fwd)\s*:", subject, re.I):
+                paragraphs.append(subject)
+                if reported_retailer(row): diagnostics["retailer_subject_scopes"] += 1
+            for paragraph in paragraphs:
                 text = " ".join(re.findall(r"[a-z0-9]+", paragraph.lower()))
                 if len(text) > 800: continue
                 for (supplier, ref), origins in known.items():
@@ -2092,10 +2117,12 @@ def correlate_named_supplier_orders(tasks, sources):
         # Accepted exact-ID evidence survives a transient lookup miss; removing
         # its retained identities or revisiting a contradictory source expires it.
         row.pop("verified_order_links", None)
+        if reported_retailer(row): diagnostics["retailer_candidates"] += len(candidates)
         if len(candidates) == 1:
             proofs = next(iter(candidates.values()))
             row["verified_order_links"] = sorted(proofs, key=lambda p: (p["source_message_id"], p["origin_source_message_id"]))
             linked += 1
+            if reported_retailer(row): diagnostics["retailer_named_links"] += 1
         elif not candidates and previous_links and any(proof["source_message_id"] not in sources or proof["origin_source_message_id"] not in sources for proof in previous_links):
             row["verified_order_links"] = previous_links
     return linked
@@ -2289,7 +2316,8 @@ def _run_reconciler():
         refresh_source_context(task,fetched_by_message_id,source_summary_budget)
     print("PA_SOURCE_HISTORY_BACKFILLED="+str(backfill_verified_source_history(tasks,fetched_by_message_id)),flush=True)
     print("PA_ORDER_REFERENCE_BACKFILLS="+str(backfill_shared_order_references(tasks,fetched_by_message_id)),flush=True)
-    named_order_links = correlate_named_supplier_orders(tasks, fetched_by_message_id)
+    order_link_diagnostics = {}
+    named_order_links = correlate_named_supplier_orders(tasks, fetched_by_message_id, order_link_diagnostics)
     print("PA_SOURCE_CONTEXT_PRESENT="+str(sum(bool((task.get("source_context") or {}).get("sender")) for task in tasks.values())),flush=True)
     print("PA_SIGNIN_MATTERS="+str(sum(bool(task.get("sign_in_events")) for task in tasks.values())),flush=True)
     quote_holds=0
@@ -2303,6 +2331,7 @@ def _run_reconciler():
     user_state=read_user_state()
     lifecycle_diagnostics = reconcile_completion_evidence(tasks, fetched_by_message_id, user_state)
     lifecycle_diagnostics["named_supplier_order_links"] = named_order_links
+    lifecycle_diagnostics.update(order_link_diagnostics)
     if lifecycle_diagnostics["completed"]:
         preserve_completion_backup()
     for task in tasks.values():
