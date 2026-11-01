@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import subprocess
 import tempfile
 import time
@@ -398,6 +399,20 @@ def main():
     assert final_view.get("questions")==len(questions)
     assert final_view.get("information")==len(information)
     source_by_id={item["id"]:item for key in ("tasks","resolved","informational") for item in final_payload.get(key,[])}
+    lifecycle_diagnostics = final_payload.get("lifecycle_diagnostics") or {}
+    assert lifecycle_diagnostics and all(type(value) is int and value >= 0 for value in lifecycle_diagnostics.values()), "lifecycle_diagnostics_missing"
+    for key in ("completed", "proofs", "eligible", "partial", "missing_sources", "missing_dates", "identity_sources", "signing_sources", "approval_sources", "delivery_sources", "named_supplier_order_links"):
+        print("PA_LIFECYCLE_" + key.upper() + "=" + str(lifecycle_diagnostics[key]))
+    completed_by_evidence = [row for row in source_by_id.values() if row.get("completion_evidence")]
+    for row in completed_by_evidence:
+        retained = set(row.get("source_message_ids") or [])
+        assert row.get("machine_status") == "DONE" and row.get("completion_previous_status") in {"OPEN", "WAITING"}, "completion_backing_state_missing"
+        for proof in row["completion_evidence"]:
+            assert proof["source_message_id"] in retained and proof["source_matter_id"] in source_by_id, "completion_provenance_missing"
+            when = dt.datetime.fromtimestamp(row["completion_request_time"], dt.timezone.utc)
+            from email.utils import parsedate_to_datetime
+            assert parsedate_to_datetime(proof["source_date"]) > when, "completion_not_later_than_request"
+    print("PA_LIFECYCLE_PROVENANCE=PASS")
     for item in items:
         source_row=source_by_id.get(item.get("id"))
         assert source_row is not None, "overview_source_row_missing"
@@ -453,6 +468,11 @@ def main():
     print("PA_OUTCOME_CROSS_COMPANY_GROUPS=" + str(sum(any(proof["rule"] == "verified_cross_company_tracking" for proof in p["provenance"]) for p in projects)))
     print("PA_PROJECTS_ACTUAL_HA_ENTITY=PASS")
     print("PA_PROJECTS_SOURCE_COVERAGE=PASS")
+    def brand_locator(value):
+        return re.sub(r'(.)\1+', r'\1', re.sub(r'[^a-z0-9]', '', str(value).lower()))
+    retailer_ids = {row["id"] for row in source_by_id.values() if "hobibear" in brand_locator(" ".join(str(row.get(key) or "") for key in ("title", "topic", "counterparty")) + " " + str((row.get("user_project") or {}).get("outcome") or "") + " " + str((row.get("source_context") or {}).get("subject") or ""))}
+    print("PA_REPORTED_RETAILER_ROWS=" + str(len(retailer_ids)))
+    print("PA_REPORTED_RETAILER_PROJECTS=" + str(sum(bool(retailer_ids.intersection(p["matter_ids"])) for p in projects)))
     confirmation_ref = "owner-case-7b984ebd6829403dbd18c575a29f4b32"
     owner_confirmation = pa_user_state.read_user_state().get("confirmations", {}).get(confirmation_ref)
     assert owner_confirmation, "owner_confirmation_not_applied"

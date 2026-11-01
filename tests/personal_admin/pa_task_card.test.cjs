@@ -8,6 +8,12 @@ const context = {HTMLElement:class {}, customElements:{define:(_name, value)=>{C
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../homeassistant/www/lifeos-pa-task-card.js'),'utf8'),context);
 const event={id:'a'.repeat(64),source_message_id:'<alert@example.test>',email_received_at:1793187720};
 const alert={id:'alert',title:'Review account security',status:'OPEN',source_message_ids:[event.source_message_id],sign_in_events:[event]};
+test('completed items label earlier source context and retain completion explanation',()=>{
+ const card=new Card();card._config={};
+ const html=card._sourceContextMarkup({status:'DONE',source_context:{summary:'Previously waiting on identity checks',next_step:'Complete the check'},completion_evidence:[{step:'identity'}]});
+ assert.match(html,/Earlier email context/);assert.match(html,/Later evidence confirms: identity/);
+ assert.doesNotMatch(html,/<strong>Your next step|<strong>Next action|<strong>Waiting for/);
+});
 test('outcome timeline exposes exact source navigation and honest unknown times',()=>{
  const card=new Card();card._config={};
  const html=card._projectTimelineMarkup({timeline:[{title:'<Dispatch>',event_kind:'information',evidence_only:true,observed_at:0,source_message_ids:['<dispatch@example.test>','<dispatch@example.test>','javascript:bad']} ]});

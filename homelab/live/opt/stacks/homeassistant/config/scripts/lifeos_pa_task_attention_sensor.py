@@ -152,8 +152,16 @@ def derive_projects(rows, source_attention=None):
             and all(isinstance(v, str) and re.fullmatch(r"[A-Z0-9]{10,40}", v) and any(c.isdigit() for c in v) for v in evidence_refs["tracking"])
         ]
         owner_anchor = (row.get("user_project") or {}).get("anchor_id")
+        named_orders = {(proof.get("supplier"), proof.get("order_ref")) for proof in row.get("verified_order_links") or []
+                        if isinstance(proof, dict) and proof.get("rule") == "named_supplier_exact_order"
+                        and proof.get("source_message_id") in source_ids
+                        and isinstance(proof.get("supplier"), str) and proof.get("supplier")
+                        and isinstance(proof.get("order_ref"), str) and re.fullmatch(r"[A-Z0-9]{4,40}", proof["order_ref"])}
         if owner_anchor:
             key, rule = ("owner", owner_anchor), "owner_confirmed_membership"
+        elif len(named_orders) == 1:
+            named_supplier, named_ref = next(iter(named_orders))
+            key, rule = ("order", named_supplier, (named_ref,)), "named_supplier_exact_order"
         elif order_refs and supplier:
             key, rule = ("order", supplier, order_refs), "verified_supplier_order"
         elif refs:
@@ -163,6 +171,7 @@ def derive_projects(rows, source_attention=None):
         else:
             key, rule = ("matter", str(row["id"])), "accepted_matter"
         groups.setdefault(key, (rule, []))[1].append(row)
+        if rule == "named_supplier_exact_order": groups[key] = (rule, groups[key][1])
         accepted_rules[row["id"]] = rule
     # Cross-company outcome edges require the same explicit tracking evidence.
     # Validate whole connected components before merging: an ambiguous bridge
@@ -242,6 +251,8 @@ def derive_projects(rows, source_attention=None):
                                "accepted_group_rule": accepted_rules[row["id"]],
                                "case_reference_ids": row.get("case_reference_ids") or [],
                                "verified_order_refs": row.get("verified_order_refs") or [],
+                               "verified_order_links": row.get("verified_order_links") or [],
+                               "completion_evidence": row.get("completion_evidence") or [],
                                "correlation_evidence": correlation[row["id"]],
                                "confirmation_ref": (row.get("user_project") or {}).get("confirmation_ref")})
             history = [accepted_history[mid] for mid in ids if mid in accepted_history]
@@ -341,7 +352,7 @@ def main():
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         projected_items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required", "user_project", "user_waiting_for", "waiting_confirmation_ref") }, "source_context": project_source_context(x), "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required", "user_project", "user_waiting_for", "waiting_confirmation_ref", "completion_evidence") }, "source_context": project_source_context(x), "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ]
         for item in projected_items:
