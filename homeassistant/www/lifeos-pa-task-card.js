@@ -97,9 +97,11 @@ class LifeOSPATaskCard extends HTMLElement {
 
   _sourceContextMarkup(task) {
     const context = task.source_context && typeof task.source_context === "object" ? task.source_context : {};
+    const completed = String(task.status || "").toUpperCase() === "DONE";
     const rows = [
       ["From", context.sender || "Sender not available in the saved source"],
-      ["About", context.summary || context.subject || "Message details have not been captured"],
+      [completed ? "Earlier email context" : "About", context.summary || context.subject || "Message details have not been captured"],
+      ["Completion", completed && task.completion_evidence?.length ? "Later evidence confirms: " + [...new Set(task.completion_evidence.map(proof => proof.step))].join(", ") + ". See the timeline sources." : ""],
       ["Email subject", context.summary ? context.subject : ""],
       ["Sent", context.sent_at],
       ["Next action", this._kind(task) === "action" ? (task.reason || context.next_step || "No specific action was captured. Review the linked source.") : ""],

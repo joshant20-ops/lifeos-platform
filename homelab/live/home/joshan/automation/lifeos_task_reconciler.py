@@ -724,6 +724,170 @@ def effective_status(old,new_status):
     if old.get("status")=="DONE" and new_status!="DONE":return "DONE"
     return new_status
 
+
+def source_time(value):
+    """Strict evidence chronology; missing timezone/date is not 'now'."""
+    try:
+        parsed = parsedate_to_datetime(str(value or ""))
+        return int(parsed.timestamp()) if parsed.tzinfo else 0
+    except (ValueError, TypeError, OverflowError):
+        return 0
+
+
+def preserve_completion_backup(path=None):
+    """Private, immutable recovery copy before publishing source closures."""
+    path = Path(path or STATE)
+    raw = path.read_bytes()
+    if json.loads(raw).get("schema") != "lifeos_tasks_v3": raise ValueError("completion_backup_schema")
+    backup = path.with_name(path.stem + ".pre-completion-" + hashlib.sha256(raw).hexdigest()[:20] + ".json")
+    try:
+        fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    except FileExistsError:
+        import stat
+        if backup.is_symlink() or not stat.S_ISREG(backup.stat().st_mode) or backup.stat().st_mode & 0o077 or backup.read_bytes() != raw:
+            raise ValueError("completion_backup_integrity")
+    else:
+        with os.fdopen(fd, "wb") as stream:
+            stream.write(raw)
+            stream.flush()
+            os.fsync(stream.fileno())
+
+
+def current_source_text(message):
+    """Exclude ordinary quoted/replied history from completion recognition."""
+    lines = []
+    for line in str(message.get("body") or "").splitlines():
+        if re.match(r"\s*(?:On .{0,200}wrote:|-+\s*(?:Original Message|Forwarded message)|Begin forwarded message:|From:)", line, re.I):
+            break
+        if not line.lstrip().startswith(">"):
+            lines.append(line)
+    subject = str(message.get("subject") or "")
+    if re.match(r"\s*(?:re|fw|fwd)\s*:", subject, re.I): subject = ""
+    return subject + "\n" + "\n".join(lines)
+
+
+def completion_steps(message):
+    """Positive statements about a specific completed step, never a project."""
+    patterns = {
+        "identity": r"\bidentity(?: verification| check)?\s+(?:(?:has been|is|was)\s+)?(?:successfully\s+)?(?:verified|completed|complete|successful)\b|\b(?:we|you)(?: have|'ve)?\s+(?:successfully\s+)?(?:verified|completed)\s+(?:your |the )?identity(?: verification| check)?\b",
+        "signing": r"\b(?:agreement|contract|documents?)\s+(?:(?:has|have) been|is|are|was|were)\s+(?:successfully |fully )?(?:signed|executed)\b|\byou(?: have|'ve)\s+(?:successfully )?signed\s+(?:your |the )?(?:finance |credit |pcp )?(?:agreement|contract|documents?)\b|\bdocument signing\s+(?:is |was |has been )?completed\b",
+        "approval": r"\b(?:finance|credit)(?:\s+application)?(?:\s+(?:number|reference|ref))?(?:\s+[A-Z0-9-]*\d[A-Z0-9-]*)?\s+(?:(?:has been|is|was)\s+)?approved\b",
+        "delivery": r"\b(?:your |the )?(?:order|parcel|package)\s+(?:[A-Z0-9-]*\d[A-Z0-9-]*\s+)?(?:has been|was|is)\s+delivered\b",
+    }
+    found = set()
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", current_source_text(message)):
+        # Conditional/future/negative statements are not completion evidence.
+        if "?" in sentence or re.search(r"\b(?:not|never|failed|pending|awaiting|once|when|if|will|please|must|need|required|before|after|until|can|could|would|should|may|might|ensure|check|whether|declined|rejected|cancelled|withdrawn|revoked|reversed|previously)\b|\b(?:hasn['’]t|isn['’]t|wasn['’]t|haven['’]t)\b", sentence, re.I):
+            continue
+        for step, pattern in patterns.items():
+            if re.search(pattern, sentence, re.I): found.add(step)
+    return found
+
+
+def obligation_steps(task):
+    text = " ".join(str(task.get(key) or "") for key in ("title", "topic")).lower()
+    steps = set()
+    if re.search(r"\bidentity\b|\bid check\b", text): steps.add("identity")
+    if re.search(r"\bsign(?:ing)?\b|agreement signing", text): steps.add("signing")
+    if not steps and re.search(r"\b(?:finance|credit)\b", text) and re.search(r"\b(?:approval|apply|application)\b", text) and not re.search(r"\bapproved\b", text): steps.add("approval")
+    if not steps and re.search(r"\b(?:delivery|deliver)\b", text) and not re.search(r"\b(?:collect|collection|exception|address|reschedule)\b", text): steps.add("delivery")
+    return steps
+
+
+def reconcile_completion_evidence(tasks, sources, user_state):
+    """Advance only proven steps in the sole reconciler; retain exact proof.
+
+    Same project does not mean same obligation. All named steps need later,
+    explicit evidence, exact source retrieval and an accepted relationship.
+    User status overrides remain untouched. No AI/provider or mailbox writes.
+    """
+    import copy
+    counts = {"completed": 0, "proofs": 0, "missing_sources": 0, "missing_dates": 0, "eligible": 0, "partial": 0}
+    entries = user_state.get("obligations") or {}
+    def anchor(row):
+        project = (entries.get(row["id"]) or {}).get("project") or {}
+        return project.get("anchor_id") or (row["id"] if project.get("outcome") else None)
+    def supplier(row):
+        source = sources.get(str(row.get("email_message_id") or "")) or {}
+        address = parseaddr(source.get("from") or "")[1].lower()
+        domain = address.rpartition("@")[2]
+        return (address if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else domain) or normalize_counterparty(row.get("counterparty"))
+    def relationship(left, right):
+        if left["id"] == right["id"]: return "same_matter"
+        if anchor(left) and anchor(left) == anchor(right): return "owner_confirmed_membership"
+        def orders(row):
+            values = {(p["supplier"], p["order_ref"]) for p in row.get("verified_order_links") or [] if p.get("source_message_id") in task_source_message_ids(row)}
+            refs = set(row.get("verified_order_refs") or [])
+            if len(refs) == 1 and supplier(row): values.add((supplier(row), next(iter(refs))))
+            return values
+        left_orders, right_orders = orders(left), orders(right)
+        if len(left_orders) == 1 and left_orders == right_orders: return "exact_named_supplier_order"
+        a, b = set(left.get("verified_order_refs") or []), set(right.get("verified_order_refs") or [])
+        if len(a) == 1 and a == b and supplier(left) and supplier(left) == supplier(right): return "exact_supplier_order"
+        a, b = set(left.get("case_reference_ids") or []), set(right.get("case_reference_ids") or [])
+        if len(a) == 1 and a == b and supplier(left) and supplier(left) == supplier(right): return "exact_supplier_case"
+        return None
+    evidence = []
+    for row in tasks.values():
+        origin = copy.deepcopy(row)
+        for mid in task_source_message_ids(row):
+            source = sources.get(mid)
+            if not source or source.get("message_id") != mid: continue
+            timestamp = source_time(source.get("date"))
+            for step in completion_steps(source):
+                if timestamp: evidence.append((origin, mid, source, step, timestamp))
+    for step in ("identity", "signing", "approval", "delivery"):
+        counts[step + "_sources"] = len({mid for _, mid, _, name, _ in evidence if name == step})
+    for row in tasks.values():
+        required = obligation_steps(row)
+        if not required or row.get("status") not in {"OPEN", "WAITING"} or row.get("obligation_suppressed") or (entries.get(row["id"]) or {}).get("status_override"):
+            continue
+        counts["eligible"] += 1
+        retained = task_source_message_ids(row)
+        if not retained or any(mid not in sources or sources[mid].get("message_id") != mid for mid in retained):
+            counts["missing_sources"] += 1
+            continue
+        requested = source_time(row.get("updated_from_email")) or max((source_time(sources[mid].get("date")) for mid in retained), default=0)
+        if not requested:
+            counts["missing_dates"] += 1
+            continue
+        # A coarse legacy finance title must not hide further explicit requests
+        # in its original message (e.g. approval followed by identity/signing).
+        request_text = "\n".join(current_source_text(sources[mid]) for mid in retained)
+        if re.search(r"\b(?:complete|verify)\b.{0,40}\bidentity\b|\bidentity\b.{0,30}\b(?:required|check)\b", request_text, re.I): required.add("identity")
+        if re.search(r"\bsign\s+(?:your |the )?(?:finance |credit |pcp )?(?:agreement|contract|documents?)\b", request_text, re.I): required.add("signing")
+        proofs = {}
+        for origin, mid, source, step, timestamp in sorted(evidence, key=lambda e: (e[4], e[1])):
+            rule = relationship(row, origin)
+            if rule == "owner_confirmed_membership":
+                left_refs, right_refs = set(row.get("case_reference_ids") or []), set(origin.get("case_reference_ids") or [])
+                if left_refs and right_refs and not left_refs.intersection(right_refs): continue
+                # A vehicle and its lender may each require identity/signing.
+                # A shared outcome alone cannot equate those separate checks.
+                if step in {"identity", "signing"} and supplier(row) != supplier(origin) and not left_refs.intersection(right_refs): continue
+            if step in required and timestamp > requested and rule:
+                proofs[step] = {"step": step, "source_message_id": mid, "source_matter_id": origin["id"], "source_date": source["date"], "relationship": rule}
+        if set(proofs) != required:
+            if proofs: counts["partial"] += 1
+            continue
+        row["completion_evidence"] = [proofs[step] for step in sorted(proofs)]
+        row["completion_previous_status"] = row["status"]
+        row["completion_previous_reason"] = row.get("reason")
+        row["completion_request_time"] = requested
+        latest = max(proofs.values(), key=lambda p: source_time(p["source_date"]))
+        row["observed_at"] = source_time(latest["source_date"])
+        row["updated_from_email"] = latest["source_date"]
+        row["status"] = row["machine_status"] = "DONE"
+        row["status_source"] = "source_completion"
+        row["reason"] = "Later source evidence confirms all recorded steps are complete."
+        row.pop("confirmation_required", None)
+        for proof in row["completion_evidence"]:
+            source = sources[proof["source_message_id"]]
+            record_source_event(row, source, {"title": "Completed: " + proof["step"], "status": "DONE"}, source_time(source["date"]))
+        counts["completed"] += 1
+        counts["proofs"] += len(proofs)
+    return counts
+
 def load_previous():
     try:
         data=json.loads(STATE.read_text())
@@ -1887,6 +2051,49 @@ def backfill_shared_order_references(tasks, sources):
     return matches
 
 
+def correlate_named_supplier_orders(tasks, sources):
+    """Recover explicit retailer/order mentions in a partner's exact source.
+
+    Additional partner references remain intact. A named retailer AND one exact
+    known order are required in the same current paragraph. Multiple matching
+    orders/retailers remain ambiguous; company alone never supplies a link.
+    """
+    known = {}
+    for row in tasks.values():
+        for mid in task_source_message_ids(row):
+            source = sources.get(mid)
+            if not source or source.get("message_id") != mid: continue
+            refs = order_reference_ids(source)
+            name, address = parseaddr(source_header(source.get("from"), 200))
+            domain = address.lower().rpartition("@")[2]
+            supplier = address.lower() if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else domain
+            label = " ".join(re.findall(r"[a-z0-9]+", name.lower()))
+            if len(refs) == 1 and supplier and len(label) >= 4 and label not in {"support", "customer service", "orders", "noreply", "no reply", "delivery", "notifications"}:
+                known.setdefault((supplier, next(iter(refs))), []).append((label, mid))
+    linked = 0
+    for row in tasks.values():
+        candidates = {}
+        for mid in task_source_message_ids(row):
+            source = sources.get(mid)
+            if not source or source.get("message_id") != mid: continue
+            if len(order_reference_ids(source)) != 1: continue
+            for paragraph in re.split(r"\n\s*\n", current_source_text(source)):
+                text = " ".join(re.findall(r"[a-z0-9]+", paragraph.lower()))
+                if len(text) > 800: continue
+                for (supplier, ref), origins in known.items():
+                    if not re.search(r"(?<![A-Z0-9])" + re.escape(ref) + r"(?![A-Z0-9])", paragraph, re.I): continue
+                    for label, origin_mid in origins:
+                        if re.search(r"(?<![a-z0-9])" + re.escape(label) + r"(?![a-z0-9])", text):
+                            candidates.setdefault((supplier, ref), []).append({"supplier": supplier, "order_ref": ref, "source_message_id": mid, "origin_source_message_id": origin_mid, "rule": "named_supplier_exact_order"})
+        # Do not carry inferred links across unavailable/changed sources.
+        row.pop("verified_order_links", None)
+        if len(candidates) == 1:
+            proofs = next(iter(candidates.values()))
+            row["verified_order_links"] = sorted(proofs, key=lambda p: (p["source_message_id"], p["origin_source_message_id"]))
+            linked += 1
+    return linked
+
+
 def _run_reconciler():
     set_failure_stage("state_load")
     previous=load_previous()
@@ -1988,7 +2195,7 @@ def _run_reconciler():
     try:
         source_tasks=list(tasks.values())
         for task in tasks.values():
-            if insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events") or task_quality_category(task) or task.get("obligation_suppressed") in KINDS or not task.get("timeline_events"):
+            if obligation_steps(task) or insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events") or task_quality_category(task) or task.get("obligation_suppressed") in KINDS or not task.get("timeline_events"):
                 for source_id in task_source_message_ids(task):
                     source_date=next((event.get("date") for event in task.get("timeline_events") or [] if isinstance(event,dict) and event.get("message_id")==source_id), None)
                     source_tasks.append({"source_message_ids":[source_id],"email_message_id":source_id,"updated_from_email":source_date or (task.get("updated_from_email") if source_id==task.get("email_message_id") else "")})
@@ -2063,7 +2270,8 @@ def _run_reconciler():
             "timeline_events":list(old.get("timeline_events") or []),
             "paperless_evidence":evidence,
             "updated_from_email":str(msg.get("date",""))[:100],"observed_at":observed,
-            "reason":str(d.get("reason") or "")[:300]
+            "reason":str(d.get("reason") or "")[:300],
+            **{field: old[field] for field in ("completion_evidence", "completion_previous_status", "completion_previous_reason", "completion_request_time") if field in old},
         }
         record_source_event(tasks[task_id],msg,d,observed)
         reconcile_insurance_policy_due_date(tasks[task_id])
@@ -2074,6 +2282,7 @@ def _run_reconciler():
         refresh_source_context(task,fetched_by_message_id,source_summary_budget)
     print("PA_SOURCE_HISTORY_BACKFILLED="+str(backfill_verified_source_history(tasks,fetched_by_message_id)),flush=True)
     print("PA_ORDER_REFERENCE_BACKFILLS="+str(backfill_shared_order_references(tasks,fetched_by_message_id)),flush=True)
+    named_order_links = correlate_named_supplier_orders(tasks, fetched_by_message_id)
     print("PA_SOURCE_CONTEXT_PRESENT="+str(sum(bool((task.get("source_context") or {}).get("sender")) for task in tasks.values())),flush=True)
     print("PA_SIGNIN_MATTERS="+str(sum(bool(task.get("sign_in_events")) for task in tasks.values())),flush=True)
     quote_holds=0
@@ -2085,6 +2294,10 @@ def _run_reconciler():
         if hold_quote_only_obligation(task,fetched_by_message_id):quote_holds+=1
     print("TASK_QUOTE_ONLY_OBLIGATIONS_HELD="+str(quote_holds),flush=True)
     user_state=read_user_state()
+    lifecycle_diagnostics = reconcile_completion_evidence(tasks, fetched_by_message_id, user_state)
+    lifecycle_diagnostics["named_supplier_order_links"] = named_order_links
+    if lifecycle_diagnostics["completed"]:
+        preserve_completion_backup()
     for task in tasks.values():
         if task.get("status") in {"OPEN","WAITING"} or task.get("obligation_suppressed"):
             hold_source_non_obligation(task,fetched_by_message_id,user_state)
@@ -2103,6 +2316,7 @@ def _run_reconciler():
     lookup_diagnostics["open_tasks_before_publish"]=len(open_tasks)
     payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"informational":informational,"source_lookup_diagnostics":lookup_diagnostics,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     payload=apply_user_state(payload,read_user_state())
+    payload["lifecycle_diagnostics"] = lifecycle_diagnostics
     set_failure_stage("persist_publish")
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
     tmp=STATE.with_suffix(".tmp");tmp.write_text(json.dumps(payload,indent=2)+"\n");tmp.replace(STATE)
