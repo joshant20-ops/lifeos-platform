@@ -10,6 +10,17 @@ spec.loader.exec_module(audit)
 
 
 class EventAuditTests(unittest.TestCase):
+    def test_outcome_audit_counts_shapes_without_exposing_or_mutating_sources(self):
+        import copy
+        a={'id':'a','title':'Check Synthetic identity','status':'OPEN','topic':'Identity', 'source_message_ids':['<a@example.test>'],'verified_order_refs':['DEMO42'], 'updated_from_email':'Wed, 28 Oct 2026 12:00:00 +0000'}
+        b={'id':'b','title':'Synthetic finance','status':'DONE','source_message_ids':['<b@example.test>'],'verified_order_refs':['DEMO42'],'timeline_events':[{'message_id':'<b@example.test>','title':'Identity verification completed','date':'Thu, 29 Oct 2026 12:00:00 +0000'}]}
+        payload={'tasks':[a], 'resolved':[b]}; before=copy.deepcopy(payload)
+        counts=audit.outcome_counts(payload,'Synthetic')
+        self.assertEqual(counts['SAME_ORDER_PAIRS'],1)
+        self.assertEqual(counts['IDENTITY_LATER_CANDIDATES'],1)
+        self.assertEqual(payload,before)
+        self.assertTrue(all(isinstance(k,str) and type(v) is int for k,v in counts.items()))
+        self.assertNotIn('DEMO42',str(counts));self.assertNotIn('example.test',str(counts))
     def test_invalid_stale_or_wrong_schema_cannot_look_like_zero_candidates(self):
         valid={'schema':'lifeos_tasks_v3','generated_time':100000,'tasks':[],'resolved':[],'informational':[]}
         self.assertIs(audit.validate_payload(valid,100001),valid)
