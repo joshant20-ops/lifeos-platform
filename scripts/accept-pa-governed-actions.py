@@ -444,6 +444,12 @@ def main():
                    if parseaddr((row.get("source_context") or {}).get("sender") or "")[1].lower().rpartition("@")[2] == "tesla.com"}
     vehicle_projects = [project for project in projects if vehicle_ids.intersection(project["matter_ids"])]
     print("PA_VEHICLE_PROJECT_GROUPS=" + str(len(vehicle_projects)))
+    vehicle_rows = [source_by_id[mid] for mid in vehicle_ids]
+    print("PA_VEHICLE_HISTORY_ROWS=" + str(sum(bool(row.get("timeline_events")) for row in vehicle_rows)))
+    print("PA_VEHICLE_MISSING_SOURCE_ROWS=" + str(sum((row.get("source_disposition_checks") or {}).get("missing", 0) > 0 for row in vehicle_rows)))
+    for disposition_reason in ("mandatory_request", "accepted_commitment", "transactional_or_subject_uncertainty", "unclassified"):
+        print("PA_VEHICLE_SOURCE_REASON_" + disposition_reason.upper() + "=" + str(sum((row.get("source_disposition_checks") or {}).get("reason_counts", {}).get(disposition_reason, 0) for row in vehicle_rows)))
+
     print("PA_VEHICLE_PROJECT_MULTI_SOURCE=" + str(sum(len({sid for proof in project["provenance"] for sid in proof["source_message_ids"]}) > 1 for project in vehicle_projects)))
     for attention_kind in ("ACTION", "WAITING", "INFORMATION"):
         print("PA_VEHICLE_" + attention_kind + "=" + str(sum(len(vehicle_ids.intersection(project["buckets"][attention_kind])) for project in vehicle_projects)))
