@@ -79,6 +79,14 @@ class LegacyEvidenceTests(unittest.TestCase):
         b['verified_order_refs']=['DIFFERENT2043']
         self.assertEqual(len(sensor.derive_projects([a,b])['projects']),2)
 
+    def test_receipt_cannot_demote_waiting_or_completed_authority(self):
+        sources={mail()['message_id']:mail()}
+        for status in ('WAITING','DONE'):
+            item=row(status=status,obligation_suppressed='order_acknowledgement')
+            self.assertFalse(reconciler.hold_source_non_obligation(item,sources,{'obligations':{}}))
+            self.assertEqual(item['status'],status)
+            self.assertNotIn('obligation_suppressed',item)
+
     def test_existing_lifecycle_event_is_not_replaced_by_metadata_backfill(self):
         item=row(timeline_events=[{'message_id':mail()['message_id'],'title':'Submit identity details','status':'OPEN','event_kind':'obligation','observed_at':100}])
         before=copy.deepcopy(item['timeline_events'])

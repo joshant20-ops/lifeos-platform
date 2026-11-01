@@ -220,6 +220,12 @@ def hold_source_non_obligation(task,sources,user_state):
     if protected or user_closed:
         if managed:task.pop("obligation_suppressed",None)
         return False
+    # A receipt can refute an unsupported legacy OPEN action, but cannot
+    # cancel an accepted waiting/completed state or prove its outcome finished.
+    if "order_acknowledgement" in kinds.values() and task.get("status") in {"WAITING", "DONE", "DISMISSED"}:
+        if managed:
+            task.pop("obligation_suppressed", None)
+        return False
     if managed and any(kind is None for kind in kinds.values()):
         task.pop("obligation_suppressed",None)
     if ids and len(kinds)==len(ids) and all(kinds.values()):

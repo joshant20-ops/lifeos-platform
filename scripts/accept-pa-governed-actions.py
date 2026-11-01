@@ -542,7 +542,7 @@ for(const project of attrs.projects_view.projects){
     known_optional_active=[]
     for row in rows:
         checks=row.get("source_disposition_checks") or {}
-        if (checks.get("sources",0)>0 and checks.get("missing")==0 and checks.get("non_obligation")==checks.get("sources") and not checks.get("user_tracking") and not row.get("user_tracking") and not row.get("sign_in_events") and not row.get("obligation_suppressed") and row.get("status") in {"OPEN","WAITING"}):
+        if (checks.get("sources",0)>0 and checks.get("missing")==0 and checks.get("non_obligation")==checks.get("sources") and not checks.get("user_tracking") and not row.get("user_tracking") and not row.get("sign_in_events") and not row.get("obligation_suppressed") and row.get("status") in {"OPEN","WAITING"} and not (row.get("status")=="WAITING" and checks.get("kind_counts",{}).get("order_acknowledgement",0))):
             known_optional_active.append(row)
     print("PA_QUALITY_KNOWN_OPTIONAL_ACTIONABLE="+str(len(known_optional_active)))
     assert not known_optional_active, "source_non_obligation_still_actionable"
