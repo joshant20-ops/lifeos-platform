@@ -37,3 +37,16 @@ After independently validated merge, the existing LifeOS PA Deploy workflow inst
 Rollback is a reviewed revert through the same PA deploy path; derived data rebuilds on polling. No authoritative task state or user overlay migration needs undoing. Do not use an arbitrary runner shell or bypass the fixed gateway to demonstrate this UI.
 
 Remaining acceptance: actual coherent real multi-source/multi-thread finite project, representative human-labelled corpus quality, lifecycle/completion coverage, review of grouping uncertainty and identity continuity, phone layout, and owner acceptance. These remain #1498 work, not a separate programme. Runtime markers alone do not establish classification quality or user acceptance.
+
+
+## Owner rejection and legacy-evidence correction (1 November)
+
+Owner phone review rejected the initial view's generic naming, empty historical timeline, unexplained ACTION and repeated empty sections. Passing consumed-runtime equality/aggregate counts did not establish that real project acceptance. Do not treat the earlier implementation checkpoint as user acceptance.
+
+Processed scan IDs are not proof that historical timeline events were ever published. The sole reconciler now backfills metadata-only events for exact already-authoritative source IDs found through the existing bounded, read-only source lookup. It records the verified subject, sender-date provenance and reference IDs; never source bodies, guessed past actions, completion or current state. Unavailable dates remain unknown. Existing lifecycle events win and replay is idempotent. Legacy rows with no history use the same exact-ID lookup for their retained sources; no speculative mailbox/reference search is added.
+
+A positive ordinary order acknowledgement can use the existing informational hold policy only when every source is available and positively non-obligatory. Explicit payment, identity, collection and other requests, mixed/missing evidence and user tracking/closure overrides retain protection. A receipt does not establish delivery or completion. No acknowledgement is automatically converted into WAITING; that requires an independently accepted waiting state.
+
+For Projects identity, verified supplier-scoped order references take precedence over differing generic topics/auxiliary case references. Same-company domain can correlate different named senders only with the exact same verified order set; public mail providers are scoped to the individual address. Existing source/case provenance remains. Unrelated orders never join just on counterparty.
+
+Project detail now explains the next move, names generic order groups using their accepted counterparty, shows only populated sections with a compact empty-section summary, and avoids repeating per-matter empty timelines. Technical candidate/outcome warnings are replaced by a single suggested-grouping explanation. Native acceptance renders the actual HA Projects data with the installed card locally and exposes only aggregate history/order/vehicle-state counters; private identifiers, subjects and message contents must never enter logs. Actual semantic grouping and user/phone acceptance still require local review after deployment.

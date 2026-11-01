@@ -7,7 +7,7 @@ import html
 import re
 from datetime import date
 
-KINDS = {"marketing_offer", "routine_delivery", "optional_opportunity", "optional_feedback", "optional_change_window"}
+KINDS = {"marketing_offer", "routine_delivery", "optional_opportunity", "optional_feedback", "optional_change_window", "order_acknowledgement"}
 
 
 def _text(message):
@@ -56,6 +56,16 @@ def non_obligation_decision(message):
             return kind,kind
     if required:
         return None,"mandatory_request"
+    # A positive acknowledgement is evidence of an order, not a request.
+    # All earlier mandatory/payment/identity/conditional-duty guards win.
+    acknowledged = re.search(r"\b(?:thank you for (?:placing |your )?(?:your )?order|order confirmation|(?:your )?order (?:has been |is )?confirmed|we(?:'ve| have) received your order)\b", subject, re.I)
+    receipt_text = _text({key: message.get(key) for key in ("body", "text", "snippet")})
+    receipt_body = re.search(r"\b(?:thank you for (?:placing |your )?(?:your )?order|(?:your )?order (?:has been |is )?confirmed|(?:we(?:'ve| have) )?received your order|your order (?:number|reference|details))\b", receipt_text, re.I)
+    order_request = re.search(r"\b(?:complete|provide|upload|verify|sign|pay|submit|confirm|schedule|book|collect|arrange|respond|reply|accept)\s+(?:your|the|this|now|by)\b", text, re.I)
+    if acknowledged and receipt_body and order_request:
+        return None, "mandatory_request"
+    if acknowledged and receipt_body:
+        return "order_acknowledgement", "order_acknowledgement"
     delivery = re.search(r"\b(?:track (?:your|the) (?:order|parcel|package|delivery)|(?:order|parcel|package|delivery)\s+(?:is (?:now )?(?:on (?:its|the) way|out for delivery)|has (?:been (?:dispatched|delivered)|shipped)|will be delivered)|delivery (?:status|update|confirmation))\b", text, re.I)
     if delivery:
         return "routine_delivery","routine_delivery"
@@ -134,6 +144,8 @@ def non_obligation_kind(message):
 def task_quality_category(task):
     """Selection/aggregate diagnostics only; titles never authorise suppression."""
     text = " ".join(str(task.get(key) or "") for key in ("title", "topic"))
+    if re.search(r"\b(?:order confirmation|order confirmed|thank you for your order)\b", text, re.I):
+        return "order_acknowledgement"
     if re.search(r"\b(?:feedback|survey|questionnaire)\b|\brate\b.*\b(?:meals?|service|experience|delivery|order|purchase)\b", text, re.I):
         return "optional_feedback"
     if re.search(r"\b(?:meal|menu|order)\b.*\b(?:changes?|edit|skip|pause)\b", text, re.I):

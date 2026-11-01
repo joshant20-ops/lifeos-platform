@@ -48,6 +48,7 @@ class LifeOSPATaskCard extends HTMLElement {
   _referenceInfo(task) {
     const kinds = {
       quote_only_no_verified_policy: ["Insurance quotes received", "Renewal date: not confirmed", "Quote emails do not establish the renewal date of your current policy. No renewal action is required from these quotes alone."],
+      order_acknowledgement: ["Order acknowledged", "Information only", "The source acknowledges an order. It does not establish a new action or prove delivery/completion. Any separate requests keep their own states."],
       marketing_offer: ["Promotional offer received", "Optional offer", "An offer or discount is optional. Its expiry date is not a personal deadline."],
       routine_delivery: ["Delivery status update", "Information only", "Routine tracking is information. No required follow-up was found in these source messages."],
       optional_feedback: ["Feedback invitation", "Optional feedback", "A rating or survey request is optional. It does not create a personal deadline."],
@@ -101,6 +102,7 @@ class LifeOSPATaskCard extends HTMLElement {
       ["About", context.summary || context.subject || "Message details have not been captured"],
       ["Email subject", context.summary ? context.subject : ""],
       ["Sent", context.sent_at],
+      ["Next action", this._kind(task) === "action" ? (task.reason || context.next_step || "No specific action was captured. Review the linked source.") : ""],
       ["Waiting for", this._kind(task) === "waiting" ? (context.waiting_for || "The source does not state a specific pending response or event.") : ""],
       ["Your next step", this._kind(task) === "waiting" ? (context.next_step || "No next step has been confirmed from this source.") : ""],
     ].filter(([, value]) => value);
@@ -158,15 +160,22 @@ class LifeOSPATaskCard extends HTMLElement {
     }
     if (!selected) return nav + '<section class="overview-list">' + (projects.map(p =>
       '<button class="overview-tile" data-project="' + esc(p.id) + '"><span class="eyebrow">' + esc(p.attention) + ' · ' + esc(p.lifecycle) + '</span><strong>' + esc(p.name) + '</strong><span>' + esc(p.intended_outcome || "Outcome not confirmed · project candidate") + '</span><span>' + p.open_count + ' open · ' + p.completed_count + ' complete</span><span>Next: ' + esc(p.next_action.join("; ") || "No current action") + '</span><span>Waiting: ' + esc(p.waiting_on.join("; ") || "None recorded") + '</span><span>Latest: ' + esc(p.latest_update?.title || "No recorded update") + '</span></button>').join("") || '<p>No project candidates available.</p>') + '</section>';
-    return nav + '<button data-project="">← All projects</button><h2>' + esc(selected.name) + '</h2><h3>Overview</h3><p>' + esc(selected.intended_outcome || "Finite outcome not confirmed") + '</p><p>' + esc(selected.attention) + ' · ' + esc(selected.lifecycle) + '</p>' +
-      (items.some(row => row.id === selected.anchor_matter_id) ? '<button data-action="project_outcome" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.intended_outcome ? 'Edit intended outcome' : 'Confirm finite outcome') + '</button>' + (selected.intended_outcome ? '<button data-action="' + (selected.lifecycle === 'complete' ? 'project_reopen' : 'project_complete') + '" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.lifecycle === 'complete' ? 'Reopen outcome' : 'Confirm outcome complete') + '</button>' : '') : '<p>Outcome controls require the anchor matter in the current display window.</p>') +
-      selected.uncertainties.map(x => '<p role="note">' + esc(x) + '</p>').join("") +
-      '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · observed ' + esc(this._projectObserved(e.observed_at)) + '</span></div>').join("") || '<p>No source-backed timeline recorded.</p>') +
-      Object.entries({ACTION:"Actions",WAITING:"Waiting",WATCH:"Watching",INFORMATION:"Information",COMPLETE:"Complete"}).map(([kind,label]) => '<section><h3>' + label + '</h3>' + (selected.buckets[kind].map(id => {
+    const statusText = {ACTION:"Needs your attention", WAITING:"Waiting on someone or something else", WATCH:"Being watched or snoozed", INFORMATION:"Information — no current obligation", COMPLETE:"Recorded items complete"};
+    const step = selected.attention === "ACTION" ? selected.next_action.join("; ") : selected.attention === "WAITING" ? 'No current action is recorded for you. ' + selected.waiting_on.join("; ") : "";
+    const information = this._projectInformation(selected);
+    const labels = {ACTION:"Actions",WAITING:"Waiting",WATCH:"Watching",INFORMATION:"Information",COMPLETE:"Complete"};
+    const populated = Object.entries(labels).filter(([kind]) => selected.buckets[kind].length || (kind === "INFORMATION" && information.length));
+    const empty = Object.entries(labels).filter(([kind]) => !selected.buckets[kind].length && !(kind === "INFORMATION" && information.length)).map(([,label]) => label);
+    return nav + '<button class="back-matters" data-project="">← All projects</button><h2>' + esc(selected.name) + '</h2><h3>Overview</h3><section class="source-context"><strong>' + esc(statusText[selected.attention] || "State needs review") + '</strong>' +
+      (step ? '<p>' + esc(step) + '</p>' : '') + (selected.intended_outcome ? '<p><strong>Outcome</strong> ' + esc(selected.intended_outcome) + '</p>' : '<p>Suggested grouping. Name the outcome if you want to track it as a project.</p>') + '</section>' +
+      (items.some(row => row.id === selected.anchor_matter_id) ? '<button class="count" data-action="project_outcome" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.intended_outcome ? 'Edit project outcome' : 'Name project outcome') + '</button>' + (selected.intended_outcome ? '<button class="count" data-action="' + (selected.lifecycle === 'complete' ? 'project_reopen' : 'project_complete') + '" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.lifecycle === 'complete' ? 'Reopen outcome' : 'Confirm outcome complete') + '</button>' : '') : '<p>Outcome controls require the anchor matter in the current display window.</p>') +
+      selected.uncertainties.filter(x => x !== "Finite intended outcome not confirmed").map(x => '<p role="note">' + esc(x) + '</p>').join("") +
+      '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.evidence_only ? "Source evidence" : e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · ' + esc(e.time_source === "email_date" ? "email date " : "recorded time ") + esc(this._projectObserved(e.observed_at)) + '</span></div>').join("") || '<p class="freshness">No verified history has been recovered yet. The linked source below may still be available.</p>') +
+      populated.map(([kind,label]) => '<section><h3>' + label + '</h3>' + selected.buckets[kind].map(id => {
         const row = items.find(x => x.id === id);
-        return row ? this._taskCard(row, true) : '<p>Matter detail outside current display window.</p>';
-      }).join("") || (kind === "INFORMATION" && this._projectInformation(selected).length ? "" : '<p>None recorded.</p>')) +
-        (kind === "INFORMATION" ? this._projectInformation(selected).map(event => '<p>' + esc(event.title) + ' · ' + event.source_message_ids.length + ' supporting sources · no new action</p>').join("") : '') + '</section>').join("") +
+        return row ? this._taskCard(row, true, true) : '<p>Matter detail outside current display window.</p>';
+      }).join("") + (kind === "INFORMATION" ? information.map(event => '<p>' + esc(event.title) + ' · ' + event.source_message_ids.length + ' supporting sources · no new action</p>').join("") : '') + '</section>').join("") +
+      (empty.length ? '<p class="freshness">No items in: ' + esc(empty.join(", ")) + '.</p>' : '') +
       '<details><summary>Why this project? Evidence and grouping</summary><p>Derived from accepted PA matters using deterministic relationships. Source links are on each matter above.</p>' + selected.provenance.map(p => '<p>' + esc(p.matter_id) + ' · ' + esc(p.rule) + ' · ' + p.source_message_ids.length + ' source messages</p>').join("") + '</details>';
   }
 
@@ -197,7 +206,7 @@ class LifeOSPATaskCard extends HTMLElement {
         '<section class="overview-list" aria-label="' + this._escape(tab) + '">' + (tiles || '<div class="empty"><strong>No items in this view</strong><span>Other matters are available in the tabs above.</span></div>') + '</section>');
   }
 
-  _taskCard(task, featured = false) {
+  _taskCard(task, featured = false, projectDetail = false) {
     const kind = this._kind(task);
     const id = this._escape(task.id);
     const status = String(task.status || "OPEN").toUpperCase();
@@ -286,7 +295,7 @@ class LifeOSPATaskCard extends HTMLElement {
       '<div class="tags">' + statusTag + dueTag + snooze + '</div>' + (featured ? "" : latestPreview) +
       '<div class="source-line">' + sourceRefs.length + (sourceRefs.length === 1 ? " related message" : " related messages") +
       (task.user_comment_count ? " · " + this._escape(task.user_comment_count) + (task.user_comment_count === 1 ? " note" : " notes") : "") +
-      '</div>' + this._sourceContextMarkup(task) + (kind === 'information' ? '<p class="matter-explanation">' + this._escape(this._referenceInfo(task)[2]) + '</p>' : '') + this._commitmentMarkup(task) + this._confirmationMarkup(task) + junkNotice + trailMarkup + supporting.join("") + controls + '</article>';
+      '</div>' + this._sourceContextMarkup(task) + (kind === 'information' ? '<p class="matter-explanation">' + this._escape(this._referenceInfo(task)[2]) + '</p>' : '') + this._commitmentMarkup(task) + this._confirmationMarkup(task) + junkNotice + (projectDetail ? "" : trailMarkup) + supporting.join("") + controls + '</article>';
   }
 
   _render() {

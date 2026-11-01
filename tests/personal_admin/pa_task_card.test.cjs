@@ -149,3 +149,14 @@ test('information inside a waiting matter is visible without an information task
  assert.match(card._projectsMarkup({projects:[p]},[row]),/Delivery estimate updated/);
  assert.match(card._projectsMarkup({projects:[p]},[row]),/Information update, no new action/);
 });
+test('project detail explains next move without duplicate uncertainty or empty-section walls',()=>{
+ const card=new Card();card._config={};
+ const p={id:'project-demo',name:'Example Motors order',anchor_matter_id:'vehicle',intended_outcome:null,lifecycle:'candidate',attention:'WAITING',next_action:[],waiting_on:['Await vehicle assignment'],uncertainties:['Finite intended outcome not confirmed'],timeline:[],provenance:[],buckets:{ACTION:[],WAITING:['vehicle'],WATCH:[],INFORMATION:[],COMPLETE:[]}};
+ const row={id:'vehicle',title:'Vehicle order',status:'WAITING'};card._selectedProjectId=p.id;
+ const html=card._projectsMarkup({projects:[p]},[row]);
+ assert.match(html,/No current action is recorded for you/);assert.match(html,/Await vehicle assignment/);
+ assert.match(html,/Name project outcome/);assert.doesNotMatch(html,/Finite intended outcome not confirmed/);
+ for(const label of ['Actions','Watching','Information','Complete']) assert.doesNotMatch(html,new RegExp('<h3>'+label+'</h3>'));
+ assert.doesNotMatch(html,/0 updates|The story so far|No message updates/);
+ assert.match(html,/No items in:/);
+});
