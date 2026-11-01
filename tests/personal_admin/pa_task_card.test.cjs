@@ -135,3 +135,17 @@ test('finite outcome uses existing overlay action without task completion',async
  assert.equal(calls[0][2].note,'Collect the synthetic vehicle');
  assert.equal(calls.some(call=>call[2]?.action==='close'),false);
 });
+test('information inside a waiting matter is visible without an information task',()=>{
+ const card=new Card();card._config={};
+ const p={id:'project-demo',name:'Vehicle',intended_outcome:null,lifecycle:'candidate',attention:'WAITING',open_count:1,completed_count:0,next_action:[],waiting_on:['Vehicle assignment'],latest_update:null,anchor_matter_id:'vehicle',uncertainties:[],timeline:[{title:'Delivery estimate updated',event_kind:'information',observed_at:0,source_message_ids:['<info@example.test>']}],provenance:[],buckets:{ACTION:[],WAITING:['vehicle'],WATCH:[],INFORMATION:[],COMPLETE:[]}};
+ const row={id:'vehicle',title:'Vehicle order',status:'WAITING'};
+ card._selectedProjectId=p.id;
+ const detail=card._projectsMarkup({projects:[p]},[row]);
+ assert.match(detail,/<h3>Information<\/h3><p>Delivery estimate updated/);
+ assert.match(detail,/Observation time unknown/);
+ assert.doesNotMatch(detail,/1970/);
+ assert.equal(p.buckets.ACTION.length,0);assert.equal(p.buckets.INFORMATION.length,0);
+ card._productView='attention';
+ assert.match(card._projectsMarkup({projects:[p]},[row]),/Delivery estimate updated/);
+ assert.match(card._projectsMarkup({projects:[p]},[row]),/Information update, no new action/);
+});
