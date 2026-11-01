@@ -32,6 +32,8 @@ Use a small shared organisational model without creating a universal datastore:
 
 A Project is the user-facing representation of a persistent LifeOS matter. Existing authorities keep their records; LifeOS derives relationships between them. A project may therefore correlate EmailOps evidence, Paperless documents, Finance records, Home Assistant state, calendar events and other authoritative sources without copying their authority.
 
+Use **outcome-first organisation throughout Projects & Attention**, including small and single-source matters. A retailer, lender, payment provider and courier can contribute to one outcome; sender/company is not the organising boundary. Expose a source-backed consolidated timeline wherever accepted evidence allows it. Unconfirmed outcomes and uncertain links remain explicit; do not fabricate goals, historical events or completion to fill gaps. This does not require new Areas/Routines/Reference infrastructure during #1498.
+
 Every Project should have a clear outcome and close when that outcome is reached. Permanent responsibilities belong under Areas rather than becoming never-ending projects.
 
 ### AI boundary

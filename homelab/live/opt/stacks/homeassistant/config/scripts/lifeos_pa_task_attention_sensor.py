@@ -125,6 +125,9 @@ def derive_projects(rows, source_attention=None):
         return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
     groups = {}
     seen = set()
+    suppliers = {}
+    correlation = {}
+    accepted_rules = {}
     for row in rows:
         if not isinstance(row, dict) or not row.get("id") or row["id"] in seen:
             continue
@@ -138,6 +141,16 @@ def derive_projects(rows, source_attention=None):
         _, address = parseaddr(context.get("sender") or "")
         domain = address.lower().rpartition("@")[2]
         supplier = (address.lower() if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else domain) or party
+        suppliers[row["id"]] = supplier
+        source_ids = set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set())
+        correlation[row["id"]] = [
+            {"source_message_id": event["message_id"], "tracking": sorted(set(evidence_refs.get("tracking") or []))}
+            for event in row.get("timeline_events") or [] if isinstance(event, dict)
+            and event.get("message_id") in source_ids
+            and isinstance(evidence_refs := event.get("correlation_refs"), dict)
+            and isinstance(evidence_refs.get("tracking"), list)
+            and all(isinstance(v, str) and re.fullmatch(r"[A-Z0-9]{10,40}", v) and any(c.isdigit() for c in v) for v in evidence_refs["tracking"])
+        ]
         owner_anchor = (row.get("user_project") or {}).get("anchor_id")
         if owner_anchor:
             key, rule = ("owner", owner_anchor), "owner_confirmed_membership"
@@ -150,13 +163,73 @@ def derive_projects(rows, source_attention=None):
         else:
             key, rule = ("matter", str(row["id"])), "accepted_matter"
         groups.setdefault(key, (rule, []))[1].append(row)
+        accepted_rules[row["id"]] = rule
+    # Cross-company outcome edges require the same explicit tracking evidence.
+    # Validate whole connected components before merging: an ambiguous bridge
+    # must not cause an arbitrary partial merge dependent on input order.
+    keys = sorted(groups, key=str)
+    parents = {key: key for key in keys}
+    def root(key):
+        while parents[key] != key:
+            key = parents[key]
+        return key
+    tokens = {}
+    ambiguous = set()
+    for key, (_, members) in groups.items():
+        if key[0] == "owner":
+            continue  # Explicit owner membership remains pinned, never widened.
+        for row in members:
+            values = {v for proof in correlation[row["id"]] for v in proof["tracking"]}
+            if len(values) > 1 or len(set(row.get("verified_order_refs") or [])) > 1:
+                ambiguous.add(key)
+                continue
+            for value in values:
+                tokens.setdefault(value, set()).add(key)
+    for linked in tokens.values():
+        ordered = sorted(linked, key=str)
+        for key in ordered[1:]:
+            parents[root(key)] = root(ordered[0])
+    components = {}
+    for key in keys:
+        components.setdefault(root(key), []).append(key)
+    derived = {}
+    for component in components.values():
+        orders = {}
+        for key in component:
+            for row in groups[key][1]:
+                if suppliers[row["id"]]:
+                    orders.setdefault(suppliers[row["id"]], set()).update(row.get("verified_order_refs") or [])
+        conflict = any(len(values) > 1 for values in orders.values()) or any(key in ambiguous for key in component)
+        if len(component) > 1 and not conflict:
+            evidence = tuple(sorted(value for value, linked in tokens.items() if len(linked.intersection(component)) > 1))
+            derived[("tracking", evidence)] = ("verified_cross_company_tracking", [row for key in component for row in groups[key][1]])
+        else:
+            for key in component:
+                derived[key] = groups[key]
+                if conflict:
+                    ambiguous.add(key)
+    groups = derived
     projects = []
     for key, (rule, members) in sorted(groups.items(), key=lambda pair: str(pair[0])):
         members = sorted(members, key=lambda row: str(row["id"]))
         buckets = {name: [] for name in ("ACTION", "WAITING", "WATCH", "INFORMATION", "COMPLETE")}
         events = {}
-        seen_messages = set()
         provenance = []
+        # Prefer accepted lifecycle history over a metadata-only fallback even
+        # when another matter sharing that source sorts first.
+        accepted_history = {}
+        for member in members:
+            retained = set(member.get("source_message_ids") or []) | ({member["email_message_id"]} if member.get("email_message_id") else set())
+            for event in member.get("timeline_events") or []:
+                if not isinstance(event, dict) or event.get("message_id") not in retained:
+                    continue
+                try:
+                    int(event.get("observed_at") or 0)
+                except (TypeError, ValueError):
+                    continue
+                old = accepted_history.get(event["message_id"])
+                if old is None or (old.get("evidence_only") and not event.get("evidence_only")):
+                    accepted_history[event["message_id"]] = event
         for row in members:
             status = str(row.get("status") or "").upper()
             kind = ("INFORMATION" if row.get("obligation_suppressed") or status in {"NONE", "DISMISSED"}
@@ -166,19 +239,36 @@ def derive_projects(rows, source_attention=None):
             buckets[kind].append(str(row["id"]))
             ids = sorted(set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set()))
             provenance.append({"matter_id": row["id"], "rule": rule, "source_message_ids": ids,
+                               "accepted_group_rule": accepted_rules[row["id"]],
                                "case_reference_ids": row.get("case_reference_ids") or [],
                                "verified_order_refs": row.get("verified_order_refs") or [],
+                               "correlation_evidence": correlation[row["id"]],
                                "confirmation_ref": (row.get("user_project") or {}).get("confirmation_ref")})
-            for event in row.get("timeline_events") or []:
-                if not isinstance(event, dict) or not event.get("message_id") or event["message_id"] not in ids or event["message_id"] in seen_messages:
+            history = [accepted_history[mid] for mid in ids if mid in accepted_history]
+            context = row.get("source_context") or {}
+            if project_source_context(row) and context.get("subject") and not any(isinstance(e, dict) and e.get("message_id") == context["message_id"] for e in history):
+                from email.utils import parsedate_to_datetime
+                try:
+                    sent = parsedate_to_datetime(str(context.get("sent_at") or ""))
+                    timestamp = int(sent.timestamp()) if sent.tzinfo else 0
+                except (TypeError, ValueError, OverflowError):
+                    timestamp = 0
+                history.append({"message_id": context["message_id"], "title": "Source recorded: " + str(context["subject"])[:100],
+                                "status": "NONE", "event_kind": "information", "observed_at": timestamp,
+                                "date": context.get("sent_at"), "time_source": "email_date" if timestamp else "unknown", "evidence_only": True})
+            for event in history:
+                if not isinstance(event, dict) or not event.get("message_id") or event["message_id"] not in ids:
                     continue
                 try:
                     observed = int(event.get("observed_at") or 0)
                 except (TypeError, ValueError):
                     continue
-                seen_messages.add(event["message_id"])
+                prior = next((e for e in events.values() if event["message_id"] in e["source_message_ids"]), None)
+                if prior:
+                    if row["id"] not in prior["matter_ids"]: prior["matter_ids"].append(row["id"])
+                    continue
                 # Consolidate same accepted update, retain all source identities.
-                signature = (str(event.get("title") or "Email update"), str(event.get("status") or "NONE"), str(event.get("event_kind") or "information"))
+                signature = (str(event.get("title") or "Email update"), str(event.get("status") or "NONE"), str(event.get("event_kind") or "information"), bool(event.get("evidence_only")), event.get("time_source"))
                 update = events.setdefault(signature, {"title": signature[0], "status": signature[1], "event_kind": signature[2], "observed_at": 0, "source_dates": [], "source_message_ids": [], "matter_ids": [], "evidence_only": bool(event.get("evidence_only")), "time_source": event.get("time_source")})
                 update["observed_at"] = max(update["observed_at"], observed)
                 for field, value in (("source_dates", event.get("date")), ("source_message_ids", event["message_id"]), ("matter_ids", row["id"])):
@@ -221,7 +311,7 @@ def derive_projects(rows, source_attention=None):
                          "open_count": sum(len(buckets[name]) for name in ("ACTION", "WAITING", "WATCH")),
                          "completed_count": len(buckets["COMPLETE"]), "timeline": timeline,
                          "latest_update": timeline[-1] if timeline else None,
-                         "uncertainties": (["Finite intended outcome not confirmed"] if not outcome else []) + (["Conflicting owner outcome annotations; review grouping"] if outcome_conflict else []) + (["Outcome marked complete but obligations remain open"] if metadata.get("state") == "complete" and any(buckets[k] for k in ("ACTION", "WAITING", "WATCH")) else []) + (["Source evidence missing"] if any(not p["source_message_ids"] for p in provenance) else []),
+                         "uncertainties": (["Finite intended outcome not confirmed"] if not outcome else []) + (["Ambiguous correlation evidence; kept separate"] if key in ambiguous else []) + (["Conflicting owner outcome annotations; review grouping"] if outcome_conflict else []) + (["Outcome marked complete but obligations remain open"] if metadata.get("state") == "complete" and any(buckets[k] for k in ("ACTION", "WAITING", "WATCH")) else []) + (["Source evidence missing"] if any(not p["source_message_ids"] for p in provenance) else []) + (["Timeline evidence unavailable"] if not timeline else []),
                          "provenance": provenance})
     return {"schema": "lifeos_projects_projection_v1", "projects": projects,
             "attention": {kind: [{"project_id": p["id"], "matter_id": mid} for p in projects for mid in p["buckets"][kind]] for kind in ("ACTION", "WAITING", "WATCH", "INFORMATION", "COMPLETE")},

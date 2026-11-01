@@ -8,6 +8,16 @@ const context = {HTMLElement:class {}, customElements:{define:(_name, value)=>{C
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../homeassistant/www/lifeos-pa-task-card.js'),'utf8'),context);
 const event={id:'a'.repeat(64),source_message_id:'<alert@example.test>',email_received_at:1793187720};
 const alert={id:'alert',title:'Review account security',status:'OPEN',source_message_ids:[event.source_message_id],sign_in_events:[event]};
+test('outcome timeline exposes exact source navigation and honest unknown times',()=>{
+ const card=new Card();card._config={};
+ const html=card._projectTimelineMarkup({timeline:[{title:'<Dispatch>',event_kind:'information',evidence_only:true,observed_at:0,source_message_ids:['<dispatch@example.test>','<dispatch@example.test>','javascript:bad']} ]});
+ assert.match(html,/&lt;Dispatch&gt;/);assert.match(html,/Observation time unknown/);
+ assert.match(html,/no lifecycle inferred/);assert.match(html,/Supporting sources · 1/);
+ assert.match(html,/rfc822msgid%3Adispatch%40example.test/);assert.doesNotMatch(html,/javascript:bad/);
+ const dated=card._projectTimelineMarkup({timeline:[{title:'Receipt',observed_at:100,time_source:'email_date',source_message_ids:[]}]});
+ assert.match(dated,/Email date:/);assert.match(dated,/GMT/);
+ assert.match(card._projectTimelineMarkup({timeline:[]}),/No verified history/);
+});
 test('overview starts with tiles and opens detail deliberately',()=>{
  const card=new Card();card._config={};
  assert.match(card._overviewMarkup([alert]),/data-matter="alert"/);

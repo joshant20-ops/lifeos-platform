@@ -23,6 +23,70 @@ def event(mid, title='Vehicle allocation pending', status='WAITING', kind='oblig
 
 
 class ProjectsTests(unittest.TestCase):
+    def shipping(self, mid, party, tracking='DEMO1234567890', order=None):
+        row = matter(mid, timeline_events=[{**event(mid, 'Parcel update', 'NONE', 'information'),
+                                          'correlation_refs': {'tracking': [tracking]}}])
+        row.update(counterparty=party, topic='Delivery ' + mid, case_reference_ids=[],
+                   verified_order_refs=[order] if order else [])
+        return row
+
+    def test_retailer_carrier_outcome_crosses_company_boundary(self):
+        retailer = self.shipping('dispatch', 'Example Shop', order='DEMOORDER42')
+        carrier = self.shipping('carrier', 'Example Courier')
+        original = copy.deepcopy([retailer, carrier])
+        p = self.project([retailer, carrier])
+        self.assertEqual(len(sensor.derive_projects([retailer, carrier])['projects']), 1)
+        self.assertEqual(p['provenance'][0]['rule'], 'verified_cross_company_tracking')
+        self.assertEqual(len(p['timeline']), 1)
+        self.assertEqual(len(p['timeline'][0]['source_message_ids']), 2)
+        self.assertEqual(sensor.derive_projects([carrier, retailer]), sensor.derive_projects([retailer, carrier]))
+        self.assertEqual([retailer, carrier], original)
+
+    def test_tracking_collision_and_ambiguous_bridge_stay_separate(self):
+        a = self.shipping('a', 'Shop', order='ORDER42')
+        b = self.shipping('b', 'Shop', order='ORDER43')
+        carrier = self.shipping('carrier', 'Courier')
+        projects = sensor.derive_projects([a, b, carrier])['projects']
+        self.assertEqual(len(projects), 3)
+        self.assertTrue(all('Ambiguous correlation evidence; kept separate' in p['uncertainties'] for p in projects))
+        carrier['timeline_events'][0]['correlation_refs']['tracking'].append('OTHER1234567890')
+        self.assertEqual(len(sensor.derive_projects([a, carrier])['projects']), 2)
+
+    def test_unverified_tracking_and_pinned_owner_membership_do_not_expand(self):
+        a, b = self.shipping('a', 'Shop'), self.shipping('b', 'Courier')
+        b['timeline_events'][0]['message_id'] = '<missing@example.test>'
+        self.assertEqual(len(sensor.derive_projects([a, b])['projects']), 2)
+        b['timeline_events'][0]['message_id'] = b['source_message_ids'][0]
+        a['user_project'] = {'anchor_id': 'a', 'source': 'user', 'outcome': 'Receive example purchase'}
+        self.assertEqual(len(sensor.derive_projects([a, b])['projects']), 2)
+
+    def test_verified_single_source_starts_timeline_without_invented_lifecycle(self):
+        row = matter(source_context={'message_id': '<order@example.test>', 'subject': 'Example receipt',
+                                     'sent_at': 'Wed, 28 Oct 2026 12:00:00 +0000'})
+        original = copy.deepcopy(row)
+        p = self.project([row])
+        self.assertTrue(p['timeline'][0]['evidence_only'])
+        self.assertEqual(p['timeline'][0]['time_source'], 'email_date')
+        self.assertEqual(p['attention'], 'WAITING')
+        self.assertEqual(row, original)
+        row['source_context']['sent_at'] = 'unknown'
+        self.assertEqual(self.project([row])['timeline'][0]['observed_at'], 0)
+
+    def test_shared_source_retains_every_matter_relationship(self):
+        a, b = matter('a'), matter('b')
+        b['source_message_ids'] = a['source_message_ids']
+        a['timeline_events'] = [event('a')]
+        b['timeline_events'] = [event('a')]
+        self.assertEqual(self.project([a, b])['timeline'][0]['matter_ids'], ['a', 'b'])
+        a['timeline_events'] = []
+        a['source_context'] = {'message_id': '<a@example.test>', 'subject': 'Metadata fallback'}
+        b['timeline_events'] = [event('a', 'Identity check requested', 'OPEN')]
+        timeline = self.project([a, b])['timeline']
+        self.assertEqual(len(timeline), 1)
+        self.assertEqual(timeline[0]['title'], 'Identity check requested')
+        self.assertFalse(timeline[0]['evidence_only'])
+        self.assertEqual(timeline[0]['matter_ids'], ['a', 'b'])
+
     def project(self, rows):
         return sensor.derive_projects(rows)['projects'][0]
 

@@ -93,4 +93,29 @@ class LegacyEvidenceTests(unittest.TestCase):
         reconciler.backfill_verified_source_history({'receipt':item},{mail()['message_id']:mail()})
         self.assertEqual(item['timeline_events'],before)
 
+    def test_local_tracking_evidence_links_retailer_and_courier_without_state_rewrite(self):
+        messages = [mail(), {**mail(), 'message_id': '<carrier@example.test>', 'from': 'Courier <delivery@courier.example.test>'}]
+        messages[0]['body'] = 'Your order TEST2042 was dispatched. Tracking number: DEMO1234567890'
+        messages[1]['body'] = 'Tracking number: DEMO1234567890. Your parcel is in transit.'
+        a, b = row(), row()
+        b.update(id='carrier', counterparty='Example Courier', topic='Parcel delivery',
+                 source_message_ids=[messages[1]['message_id']], email_message_id=messages[1]['message_id'])
+        tasks = {a['id']: a, b['id']: b}
+        before = [(task['id'], task['status']) for task in tasks.values()]
+        sources = {message['message_id']: message for message in messages}
+        reconciler.backfill_verified_source_history(tasks, sources)
+        snapshot = copy.deepcopy(tasks)
+        reconciler.backfill_verified_source_history(tasks, sources)
+        self.assertEqual(tasks, snapshot)
+        projected = sensor.derive_projects(list(tasks.values()))['projects']
+        self.assertEqual(len(projected), 1)
+        self.assertEqual(projected[0]['provenance'][0]['rule'], 'verified_cross_company_tracking')
+        self.assertEqual([(task['id'], task['status']) for task in tasks.values()], before)
+        self.assertTrue(all(event['evidence_only'] for event in projected[0]['timeline']))
+
+    def test_tracking_extractor_requires_explicit_label_and_long_identifier(self):
+        for body in ('123456789012', 'Tracking number: 1234', 'Order TEST2042', 'https://courier.example.test/123456789012'):
+            self.assertEqual(reconciler.source_correlation_refs({'body': body})['tracking'], [])
+        self.assertEqual(reconciler.source_correlation_refs({'body': 'Tracking ID: DEMO-1234567890'})['tracking'], ['DEMO1234567890'])
+
 if __name__=='__main__':unittest.main()

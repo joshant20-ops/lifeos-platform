@@ -652,6 +652,7 @@ def record_source_event(task,msg,decision,observed,actionable=True):
             "title":str(decision.get("title") or "Email update")[:120],
             "status":str(decision.get("status") or "NONE")[:16],
             "event_kind":"obligation" if actionable else "information",
+            "correlation_refs":source_correlation_refs(msg),
         })
     events.sort(key=lambda event:(int(event.get("observed_at") or 0),str(event.get("message_id") or "")))
     task["timeline_events"]=events[-20:]
@@ -1730,6 +1731,23 @@ def order_reference_ids(message):
     return values
 
 
+def source_correlation_refs(message):
+    """Typed evidence for presentation correlation, never an obligation decision.
+
+    Orders stay supplier scoped. Only explicit, long tracking labels can bridge
+    a retailer and carrier. Bare numbers/URLs and short generic refs cannot.
+    Private source bodies are inspected only by the existing local reconciler.
+    """
+    text = " ".join(str(message.get(key) or "") for key in ("subject", "body"))
+    tracking = set()
+    pattern = r"\b(?:tracking|consignment|shipment)\s+(?:number|no\.?|id|code|ref(?:erence)?)\s*[:#=-]?\s*([A-Z0-9][A-Z0-9-]{9,39})\b"
+    for match in re.finditer(pattern, text, re.I):
+        value = match.group(1).upper().replace("-", "")
+        if 10 <= len(value) <= 40 and any(char.isdigit() for char in value):
+            tracking.add(value)
+    return {"order": sorted(order_reference_ids(message)), "tracking": sorted(tracking)}
+
+
 def source_header(value, limit):
     """Decode display headers only; never interpret sender text as authentication."""
     try:
@@ -1808,6 +1826,15 @@ def backfill_verified_source_history(tasks, sources):
             if not source or str(source.get("message_id") or "").strip() != source_id:
                 continue
             refs.update(order_reference_ids(source))
+            # Refresh only metadata for this exact already-retained source.
+            # Existing accepted lifecycle/history values remain unchanged.
+            for event in task.get("timeline_events") or []:
+                if isinstance(event, dict) and event.get("message_id") == source_id:
+                    correlation = source_correlation_refs(source)
+                    if correlation["tracking"]:
+                        event["correlation_refs"] = correlation
+                    else:
+                        event.pop("correlation_refs", None)
             if any(event.get("message_id") == source_id for event in task.get("timeline_events") or [] if isinstance(event, dict)):
                 continue
             try:
