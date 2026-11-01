@@ -401,7 +401,7 @@ def main():
     source_by_id={item["id"]:item for key in ("tasks","resolved","informational") for item in final_payload.get(key,[])}
     lifecycle_diagnostics = final_payload.get("lifecycle_diagnostics") or {}
     assert lifecycle_diagnostics and all(type(value) is int and value >= 0 for value in lifecycle_diagnostics.values()), "lifecycle_diagnostics_missing"
-    for key in ("completed", "proofs", "eligible", "partial", "missing_sources", "missing_dates", "identity_sources", "signing_sources", "approval_sources", "delivery_sources", "named_supplier_order_links"):
+    for key in ("completed", "proofs", "eligible", "partial", "missing_sources", "missing_dates", "identity_sources", "signing_sources", "approval_sources", "delivery_sources", "named_supplier_order_links", "retailer_sources", "retailer_multi_order_sources", "retailer_subject_scopes", "retailer_named_links", "retailer_candidates"):
         print("PA_LIFECYCLE_" + key.upper() + "=" + str(lifecycle_diagnostics[key]))
     completed_by_evidence = [row for row in source_by_id.values() if row.get("completion_evidence")]
     for row in completed_by_evidence:

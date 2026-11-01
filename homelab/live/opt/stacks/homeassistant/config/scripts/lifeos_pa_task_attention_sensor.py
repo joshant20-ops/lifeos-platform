@@ -189,7 +189,7 @@ def derive_projects(rows, source_attention=None):
             continue  # Explicit owner membership remains pinned, never widened.
         for row in members:
             values = {v for proof in correlation[row["id"]] for v in proof["tracking"]}
-            if len(values) > 1 or len(set(row.get("verified_order_refs") or [])) > 1:
+            if len(values) > 1 or (len(set(row.get("verified_order_refs") or [])) > 1 and accepted_rules[row["id"]] != "named_supplier_exact_order"):
                 ambiguous.add(key)
                 continue
             for value in values:
@@ -206,7 +206,9 @@ def derive_projects(rows, source_attention=None):
         orders = {}
         for key in component:
             for row in groups[key][1]:
-                if suppliers[row["id"]]:
+                if accepted_rules[row["id"]] == "named_supplier_exact_order":
+                    orders.setdefault(key[1], set()).update(key[2])
+                elif suppliers[row["id"]]:
                     orders.setdefault(suppliers[row["id"]], set()).update(row.get("verified_order_refs") or [])
         conflict = any(len(values) > 1 for values in orders.values()) or any(key in ambiguous for key in component)
         if len(component) > 1 and not conflict:
