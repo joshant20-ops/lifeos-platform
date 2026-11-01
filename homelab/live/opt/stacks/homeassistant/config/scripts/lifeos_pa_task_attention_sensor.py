@@ -173,20 +173,25 @@ def derive_projects(rows, source_attention=None):
                     if value and value not in update[field]: update[field].append(value)
         timeline = sorted(events.values(), key=lambda event: (event["observed_at"], event["title"]))
         attention = next((name for name in ("ACTION", "WAITING", "WATCH") if buckets[name]), "INFORMATION" if buckets["INFORMATION"] else "COMPLETE")
-        outcome = next((str(row["intended_outcome"]) for row in members if row.get("intended_outcome")), None)
+        anchors = [row for row in members if (row.get("user_project") or {}).get("source") == "user"]
+        anchor = anchors[0] if anchors else members[0]
+        metadata = anchor.get("user_project") or {}
+        outcome = metadata.get("outcome")
+        outcome_conflict = len({row["user_project"]["outcome"] for row in anchors}) > 1
         by_id = {str(row["id"]): row for row in members}
         def summary(ids, field):
             return [str((project_source_context(by_id[i]) or {}).get(field) or by_id[i].get("reason") or by_id[i].get("title") or "Details unknown")[:400] for i in ids]
-        projects.append({"id": "project-" + hashlib.sha256(json.dumps(key).encode()).hexdigest()[:20],
-                         "name": members[0].get("topic") or members[0].get("title") or "Source matter",
-                         "intended_outcome": outcome, "lifecycle": "candidate" if not outcome else "complete" if attention == "COMPLETE" else "active",
+        projects.append({"id": "project-" + hashlib.sha256(json.dumps(("user", anchor["id"]) if anchors else key).encode()).hexdigest()[:20],
+                         "name": outcome or members[0].get("topic") or members[0].get("title") or "Source matter",
+                         "anchor_matter_id": anchor["id"], "outcome_source": "user" if outcome else None,
+                         "intended_outcome": outcome, "lifecycle": "candidate" if not outcome or outcome_conflict else metadata.get("state", "active"),
                          "attention": attention, "buckets": buckets, "matter_ids": list(by_id),
                          "next_action": summary(buckets["ACTION"], "next_step"),
                          "waiting_on": summary(buckets["WAITING"], "waiting_for"),
                          "open_count": sum(len(buckets[name]) for name in ("ACTION", "WAITING", "WATCH")),
                          "completed_count": len(buckets["COMPLETE"]), "timeline": timeline,
                          "latest_update": timeline[-1] if timeline else None,
-                         "uncertainties": (["Finite intended outcome not confirmed"] if not outcome else []) + (["Source evidence missing"] if any(not p["source_message_ids"] for p in provenance) else []),
+                         "uncertainties": (["Finite intended outcome not confirmed"] if not outcome else []) + (["Conflicting owner outcome annotations; review grouping"] if outcome_conflict else []) + (["Outcome marked complete but obligations remain open"] if metadata.get("state") == "complete" and any(buckets[k] for k in ("ACTION", "WAITING", "WATCH")) else []) + (["Source evidence missing"] if any(not p["source_message_ids"] for p in provenance) else []),
                          "provenance": provenance})
     return {"schema": "lifeos_projects_projection_v1", "projects": projects,
             "attention": {kind: [{"project_id": p["id"], "matter_id": mid} for p in projects for mid in p["buckets"][kind]] for kind in ("ACTION", "WAITING", "WATCH", "INFORMATION", "COMPLETE")},
@@ -216,7 +221,7 @@ def main():
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         projected_items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required") }, "source_context": project_source_context(x), "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required", "user_project") }, "source_context": project_source_context(x), "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ]
         for item in projected_items:

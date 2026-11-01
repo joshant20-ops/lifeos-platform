@@ -13,7 +13,7 @@ import lifeos_pa_user_state
 from lifeos_pa_user_state import mutate_action
 
 STATE = Path("/config/www/lifeos_tasks.json")
-ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "junk", "review", "signin_yes", "signin_no", "signin_unsure"}
+ACTIONS = {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "junk", "review", "signin_yes", "signin_no", "signin_unsure", "project_outcome", "project_complete", "project_reopen"}
 _ACTION_STAGE = "startup"
 _SAFE_REASONS = {
     "task_view_unavailable_or_stale",
@@ -71,7 +71,7 @@ def main():
     if args.action.startswith("signin_"):
         if not any(event.get("id")==unquote_plus(args.note) for event in task.get("sign_in_events") or [] if isinstance(event,dict)):
             raise ValueError("signin_event_not_in_current_view")
-    if task.get("obligation_suppressed") and args.action not in {"review","comment","reopen"}:
+    if task.get("obligation_suppressed") and args.action not in {"review","comment","reopen","project_outcome","project_complete","project_reopen"}:
         raise ValueError("informational_action_not_allowed")
     if args.action == "review":
         _ACTION_STAGE = "review_request_validate"

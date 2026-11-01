@@ -105,9 +105,11 @@ class ProjectsTests(unittest.TestCase):
             self.assertEqual(view['attention'][kind][0]['project_id'],view['projects'][0]['id'])
 
     def test_outcome_completion_requires_accepted_done_state(self):
-        row=matter(intended_outcome='Collect the synthetic vehicle')
+        row=matter(user_project={'outcome':'Collect the synthetic vehicle','state':'active','source':'user'})
         self.assertEqual(self.project([row])['lifecycle'],'active')
         row['status']='DONE'
+        self.assertEqual(self.project([row])['lifecycle'],'active')
+        row['user_project']['state']='complete'
         self.assertEqual(self.project([row])['lifecycle'],'complete')
 
     def test_order_reference_is_supplier_scoped_and_ambiguous_sets_do_not_bridge(self):
@@ -148,6 +150,33 @@ class ProjectsTests(unittest.TestCase):
         self.assertEqual(projected['latest_update']['title'],'Complete identity check')
         row['timeline_events'].append(event('identity','Requoted identity check','OPEN','obligation',400))
         self.assertEqual(len(self.project([row])['timeline']),3)
+
+    def test_existing_user_overlay_owns_outcome_without_task_mutation(self):
+        import sys, tempfile
+        sys.path.insert(0,str(ROOT))
+        from governor import pa_user_state as state
+        row=matter();original=copy.deepcopy(row)
+        payload={'schema':'lifeos_tasks_v3','generated_time':1000,'tasks':[row],'resolved':[]}
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/'state.json'
+            state.mutate_action(row['id'],'project_outcome',note='Collect the synthetic vehicle',path=path,now=1000)
+            overlay=state.read_user_state(path)
+            effective=state.apply_user_state(payload,overlay)
+            projected=self.project(effective['tasks'])
+            self.assertEqual(projected['lifecycle'],'active')
+            stable_id=projected['id']
+            effective['tasks'][0]['case_reference_ids']=['NEW-ACCEPTED-REF']
+            self.assertEqual(self.project(effective['tasks'])['id'],stable_id)
+            state.mutate_action(row['id'],'project_complete',path=path,now=1001)
+            complete=state.apply_user_state(payload,state.read_user_state(path))
+            self.assertEqual(complete['tasks'][0]['status'],'WAITING')
+            self.assertEqual(self.project(complete['tasks'])['lifecycle'],'complete')
+            self.assertIn('Outcome marked complete but obligations remain open',self.project(complete['tasks'])['uncertainties'])
+            cleared=state.apply_user_state(complete,{'obligations':{}})
+            self.assertEqual(self.project(cleared['tasks'])['lifecycle'],'candidate')
+            state.mutate_action(row['id'],'project_reopen',path=path,now=1002)
+            self.assertEqual(state.read_user_state(path)['obligations'][row['id']]['project']['state'],'active')
+        self.assertEqual(row,original)
 
     def test_ha_attribute_and_runtime_acceptance_include_projection(self):
         self.assertIn('        - projects_view\n',(ROOT/'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml').read_text())
