@@ -241,6 +241,24 @@ def main():
         assert selected.get("snoozed") is True
         assert task_id not in {x.get("id") for x in (view.get("items") or []) if not x.get("snoozed")}
         print("GATE_H_COMMENT_AND_SNOOZE=PASS")
+        project = next(p for p in view["projects_view"]["projects"] if task_id in p["matter_ids"])
+        anchor_id = project["anchor_matter_id"]
+        before_statuses = {row["id"]: row.get("status") for row in view["items"] + view["reference_items"]}
+        call_ha_action("project_outcome", anchor_id, note="Synthetic acceptance outcome; restored after test")
+        annotated = hass_projection()
+        finite = next(p for p in annotated["projects_view"]["projects"] if anchor_id in p["matter_ids"])
+        assert finite["intended_outcome"] == "Synthetic acceptance outcome; restored after test"
+        assert finite["outcome_source"] == "user" and finite["lifecycle"] == "active"
+        stable_project_id = finite["id"]
+        call_ha_action("project_complete", anchor_id)
+        completed_view = hass_projection()
+        finite = next(p for p in completed_view["projects_view"]["projects"] if anchor_id in p["matter_ids"])
+        assert finite["id"] == stable_project_id and finite["lifecycle"] == "complete"
+        assert {row["id"]: row.get("status") for row in completed_view["items"] + completed_view["reference_items"]} == before_statuses
+        call_ha_action("project_reopen", anchor_id)
+        print("PA_PROJECTS_OWNER_OUTCOME_OVERLAY=PASS")
+        print("PA_PROJECTS_OUTCOME_TASK_STATES_UNCHANGED=PASS")
+
 
         call_ha_action("close", task_id)
         closed = run_reconciler()

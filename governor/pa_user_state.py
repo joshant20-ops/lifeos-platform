@@ -135,7 +135,7 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
     action = str(action or "")
     if not ID_RE.fullmatch(task_id):
         raise ValueError("task_id_invalid")
-    if action not in {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "signin_yes", "signin_no", "signin_unsure"}:
+    if action not in {"comment", "close", "reopen", "dismiss", "snooze", "severity", "due_date", "unsnooze", "signin_yes", "signin_no", "signin_unsure", "project_outcome", "project_complete", "project_reopen"}:
         raise ValueError("action_not_allowlisted")
     now = int(time.time() if now is None else now)
     path = pathlib.Path(STATE_PATH if path is None else path)
@@ -157,6 +157,17 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
             decisions=dict(entry.get("signin_decisions") or {})
             decisions[event_id]={"answer":action.removeprefix("signin_"),"answered_at":now}
             entry["signin_decisions"]=decisions
+        elif action == "project_outcome":
+            outcome = str(note or "").strip()
+            if not outcome or len(outcome) > 240:
+                raise ValueError("project_outcome_length_invalid")
+            entry["project"] = {"outcome": outcome, "state": "active", "set_at": now}
+        elif action in {"project_complete", "project_reopen"}:
+            project = dict(entry.get("project") or {})
+            if not project.get("outcome"):
+                raise ValueError("project_outcome_required")
+            project.update(state="complete" if action == "project_complete" else "active", set_at=now)
+            entry["project"] = project
         elif action == "comment":
             note = str(note or "").strip()
             if not note or len(note) > 1000:
@@ -220,6 +231,7 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
         task_id = str(task.get("id") or "")
         if task.get("due_date_source")=="paperless_policy":
             task.pop("date_confirmation_required",None)
+        task.pop("user_project", None)
         entry = obligations.get(task_id)
         if explicit_tracking(entry):
             task.pop("confirmation_required",None)
@@ -251,6 +263,10 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
                 task.pop("snoozed_until", None)
             result.append(task)
             continue
+        project = entry.get("project")
+        if isinstance(project, dict) and project.get("outcome") and project.get("state") in {"active", "complete"}:
+            task["user_project"] = {"outcome": str(project["outcome"])[:240], "state": project["state"],
+                                    "set_at": int(project.get("set_at") or 0), "source": "user"}
         # Persist the machine view separately so each bounded Gmail replay starts
         # from source-derived state, not yesterday's user projection.
         machine_status = str(task.get("machine_status") or task.get("status") or "").upper()

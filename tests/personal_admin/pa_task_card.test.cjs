@@ -122,3 +122,16 @@ test('projects and attention retain source controls and escape derived context',
  assert.match(card._projectsMarkup(view,[row]),/Needs you/);
  assert.match(card._projectsMarkup(view,[row]),/Waiting on others/);
 });
+test('finite outcome uses existing overlay action without task completion',async()=>{
+ const card=new Card();card._config={};const calls=[];
+ const row={id:'vehicle',title:'Vehicle order',status:'WAITING'};
+ card._items=()=>[row];
+ card._hass={callService:async(...args)=>calls.push(args)};
+ context.window.prompt=()=> 'Collect the synthetic vehicle';
+ context.window.confirm=()=>true;
+ await card._act({dataset:{action:'project_outcome',id:'vehicle'},disabled:false});
+ assert.equal(calls[0][0],'shell_command');assert.equal(calls[0][1],'lifeos_pa_user_action');
+ assert.equal(calls[0][2].action,'project_outcome');
+ assert.equal(calls[0][2].note,'Collect the synthetic vehicle');
+ assert.equal(calls.some(call=>call[2]?.action==='close'),false);
+});

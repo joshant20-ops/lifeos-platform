@@ -150,6 +150,7 @@ class LifeOSPATaskCard extends HTMLElement {
     if (!selected) return nav + '<section class="overview-list">' + (projects.map(p =>
       '<button class="overview-tile" data-project="' + esc(p.id) + '"><span class="eyebrow">' + esc(p.attention) + ' · ' + esc(p.lifecycle) + '</span><strong>' + esc(p.name) + '</strong><span>' + esc(p.intended_outcome || "Outcome not confirmed · project candidate") + '</span><span>' + p.open_count + ' open · ' + p.completed_count + ' complete</span><span>Next: ' + esc(p.next_action.join("; ") || "No current action") + '</span><span>Waiting: ' + esc(p.waiting_on.join("; ") || "None recorded") + '</span><span>Latest: ' + esc(p.latest_update?.title || "No recorded update") + '</span></button>').join("") || '<p>No project candidates available.</p>') + '</section>';
     return nav + '<button data-project="">← All projects</button><h2>' + esc(selected.name) + '</h2><h3>Overview</h3><p>' + esc(selected.intended_outcome || "Finite outcome not confirmed") + '</p><p>' + esc(selected.attention) + ' · ' + esc(selected.lifecycle) + '</p>' +
+      (items.some(row => row.id === selected.anchor_matter_id) ? '<button data-action="project_outcome" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.intended_outcome ? 'Edit intended outcome' : 'Confirm finite outcome') + '</button>' + (selected.intended_outcome ? '<button data-action="' + (selected.lifecycle === 'complete' ? 'project_reopen' : 'project_complete') + '" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.lifecycle === 'complete' ? 'Reopen outcome' : 'Confirm outcome complete') + '</button>' : '') : '<p>Outcome controls require the anchor matter in the current display window.</p>') +
       selected.uncertainties.map(x => '<p role="note">' + esc(x) + '</p>').join("") +
       '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · observed ' + esc(new Date(e.observed_at * 1000).toUTCString()) + '</span></div>').join("") || '<p>No source-backed timeline recorded.</p>') +
       Object.entries({ACTION:"Actions",WAITING:"Waiting",WATCH:"Watching",INFORMATION:"Information",COMPLETE:"Complete"}).map(([kind,label]) => '<section><h3>' + label + '</h3>' + (selected.buckets[kind].map(id => {
@@ -695,6 +696,12 @@ class LifeOSPATaskCard extends HTMLElement {
       const selected = await this._chooseJunkDocuments(task);
       if (!selected) return;
       data.paperless_ids = selected.join(",");
+    } else if (action === "project_outcome") {
+      const outcome = window.prompt("Name the finite outcome this project should achieve:", task.user_project?.outcome || "");
+      if (outcome === null || !outcome.trim() || outcome.trim().length > 240) return;
+      data.note = outcome.trim();
+    } else if (["project_complete", "project_reopen"].includes(action)) {
+      if (!window.confirm(action === "project_complete" ? "Confirm the real-world outcome is complete? Existing obligations keep their own states." : "Reopen this project outcome?")) return;
     } else if (action === "comment") {
       data.note = window.prompt("Add a note to " + label + ":") || "";
       if (!data.note.trim()) return;
