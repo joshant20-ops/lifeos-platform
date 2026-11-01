@@ -3,93 +3,160 @@
     {
       "project": "adguard",
       "working_dir": "/opt/stacks/adguard",
-      "config_files": ["/opt/stacks/adguard/docker-compose.yml"],
-      "containers": ["adguardhome"],
-      "desired_files": ["desired/compose/adguard/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/adguard/docker-compose.yml"
+      ],
+      "containers": [
+        "adguardhome"
+      ],
+      "desired_files": [
+        "desired/compose/adguard/docker-compose.yml"
+      ]
     },
     {
       "project": "homeassistant",
       "working_dir": "/opt/stacks/homeassistant",
-      "config_files": ["/opt/stacks/homeassistant/docker-compose.yml"],
-      "containers": ["homeassistant"],
-      "desired_files": ["desired/compose/homeassistant/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/homeassistant/docker-compose.yml"
+      ],
+      "containers": [
+        "homeassistant"
+      ],
+      "desired_files": [
+        "desired/compose/homeassistant/docker-compose.yml"
+      ]
     },
     {
       "project": "lifeos-energy",
       "working_dir": "/mnt/docker-data/automation/repos/LifeOS-Energy",
-      "config_files": ["/mnt/docker-data/automation/repos/LifeOS-Energy/docker-compose.yml"],
-      "containers": ["lifeos-energy"],
-      "desired_files": ["desired/compose/lifeos-energy/docker-compose.yml"]
-    },
-    {
-      "project": "lifeos-engineer-ui",
-      "working_dir": "/opt/stacks/lifeos-engineer-ui",
-      "config_files": ["/opt/stacks/lifeos-engineer-ui/docker-compose.yml"],
-      "containers": ["lifeos-engineer-ui"],
-      "desired_files": ["desired/compose/lifeos-engineer-ui/docker-compose.yml"]
+      "config_files": [
+        "/mnt/docker-data/automation/repos/LifeOS-Energy/docker-compose.yml"
+      ],
+      "containers": [
+        "lifeos-energy"
+      ],
+      "desired_files": [
+        "desired/compose/lifeos-energy/docker-compose.yml"
+      ]
     },
     {
       "project": "matter-server",
       "working_dir": "/home/joshan/docker/matter-server",
-      "config_files": ["/home/joshan/docker/matter-server/docker-compose.yml"],
-      "containers": ["matter-server"],
-      "desired_files": ["desired/compose/matter-server/docker-compose.yml"]
+      "config_files": [
+        "/home/joshan/docker/matter-server/docker-compose.yml"
+      ],
+      "containers": [
+        "matter-server"
+      ],
+      "desired_files": [
+        "desired/compose/matter-server/docker-compose.yml"
+      ]
     },
     {
       "project": "mosquitto",
       "working_dir": "/opt/stacks/mosquitto",
-      "config_files": ["/opt/stacks/mosquitto/docker-compose.yml"],
-      "containers": ["mosquitto"],
-      "desired_files": ["desired/compose/mosquitto/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/mosquitto/docker-compose.yml"
+      ],
+      "containers": [
+        "mosquitto"
+      ],
+      "desired_files": [
+        "desired/compose/mosquitto/docker-compose.yml"
+      ]
     },
     {
       "project": "npm",
       "working_dir": "/opt/stacks/npm",
-      "config_files": ["/opt/stacks/npm/docker-compose.yml"],
-      "containers": ["nginx-proxy-manager"],
-      "desired_files": ["desired/compose/npm/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/npm/docker-compose.yml"
+      ],
+      "containers": [
+        "nginx-proxy-manager"
+      ],
+      "desired_files": [
+        "desired/compose/npm/docker-compose.yml"
+      ]
     },
     {
       "project": "paperless",
       "working_dir": "/home/joshan/paperless",
-      "config_files": ["/home/joshan/paperless/docker-compose.yml"],
-      "containers": ["paperless-paperless-1", "paperless-redis-1", "paperless-db-1"],
-      "desired_files": ["desired/compose/paperless/docker-compose.yml"]
+      "config_files": [
+        "/home/joshan/paperless/docker-compose.yml"
+      ],
+      "containers": [
+        "paperless-paperless-1",
+        "paperless-redis-1",
+        "paperless-db-1"
+      ],
+      "desired_files": [
+        "desired/compose/paperless/docker-compose.yml"
+      ]
     },
     {
       "project": "predbat",
       "working_dir": "/opt/stacks/predbat",
-      "config_files": ["/opt/stacks/predbat/docker-compose.yml"],
-      "containers": ["predbat"],
-      "desired_files": ["desired/compose/predbat/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/predbat/docker-compose.yml"
+      ],
+      "containers": [
+        "predbat"
+      ],
+      "desired_files": [
+        "desired/compose/predbat/docker-compose.yml"
+      ]
     },
     {
       "project": "qbittorrent",
       "working_dir": "/opt/stacks/qbittorrent",
-      "config_files": ["/opt/stacks/qbittorrent/docker-compose.yml"],
-      "containers": ["qbittorrent"],
-      "desired_files": ["desired/compose/qbittorrent/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/qbittorrent/docker-compose.yml"
+      ],
+      "containers": [
+        "qbittorrent"
+      ],
+      "desired_files": [
+        "desired/compose/qbittorrent/docker-compose.yml"
+      ]
     },
     {
       "project": "uptime-kuma",
       "working_dir": "/opt/stacks/uptime-kuma",
-      "config_files": ["/opt/stacks/uptime-kuma/docker-compose.yml"],
-      "containers": ["uptime-kuma"],
-      "desired_files": ["desired/compose/uptime-kuma/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/uptime-kuma/docker-compose.yml"
+      ],
+      "containers": [
+        "uptime-kuma"
+      ],
+      "desired_files": [
+        "desired/compose/uptime-kuma/docker-compose.yml"
+      ]
     },
     {
       "project": "vaultwarden",
       "working_dir": "/opt/stacks/vaultwarden",
-      "config_files": ["/opt/stacks/vaultwarden/docker-compose.yml"],
-      "containers": ["vaultwarden"],
-      "desired_files": ["desired/compose/vaultwarden/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/vaultwarden/docker-compose.yml"
+      ],
+      "containers": [
+        "vaultwarden"
+      ],
+      "desired_files": [
+        "desired/compose/vaultwarden/docker-compose.yml"
+      ]
     },
     {
       "project": "zwave-js-ui",
       "working_dir": "/opt/stacks/zwave-js-ui",
-      "config_files": ["/opt/stacks/zwave-js-ui/docker-compose.yml"],
-      "containers": ["zwave-js-ui"],
-      "desired_files": ["desired/compose/zwave-js-ui/docker-compose.yml"]
+      "config_files": [
+        "/opt/stacks/zwave-js-ui/docker-compose.yml"
+      ],
+      "containers": [
+        "zwave-js-ui"
+      ],
+      "desired_files": [
+        "desired/compose/zwave-js-ui/docker-compose.yml"
+      ]
     }
   ],
   "compose_files": [
@@ -119,15 +186,6 @@
       "owner": "joshan",
       "group": "joshan",
       "mode": "0664"
-    },
-    {
-      "project": "lifeos-engineer-ui",
-      "working_dir": "/opt/stacks/lifeos-engineer-ui",
-      "live_path": "/opt/stacks/lifeos-engineer-ui/docker-compose.yml",
-      "desired_rel": "desired/compose/lifeos-engineer-ui/docker-compose.yml",
-      "owner": "root",
-      "group": "root",
-      "mode": "0644"
     },
     {
       "project": "matter-server",
