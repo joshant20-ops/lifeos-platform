@@ -73,6 +73,22 @@ paperless_runtime_diagnostic() {
   /usr/bin/python3 "$REPO/governor/paperless_runtime_diagnostic.py"
 }
 
+# Apply a specifically confirmed, date-bounded existing source set once.
+# The current records/IDs and backup stay in the existing private overlay.
+python3 - <<'OWNER_CONFIRMATION'
+import json, pathlib, sys
+sys.path.insert(0, '/home/joshan/lifeos-platform')
+from governor import pa_user_state
+payload=json.loads(pathlib.Path('/opt/stacks/homeassistant/config/www/lifeos_tasks.json').read_text())
+pa_user_state.drop_to_state_owner()
+result=pa_user_state.confirm_reviewed_project(
+    payload, provider='tesla.com', expected_count=9, expected_active=8,
+    reviewed_before=1793562446,
+    confirmation_ref='owner-case-7b984ebd6829403dbd18c575a29f4b32')
+print('PA_OWNER_CONFIRMATION='+result['result'])
+print('PA_OWNER_CONFIRMATION_MEMBERS='+str(result['members']))
+OWNER_CONFIRMATION
+
 if ! systemctl start lifeos-task-reconciler.service; then
   echo 'TASK_RECONCILER_SERVICE=FAIL'
   journalctl -u lifeos-task-reconciler.service -n 80 --no-pager -o cat |

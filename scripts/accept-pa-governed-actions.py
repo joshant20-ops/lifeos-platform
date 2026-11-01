@@ -433,6 +433,39 @@ def main():
         assert "_projectsMarkup" in card_text and "data-project" in card_text
     print("PA_PROJECTS_ACTUAL_HA_ENTITY=PASS")
     print("PA_PROJECTS_SOURCE_COVERAGE=PASS")
+    confirmation_ref = "owner-case-7b984ebd6829403dbd18c575a29f4b32"
+    owner_confirmation = pa_user_state.read_user_state().get("confirmations", {}).get(confirmation_ref)
+    assert owner_confirmation, "owner_confirmation_not_applied"
+    owner_ids = set(owner_confirmation["member_ids"])
+    owner_projects = [p for p in projects if owner_ids.intersection(p["matter_ids"])]
+    assert len(owner_projects) == 1, "owner_confirmed_project_split"
+    owner_project = owner_projects[0]
+    assert set(owner_project["matter_ids"]) == owner_ids and len(owner_ids) == 9, "owner_membership_mismatch"
+    owner_state = pa_user_state.read_user_state()
+    unchanged_sources = all(set(source_by_id[mid].get("source_message_ids") or []) == set(owner_confirmation["source_ids_by_matter"][mid]) for mid in owner_ids)
+    reviewed_snapshot = unchanged_sources and owner_state["revision"] == owner_confirmation["revision"]
+    if reviewed_snapshot:
+        assert owner_project["attention"] == "WAITING" and not owner_project["buckets"]["ACTION"], "owner_waiting_not_consumed"
+        assert len(owner_project["buckets"]["WAITING"]) == 8 and len(owner_project["buckets"]["INFORMATION"]) == 1, "owner_attention_counts"
+        assert owner_project["waiting_on"] == ["Vehicle and collection assignment"], "owner_waiting_explanation_missing"
+    # Later accepted sources/owner decisions may legitimately change attention.
+    # Prove old waiting never masks the new source state; do not freeze counts.
+    for mid in owner_ids:
+        row = source_by_id[mid]
+        entry = owner_state["obligations"].get(mid) or {}
+        decision = entry.get("waiting_confirmation")
+        if decision and row.get("status") in {"OPEN", "WAITING"} and not row.get("obligation_suppressed"):
+            active_scope = pa_user_state.waiting_confirmation_applies(row, decision, entry)
+            assert (row.get("status_source") == "user_waiting_confirmation") == active_scope, "owner_wait_scope_mismatch"
+    assert owner_project["outcome_source"] == "user" and owner_project["intended_outcome"], "owner_finite_outcome_missing"
+    assert all(p.get("confirmation_ref") == confirmation_ref for p in owner_project["provenance"]), "owner_relationship_provenance_missing"
+    assert len({mid for proof in owner_project["provenance"] for mid in proof["source_message_ids"]}) > 1 and owner_project["timeline"], "owner_multisource_history_missing"
+    print("PA_OWNER_PROJECT_SINGLE_GROUP=PASS")
+    print("PA_OWNER_PROJECT_REVIEWED_SNAPSHOT=" + ("PASS" if reviewed_snapshot else "ADVANCED"))
+    for kind in ("ACTION", "WAITING", "INFORMATION"):
+        print("PA_OWNER_PROJECT_" + kind + "=" + str(len(owner_project["buckets"][kind])))
+    print("PA_OWNER_PROJECT_PROVENANCE=PASS")
+
     acknowledgement_rows = [row for row in source_by_id.values()
                             if (row.get("source_disposition_checks") or {}).get("kind_counts", {}).get("order_acknowledgement", 0)]
     acknowledged_nonactions = [row for row in acknowledgement_rows if row.get("obligation_suppressed") == "order_acknowledgement"]
@@ -482,7 +515,7 @@ def main():
     for item in waiting_rows:
         context=item.get("source_context") or {}
         assert context.get("sender") and context.get("subject"), "waiting_sender_or_subject_missing"
-        assert context.get("summary"), "waiting_plain_language_summary_missing"
+        assert context.get("summary") or item.get("user_waiting_for"), "waiting_plain_language_summary_missing"
         source_context=sensor_module.project_source_context(source_by_id[item["id"]]) or {}
         assert all(context.get(key)==source_context.get(key) for key in ("sender","subject","summary","waiting_for","next_step")), "waiting_source_context_parity"
 
@@ -503,7 +536,7 @@ try {
  const card=new Card();card._config={};
  for(const item of JSON.parse(fs.readFileSync(0,'utf8'))){
   const output=card._taskCard(item,true),source=item.source_context;
-  if(!output.includes('At a glance') || !output.includes(card._escape(source.sender)) || !output.includes(card._escape(source.summary)))process.exit(1);
+  if(!output.includes('At a glance') || !output.includes(card._escape(source.sender)) || !output.includes(card._escape(item.user_waiting_for || source.summary)))process.exit(1);
  }
 } catch (_) {process.exit(1);}
 """

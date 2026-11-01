@@ -130,6 +130,107 @@ def _valid_date(value, field):
     return parsed.isoformat()
 
 
+def waiting_confirmation_applies(task, decision, entry):
+    """Owner waiting applies to reviewed evidence, never unseen requests."""
+    if not isinstance(decision, dict) or not decision.get("source_ids"):
+        return False
+    if (int(entry.get("status_set_at") or 0) > int(decision.get("confirmed_at") or 0)
+            or int(entry.get("status_revision") or 0) > int(decision.get("confirmed_revision") or 0)
+            or task.get("sign_in_events")):
+        return False
+    reviewed = set(decision["source_ids"])
+    ids = set(task.get("source_message_ids") or [])
+    if task.get("email_message_id"):
+        ids.add(task["email_message_id"])
+    if not reviewed.issubset(ids):
+        return False
+    for source_id in ids - reviewed:
+        events = [event for event in task.get("timeline_events") or []
+                  if isinstance(event, dict) and event.get("message_id") == source_id]
+        if not events or any(event.get("event_kind") != "information" or event.get("evidence_only")
+                             or event.get("status") not in {"NONE", None} for event in events):
+            return False
+    return True
+
+
+def confirm_reviewed_project(payload, *, provider, expected_count, expected_active,
+                             reviewed_before, confirmation_ref, path=None, now=None):
+    """One atomic owner annotation on exact local records, not a source classifier.
+
+    Called by the governed deployment only after a specific owner confirmation.
+    Source identifiers and the original-state backup never leave the local host.
+    """
+    from email.utils import parseaddr
+    now = int(time.time() if now is None else now)
+    path = pathlib.Path(STATE_PATH if path is None else path)
+    if not re.fullmatch(r"[a-z0-9-]{12,100}", confirmation_ref):
+        raise ValueError("owner_confirmation_ref_invalid")
+    with (path.parent / ".user-state.lock").open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        state = read_user_state(path)
+        if confirmation_ref in (state.get("confirmations") or {}):
+            return {"result": "ALREADY_APPLIED", "members": len(state["confirmations"][confirmation_ref]["member_ids"])}
+        generated = int(payload.get("generated_time") or 0)
+        if payload.get("schema") != "lifeos_tasks_v3" or not (reviewed_before - 7*3600 <= generated <= reviewed_before):
+            raise ValueError("owner_review_snapshot_changed")
+        rows = [row for key in ("tasks", "resolved", "informational") for row in payload.get(key) or []]
+        selected = []
+        for row in rows:
+            context = row.get("source_context") or {}
+            ids = set(row.get("source_message_ids") or [])
+            if row.get("email_message_id"): ids.add(row["email_message_id"])
+            if context.get("message_id") not in ids:
+                continue
+            if parseaddr(context.get("sender") or "")[1].lower().rpartition("@")[2] == provider:
+                selected.append(row)
+        ids = sorted(row["id"] for row in selected)
+        active = [row for row in selected if not row.get("obligation_suppressed")]
+        if (len(ids) != expected_count or len(set(ids)) != len(ids) or len(active) != expected_active
+                or any(not ID_RE.fullmatch(value) for value in ids)
+                or any(row.get("status") not in {"OPEN", "WAITING"} for row in active)
+                or any((row.get("source_disposition_checks") or {}).get("missing", 0) for row in selected)):
+            raise ValueError("owner_review_membership_changed")
+        if any(max(int((state["obligations"].get(value) or {}).get("status_set_at") or 0),
+                       int(((state["obligations"].get(value) or {}).get("project") or {}).get("set_at") or 0)) > reviewed_before for value in ids):
+            raise ValueError("owner_decision_changed_after_review")
+        anchor = ids[0]
+        for row in selected:
+            source_ids = sorted(set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set()))
+            if not source_ids:
+                raise ValueError("owner_review_source_missing")
+        backup = path.with_name("user-state-before-" + confirmation_ref + ".json")
+        if backup.exists():
+            if backup.is_symlink() or json.loads(backup.read_text()) != state:
+                raise ValueError("owner_confirmation_backup_conflict")
+        else:
+            _write_atomic(state, backup)
+        supplier = str(selected[0].get("counterparty") or "").strip()
+        outcome = "Buy and collect " + ((supplier + " vehicle") if supplier else "vehicle")
+        for row in selected:
+            entry = dict(state["obligations"].get(row["id"]) or {})
+            entry["project"] = {"anchor_id": anchor, "set_at": now, "confirmation_ref": confirmation_ref}
+            if row["id"] == anchor:
+                entry["project"].update(outcome=outcome, state="active")
+            if row in active:
+                entry["waiting_confirmation"] = {
+                    "source_ids": sorted(set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set())),
+                    "confirmed_at": now, "confirmed_revision": int(state.get("revision") or 0) + 1, "confirmation_ref": confirmation_ref,
+                    "waiting_for": "Vehicle and collection assignment",
+                }
+            state["obligations"][row["id"]] = entry
+        state.setdefault("confirmations", {})[confirmation_ref] = {
+            "source": "owner_confirmation", "confirmed_at": now, "reviewed_before": reviewed_before,
+            "anchor_id": anchor, "member_ids": ids, "revision": int(state.get("revision") or 0) + 1,
+            "source_ids_by_matter": {row["id"]: sorted(set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set())) for row in selected},
+        }
+        state["revision"] = int(state.get("revision") or 0) + 1
+        state["updated_at"] = now
+        _write_atomic(state, path)
+        if read_user_state(path) != state:
+            raise ValueError("owner_confirmation_verify_failed")
+        return {"result": "APPLIED", "members": len(ids)}
+
+
 def mutate_action(task_id, action, *, note="", until="", severity="", due_date="", path=None, now=None):
     task_id = str(task_id or "")
     action = str(action or "")
@@ -152,7 +253,7 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
                 raise ValueError("signin_event_id_invalid")
             # This explicit answer supersedes an earlier whole-matter close.
             # A subsequent explicit close/reopen still wins until answered again.
-            for field in ("status_override","status_set_at","status_source"):
+            for field in ("status_override","status_set_at","status_source","status_revision"):
                 entry.pop(field,None)
             decisions=dict(entry.get("signin_decisions") or {})
             decisions[event_id]={"answer":action.removeprefix("signin_"),"answered_at":now}
@@ -161,7 +262,7 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
             outcome = str(note or "").strip()
             if not outcome or len(outcome) > 240:
                 raise ValueError("project_outcome_length_invalid")
-            entry["project"] = {"outcome": outcome, "state": "active", "set_at": now}
+            entry["project"] = {**(entry.get("project") or {}), "outcome": outcome, "state": "active", "set_at": now}
         elif action in {"project_complete", "project_reopen"}:
             project = dict(entry.get("project") or {})
             if not project.get("outcome"):
@@ -188,6 +289,7 @@ def mutate_action(task_id, action, *, note="", until="", severity="", due_date="
                 "dismiss": "DISMISSED",
             }[action]
             entry["status_set_at"] = now
+            entry["status_revision"] = int(state.get("revision") or 0) + 1
             entry["status_source"] = "user"
         elif action == "snooze":
             entry["snoozed_until"] = _valid_date(until, "snooze_date")
@@ -232,6 +334,8 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
         if task.get("due_date_source")=="paperless_policy":
             task.pop("date_confirmation_required",None)
         task.pop("user_project", None)
+        task.pop("user_waiting_for", None)
+        task.pop("waiting_confirmation_ref", None)
         entry = obligations.get(task_id)
         if explicit_tracking(entry):
             task.pop("confirmation_required",None)
@@ -264,8 +368,9 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
             result.append(task)
             continue
         project = entry.get("project")
-        if isinstance(project, dict) and project.get("outcome") and project.get("state") in {"active", "complete"}:
-            task["user_project"] = {"outcome": str(project["outcome"])[:240], "state": project["state"],
+        if isinstance(project, dict) and (project.get("outcome") or project.get("anchor_id")) and project.get("state", "active") in {"active", "complete"}:
+            task["user_project"] = {"outcome": str(project.get("outcome") or "")[:240], "state": project.get("state", "active"),
+                                    "anchor_id": project.get("anchor_id"), "confirmation_ref": project.get("confirmation_ref"),
                                     "set_at": int(project.get("set_at") or 0), "source": "user"}
         # Persist the machine view separately so each bounded Gmail replay starts
         # from source-derived state, not yesterday's user projection.
@@ -277,6 +382,15 @@ def apply_user_annotations(tasks, state=None, *, now_ts=None):
             task["status"] = override
             task["status_source"] = "user"
             task["status_set_at"] = int(entry.get("status_set_at") or 0)
+        waiting = entry.get("waiting_confirmation")
+        if (not task.get("obligation_suppressed") and task.get("status") in {"OPEN", "WAITING"}
+                and waiting_confirmation_applies(task, waiting, entry)):
+            task["status"] = "WAITING"
+            task["status_source"] = "user_waiting_confirmation"
+            task["status_set_at"] = int(waiting["confirmed_at"])
+            task["user_waiting_for"] = str(waiting.get("waiting_for") or "")[:240]
+            task["waiting_confirmation_ref"] = waiting.get("confirmation_ref")
+            task.pop("confirmation_required", None)
         task["user_comments"] = [
             {
                 "id": str(x.get("id") or ""),
@@ -373,7 +487,7 @@ def _project_task(task, now_ts, today):
         "waiting_context": ({
             "counterparty": " ".join(str(task.get("counterparty") or "").split())[:100],
             "topic": " ".join(str(task.get("topic") or "").split())[:120],
-            "reason": " ".join(str(task.get("reason") or "").split())[:240],
+            "reason": " ".join(str(task.get("user_waiting_for") or task.get("reason") or "").split())[:240],
         } if status == "WAITING" else None),
         "source_refs": sorted(set(str(x)[:300] for x in (task.get("source_message_ids") or []) if x))[:5],
         "paperless_evidence": [
@@ -526,7 +640,7 @@ def apply_user_state(payload, state=None):
         if not isinstance(row, dict):
             continue
         base = dict(row)
-        if str(base.get("status_source") or "") in {"user", "user_confirmation"} and base.get("machine_status"):
+        if str(base.get("status_source") or "") in {"user", "user_confirmation", "user_waiting_confirmation"} and base.get("machine_status"):
             base["status"] = base["machine_status"]
         # A projected owner decision is not the underlying source value.
         if "machine_due_date" in base:

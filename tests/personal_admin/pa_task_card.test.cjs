@@ -160,3 +160,16 @@ test('project detail explains next move without duplicate uncertainty or empty-s
  assert.doesNotMatch(html,/0 updates|The story so far|No message updates/);
  assert.match(html,/No items in:/);
 });
+test('owner waiting is explicit and related items stay accessible without repeated panels',()=>{
+ const card=new Card();card._config={};
+ const a={id:'a',title:'First matter',status:'WAITING',user_waiting_for:'Vehicle and collection assignment',source_context:{sender:'Example Motors',subject:'Original request',next_step:'Upload identity now'}};
+ const b={...a,id:'b',title:'Second matter'};
+ const p={id:'owner-project',anchor_matter_id:'a',name:'Vehicle purchase',intended_outcome:'Collect vehicle',lifecycle:'active',attention:'WAITING',next_action:[],waiting_on:['Vehicle and collection assignment'],uncertainties:[],timeline:[],provenance:[],buckets:{ACTION:[],WAITING:['a','b'],WATCH:[],INFORMATION:[],COMPLETE:[]}};
+ card._selectedProjectId=p.id;
+ const html=card._projectsMarkup({projects:[p]},[a,b]);
+ assert.match(html,/<details><summary>Related waiting items and sources · 2/);
+ assert.match(html,/No current action is recorded for you/);
+ assert.doesNotMatch(html,/Upload identity now/);
+ assert.match(html,/No action currently required/);
+ assert.match(card._waitingSummary(a),/Owner-confirmed waiting/);
+});

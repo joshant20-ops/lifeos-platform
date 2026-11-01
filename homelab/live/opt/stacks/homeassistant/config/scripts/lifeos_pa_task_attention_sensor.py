@@ -98,7 +98,7 @@ def project_waiting_context(task):
     return {
         "counterparty": " ".join(str(task.get("counterparty") or "").split())[:100],
         "topic": " ".join(str(task.get("topic") or "").split())[:120],
-        "reason": " ".join(str(task.get("reason") or "").split())[:240],
+        "reason": " ".join(str(task.get("user_waiting_for") or task.get("reason") or "").split())[:240],
     }
 
 
@@ -138,7 +138,10 @@ def derive_projects(rows, source_attention=None):
         _, address = parseaddr(context.get("sender") or "")
         domain = address.lower().rpartition("@")[2]
         supplier = (address.lower() if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else domain) or party
-        if order_refs and supplier:
+        owner_anchor = (row.get("user_project") or {}).get("anchor_id")
+        if owner_anchor:
+            key, rule = ("owner", owner_anchor), "owner_confirmed_membership"
+        elif order_refs and supplier:
             key, rule = ("order", supplier, order_refs), "verified_supplier_order"
         elif refs:
             key, rule = ("reference", "case" if row.get("case_reference_ids") else party, tuple(refs)), "exact_reference_set"
@@ -164,7 +167,8 @@ def derive_projects(rows, source_attention=None):
             ids = sorted(set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set()))
             provenance.append({"matter_id": row["id"], "rule": rule, "source_message_ids": ids,
                                "case_reference_ids": row.get("case_reference_ids") or [],
-                               "verified_order_refs": row.get("verified_order_refs") or []})
+                               "verified_order_refs": row.get("verified_order_refs") or [],
+                               "confirmation_ref": (row.get("user_project") or {}).get("confirmation_ref")})
             for event in row.get("timeline_events") or []:
                 if not isinstance(event, dict) or not event.get("message_id") or event["message_id"] not in ids or event["message_id"] in seen_messages:
                     continue
@@ -181,21 +185,22 @@ def derive_projects(rows, source_attention=None):
                     if value and value not in update[field]: update[field].append(value)
         timeline = sorted(events.values(), key=lambda event: (event["observed_at"], event["title"]))
         attention = next((name for name in ("ACTION", "WAITING", "WATCH") if buckets[name]), "INFORMATION" if buckets["INFORMATION"] else "COMPLETE")
-        anchors = [row for row in members if (row.get("user_project") or {}).get("source") == "user"]
-        anchor = anchors[0] if anchors else members[0]
+        anchors = [row for row in members if (row.get("user_project") or {}).get("source") == "user" and (row.get("user_project") or {}).get("outcome")]
+        owner_anchor = key[1] if key[0] == "owner" else None
+        anchor = next((row for row in members if row["id"] == owner_anchor), anchors[0] if anchors else members[0])
         metadata = anchor.get("user_project") or {}
         outcome = metadata.get("outcome")
         outcome_conflict = len({row["user_project"]["outcome"] for row in anchors}) > 1
         by_id = {str(row["id"]): row for row in members}
         def summary(ids, field):
-            return [str((project_source_context(by_id[i]) or {}).get(field) or by_id[i].get("reason") or ("Action details are not recorded; review the linked source." if field == "next_step" else "The expected next event is not recorded."))[:400] for i in ids]
+            return list(dict.fromkeys(str((by_id[i].get("user_waiting_for") if field == "waiting_for" else None) or (project_source_context(by_id[i]) or {}).get(field) or by_id[i].get("reason") or ("Action details are not recorded; review the linked source." if field == "next_step" else "The expected next event is not recorded."))[:400] for i in ids))
         topic = str(members[0].get("topic") or "")
         party_name = str(members[0].get("counterparty") or "")
         if key[0] == "order" or norm(topic) in {"order confirmation", "order confirmed", "order update"}:
             display_name = (party_name + " order").strip() if party_name else members[0].get("title")
         else:
             display_name = topic or members[0].get("title")
-        projects.append({"id": "project-" + hashlib.sha256(json.dumps(("user", anchor["id"]) if anchors else key).encode()).hexdigest()[:20],
+        projects.append({"id": "project-" + hashlib.sha256(json.dumps(("user", owner_anchor or anchor["id"]) if anchors or owner_anchor else key).encode()).hexdigest()[:20],
                          "name": outcome or display_name or "Source matter",
                          "anchor_matter_id": anchor["id"], "outcome_source": "user" if outcome else None,
                          "intended_outcome": outcome, "lifecycle": "candidate" if not outcome or outcome_conflict else metadata.get("state", "active"),
@@ -235,7 +240,7 @@ def main():
         all_tasks = order_tasks_for_attention(all_tasks, now_ts=generated)
         snoozed_ids = {x.get("id") for x in (attention.get("snoozed") or []) if isinstance(x, dict)}
         projected_items = [
-            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required", "user_project") }, "source_context": project_source_context(x), "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
+            {**{k: x.get(k) for k in ("id", "title", "status", "due_date", "severity", "source", "source_message_ids", "paperless_evidence", "user_comments", "user_comment_count", "snoozed_until", "status_source", "severity_source", "due_date_source", "sign_in_events", "obligation_suppressed", "reason", "confirmation_required", "date_confirmation_required", "source_response_required", "user_project", "user_waiting_for", "waiting_confirmation_ref") }, "source_context": project_source_context(x), "waiting_context": project_waiting_context(x), "timeline_events": project_timeline_events(x.get("timeline_events")), "snoozed": x.get("id") in snoozed_ids, "ai_review": task_review(str(x.get("id") or "")), "emailops_shadow_available": has_emailops_review(x.get("id"))}
             for x in all_tasks if isinstance(x, dict) and x.get("id")
         ]
         for item in projected_items:
