@@ -23,7 +23,7 @@ REPO=Path(os.getenv("LIFEOS_PLATFORM_REPO","/home/joshan/lifeos-platform"))
 sys.path.insert(0,str(REPO))
 from governor import ai_broker
 from lifeos_email_paperless_selective import secret, paperless_token
-from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state, explicit_tracking
+from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state, explicit_tracking, waiting_confirmation_applies
 from governor.pa_source_disposition import KINDS, non_obligation_kind, non_obligation_decision, task_quality_category, event_notice, event_source_evidence
 
 HA=Path("/opt/stacks/homeassistant/config")
@@ -202,7 +202,7 @@ def hold_source_non_obligation(task,sources,user_state):
     event_evidence={source:event_source_evidence(sources[source],task.get("due_date")) for source in ids if source in sources}
     kinds={source:decision[0] for source,decision in decisions.items()}
     entry=(user_state.get("obligations") or {}).get(task.get("id"))
-    protected=explicit_tracking(entry)
+    protected=explicit_tracking(entry) or waiting_confirmation_applies(task, (entry or {}).get("waiting_confirmation"), entry or {})
     user_closed=isinstance(entry,dict) and entry.get("status_override") in {"DONE","DISMISSED"}
     task["source_disposition_checks"]={"sources":len(ids),"missing":len(ids)-len(kinds),
         "non_obligation":sum(bool(kind) for kind in kinds.values()),"user_tracking":protected,"user_closed":user_closed,

@@ -103,8 +103,8 @@ class LifeOSPATaskCard extends HTMLElement {
       ["Email subject", context.summary ? context.subject : ""],
       ["Sent", context.sent_at],
       ["Next action", this._kind(task) === "action" ? (task.reason || context.next_step || "No specific action was captured. Review the linked source.") : ""],
-      ["Waiting for", this._kind(task) === "waiting" ? (context.waiting_for || "The source does not state a specific pending response or event.") : ""],
-      ["Your next step", this._kind(task) === "waiting" ? (context.next_step || "No next step has been confirmed from this source.") : ""],
+      ["Waiting for", this._kind(task) === "waiting" ? (task.user_waiting_for || context.waiting_for || "The source does not state a specific pending response or event.") : ""],
+      ["Your next step", this._kind(task) === "waiting" ? (task.user_waiting_for ? "No action currently required; waiting for the stated event." : context.next_step || "No next step has been confirmed from this source.") : ""],
     ].filter(([, value]) => value);
     return '<section class="source-context"><h4>At a glance</h4>' + rows.map(([label, value]) =>
       '<p><strong>' + this._escape(label) + '</strong> ' + this._escape(value) + '</p>').join("") + '</section>';
@@ -113,6 +113,7 @@ class LifeOSPATaskCard extends HTMLElement {
   _waitingSummary(task) {
     const context = task.waiting_context && typeof task.waiting_context === "object" ? task.waiting_context : {};
     const source = task.source_context || {};
+    if (task.user_waiting_for) return "Owner-confirmed waiting · " + task.user_waiting_for;
     const party = String(source.sender || context.counterparty || "").trim();
     const reason = String(source.summary || context.reason || "").trim();
     if (party && reason) return "Waiting on " + party + " · " + reason;
@@ -131,13 +132,13 @@ class LifeOSPATaskCard extends HTMLElement {
     if (party) lines.push('<p><strong>Waiting on</strong> ' + this._escape(party) + '</p>');
     if (topic && topic.toLowerCase() !== String(task.title || "").trim().toLowerCase())
       lines.push('<p><strong>Matter</strong> ' + this._escape(topic) + '</p>');
-    if (reason) lines.push('<p><strong>LifeOS source assessment</strong> ' + this._escape(reason) + '</p>');
+    if (reason) lines.push('<p><strong>' + (task.user_waiting_for ? 'Your confirmation' : 'LifeOS source assessment') + '</strong> ' + this._escape(reason) + '</p>');
     else lines.push('<p>The expected reply or next step was not captured. Check the linked source message or add a note with what you expect.</p>');
     return '<section class="waiting-context"><h4>What is this waiting for?</h4>' + lines.join("") + '</section>';
   }
 
   _projectInformation(project) {
-    return (project.timeline || []).filter(event => event.event_kind === "information");
+    return (project.timeline || []).filter(event => event.event_kind === "information" && !event.evidence_only);
   }
 
   _projectObserved(value) {
@@ -171,10 +172,15 @@ class LifeOSPATaskCard extends HTMLElement {
       (items.some(row => row.id === selected.anchor_matter_id) ? '<button class="count" data-action="project_outcome" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.intended_outcome ? 'Edit project outcome' : 'Name project outcome') + '</button>' + (selected.intended_outcome ? '<button class="count" data-action="' + (selected.lifecycle === 'complete' ? 'project_reopen' : 'project_complete') + '" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.lifecycle === 'complete' ? 'Reopen outcome' : 'Confirm outcome complete') + '</button>' : '') : '<p>Outcome controls require the anchor matter in the current display window.</p>') +
       selected.uncertainties.filter(x => x !== "Finite intended outcome not confirmed").map(x => '<p role="note">' + esc(x) + '</p>').join("") +
       '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.evidence_only ? "Source evidence" : e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · ' + esc(e.time_source === "email_date" ? "email date " : "recorded time ") + esc(this._projectObserved(e.observed_at)) + '</span></div>').join("") || '<p class="freshness">No verified history has been recovered yet. The linked source below may still be available.</p>') +
-      populated.map(([kind,label]) => '<section><h3>' + label + '</h3>' + selected.buckets[kind].map(id => {
-        const row = items.find(x => x.id === id);
-        return row ? this._taskCard(row, true, true) : '<p>Matter detail outside current display window.</p>';
-      }).join("") + (kind === "INFORMATION" ? information.map(event => '<p>' + esc(event.title) + ' · ' + event.source_message_ids.length + ' supporting sources · no new action</p>').join("") : '') + '</section>').join("") +
+      populated.map(([kind,label]) => {
+        const cards = selected.buckets[kind].map(id => {
+          const row = items.find(x => x.id === id);
+          return row ? this._taskCard(row, true, true) : '<p>Matter detail outside current display window.</p>';
+        }).join("");
+        const updates = kind === "INFORMATION" ? information.map(event => '<p>' + esc(event.title) + ' · ' + event.source_message_ids.length + ' supporting sources · no new action</p>').join("") : "";
+        const collapsed = kind === "WAITING" && selected.buckets[kind].length > 1;
+        return '<section><h3>' + label + '</h3>' + (collapsed ? '<p>' + esc(selected.waiting_on.join("; ")) + '</p><details><summary>Related waiting items and sources · ' + selected.buckets[kind].length + '</summary>' + cards + '</details>' : cards) + updates + '</section>';
+      }).join("") +
       (empty.length ? '<p class="freshness">No items in: ' + esc(empty.join(", ")) + '.</p>' : '') +
       '<details><summary>Why this project? Evidence and grouping</summary><p>Derived from accepted PA matters using deterministic relationships. Source links are on each matter above.</p>' + selected.provenance.map(p => '<p>' + esc(p.matter_id) + ' · ' + esc(p.rule) + ' · ' + p.source_message_ids.length + ' source messages</p>').join("") + '</details>';
   }
