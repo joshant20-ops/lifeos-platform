@@ -87,6 +87,12 @@ result=pa_user_state.confirm_reviewed_project(
     confirmation_ref='owner-case-7b984ebd6829403dbd18c575a29f4b32')
 print('PA_OWNER_CONFIRMATION='+result['result'])
 print('PA_OWNER_CONFIRMATION_MEMBERS='+str(result['members']))
+related=pa_user_state.link_reviewed_project_members(
+    payload, parent_ref='owner-case-7b984ebd6829403dbd18c575a29f4b32',
+    confirmation_ref='owner-link-d220a770ae434dc58f016e59fa048963',
+    vehicle_name='Tesla', lender_name='Black Horse', reviewed_before=1793564352)
+print('PA_RELATED_FINANCE_MEMBERSHIP='+related['result'])
+print('PA_RELATED_FINANCE_MEMBERS='+str(related['members']))
 OWNER_CONFIRMATION
 
 if ! systemctl start lifeos-task-reconciler.service; then

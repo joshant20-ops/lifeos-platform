@@ -440,8 +440,22 @@ def main():
     owner_projects = [p for p in projects if owner_ids.intersection(p["matter_ids"])]
     assert len(owner_projects) == 1, "owner_confirmed_project_split"
     owner_project = owner_projects[0]
-    assert set(owner_project["matter_ids"]) == owner_ids and len(owner_ids) == 9, "owner_membership_mismatch"
     owner_state = pa_user_state.read_user_state()
+    related_ref = "owner-link-d220a770ae434dc58f016e59fa048963"
+    related_confirmation = owner_state.get("confirmations", {}).get(related_ref)
+    assert related_confirmation and related_confirmation.get("parent_ref") == confirmation_ref, "finance_relationship_confirmation_missing"
+    related_ids = set(related_confirmation["member_ids"])
+    assert related_ids and not owner_ids.intersection(related_ids), "finance_membership_not_additive"
+    assert set(owner_project["matter_ids"]) == owner_ids | related_ids and len(owner_ids) == 9, "owner_membership_mismatch"
+    if owner_state["revision"] == related_confirmation["revision"]:
+        for mid, expected in related_confirmation["unchanged_annotation_fingerprints"].items():
+            entry = owner_state["obligations"][mid]
+            actual = hashlib.sha256(json.dumps({key:value for key,value in entry.items() if key != "project"}, sort_keys=True).encode()).hexdigest()
+            assert actual == expected, "finance_link_changed_item_state"
+    assert all(((owner_state["obligations"].get(mid) or {}).get("project") or {}).get("anchor_id") == owner_confirmation["anchor_id"] for mid in related_ids), "finance_not_in_parent_project"
+    print("PA_RELATED_FINANCE_SINGLE_PROJECT=PASS")
+    print("PA_RELATED_FINANCE_MEMBERS=" + str(len(related_ids)))
+    print("PA_RELATED_FINANCE_STATE_PRESERVED=PASS")
     unchanged_sources = all(set(source_by_id[mid].get("source_message_ids") or []) == set(owner_confirmation["source_ids_by_matter"][mid]) for mid in owner_ids)
     reviewed_snapshot = unchanged_sources and owner_state["revision"] == owner_confirmation["revision"]
     if reviewed_snapshot:
@@ -458,7 +472,7 @@ def main():
             active_scope = pa_user_state.waiting_confirmation_applies(row, decision, entry)
             assert (row.get("status_source") == "user_waiting_confirmation") == active_scope, "owner_wait_scope_mismatch"
     assert owner_project["outcome_source"] == "user" and owner_project["intended_outcome"], "owner_finite_outcome_missing"
-    assert all(p.get("confirmation_ref") == confirmation_ref for p in owner_project["provenance"]), "owner_relationship_provenance_missing"
+    assert all(p.get("confirmation_ref") in {confirmation_ref, related_ref} for p in owner_project["provenance"]), "owner_relationship_provenance_missing"
     assert len({mid for proof in owner_project["provenance"] for mid in proof["source_message_ids"]}) > 1 and owner_project["timeline"], "owner_multisource_history_missing"
     print("PA_OWNER_PROJECT_SINGLE_GROUP=PASS")
     print("PA_OWNER_PROJECT_REVIEWED_SNAPSHOT=" + ("PASS" if reviewed_snapshot else "ADVANCED"))

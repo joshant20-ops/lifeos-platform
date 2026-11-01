@@ -193,7 +193,18 @@ def derive_projects(rows, source_attention=None):
         outcome_conflict = len({row["user_project"]["outcome"] for row in anchors}) > 1
         by_id = {str(row["id"]): row for row in members}
         def summary(ids, field):
-            return list(dict.fromkeys(str((by_id[i].get("user_waiting_for") if field == "waiting_for" else None) or (project_source_context(by_id[i]) or {}).get(field) or by_id[i].get("reason") or ("Action details are not recorded; review the linked source." if field == "next_step" else "The expected next event is not recorded."))[:400] for i in ids))
+            values = []
+            questions = {
+                "source_unavailable": "Review a recorded item whose original source could not be retrieved.",
+                "optional_commitment": "Confirm whether to track the proposed commitment.",
+                "past_event_status": "Review whether the past event still requires a response.",
+            }
+            for mid in ids:
+                row = by_id[mid]
+                question = questions.get(row.get("confirmation_required")) if field == "next_step" else None
+                value = question or (row.get("user_waiting_for") if field == "waiting_for" else None) or (project_source_context(row) or {}).get(field) or row.get("reason") or ("Action details are not recorded; review the linked source." if field == "next_step" else "The expected next event is not recorded.")
+                values.append(str(value)[:400])
+            return list(dict.fromkeys(values))
         topic = str(members[0].get("topic") or "")
         party_name = str(members[0].get("counterparty") or "")
         if key[0] == "order" or norm(topic) in {"order confirmation", "order confirmed", "order update"}:
