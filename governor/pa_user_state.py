@@ -231,6 +231,76 @@ def confirm_reviewed_project(payload, *, provider, expected_count, expected_acti
         return {"result": "APPLIED", "members": len(ids)}
 
 
+def related_vehicle_finance(row, *, vehicle_name, lender_name):
+    """Select labels explicitly identified by the owner, never classify a duty."""
+    text = " ".join(str(row.get(key) or "") for key in ("title", "topic", "counterparty"))
+    text = re.sub(r"[^a-z0-9]+", " ", text.lower())
+    compact = text.replace(" ", "")
+    lender = re.sub(r"[^a-z0-9]+", "", lender_name.lower()) in compact
+    vehicle = re.search(r"\b" + re.escape(vehicle_name.lower()) + r"\b", text)
+    if re.search(r"\b(?:personal loan|credit card|mortgage|motorcycle|motorbike|insurance)\b", text):
+        return False
+    return bool((vehicle and re.search(r"\b(?:pcp|finance|financing|identity|agreement)\b", text))
+                or (lender and re.search(r"\b(?:pcp|identity|identification)\b", text)))
+
+
+def link_reviewed_project_members(payload, *, parent_ref, confirmation_ref, vehicle_name,
+                                  lender_name, reviewed_before, max_members=20, path=None, now=None):
+    """Atomically add owner-identified relationships; never change item state."""
+    import hashlib
+    now = int(time.time() if now is None else now)
+    path = pathlib.Path(STATE_PATH if path is None else path)
+    if not re.fullmatch(r"[a-z0-9-]{12,100}", confirmation_ref):
+        raise ValueError("owner_confirmation_ref_invalid")
+    with (path.parent / ".user-state.lock").open("a+", encoding="utf-8") as lock:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
+        state = read_user_state(path)
+        prior = (state.get("confirmations") or {}).get(confirmation_ref)
+        if prior:
+            return {"result": "ALREADY_APPLIED", "members": len(prior["member_ids"])}
+        parent = (state.get("confirmations") or {}).get(parent_ref)
+        if not parent or not parent.get("anchor_id"):
+            raise ValueError("owner_project_parent_missing")
+        generated = int(payload.get("generated_time") or 0)
+        if payload.get("schema") != "lifeos_tasks_v3" or not reviewed_before - 7*3600 <= generated <= reviewed_before:
+            raise ValueError("owner_review_snapshot_changed")
+        rows = [row for key in ("tasks", "resolved", "informational") for row in payload.get(key) or []]
+        selected = [row for row in rows if related_vehicle_finance(row, vehicle_name=vehicle_name, lender_name=lender_name)
+                    and ((state["obligations"].get(row.get("id")) or {}).get("project") or {}).get("anchor_id") != parent["anchor_id"]]
+        ids = sorted(row["id"] for row in selected)
+        if not ids or len(ids) > max_members or len(ids) != len(set(ids)) or any(not ID_RE.fullmatch(value) for value in ids):
+            raise ValueError("owner_finance_membership_changed")
+        if any(int(((state["obligations"].get(value) or {}).get("project") or {}).get("set_at") or 0) > reviewed_before for value in ids):
+            raise ValueError("owner_project_decision_changed")
+        backup = path.with_name("user-state-before-" + confirmation_ref + ".json")
+        if backup.exists():
+            if backup.is_symlink() or json.loads(backup.read_text()) != state:
+                raise ValueError("owner_confirmation_backup_conflict")
+        else:
+            _write_atomic(state, backup)
+        fingerprints = {}
+        for value in ids:
+            entry = dict(state["obligations"].get(value) or {})
+            untouched = {key:item for key,item in entry.items() if key != "project"}
+            fingerprints[value] = hashlib.sha256(json.dumps(untouched, sort_keys=True).encode()).hexdigest()
+            entry["project"] = {"anchor_id": parent["anchor_id"], "set_at": now, "confirmation_ref": confirmation_ref}
+            state["obligations"][value] = entry
+        state.setdefault("confirmations", {})[confirmation_ref] = {
+            "source": "owner_membership_confirmation", "parent_ref": parent_ref,
+            "confirmed_at": now, "reviewed_before": reviewed_before,
+            "anchor_id": parent["anchor_id"], "member_ids": ids,
+            "revision": int(state.get("revision") or 0) + 1,
+            "unchanged_annotation_fingerprints": fingerprints,
+            "source_ids_by_matter": {row["id"]: list(row.get("source_message_ids") or []) for row in selected},
+        }
+        state["revision"] = int(state.get("revision") or 0) + 1
+        state["updated_at"] = now
+        _write_atomic(state, path)
+        if read_user_state(path) != state:
+            raise ValueError("owner_confirmation_verify_failed")
+        return {"result": "APPLIED", "members": len(ids)}
+
+
 def mutate_action(task_id, action, *, note="", until="", severity="", due_date="", path=None, now=None):
     task_id = str(task_id or "")
     action = str(action or "")

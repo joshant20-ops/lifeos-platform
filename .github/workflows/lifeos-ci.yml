@@ -62,6 +62,7 @@ jobs:
             tests.test_pa_projects \
             tests.test_pa_legacy_project_evidence \
             tests.test_pa_owner_project_confirmation \
+            tests.test_pa_related_finance_membership \
             tests.test_job_publisher_fifo \
             tests.test_github_sync_protection \
             tests.test_snapshot_protected_drift \
