@@ -423,6 +423,7 @@ def main():
     projected_ids = [mid for project in projects for mid in project["matter_ids"]]
     assert len(projected_ids) == len(set(projected_ids)), "projects_duplicate_matter"
     assert set(projected_ids) == set(source_by_id), "projects_source_coverage"
+    timeline_eligible = timeline_covered = 0
     for project in projects:
         assert set(project["matter_ids"]) == {p["matter_id"] for p in project["provenance"]}
         for kind, mids in project["buckets"].items():
@@ -430,7 +431,26 @@ def main():
                 row = source_by_id[mid]
                 if kind == "COMPLETE": assert row.get("status") == "DONE" and not row.get("obligation_suppressed")
                 if row.get("obligation_suppressed"): assert kind == "INFORMATION"
+        for event in project["timeline"]:
+            assert event["source_message_ids"] and event["matter_ids"], "outcome_event_without_provenance"
+            for mid in event["matter_ids"]:
+                row = source_by_id[mid]
+                retained = set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set())
+                assert retained.intersection(event["source_message_ids"]), "outcome_event_unverified_relationship"
+        for mid in project["matter_ids"]:
+            row = source_by_id[mid]
+            context = row.get("source_context") or {}
+            retained = set(row.get("source_message_ids") or []) | ({row["email_message_id"]} if row.get("email_message_id") else set())
+            if context.get("subject") and context.get("message_id") in retained:
+                timeline_eligible += 1
+                assert any(context["message_id"] in event["source_message_ids"] and mid in event["matter_ids"] for event in project["timeline"]), "outcome_verified_source_history_missing"
+                timeline_covered += 1
         assert "_projectsMarkup" in card_text and "data-project" in card_text
+    print("PA_OUTCOME_TIMELINE_COVERAGE=PASS")
+    print("PA_OUTCOME_TIMELINE_ELIGIBLE=" + str(timeline_eligible))
+    print("PA_OUTCOME_TIMELINE_COVERED=" + str(timeline_covered))
+    print("PA_OUTCOME_PROJECTS_WITH_TIMELINES=" + str(sum(bool(p["timeline"]) for p in projects)))
+    print("PA_OUTCOME_CROSS_COMPANY_GROUPS=" + str(sum(any(proof["rule"] == "verified_cross_company_tracking" for proof in p["provenance"]) for p in projects)))
     print("PA_PROJECTS_ACTUAL_HA_ENTITY=PASS")
     print("PA_PROJECTS_SOURCE_COVERAGE=PASS")
     confirmation_ref = "owner-case-7b984ebd6829403dbd18c575a29f4b32"
@@ -566,6 +586,9 @@ for(const project of attrs.projects_view.projects){
  card._selectedProjectId=project.id;
  const html=card._projectsMarkup(attrs.projects_view,card._items(attrs));
  if(!html.includes('Why this project?') || html.includes('<h3>Waiting</h3><p>None recorded.</p>') || html.includes('Finite intended outcome not confirmed')) throw Error('project_render_contract_failed');
+ const timeline=card._projectTimelineMarkup(project);
+ if(project.timeline.length && !timeline.includes('timeline-event'))throw Error('outcome_timeline_not_rendered');
+ if(project.timeline.some(event=>event.source_message_ids.some(id=>/^<[^<>\s]+@[^<>\s]+>$/.test(id))) && !timeline.includes('Supporting sources'))throw Error('outcome_timeline_navigation_missing');
 }
 
 card._productView='attention';card._selectedProjectId=null;
@@ -585,6 +608,7 @@ console.log(JSON.stringify({project_cards:ids.length,owner_cards:1,owner_childre
     project_rendered = subprocess.run([node, "-e", project_render, str(CARD)], input=json.dumps(live_entity), text=True, capture_output=True, timeout=30)
     assert project_rendered.returncode == 0, "actual_project_render_failed"
     print("PA_PROJECTS_RENDER_ACTUAL_HA=PASS")
+    print("PA_OUTCOME_TIMELINE_RENDER_ACTUAL_HA=PASS")
     attention_render_counts = json.loads(project_rendered.stdout)
     assert attention_render_counts["owner_cards"] == 1 and attention_render_counts["owner_children"] == len(owner_project["matter_ids"])
     print("PA_ATTENTION_RENDER_ACTUAL_HA=PASS")

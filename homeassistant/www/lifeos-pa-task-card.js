@@ -141,6 +141,16 @@ class LifeOSPATaskCard extends HTMLElement {
     return (project.timeline || []).filter(event => event.event_kind === "information" && !event.evidence_only);
   }
 
+  _projectTimelineMarkup(project) {
+    const esc = value => this._escape(value);
+    return (project.timeline || []).map(event => {
+      const sources = [...new Set(event.source_message_ids || [])].filter(id => typeof id === "string" && id.length <= 300 && /^<[^<>\s]+@[^<>\s]+>$/.test(id));
+      const links = sources.map((id, index) => '<a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + encodeURIComponent('in:anywhere rfc822msgid:' + id.slice(1, -1)) + '">Source email ' + (index + 1) + '</a>').join(' · ');
+      const time = Number(event.observed_at) > 0 ? (event.time_source === "email_date" ? 'Email date: ' : 'Recorded time: ') + this._projectObserved(event.observed_at) : 'Observation time unknown; source/event time not established';
+      return '<div class="timeline-event"><strong>' + esc(event.title) + '</strong><span>' + esc(event.evidence_only ? 'Source evidence — no lifecycle inferred' : event.event_kind) + ' · ' + esc(time) + '</span>' + (links ? '<details><summary>Supporting sources · ' + sources.length + '</summary>' + links + '</details>' : '<span>Source navigation unavailable</span>') + '</div>';
+    }).join('') || '<p class="freshness">No verified history has been recovered yet. The linked source below may still be available.</p>';
+  }
+
   _projectObserved(value) {
     return Number(value) > 0 ? new Date(Number(value) * 1000).toUTCString() : "Observation time unknown";
   }
@@ -174,7 +184,7 @@ class LifeOSPATaskCard extends HTMLElement {
     return '<details class="attention-project" data-attention-project="' + esc(project.id) + '"' + (this._attentionExpanded?.has(project.id) ? ' open' : '') + '><summary class="overview-tile"><span class="eyebrow">' + esc(project.attention) + '</span><strong>' + esc(project.name) + '</strong><span>' + esc(counts || "No current items") + '</span>' +
       (next ? '<span>Next: ' + esc(next) + '</span>' : project.attention === "WAITING" ? '<span>No current action is recorded for you.</span>' : '') +
       (waiting ? '<span>Waiting: ' + esc(waiting) + '</span>' : '') +
-      '<span class="tile-link">Expand ' + memberIds.length + ' related items and sources</span></summary><div class="attention-contents"><button type="button" class="count" data-project="' + esc(project.id) + '">Open project overview and timeline</button>' + children + updates + '</div></details>';
+      '<span class="tile-link">Expand ' + memberIds.length + ' related items and sources</span></summary><div class="attention-contents"><button type="button" class="count" data-project="' + esc(project.id) + '">Open project overview and timeline</button>' + '<details><summary>Timeline · ' + (project.timeline || []).length + ' updates</summary>' + this._projectTimelineMarkup(project) + '</details>' + children + updates + '</div></details>';
   }
 
   _projectsMarkup(view, items) {
@@ -202,7 +212,7 @@ class LifeOSPATaskCard extends HTMLElement {
       (step ? '<p>' + esc(step) + '</p>' : '') + (selected.intended_outcome ? '<p><strong>Outcome</strong> ' + esc(selected.intended_outcome) + '</p>' : '<p>Suggested grouping. Name the outcome if you want to track it as a project.</p>') + '</section>' +
       (items.some(row => row.id === selected.anchor_matter_id) ? '<button class="count" data-action="project_outcome" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.intended_outcome ? 'Edit project outcome' : 'Name project outcome') + '</button>' + (selected.intended_outcome ? '<button class="count" data-action="' + (selected.lifecycle === 'complete' ? 'project_reopen' : 'project_complete') + '" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.lifecycle === 'complete' ? 'Reopen outcome' : 'Confirm outcome complete') + '</button>' : '') : '<p>Outcome controls require the anchor matter in the current display window.</p>') +
       selected.uncertainties.filter(x => x !== "Finite intended outcome not confirmed").map(x => '<p role="note">' + esc(x) + '</p>').join("") +
-      '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.evidence_only ? "Source evidence" : e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · ' + esc(e.time_source === "email_date" ? "email date " : "recorded time ") + esc(this._projectObserved(e.observed_at)) + '</span></div>').join("") || '<p class="freshness">No verified history has been recovered yet. The linked source below may still be available.</p>') +
+      '<h3>Timeline</h3>' + this._projectTimelineMarkup(selected) +
       populated.map(([kind,label]) => {
         const cards = selected.buckets[kind].map(id => {
           const row = items.find(x => x.id === id);
