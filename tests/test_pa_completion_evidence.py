@@ -47,6 +47,7 @@ class CompletionEvidenceTests(unittest.TestCase):
         reconciler.correlate_named_supplier_orders(tasks,sources)
         projects=sensor.derive_projects(list(tasks.values()))['projects']
         self.assertEqual(len(projects),1)
+        self.assertNotIn('Ambiguous correlation evidence; kept separate',projects[0]['uncertainties'])
         self.assertEqual(b['verified_order_refs'],['DEMO123','PARTNER42'])
         self.assertEqual(b['status'],'OPEN')
         self.assertEqual(next(p for p in projects[0]['provenance'] if p['matter_id']=='partner')['verified_order_links'][0]['source_message_id'],'<partner@example.test>')
