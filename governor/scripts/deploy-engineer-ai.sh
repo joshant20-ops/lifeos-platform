@@ -4,16 +4,12 @@ set -euo pipefail
 START=$(date +%s)
 REPO=/home/joshan/lifeos-platform
 BACKEND="$REPO/governor/engineer_backend.py"
-OWUI_IMAGE="ghcr.io/open-webui/open-webui:v0.11.1"
-OWUI_PORT=8792
 BACKEND_PORT=8793
-UI_NAME=lifeos-engineer-ui
-UI_HEALTH_URL="http://127.0.0.1:${OWUI_PORT}/health"
 DEPLOY_PHASE=preflight
 FAILURE_DIAGNOSTICS_ACTIVE=false
 
 wait_for_health() {
-  local name=$1 url=$2 deadline=${3:-300} delay=1 started now
+  local name=$1 url=$2 deadline=${3:-60} delay=1 started now
   started=$(date +%s)
   while true; do
     if curl -fsS --max-time 5 "$url" >/dev/null 2>&1; then
@@ -25,22 +21,9 @@ wait_for_health() {
       printf '%s_HEALTH=FAIL url=%s timeout=%ss\n' "$name" "$url" "$deadline" >&2
       return 1
     fi
-    printf '%s_HEALTH=WAIT elapsed=%ss next_retry=%ss\n' "$name" "$((now - started))" "$delay"
     sleep "$delay"
-    # Do not use a short-circuit arithmetic expression here: once delay is 16,
-    # its false status would terminate this script because set -e is enabled.
-    if (( delay < 16 )); then
-      delay=$((delay * 2))
-    fi
+    if (( delay < 16 )); then delay=$((delay * 2)); fi
   done
-}
-
-ui_diagnostics() {
-  printf '\n===== OPEN WEBUI FAILURE DIAGNOSTICS =====\n' >&2
-  docker ps -a --filter "name=^/${UI_NAME}$" --no-trunc >&2 || true
-  docker inspect --format 'status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{.State.Error}} started={{.State.StartedAt}}' "$UI_NAME" >&2 || true
-  docker logs --tail 200 --timestamps "$UI_NAME" >&2 || true
-  curl -v --max-time 5 "$UI_HEALTH_URL" -o /dev/null >&2 || true
 }
 
 backend_diagnostics() {
@@ -52,189 +35,53 @@ backend_diagnostics() {
 
 unexpected_failure() {
   local status=$? line=${1:-unknown}
-  # Diagnostics contain best-effort commands that can themselves fail. Avoid
-  # recursively entering this handler and obscuring the original error.
   [[ "$FAILURE_DIAGNOSTICS_ACTIVE" == false ]] || exit "$status"
   FAILURE_DIAGNOSTICS_ACTIVE=true
   trap - ERR
-  printf 'DEPLOYMENT_FAILURE=unexpected phase=%s line=%s exit=%s\n' \
-    "$DEPLOY_PHASE" "$line" "$status" >&2
-  case "$DEPLOY_PHASE" in
-    backend) backend_diagnostics ;;
-    open_webui|verification) ui_diagnostics; backend_diagnostics ;;
-  esac
+  printf 'DEPLOYMENT_FAILURE=unexpected phase=%s line=%s exit=%s\n' "$DEPLOY_PHASE" "$line" "$status" >&2
+  backend_diagnostics
   exit "$status"
 }
 trap 'unexpected_failure "$LINENO"' ERR
 
-ui_container_health() {
-  docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \
-    "$UI_NAME" 2>/dev/null || printf 'missing\n'
-}
-
 [[ "$(hostname)" == "Docker" ]] || { echo "RESULT=BLOCKED"; echo "REASON=must_run_on_pi5_Docker"; exit 20; }
 
-printf '===== LIFEOS ENGINEER AI DEPLOY =====\n'
-printf 'Frontend: Open WebUI v0.11.1\n'
-printf 'Conversation/planning: local Qwen\n'
-printf 'Execution: Pi5 autonomous agent -> Engineer Codex -> Pi5 -> TowerPC Qwen verifier\n\n'
+printf '===== LIFEOS ENGINEER BACKEND VERIFY =====\n'
+printf 'Presentation: Home Assistant / LifeOS surfaces\n'
+printf 'Conversation backend: lifeos-engineer.service\n'
+printf 'OpenWebUI: retired from desired runtime\n\n'
 
-printf '===== 1/8 — SOURCE =====\n'
+printf '===== 1/4 — SOURCE =====\n'
 printf 'HEAD=%s\n' "$(git -C "$REPO" rev-parse --short HEAD)"
 
-printf '\n===== 2/8 — PREFLIGHT =====\n'
+printf '\n===== 2/4 — PREFLIGHT =====\n'
 python3 -m py_compile "$BACKEND"
-command -v docker >/dev/null
-docker info >/dev/null
 curl -fsS --max-time 5 http://127.0.0.1:8790/health >/dev/null
-curl -fsS --max-time 5 http://192.168.0.201:11434/api/tags >/dev/null
 printf 'PREFLIGHT=PASS\n'
 
-printf '\n===== 3/8 — ENGINEER BACKEND =====\n'
+printf '\n===== 3/4 — ENGINEER BACKEND =====\n'
 DEPLOY_PHASE=backend
 LIVE_BACKEND=/usr/local/libexec/lifeos-engineer
 ENGINEER_UNIT=/etc/systemd/system/lifeos-engineer.service
-
-# Autonomous runtime is deliberately unprivileged.  Installing or replacing
-# control-plane binaries is a host-authorised bootstrap operation, never a
-# sudo attempt from lifeos-autonomous-agent.service.
 if [[ ! -f "$LIVE_BACKEND" || ! -f "$ENGINEER_UNIT" ]]; then
   printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=engineer_backend reason=missing_installation\n'
   exit 30
 fi
-
 if ! cmp -s "$BACKEND" "$LIVE_BACKEND"; then
   printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=engineer_backend reason=installed_binary_outdated\n'
   printf 'SOURCE_SHA256=%s\n' "$(sha256sum "$BACKEND" | awk '{print $1}')"
   printf 'LIVE_SHA256=%s\n' "$(sha256sum "$LIVE_BACKEND" | awk '{print $1}')"
   exit 30
 fi
-
 if ! systemctl is-active --quiet lifeos-engineer.service; then
   printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=engineer_backend reason=service_not_running\n'
   backend_diagnostics
   exit 30
 fi
-
-if ! wait_for_health ENGINEER_BACKEND "http://127.0.0.1:${BACKEND_PORT}/health" 60; then
-  backend_diagnostics
-  exit 1
-fi
+wait_for_health ENGINEER_BACKEND "http://127.0.0.1:${BACKEND_PORT}/health" 60
 printf 'ENGINEER_BACKEND=PASS mode=unprivileged_runtime\n'
 
-printf '\n===== 4/8 — OPEN WEBUI =====\n'
-DEPLOY_PHASE=open_webui
-if [[ ! -d /var/lib/lifeos-openwebui ]]; then
-  printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=openwebui_state reason=state_directory_missing\n'
-  exit 30
-fi
-if [[ ! -w /var/lib/lifeos-openwebui ]]; then
-  printf 'PRIVILEGED_BOOTSTRAP_REQUIRED component=openwebui_state reason=state_directory_not_writable\n'
-  exit 30
-fi
-SECRET_FILE=/var/lib/lifeos-openwebui/webui-secret
-if [[ ! -s "$SECRET_FILE" ]]; then
-  umask 077
-  openssl rand -hex 32 > "$SECRET_FILE"
-fi
-WEBUI_SECRET_KEY=$(cat "$SECRET_FILE")
-
-RECREATE_UI=true
-if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-  UI_DOCKER_HEALTH=$(ui_container_health)
-  printf 'OPEN_WEBUI_EXISTING=running docker_health=%s\n' "$UI_DOCKER_HEALTH"
-  # Docker's healthcheck also calls /health. Preserve a container that has
-  # already passed that readiness contract even if this one host-side probe is
-  # affected by a transient bridge/published-port problem.
-  if [[ "$UI_DOCKER_HEALTH" == healthy ]]; then
-    printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=docker_health\n'
-    RECREATE_UI=false
-  # Open WebUI can take several minutes to migrate its database on the first
-  # start (or after an image upgrade).  Give the existing process the same
-  # readiness budget as a new one before deciding that it has failed.
-  elif wait_for_health OPEN_WEBUI_EXISTING "$UI_HEALTH_URL" 300; then
-    printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=host_health\n'
-    RECREATE_UI=false
-  elif [[ "$(ui_container_health)" == healthy ]]; then
-    # Close the race where Docker records a successful /health probe just as
-    # the host-side readiness budget expires.
-    printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=docker_health_after_wait\n'
-    RECREATE_UI=false
-  else
-    printf 'OPEN_WEBUI_EXISTING=failed_readiness_will_recreate\n' >&2
-    ui_diagnostics
-  fi
-fi
-
-if [[ "$RECREATE_UI" == true ]]; then
-  # Registry stalls must not consume the launcher's entire deadline without a
-  # clear phase-specific failure and local container/backend diagnostics.
-  timeout 300 docker pull "$OWUI_IMAGE" >/dev/null
-
-  # The old container remains running during the pull. It may finish a slow
-  # database migration in that interval, so make one last readiness check at
-  # the destructive boundary. Removing a container that has just become ready
-  # would cause avoidable downtime and throw away useful startup progress.
-  if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-    UI_DOCKER_HEALTH=$(ui_container_health)
-    if [[ "$UI_DOCKER_HEALTH" == healthy ]] || \
-       curl -fsS --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1; then
-      printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=pre_removal_recheck\n'
-      RECREATE_UI=false
-    fi
-  fi
-fi
-
-if [[ "$RECREATE_UI" == true ]]; then
-  if docker ps -a --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-    # Recheck inside the destructive block, immediately before removal. The
-    # container can cross from starting to ready after the image pull (or even
-    # after the earlier pre-removal check); never delete it on a stale result.
-    if docker ps --format '{{.Names}}' | grep -qx "$UI_NAME" && {
-      [[ "$(ui_container_health)" == healthy ]] || \
-        curl -fsS --max-time 5 "$UI_HEALTH_URL" >/dev/null 2>&1
-    }; then
-      printf 'OPEN_WEBUI_REUSED=healthy_existing_container source=destructive_boundary\n'
-      RECREATE_UI=false
-    else
-      printf 'OPEN_WEBUI_RECREATE=existing_container_failed_or_stopped\n'
-      # A stopped container has not been diagnosed above.
-      if ! docker ps --format '{{.Names}}' | grep -qx "$UI_NAME"; then
-        ui_diagnostics
-      fi
-      docker rm -f "$UI_NAME" >/dev/null
-    fi
-  fi
-
-  if [[ "$RECREATE_UI" == true ]]; then
-    docker run -d \
-      --name "$UI_NAME" \
-      --restart unless-stopped \
-      --health-cmd='python3 -c "import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8080/health\", timeout=5).read()"' \
-      --health-interval=15s \
-      --health-timeout=10s \
-      --health-start-period=300s \
-      --health-retries=3 \
-      -p ${OWUI_PORT}:8080 \
-      --add-host=host.docker.internal:host-gateway \
-      -v lifeos-engineer-openwebui:/app/backend/data \
-      -e WEBUI_SECRET_KEY="$WEBUI_SECRET_KEY" \
-      -e ENABLE_OLLAMA_API=false \
-      -e ENABLE_OPENAI_API=true \
-      -e OPENAI_API_BASE_URL="http://host.docker.internal:${BACKEND_PORT}/v1" \
-      -e OPENAI_API_KEY="lifeos-local" \
-      -e WEBUI_NAME="LifeOS Engineer" \
-      "$OWUI_IMAGE" >/dev/null
-  fi
-fi
-
-if ! wait_for_health OPEN_WEBUI "$UI_HEALTH_URL" 300; then
-  ui_diagnostics
-  exit 1
-fi
-printf 'OPEN_WEBUI=PASS\n'
-
-printf '\n===== 5/8 — OPENAI COMPATIBILITY TEST =====\n'
+printf '\n===== 4/4 — OPENAI COMPATIBILITY =====\n'
 DEPLOY_PHASE=verification
 MODELS=$(curl -fsS --max-time 5 http://127.0.0.1:${BACKEND_PORT}/v1/models)
 python3 - "$MODELS" <<'PY'
@@ -256,33 +103,10 @@ assert 'run it' in msg.lower() or '?' in msg
 print('ENGINEER_CONVERSATION=PASS')
 PY
 
-printf '\n===== 6/8 — NETWORK + HA TARGET =====\n'
-LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-[[ -n "${LAN_IP:-}" ]] || LAN_IP=Docker
-ENGINEER_URL="http://${LAN_IP}:${OWUI_PORT}/"
-printf 'ENGINEER_URL=%s\n' "$ENGINEER_URL"
-printf 'BACKEND_URL=http://%s:%s/v1\n' "$LAN_IP" "$BACKEND_PORT"
-printf 'HA_CARD_FALLBACK_BEGIN\n'
-cat <<YAML
-type: iframe
-url: ${ENGINEER_URL}
-aspect_ratio: 100%%
-title: LifeOS Engineer
-YAML
-printf 'HA_CARD_FALLBACK_END\n'
-
-printf '\n===== 7/8 — HOME ASSISTANT ENGINEER INTEGRATION =====\n'
-printf 'HA_INTEGRATION=managed_by_runtime_job\n'
-printf 'HA_INTEGRATION_TARGET=sidebar_LifeOS_Engineer\n'
-
-printf '\n===== 8/8 — RESULT =====\n'
 DEPLOY_PHASE=complete
 printf 'RESULT=PASS\n'
-printf 'ROLE=engineering_only\n'
-printf 'PA_ROLE=separate_future_surface\n'
+printf 'ROLE=engineering_conversation_backend\n'
+printf 'PRESENTATION=Home_Assistant_or_LifeOS_native_surfaces\n'
+printf 'OPENWEBUI=RETIRED\n'
 printf 'APPROVAL_REQUIRED=explicit_run_it_before_execution\n'
-printf 'ENGINEERING_LOOP=Pi5_to_Engineer_Codex_to_Pi5_to_TowerPC_Qwen\n'
-printf 'OPENWEBUI_VERSION=v0.11.1\n'
-printf 'FIRST_USE=Create_the_first_Open_WebUI_admin_account_then_select_lifeos-engineer\n'
-printf 'NOTE=Home_Assistant_integration_is_applied_and_verified_by_the_Pi5_runtime_job\n'
 printf 'Elapsed=%ss\n' "$(( $(date +%s)-START ))"
