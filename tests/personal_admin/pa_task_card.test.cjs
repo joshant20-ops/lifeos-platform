@@ -106,3 +106,19 @@ test('source-backed details show sender and contents without expanding evidence'
  assert.ok(detail.indexOf('At a glance')<detail.indexOf('The story so far'));
  assert.match(card._waitingSummary(task),/Two smart relays/);
 });
+test('projects and attention retain source controls and escape derived context',()=>{
+ const card=new Card();card._config={};
+ const p={id:'project-demo',name:'<unsafe>',intended_outcome:null,lifecycle:'candidate',attention:'WAITING',open_count:1,completed_count:0,next_action:[],waiting_on:['Vehicle assignment'],latest_update:null,matter_ids:['vehicle'],uncertainties:['Outcome unknown'],timeline:[],provenance:[{matter_id:'vehicle',rule:'accepted_matter',source_message_ids:['<demo@example.test>']}],buckets:{ACTION:[],WAITING:['vehicle'],WATCH:[],INFORMATION:[],COMPLETE:[]}};
+ const row={id:'vehicle',title:'Collect vehicle',status:'WAITING',source_message_ids:['<demo@example.test>']};
+ const view={projects:[p]};
+ assert.match(card._projectsMarkup(view,[row]),/No current action/);
+ assert.match(card._projectsMarkup(view,[row]),/Vehicle assignment/);
+ assert.doesNotMatch(card._projectsMarkup(view,[row]),/<unsafe>/);
+ card._selectedProjectId=p.id;
+ const detail=card._projectsMarkup(view,[row]);
+ for(const heading of ['Overview','Timeline','Actions','Waiting','Information','Complete','Evidence and grouping']) assert.match(detail,new RegExp(heading));
+ assert.match(detail,/accepted_matter/);assert.match(detail,/data-action=/);
+ card._productView='attention';
+ assert.match(card._projectsMarkup(view,[row]),/Needs you/);
+ assert.match(card._projectsMarkup(view,[row]),/Waiting on others/);
+});

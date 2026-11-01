@@ -134,6 +134,31 @@ class LifeOSPATaskCard extends HTMLElement {
     return '<section class="waiting-context"><h4>What is this waiting for?</h4>' + lines.join("") + '</section>';
   }
 
+  _projectsMarkup(view, items) {
+    const esc = value => this._escape(value);
+    const projects = Array.isArray(view?.projects) ? view.projects : [];
+    const selected = projects.find(p => p.id === this._selectedProjectId);
+    const nav = '<nav class="overview-tabs" aria-label="LifeOS views"><button data-product="projects">Projects</button><button data-product="attention">Attention</button></nav>';
+    if (this._productView === "attention") {
+      const labels = {ACTION:"Needs you", WAITING:"Waiting on others", WATCH:"Watching", INFORMATION:"Information", COMPLETE:"Recently completed"};
+      return nav + Object.entries(labels).map(([kind,label]) => '<section><h3>' + label + '</h3>' +
+        projects.flatMap(p => (p.buckets[kind] || []).filter(id => kind !== "COMPLETE" || (view.recently_completed_ids || []).includes(id)).map(id => {
+          const row = items.find(x => x.id === id);
+          return '<button class="overview-tile" data-project="' + esc(p.id) + '"><strong>' + esc(row?.title || "Matter details unavailable") + '</strong><span>' + esc(p.name) + '</span></button>';
+        })).join("") + '</section>').join("") + '<details><summary>All matters and controls</summary>' + this._overviewMarkup(items) + '</details>';
+    }
+    if (!selected) return nav + '<section class="overview-list">' + (projects.map(p =>
+      '<button class="overview-tile" data-project="' + esc(p.id) + '"><span class="eyebrow">' + esc(p.attention) + ' · ' + esc(p.lifecycle) + '</span><strong>' + esc(p.name) + '</strong><span>' + esc(p.intended_outcome || "Outcome not confirmed · project candidate") + '</span><span>' + p.open_count + ' open · ' + p.completed_count + ' complete</span><span>Next: ' + esc(p.next_action.join("; ") || "No current action") + '</span><span>Waiting: ' + esc(p.waiting_on.join("; ") || "None recorded") + '</span><span>Latest: ' + esc(p.latest_update?.title || "No recorded update") + '</span></button>').join("") || '<p>No project candidates available.</p>') + '</section>';
+    return nav + '<button data-project="">← All projects</button><h2>' + esc(selected.name) + '</h2><h3>Overview</h3><p>' + esc(selected.intended_outcome || "Finite outcome not confirmed") + '</p><p>' + esc(selected.attention) + ' · ' + esc(selected.lifecycle) + '</p>' +
+      selected.uncertainties.map(x => '<p role="note">' + esc(x) + '</p>').join("") +
+      '<h3>Timeline</h3>' + (selected.timeline.map(e => '<div class="timeline-event"><strong>' + esc(e.title) + '</strong><span>' + esc(e.event_kind) + ' · ' + e.source_message_ids.length + ' sources · observed ' + esc(new Date(e.observed_at * 1000).toUTCString()) + '</span></div>').join("") || '<p>No source-backed timeline recorded.</p>') +
+      Object.entries({ACTION:"Actions",WAITING:"Waiting",WATCH:"Watching",INFORMATION:"Information",COMPLETE:"Complete"}).map(([kind,label]) => '<section><h3>' + label + '</h3>' + (selected.buckets[kind].map(id => {
+        const row = items.find(x => x.id === id);
+        return row ? this._taskCard(row, true) : '<p>Matter detail outside current display window.</p>';
+      }).join("") || '<p>None recorded.</p>') + '</section>').join("") +
+      '<details><summary>Why this project? Evidence and grouping</summary><p>Derived from accepted PA matters using deterministic relationships. Source links are on each matter above.</p>' + selected.provenance.map(p => '<p>' + esc(p.matter_id) + ' · ' + esc(p.rule) + ' · ' + p.source_message_ids.length + ' source messages</p>').join("") + '</details>';
+  }
+
   _overviewMarkup(items) {
     const tab = this._overviewTab || "today", today = this._dateKey(new Date());
     const active = task => !task.snoozed && !["closed", "information"].includes(this._kind(task));
@@ -341,11 +366,17 @@ class LifeOSPATaskCard extends HTMLElement {
     const actions = items.filter(task => this._kind(task) === "action" && !task.snoozed).length;
     const waitingCount = items.filter(task => this._kind(task) === "waiting" && !task.snoozed).length;
     const unavailable = !sensor || ["unavailable","unknown"].includes(sensor.state);
-    this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card><div class="page-head"><div class="page-copy"><div class="page-kicker">LifeOS · Personal Assistant</div>' +
-      '<h1>Your day</h1><p>Here’s what needs your attention.</p></div></div>' +
+    this.shadowRoot.innerHTML = '<style>' + style + '</style><ha-card><div class="page-head"><div class="page-copy"><div class="page-kicker">LifeOS · Projects & Attention</div>' +
+      '<h1>Projects & Attention</h1><p>Outcomes, next actions and what is waiting.</p></div></div>' +
       (unavailable ? '<div class="empty" role="alert"><strong>PA information is unavailable</strong><span>Current matters could not be checked. This does not mean there is nothing to do.</span></div>' :
         '<div class="daily-counts">' + questions + (questions === 1 ? ' question · ' : ' questions · ') + actions + (actions === 1 ? ' action · ' : ' actions · ') + waitingCount + ' waiting</div>' +
-        '<p class="freshness">Updated ' + this._escape(attrs.generated_time ? new Date(attrs.generated_time * 1000).toLocaleString() : "time unavailable") + '</p>' + (Number(attrs.total_matters) > items.length ? '<p class="freshness">Showing ' + items.length + ' of ' + Number(attrs.total_matters) + ' matters, in attention order.</p>' : '') + this._overviewMarkup(items)) + '</ha-card>';
+        '<p class="freshness">Updated ' + this._escape(attrs.generated_time ? new Date(attrs.generated_time * 1000).toLocaleString() : "time unavailable") + '</p>' + (Number(attrs.total_matters) > items.length ? '<p class="freshness">Showing ' + items.length + ' of ' + Number(attrs.total_matters) + ' matters, in attention order.</p>' : '') + (attrs.projects_view ? this._projectsMarkup(attrs.projects_view, items) : this._overviewMarkup(items))) + '</ha-card>';
+    this.shadowRoot.querySelectorAll("button[data-product]").forEach(button => button.addEventListener("click", () => {
+      this._productView = button.dataset.product; this._selectedProjectId = null; this._render();
+    }));
+    this.shadowRoot.querySelectorAll("button[data-project]").forEach(button => button.addEventListener("click", () => {
+      this._selectedProjectId = button.dataset.project; this._productView = "projects"; this._render();
+    }));
     this.shadowRoot.querySelectorAll("button[data-tab]").forEach(button => button.addEventListener("click", () => {
       this._overviewTab = button.dataset.tab; this._selectedMatterId = null; this._render();
     }));
