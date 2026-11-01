@@ -147,7 +147,7 @@ DISCOVERY="$(timeout 10s mosquitto_sub -h 127.0.0.1 -C 1 -t homeassistant/switch
 python3 - "$CONTROL" "$TOWER" "$DISCOVERY" <<'PY'
 import json, sys
 value=json.loads(sys.argv[1]); tower=json.loads(sys.argv[2]); discovery=json.loads(sys.argv[3])
-required={'state','github_runner','semaphore','roadmap_stage','roadmap_progress_percent','open_issue_count','eligible_count','blocked_count'}
+required={'state','github_runner','roadmap_stage','roadmap_progress_percent','open_issue_count','eligible_count','blocked_count'}
 missing=sorted(required-set(value))
 if missing: raise SystemExit('missing_control_fields=' + ','.join(missing))
 if value['state'] not in {'WORKING','IDLE','BLOCKED','STALLED','DEGRADED'}: raise SystemExit('invalid_control_state=' + str(value['state']))
