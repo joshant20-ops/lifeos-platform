@@ -133,22 +133,6 @@ def runner_health():
     return {"state": "PASS" if " active running " in f" {line} " else "FAIL", "unit": line.split()[0] if line else None}
 
 
-def semaphore_health():
-    cp = run("docker", "port", "lifeos-semaphore-shadow-semaphore-1", "3000/tcp", check=False, timeout=10)
-    endpoint = next((x.strip() for x in cp.stdout.splitlines() if x.strip()), "")
-    if not endpoint:
-        return {"state": "FAIL", "endpoint": None}
-    # Docker may render IPv6 as [::]:port; prefer the explicitly published LAN endpoint.
-    if endpoint.startswith("["):
-        endpoint = next((x.strip() for x in cp.stdout.splitlines() if x.strip() and not x.strip().startswith("[")), endpoint)
-    url = f"http://{endpoint}/api/ping"
-    try:
-        with urllib.request.urlopen(url, timeout=4) as response:
-            ok = 200 <= response.status < 300
-    except Exception:
-        ok = False
-    return {"state": "PASS" if ok else "FAIL", "endpoint": endpoint}
-
 
 def latest_automation():
     cp = gh("run", "list", "--repo", REPO, "--workflow", "lifeos-pi-auto-smoke.yml", "--limit", "1",
@@ -184,13 +168,10 @@ def control_state(rows, jobs):
     active_job = sorted(active_jobs, key=lambda j: _epoch(j.get("stage_changed_at") or j.get("created_at")), reverse=True)[0] if active_jobs else None
     protected = {unit: systemd_state(unit) for unit in PROTECTED_UNITS}
     runner = runner_health()
-    semaphore = semaphore_health()
     automation = latest_automation()
     degraded = [unit for unit, value in protected.items() if value["active"] != "active"]
     if runner["state"] != "PASS":
         degraded.append("github-runner")
-    if semaphore["state"] != "PASS":
-        degraded.append("semaphore")
 
     blocked = [r for r in rows if r["status"] == "BLOCKED"]
     eligible = [r for r in rows if r["status"] == "READY"]
@@ -252,7 +233,6 @@ def control_state(rows, jobs):
         "stalled_for_seconds": stalled_for,
         "stall_threshold_seconds": STALL_SECONDS,
         "github_runner": runner,
-        "semaphore": semaphore,
         "automation": automation,
         "protected_units": protected,
         "roadmap_stage": ROADMAP_STAGE,
