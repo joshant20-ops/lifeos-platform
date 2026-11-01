@@ -1746,7 +1746,7 @@ def refresh_source_context(task, sources, summary_budget):
     source = sources.get(source_id)
     if not source or str(source.get("message_id") or "").strip() != source_id:
         return
-    task["verified_order_refs"] = sorted(order_reference_ids(source))
+    task["verified_order_refs"] = sorted(set(task.get("verified_order_refs") or []) | order_reference_ids(source))
     old = task.get("source_context") or {}
     context = {
         "message_id": source_id,
@@ -1788,6 +1788,37 @@ EMAIL DATA:
 
 
 
+def backfill_verified_source_history(tasks, sources):
+    """Recover legacy evidence metadata, never replay a guessed obligation state.
+
+    Processed scan IDs are not evidence that a timeline was ever published.
+    Missing/invalid dates stay unknown. No source bodies enter this history.
+    """
+    added = 0
+    for task in tasks.values():
+        refs = set(task.get("verified_order_refs") or [])
+        for source_id in task_source_message_ids(task):
+            source = sources.get(source_id)
+            if not source or str(source.get("message_id") or "").strip() != source_id:
+                continue
+            refs.update(order_reference_ids(source))
+            if any(event.get("message_id") == source_id for event in task.get("timeline_events") or [] if isinstance(event, dict)):
+                continue
+            try:
+                timestamp = parsedate_to_datetime(str(source.get("date") or ""))
+                observed = int(timestamp.timestamp()) if timestamp.tzinfo is not None else 0
+            except (TypeError, ValueError, OverflowError):
+                observed = 0
+            record_source_event(task, source, {"title": "Source recorded: " + source_header(source.get("subject"), 100), "status": "NONE"}, observed, actionable=False)
+            for event in task.get("timeline_events") or []:
+                if event.get("message_id") == source_id:
+                    event["evidence_only"] = True
+                    event["time_source"] = "email_date" if observed else "unknown"
+            added += 1
+        task["verified_order_refs"] = sorted(refs)
+    return added
+
+
 def backfill_shared_order_references(tasks, sources):
     """Recognise a known order ID in another exact source from the same supplier."""
     groups={}
@@ -1801,10 +1832,12 @@ def backfill_shared_order_references(tasks, sources):
         name,address=parseaddr(sender)
         domain=address.lower().rpartition("@")[2]
         display=normalize_counterparty(name)
-        supplier=(domain,display)
+        # Exact references can join different named senders at one supplier.
+        # Public mailbox providers must never become a shared supplier.
+        supplier=(domain, address.lower() if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else "")
         if display in {"shelly","shellyeurope"}:
             supplier=("supplier","shelly")
-        if not domain or not display:
+        if not domain:
             continue
         groups.setdefault(supplier,[]).append((task,source))
     matches=0
@@ -1922,9 +1955,10 @@ def _run_reconciler():
     try:
         source_tasks=list(tasks.values())
         for task in tasks.values():
-            if insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events") or task_quality_category(task) or task.get("obligation_suppressed") in KINDS:
+            if insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events") or task_quality_category(task) or task.get("obligation_suppressed") in KINDS or not task.get("timeline_events"):
                 for source_id in task_source_message_ids(task):
-                    source_tasks.append({"source_message_ids":[source_id],"email_message_id":source_id,"updated_from_email":task.get("updated_from_email")})
+                    source_date=next((event.get("date") for event in task.get("timeline_events") or [] if isinstance(event,dict) and event.get("message_id")==source_id), None)
+                    source_tasks.append({"source_message_ids":[source_id],"email_message_id":source_id,"updated_from_email":source_date or (task.get("updated_from_email") if source_id==task.get("email_message_id") else "")})
         extra_sources=fetch_existing_task_source_emails(source_tasks,fetched_by_message_id)
         fetched_by_message_id.update(extra_sources)
     except Exception as exc:
@@ -2005,6 +2039,7 @@ def _run_reconciler():
     source_summary_budget=[6]
     for task in tasks.values():
         refresh_source_context(task,fetched_by_message_id,source_summary_budget)
+    print("PA_SOURCE_HISTORY_BACKFILLED="+str(backfill_verified_source_history(tasks,fetched_by_message_id)),flush=True)
     print("PA_ORDER_REFERENCE_BACKFILLS="+str(backfill_shared_order_references(tasks,fetched_by_message_id)),flush=True)
     print("PA_SOURCE_CONTEXT_PRESENT="+str(sum(bool((task.get("source_context") or {}).get("sender")) for task in tasks.values())),flush=True)
     print("PA_SIGNIN_MATTERS="+str(sum(bool(task.get("sign_in_events")) for task in tasks.values())),flush=True)

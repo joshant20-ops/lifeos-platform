@@ -120,6 +120,7 @@ def derive_projects(rows, source_attention=None):
     Matching proof stays local alongside existing evidence navigation.
     """
     import hashlib
+    from email.utils import parseaddr
     def norm(value):
         return " ".join(re.findall(r"[a-z0-9]+", str(value or "").lower()))
     groups = {}
@@ -132,7 +133,14 @@ def derive_projects(rows, source_attention=None):
         party, topic = norm(row.get("counterparty")), norm(row.get("topic"))
         # A complete reference set prevents transitive bridging through an
         # ambiguous multi-reference message. Counterparty alone never joins.
-        if refs:
+        order_refs = tuple(sorted(set(row.get("verified_order_refs") or [])))
+        context = project_source_context(row) or {}
+        _, address = parseaddr(context.get("sender") or "")
+        domain = address.lower().rpartition("@")[2]
+        supplier = (address.lower() if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else domain) or party
+        if order_refs and supplier:
+            key, rule = ("order", supplier, order_refs), "verified_supplier_order"
+        elif refs:
             key, rule = ("reference", "case" if row.get("case_reference_ids") else party, tuple(refs)), "exact_reference_set"
         elif party and topic:
             key, rule = ("topic", party, topic), "exact_counterparty_topic"
@@ -167,7 +175,7 @@ def derive_projects(rows, source_attention=None):
                 seen_messages.add(event["message_id"])
                 # Consolidate same accepted update, retain all source identities.
                 signature = (str(event.get("title") or "Email update"), str(event.get("status") or "NONE"), str(event.get("event_kind") or "information"))
-                update = events.setdefault(signature, {"title": signature[0], "status": signature[1], "event_kind": signature[2], "observed_at": 0, "source_dates": [], "source_message_ids": [], "matter_ids": []})
+                update = events.setdefault(signature, {"title": signature[0], "status": signature[1], "event_kind": signature[2], "observed_at": 0, "source_dates": [], "source_message_ids": [], "matter_ids": [], "evidence_only": bool(event.get("evidence_only")), "time_source": event.get("time_source")})
                 update["observed_at"] = max(update["observed_at"], observed)
                 for field, value in (("source_dates", event.get("date")), ("source_message_ids", event["message_id"]), ("matter_ids", row["id"])):
                     if value and value not in update[field]: update[field].append(value)
@@ -180,9 +188,15 @@ def derive_projects(rows, source_attention=None):
         outcome_conflict = len({row["user_project"]["outcome"] for row in anchors}) > 1
         by_id = {str(row["id"]): row for row in members}
         def summary(ids, field):
-            return [str((project_source_context(by_id[i]) or {}).get(field) or by_id[i].get("reason") or by_id[i].get("title") or "Details unknown")[:400] for i in ids]
+            return [str((project_source_context(by_id[i]) or {}).get(field) or by_id[i].get("reason") or ("Action details are not recorded; review the linked source." if field == "next_step" else "The expected next event is not recorded."))[:400] for i in ids]
+        topic = str(members[0].get("topic") or "")
+        party_name = str(members[0].get("counterparty") or "")
+        if key[0] == "order" or norm(topic) in {"order confirmation", "order confirmed", "order update"}:
+            display_name = (party_name + " order").strip() if party_name else members[0].get("title")
+        else:
+            display_name = topic or members[0].get("title")
         projects.append({"id": "project-" + hashlib.sha256(json.dumps(("user", anchor["id"]) if anchors else key).encode()).hexdigest()[:20],
-                         "name": outcome or members[0].get("topic") or members[0].get("title") or "Source matter",
+                         "name": outcome or display_name or "Source matter",
                          "anchor_matter_id": anchor["id"], "outcome_source": "user" if outcome else None,
                          "intended_outcome": outcome, "lifecycle": "candidate" if not outcome or outcome_conflict else metadata.get("state", "active"),
                          "attention": attention, "buckets": buckets, "matter_ids": list(by_id),

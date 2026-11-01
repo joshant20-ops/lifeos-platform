@@ -433,6 +433,28 @@ def main():
         assert "_projectsMarkup" in card_text and "data-project" in card_text
     print("PA_PROJECTS_ACTUAL_HA_ENTITY=PASS")
     print("PA_PROJECTS_SOURCE_COVERAGE=PASS")
+    acknowledgement_rows = [row for row in source_by_id.values()
+                            if (row.get("source_disposition_checks") or {}).get("kind_counts", {}).get("order_acknowledgement", 0)]
+    acknowledged_nonactions = [row for row in acknowledgement_rows if row.get("obligation_suppressed") == "order_acknowledgement"]
+    assert all(row.get("timeline_events") for row in acknowledged_nonactions), "acknowledgement_history_missing"
+    print("PA_ORDER_ACK_INFORMATION=" + str(len(acknowledged_nonactions)))
+    print("PA_ORDER_ACK_VERIFIED_HISTORY=PASS")
+    from email.utils import parseaddr
+    vehicle_ids = {row["id"] for row in source_by_id.values()
+                   if parseaddr((row.get("source_context") or {}).get("sender") or "")[1].lower().rpartition("@")[2] == "tesla.com"}
+    vehicle_projects = [project for project in projects if vehicle_ids.intersection(project["matter_ids"])]
+    print("PA_VEHICLE_PROJECT_GROUPS=" + str(len(vehicle_projects)))
+    vehicle_rows = [source_by_id[mid] for mid in vehicle_ids]
+    print("PA_VEHICLE_HISTORY_ROWS=" + str(sum(bool(row.get("timeline_events")) for row in vehicle_rows)))
+    print("PA_VEHICLE_MISSING_SOURCE_ROWS=" + str(sum((row.get("source_disposition_checks") or {}).get("missing", 0) > 0 for row in vehicle_rows)))
+    for disposition_reason in ("mandatory_request", "accepted_commitment", "transactional_or_subject_uncertainty", "unclassified"):
+        print("PA_VEHICLE_SOURCE_REASON_" + disposition_reason.upper() + "=" + str(sum((row.get("source_disposition_checks") or {}).get("reason_counts", {}).get(disposition_reason, 0) for row in vehicle_rows)))
+
+    print("PA_VEHICLE_PROJECT_MULTI_SOURCE=" + str(sum(len({sid for proof in project["provenance"] for sid in proof["source_message_ids"]}) > 1 for project in vehicle_projects)))
+    for attention_kind in ("ACTION", "WAITING", "INFORMATION"):
+        print("PA_VEHICLE_" + attention_kind + "=" + str(sum(len(vehicle_ids.intersection(project["buckets"][attention_kind])) for project in vehicle_projects)))
+    print("PA_PROJECTS_LEGACY_TIMELINES=" + str(sum(bool(row.get("timeline_events")) for row in source_by_id.values())))
+
     print("PA_PROJECTS_MULTI_SOURCE=" + str(sum(len(p["provenance"]) > 1 or any(len(e["source_message_ids"]) > 1 for e in p["timeline"]) for p in projects)))
 
     # Compare private order identifiers locally. Never print identifiers, email
@@ -488,6 +510,20 @@ try {
     render_check=subprocess.run([node,"-e",renderer,str(CARD)],
         input=json.dumps(waiting_rows),capture_output=True,text=True,timeout=30)
     assert render_check.returncode==0, "waiting_actual_ha_rows_not_visible_in_card"
+    project_render = r"""
+const fs=require('fs'),vm=require('vm'); let Card;
+vm.runInNewContext(fs.readFileSync(process.argv[1],'utf8'),{HTMLElement:class{},customElements:{define:(_,value)=>{Card=value;}},window:{location:{protocol:'http:',hostname:'example.test'}},Intl,Date,Set,Map});
+const attrs=JSON.parse(fs.readFileSync(0,'utf8')),card=new Card();card._config={};
+card._hass={states:{'sensor.lifeos_pa_task_attention':{attributes:attrs}}};
+for(const project of attrs.projects_view.projects){
+ card._selectedProjectId=project.id;
+ const html=card._projectsMarkup(attrs.projects_view,card._items(attrs));
+ if(!html.includes('Why this project?') || html.includes('<h3>Waiting</h3><p>None recorded.</p>') || html.includes('Finite intended outcome not confirmed')) throw Error('project_render_contract_failed');
+}
+"""
+    project_rendered = subprocess.run([node, "-e", project_render, str(CARD)], input=json.dumps(live_entity), text=True, capture_output=True, timeout=30)
+    assert project_rendered.returncode == 0, "actual_project_render_failed"
+    print("PA_PROJECTS_RENDER_ACTUAL_HA=PASS")
     print("PA_WAITING_DETAILS_RENDER_ACTUAL_HA=PASS")
     print("PA_WAITING_SOURCE_CONTEXT_ACTUAL_HA=PASS")
     print("PA_WAITING_SOURCE_CONTEXT_COUNT="+str(len(waiting_rows)))
@@ -502,7 +538,7 @@ try {
     print("PA_OVERVIEW_CACHED_CARD_COMPATIBILITY=PASS")
     print("PA_OVERVIEW_SOURCE_PARITY=PASS")
     rows=[row for bucket in ("tasks","resolved","informational") for row in final_payload.get(bucket,[]) if isinstance(row,dict)]
-    kinds=("marketing_offer","routine_delivery","optional_opportunity","optional_feedback","optional_change_window")
+    kinds=("marketing_offer","routine_delivery","optional_opportunity","optional_feedback","optional_change_window","order_acknowledgement")
     known_optional_active=[]
     for row in rows:
         checks=row.get("source_disposition_checks") or {}
