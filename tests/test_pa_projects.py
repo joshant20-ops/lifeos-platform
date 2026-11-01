@@ -132,6 +132,23 @@ class ProjectsTests(unittest.TestCase):
         self.assertEqual(p['attention'],'ACTION')
         self.assertEqual(p['open_count'],1)
 
+    def test_tesla_synthetic_multimessage_lifecycle_uses_accepted_state(self):
+        # Invented Tesla case, distinct threads already accepted by the PA.
+        row=matter('tesla-demo')
+        row.update(counterparty='Tesla', topic='Buy and collect a Tesla Model 3',
+                   case_reference_ids=['DEMO-TESLA-42'],
+                   source_message_ids=['<order@example.test>','<update@example.test>','<identity@example.test>'],
+                   timeline_events=[event('order'),event('update','Order estimate updated','NONE','information',200)])
+        self.assertEqual(self.project([row])['attention'],'WAITING')
+        self.assertEqual(len(self.project([row])['timeline']),2)
+        row['timeline_events'].append(event('identity','Complete identity check','OPEN','obligation',300))
+        row['status']='OPEN';row['reason']='Complete identity check'
+        projected=self.project([row])
+        self.assertEqual(projected['attention'],'ACTION')
+        self.assertEqual(projected['latest_update']['title'],'Complete identity check')
+        row['timeline_events'].append(event('identity','Requoted identity check','OPEN','obligation',400))
+        self.assertEqual(len(self.project([row])['timeline']),3)
+
     def test_ha_attribute_and_runtime_acceptance_include_projection(self):
         self.assertIn('        - projects_view\n',(ROOT/'homelab/live/opt/stacks/homeassistant/config/packages/lifeos_attention.yaml').read_text())
         self.assertIn('PA_PROJECTS_ACTUAL_HA_ENTITY=PASS',(ROOT/'scripts/accept-pa-governed-actions.py').read_text())

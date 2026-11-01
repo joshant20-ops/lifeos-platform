@@ -144,6 +144,7 @@ def derive_projects(rows, source_attention=None):
         members = sorted(members, key=lambda row: str(row["id"]))
         buckets = {name: [] for name in ("ACTION", "WAITING", "WATCH", "INFORMATION", "COMPLETE")}
         events = {}
+        seen_messages = set()
         provenance = []
         for row in members:
             status = str(row.get("status") or "").upper()
@@ -157,12 +158,13 @@ def derive_projects(rows, source_attention=None):
                                "case_reference_ids": row.get("case_reference_ids") or [],
                                "verified_order_refs": row.get("verified_order_refs") or []})
             for event in row.get("timeline_events") or []:
-                if not isinstance(event, dict) or not event.get("message_id") or event["message_id"] not in ids:
+                if not isinstance(event, dict) or not event.get("message_id") or event["message_id"] not in ids or event["message_id"] in seen_messages:
                     continue
                 try:
                     observed = int(event.get("observed_at") or 0)
                 except (TypeError, ValueError):
                     continue
+                seen_messages.add(event["message_id"])
                 # Consolidate same accepted update, retain all source identities.
                 signature = (str(event.get("title") or "Email update"), str(event.get("status") or "NONE"), str(event.get("event_kind") or "information"))
                 update = events.setdefault(signature, {"title": signature[0], "status": signature[1], "event_kind": signature[2], "observed_at": 0, "source_dates": [], "source_message_ids": [], "matter_ids": []})
