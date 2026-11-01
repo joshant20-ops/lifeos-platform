@@ -2071,7 +2071,11 @@ def correlate_named_supplier_orders(tasks, sources):
             if len(refs) == 1 and supplier and len(label) >= 4 and label not in {"support", "customer service", "orders", "noreply", "no reply", "delivery", "notifications"}:
                 known.setdefault((supplier, next(iter(refs))), []).append((label, mid))
     linked = 0
+    retained_ids = {mid for row in tasks.values() for mid in task_source_message_ids(row)}
     for row in tasks.values():
+        previous_links = [proof for proof in row.get("verified_order_links") or []
+                          if proof.get("source_message_id") in task_source_message_ids(row)
+                          and proof.get("origin_source_message_id") in retained_ids]
         candidates = {}
         for mid in task_source_message_ids(row):
             source = sources.get(mid)
@@ -2085,12 +2089,15 @@ def correlate_named_supplier_orders(tasks, sources):
                     for label, origin_mid in origins:
                         if re.search(r"(?<![a-z0-9])" + re.escape(label) + r"(?![a-z0-9])", text):
                             candidates.setdefault((supplier, ref), []).append({"supplier": supplier, "order_ref": ref, "source_message_id": mid, "origin_source_message_id": origin_mid, "rule": "named_supplier_exact_order"})
-        # Do not carry inferred links across unavailable/changed sources.
+        # Accepted exact-ID evidence survives a transient lookup miss; removing
+        # its retained identities or revisiting a contradictory source expires it.
         row.pop("verified_order_links", None)
         if len(candidates) == 1:
             proofs = next(iter(candidates.values()))
             row["verified_order_links"] = sorted(proofs, key=lambda p: (p["source_message_id"], p["origin_source_message_id"]))
             linked += 1
+        elif not candidates and previous_links and any(proof["source_message_id"] not in sources or proof["origin_source_message_id"] not in sources for proof in previous_links):
+            row["verified_order_links"] = previous_links
     return linked
 
 

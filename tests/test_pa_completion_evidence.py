@@ -51,6 +51,8 @@ class CompletionEvidenceTests(unittest.TestCase):
         self.assertEqual(b['status'],'OPEN')
         self.assertEqual(next(p for p in projects[0]['provenance'] if p['matter_id']=='partner')['verified_order_links'][0]['source_message_id'],'<partner@example.test>')
         self.assertEqual(sensor.derive_projects([b,a]),sensor.derive_projects([a,b]))
+        reconciler.correlate_named_supplier_orders(tasks,{shop['message_id']:shop})
+        self.assertEqual(len(sensor.derive_projects(list(tasks.values()))['projects']),1)
         partner['body']='An update from Example Motors, no order reference.'
         reconciler.correlate_named_supplier_orders(tasks,sources)
         self.assertNotIn('verified_order_links',b)
