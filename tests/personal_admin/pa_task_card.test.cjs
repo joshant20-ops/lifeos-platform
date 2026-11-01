@@ -173,3 +173,28 @@ test('owner waiting is explicit and related items stay accessible without repeat
  assert.match(html,/No action currently required/);
  assert.match(card._waitingSummary(a),/Owner-confirmed waiting/);
 });
+test('attention renders one expandable project rather than a card per related item or bucket',()=>{
+ const card=new Card();card._config={};card._productView='attention';
+ const items=[{id:'a',title:'Action one',status:'OPEN'},{id:'b',title:'Unverified action',status:'OPEN',confirmation_required:'source_unavailable'},
+  {id:'c',title:'Waiting one',status:'WAITING'},{id:'d',title:'Waiting two',status:'WAITING'},
+  {id:'i',title:'Receipt',status:'OPEN',obligation_suppressed:'order_acknowledgement'},
+  {id:'e',title:'Completed item',status:'DONE'}];
+ const project={id:'project-owner',name:'Vehicle purchase',attention:'ACTION',matter_ids:items.map(item=>item.id),
+  next_action:['Review an unverified item'],waiting_on:['Vehicle assignment'],timeline:[],
+  buckets:{ACTION:['a','b'],WAITING:['c','d'],WATCH:[],INFORMATION:['i'],COMPLETE:['e']}};
+ const other={id:'project-other',name:'Unrelated project',attention:'WAITING',matter_ids:['other'],next_action:[],waiting_on:['A reply'],timeline:[],
+  buckets:{ACTION:[],WAITING:['other'],WATCH:[],INFORMATION:[],COMPLETE:[]}};
+ const html=card._projectsMarkup({projects:[project,other],recently_completed_ids:['e']},[...items,{id:'other',title:'Other',status:'WAITING'}]);
+ assert.equal((html.match(/data-attention-project="project-owner"/g)||[]).length,1);
+ assert.equal((html.match(/data-attention-project="project-other"/g)||[]).length,1);
+ assert.match(html,/<details class="attention-project" data-attention-project="project-owner"><summary/);
+ assert.equal((html.match(/data-attention-item="project-owner:/g)||[]).length,6);
+ assert.match(html,/1 recorded action · 1 question · 2 waiting/);
+ assert.match(html,/Expand 6 related items and sources/);
+ assert.match(html,/data-action="comment"/);assert.match(html,/Open project overview and timeline/);
+ assert.doesNotMatch(html,/<button class="overview-tile" data-project="project-owner"/);
+ card._attentionExpanded=new Set(['project-owner','project-owner:b']);
+ const expanded=card._projectsMarkup({projects:[project]},items);
+ assert.match(expanded,/data-attention-project="project-owner" open/);
+ assert.match(expanded,/data-attention-item="project-owner:b" open/);
+});
