@@ -57,8 +57,12 @@ def outcome_counts(payload, brand):
         return set(row.get('source_message_ids') or []) | ({row['email_message_id']} if row.get('email_message_id') else set())
     def text(row):
         context = row.get('source_context') or {}
-        return ' '.join(str(row.get(k) or '') for k in ('title', 'topic', 'counterparty')) + (' ' + str(context.get('sender') or '') + ' ' + str(context.get('subject') or '') if context.get('message_id') in ids(row) else '')
-    selected = [row for row in rows if brand.casefold() in text(row).casefold()]
+        return ' '.join(str(row.get(k) or '') for k in ('title', 'topic', 'counterparty')) + ' ' + str((row.get('user_project') or {}).get('outcome') or '') + (' ' + str(context.get('sender') or '') + ' ' + str(context.get('subject') or '') if context.get('message_id') in ids(row) else '')
+    # Locator only, never membership evidence: tolerate doubled letters and
+    # punctuation in an owner-supplied search label.
+    def locator(value):
+        return re.sub(r'(.)\1+', r'\1', re.sub(r'[^a-z0-9]', '', value.casefold()))
+    selected = [row for row in rows if locator(brand) in locator(text(row))]
     counts = {key: 0 for key in ('ROWS', 'OPEN', 'WAITING', 'DONE', 'SHARED_SOURCE_PAIRS', 'SAME_ORDER_PAIRS', 'OVERLAPPING_CASE_PAIRS', 'SAME_SENDER_DOMAIN_PAIRS', 'SAME_TOPIC_PAIRS', 'MISSING_ORDER_REFS', 'ORDER_SUBSET_PAIRS')}
     counts['ROWS'] = len(selected)
     for row in selected:

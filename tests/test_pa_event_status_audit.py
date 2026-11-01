@@ -21,6 +21,7 @@ class EventAuditTests(unittest.TestCase):
         self.assertEqual(payload,before)
         self.assertTrue(all(isinstance(k,str) and type(v) is int for k,v in counts.items()))
         self.assertNotIn('DEMO42',str(counts));self.assertNotIn('example.test',str(counts))
+        self.assertEqual(audit.outcome_counts({'tasks':[{'title':'Hobibear order','status':'WAITING'}]}, 'Hobbibear')['ROWS'],1)
     def test_invalid_stale_or_wrong_schema_cannot_look_like_zero_candidates(self):
         valid={'schema':'lifeos_tasks_v3','generated_time':100000,'tasks':[],'resolved':[],'informational':[]}
         self.assertIs(audit.validate_payload(valid,100001),valid)
