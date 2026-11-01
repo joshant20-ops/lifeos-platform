@@ -721,8 +721,18 @@ def observation_is_newer(old,observed):
     except Exception:return True
 
 def effective_status(old,new_status):
-    if old.get("status")=="DONE" and new_status!="DONE":return "DONE"
+    if old.get("status")=="DONE" and new_status!="DONE" and not old.get("completion_evidence"):return "DONE"
     return new_status
+
+
+def completion_metadata(old, status):
+    fields = ("completion_evidence", "completion_previous_status", "completion_previous_reason", "completion_request_time", "completion_history")
+    metadata = {field: old[field] for field in fields if field in old}
+    # Called only after the ordinary chronology gate has accepted a newer
+    # source state. Preserve earlier completion as history, not a permanent veto.
+    if status != "DONE" and old.get("completion_evidence"):
+        metadata = {"completion_history": (old.get("completion_history") or []) + [{field: old[field] for field in fields[:-1] if field in old}]}
+    return metadata
 
 
 def source_time(value):
@@ -2073,7 +2083,8 @@ def correlate_named_supplier_orders(tasks, sources, diagnostics=None):
         for mid in task_source_message_ids(row):
             source = sources.get(mid)
             if not source or source.get("message_id") != mid: continue
-            refs = order_reference_ids(source)
+            subject_refs = order_reference_ids({"subject": source_header(source.get("subject"), 500)})
+            refs = subject_refs if len(subject_refs) == 1 else order_reference_ids(source)
             name, address = parseaddr(source_header(source.get("from"), 200))
             domain = address.lower().rpartition("@")[2]
             supplier = address.lower() if domain in {"gmail.com", "outlook.com", "hotmail.com", "yahoo.com"} else domain
@@ -2088,10 +2099,12 @@ def correlate_named_supplier_orders(tasks, sources, diagnostics=None):
                     if len(label) >= 4: known.setdefault((supplier, next(iter(refs))), []).append((label, mid))
     linked = 0
     retained_ids = {mid for row in tasks.values() for mid in task_source_message_ids(row)}
+    pending = []
     for row in tasks.values():
         previous_links = [proof for proof in row.get("verified_order_links") or []
                           if proof.get("source_message_id") in task_source_message_ids(row)
-                          and proof.get("origin_source_message_id") in retained_ids]
+                          and proof.get("origin_source_message_id") in retained_ids
+                          and set(proof.get("relationship_source_ids") or []).issubset(retained_ids)]
         candidates = {}
         for mid in task_source_message_ids(row):
             source = sources.get(mid)
@@ -2100,27 +2113,56 @@ def correlate_named_supplier_orders(tasks, sources, diagnostics=None):
                 diagnostics["retailer_sources"] += 1
                 diagnostics["retailer_multi_order_sources"] += int(len(order_reference_ids(source)) > 1)
             subject = source_header(source.get("subject"), 500)
+            primary = order_reference_ids({"subject": subject})
             paragraphs = re.split(r"\n\s*\n", current_source_text(source)) if len(order_reference_ids(source)) == 1 else []
             # A single explicit retailer/order in a new subject has its own
             # scope; additional partner references in the body stay intact.
             if len(order_reference_ids({"subject": subject})) == 1 and not re.match(r"\s*(?:re|fw|fwd)\s*:", subject, re.I):
                 paragraphs.append(subject)
                 if reported_retailer(row): diagnostics["retailer_subject_scopes"] += 1
+                # A single primary order in the subject supplies scope for a
+                # retailer named elsewhere in this same unquoted source.
+                paragraphs.append(current_source_text(source))
+                for (supplier, ref), origins in known.items():
+                    for _, origin_mid in origins:
+                        if origin_mid == mid and ref in primary:
+                            candidates.setdefault((supplier, ref), []).append({"supplier": supplier, "order_ref": ref, "source_message_id": mid, "origin_source_message_id": mid, "rule": "named_supplier_exact_order", "evidence_scope": "sender_subject"})
             for paragraph in paragraphs:
                 text = " ".join(re.findall(r"[a-z0-9]+", paragraph.lower()))
-                if len(text) > 800: continue
+                if len(text) > (13000 if len(primary) == 1 else 800): continue
                 for (supplier, ref), origins in known.items():
-                    if not re.search(r"(?<![A-Z0-9])" + re.escape(ref) + r"(?![A-Z0-9])", paragraph, re.I): continue
+                    if ref not in primary and ref not in order_reference_ids({"body": paragraph}) and not re.search(r"(?<![A-Z0-9])" + re.escape(ref) + r"(?![A-Z0-9])", paragraph, re.I): continue
                     for label, origin_mid in origins:
                         if re.search(r"(?<![a-z0-9])" + re.escape(label) + r"(?![a-z0-9])", text):
                             candidates.setdefault((supplier, ref), []).append({"supplier": supplier, "order_ref": ref, "source_message_id": mid, "origin_source_message_id": origin_mid, "rule": "named_supplier_exact_order"})
+        pending.append((row, previous_links, candidates))
+    # A source explicitly co-referring to supplier namespaces for ONE primary
+    # order connects those namespaces, not arbitrary same-company records.
+    # Keep different order references separate even if one message spans both.
+    parents = {key: key for _, _, candidates in pending for key in candidates}
+    edges = []
+    def root(key):
+        while parents[key] != key: key = parents[key]
+        return key
+    for _, _, candidates in pending:
+        if len(candidates) > 1 and len({key[1] for key in candidates}) == 1:
+            keys = sorted(candidates)
+            ids = {proof["source_message_id"] for proofs in candidates.values() for proof in proofs}
+            for key in keys[1:]: parents[root(key)] = root(keys[0])
+            edges.append((keys[0], ids))
+    for row, previous_links, candidates in pending:
+        targets = {root(key) for key in candidates}
         # Accepted exact-ID evidence survives a transient lookup miss; removing
         # its retained identities or revisiting a contradictory source expires it.
         row.pop("verified_order_links", None)
         if reported_retailer(row): diagnostics["retailer_candidates"] += len(candidates)
-        if len(candidates) == 1:
-            proofs = next(iter(candidates.values()))
+        if len(targets) == 1:
+            target = next(iter(targets))
+            supporting = sorted({mid for key, mids in edges if root(key) == target for mid in mids})
+            proofs = [{**proof, "original_supplier": proof["supplier"], "supplier": target[0], "relationship_source_ids": supporting} for values in candidates.values() for proof in values]
             row["verified_order_links"] = sorted(proofs, key=lambda p: (p["source_message_id"], p["origin_source_message_id"]))
+            if previous_links and {p["order_ref"] for p in previous_links} == {target[1]} and any(mid not in sources for p in previous_links for mid in p.get("relationship_source_ids") or []):
+                row["verified_order_links"] = previous_links
             linked += 1
             if reported_retailer(row): diagnostics["retailer_named_links"] += 1
         elif not candidates and previous_links and any(proof["source_message_id"] not in sources or proof["origin_source_message_id"] not in sources for proof in previous_links):
@@ -2305,7 +2347,7 @@ def _run_reconciler():
             "paperless_evidence":evidence,
             "updated_from_email":str(msg.get("date",""))[:100],"observed_at":observed,
             "reason":str(d.get("reason") or "")[:300],
-            **{field: old[field] for field in ("completion_evidence", "completion_previous_status", "completion_previous_reason", "completion_request_time") if field in old},
+            **completion_metadata(old, status),
         }
         record_source_event(tasks[task_id],msg,d,observed)
         reconcile_insurance_policy_due_date(tasks[task_id])

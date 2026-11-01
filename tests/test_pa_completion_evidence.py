@@ -18,6 +18,41 @@ def row(mid, title, day=28, **kw):
 
 
 class CompletionEvidenceTests(unittest.TestCase):
+    def test_primary_subject_order_survives_partner_ids_and_cross_sender_references(self):
+        tasks={};sources={}
+        for mid, provider, body in (
+            ('a','Example Motors','Your order DEMO123.\n\nPayment order PARTNER42.'),
+            ('b','Example Motors','Your order DEMO123.\n\nInternal order PARTNER42.'),
+            ('c','Partner','Your Example Motors parcel is in transit.')):
+            mail=source(mid,body,subject='Your order DEMO-123 update')
+            mail['from']=provider+' <updates@'+('motors' if provider=='Example Motors' else 'aaa-partner')+'.example.test>'
+            task=row(mid,'Order update '+mid)
+            task.update(counterparty=provider,verified_order_refs=sorted(reconciler.order_reference_ids(mail)),
+                        source_context={'message_id':mail['message_id'],'sender':mail['from'],'subject':mail['subject']})
+            tasks[mid]=task;sources[mail['message_id']]=mail
+        self.assertEqual(len(sensor.derive_projects(list(tasks.values()))['projects']),2)
+        reconciler.correlate_named_supplier_orders(tasks,sources)
+        projects=sensor.derive_projects(list(tasks.values()))['projects']
+        self.assertEqual(len(projects),1)
+        self.assertEqual(len(projects[0]['matter_ids']),3)
+        self.assertTrue(any(proof.get('relationship_source_ids') for proof in tasks['a']['verified_order_links']))
+        self.assertEqual(sensor.derive_projects(list(reversed(list(tasks.values())))),sensor.derive_projects(list(tasks.values())))
+        self.assertIn('PARTNER42',tasks['b']['verified_order_refs'])
+        reconciler.correlate_named_supplier_orders(tasks,{mid:mail for mid,mail in sources.items() if mid!='<c@example.test>'})
+        self.assertEqual(len(sensor.derive_projects(list(tasks.values()))['projects']),1)
+    def test_newer_accepted_request_can_reopen_source_completion_with_history(self):
+        tasks,sources,state=self.scenario()
+        reconciler.reconcile_completion_evidence(tasks,sources,state)
+        old=tasks['request'];before=copy.deepcopy(old)
+        self.assertEqual(reconciler.effective_status(old,'OPEN'),'OPEN')
+        self.assertFalse(reconciler.observation_is_newer(old,reconciler.source_time('28 Oct 2026 12:00:00 +0000')))
+        self.assertTrue(reconciler.observation_is_newer(old,reconciler.source_time('30 Oct 2026 12:00:00 +0000')))
+        metadata=reconciler.completion_metadata(old,'OPEN')
+        self.assertNotIn('completion_evidence',metadata)
+        self.assertEqual(metadata['completion_history'][0]['completion_evidence'],old['completion_evidence'])
+        self.assertEqual(reconciler.completion_metadata(old,'DONE')['completion_evidence'],old['completion_evidence'])
+        self.assertEqual(old,before)
+        self.assertEqual(reconciler.effective_status({'status':'DONE'},'OPEN'),'DONE')
     def test_encoded_source_headers_and_positive_identity_check_are_recognised(self):
         from email.header import Header
         message=source('encoded','',subject=Header('Finance application DEMO123 approved — update','utf-8').encode())
