@@ -101,6 +101,7 @@ class LifeOSPATaskCard extends HTMLElement {
     const rows = [
       ["From", context.sender || "Sender not available in the saved source"],
       [completed ? "Earlier email context" : "About", context.summary || context.subject || "Message details have not been captured"],
+      ["State evidence", task.evidence_reconciliation?.effective_explanation],
       ["Completion", completed && task.completion_evidence?.length ? "Later evidence confirms: " + [...new Set(task.completion_evidence.map(proof => proof.step))].join(", ") + ". See the timeline sources." : ""],
       ["Email subject", context.summary ? context.subject : ""],
       ["Sent", context.sent_at],
@@ -108,8 +109,16 @@ class LifeOSPATaskCard extends HTMLElement {
       ["Waiting for", this._kind(task) === "waiting" ? (task.user_waiting_for || context.waiting_for || "The source does not state a specific pending response or event.") : ""],
       ["Your next step", this._kind(task) === "waiting" ? (task.user_waiting_for ? "No action currently required; waiting for the stated event." : context.next_step || "No next step has been confirmed from this source.") : ""],
     ].filter(([, value]) => value);
+    const uniqueSupport = new Map();
+    for (const fact of task.evidence_reconciliation?.support || []) {
+      if (typeof fact.source_id !== "string" || fact.source_id.length > 300 || !/^<[^<>\s]+@[^<>\s]+>$/.test(fact.source_id)) continue;
+      const key = JSON.stringify([fact.source_id, fact.state]);
+      if (!uniqueSupport.has(key) || fact.basis === "accepted_observation") uniqueSupport.set(key, fact);
+    }
+    const support = [...uniqueSupport.values()];
+    const evidence = support.map(fact => '<p>' + this._escape(fact.basis === "accepted_observation" ? "Accepted source observation" : "Accepted PA snapshot") + ' · ' + this._escape(({OPEN:"ACTION",WAITING:"WAITING",DONE:"COMPLETE"})[fact.state] || "Unknown") + ' · ' + this._escape(new Date(fact.source_date).toUTCString()) + ' · <a target="_blank" rel="noopener noreferrer" href="https://mail.google.com/mail/u/0/#search/' + encodeURIComponent('in:anywhere rfc822msgid:' + fact.source_id.slice(1,-1)) + '">Supporting source</a></p>').join("");
     return '<section class="source-context"><h4>At a glance</h4>' + rows.map(([label, value]) =>
-      '<p><strong>' + this._escape(label) + '</strong> ' + this._escape(value) + '</p>').join("") + '</section>';
+      '<p><strong>' + this._escape(label) + '</strong> ' + this._escape(value) + '</p>').join("") + (evidence ? '<details><summary>Why this recorded state? · ' + support.length + ' sources</summary>' + evidence + '</details>' : '') + '</section>';
   }
 
   _waitingSummary(task) {
@@ -214,7 +223,7 @@ class LifeOSPATaskCard extends HTMLElement {
       (step ? '<p>' + esc(step) + '</p>' : '') + (selected.intended_outcome ? '<p><strong>Outcome</strong> ' + esc(selected.intended_outcome) + '</p>' : '<p>Suggested grouping. Name the outcome if you want to track it as a project.</p>') + '</section>' +
       (items.some(row => row.id === selected.anchor_matter_id) ? '<button class="count" data-action="project_outcome" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.intended_outcome ? 'Edit project outcome' : 'Name project outcome') + '</button>' + (selected.intended_outcome ? '<button class="count" data-action="' + (selected.lifecycle === 'complete' ? 'project_reopen' : 'project_complete') + '" data-id="' + esc(selected.anchor_matter_id) + '">' + (selected.lifecycle === 'complete' ? 'Reopen outcome' : 'Confirm outcome complete') + '</button>' : '') : '<p>Outcome controls require the anchor matter in the current display window.</p>') +
       selected.uncertainties.filter(x => x !== "Finite intended outcome not confirmed").map(x => '<p role="note">' + esc(x) + '</p>').join("") +
-      '<h3>Timeline</h3>' + this._projectTimelineMarkup(selected) +
+      (selected.evidence_reconciliation ? '<p class="freshness">Evidence reconciliation · ' + selected.evidence_reconciliation.represented_matters + ' recorded obligations · ' + selected.evidence_reconciliation.uncertain_matters + ' with unresolved evidence</p>' : '') + '<h3>Timeline</h3>' + this._projectTimelineMarkup(selected) +
       populated.map(([kind,label]) => {
         const cards = selected.buckets[kind].map(id => {
           const row = items.find(x => x.id === id);

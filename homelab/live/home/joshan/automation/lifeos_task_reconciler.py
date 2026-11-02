@@ -25,6 +25,7 @@ from governor import ai_broker
 from lifeos_email_paperless_selective import secret, paperless_token
 from governor.pa_user_state import apply_user_state, daily_briefing, derive_attention, read_user_state, explicit_tracking, waiting_confirmation_applies
 from governor.pa_source_disposition import KINDS, non_obligation_kind, non_obligation_decision, task_quality_category, event_notice, event_source_evidence
+from governor import pa_evidence_reconciliation as evidence_reconciliation
 
 HA=Path("/opt/stacks/homeassistant/config")
 STATE=Path("/home/joshan/automation/state/lifeos_personal_tasks.json")
@@ -653,6 +654,8 @@ def record_source_event(task,msg,decision,observed,actionable=True):
             "status":str(decision.get("status") or "NONE")[:16],
             "event_kind":"obligation" if actionable else "information",
             "correlation_refs":source_correlation_refs(msg),
+            "obligation_scope":evidence_reconciliation.scope(decision.get("counterparty"), decision.get("topic"), sorted(case_reference_ids(msg)), task.get("obligation_key") or task.get("id")),
+            "state_reason":str(decision.get("reason") or "")[:400],
         })
     events.sort(key=lambda event:(int(event.get("observed_at") or 0),str(event.get("message_id") or "")))
     task["timeline_events"]=events[-20:]
@@ -902,6 +905,57 @@ def reconcile_completion_evidence(tasks, sources, user_state):
         counts["proofs"] += len(proofs)
     return counts
 
+def reconcile_accepted_observations(tasks, sources, user_state):
+    """Apply general evidence decisions only inside the existing publisher."""
+    available = {mid for mid, source in sources.items() if source.get("message_id") == mid}
+    report = evidence_reconciliation.reconcile(list(tasks.values()), user_state, available)
+    changed = 0
+    for decision in report["decisions"]:
+        row = tasks[decision["matter_id"]]
+        proposed = decision["proposed_state"]
+        compact = {**decision, "schema": report["schema"], "applied": bool(proposed),
+                   "uncertainty_explanations": [evidence_reconciliation.EXPLANATIONS[code] for code in decision["uncertainties"]],
+                   "support": [{"observation_id": fact["id"], "source_id": fact["source_id"],
+                                "source_date": fact["source_date"], "source_matter_ids": fact["matter_ids"],
+                                "state": fact["state"], "relationship": fact["relationship"], "basis": fact["basis"]}
+                               for fact in decision["support"]]}
+        row["evidence_reconciliation"] = compact
+        if not proposed:
+            continue
+        before = {key: row.get(key) for key in ("status", "reason", "observed_at", "updated_from_email", "email_message_id")}
+        supporting = decision["support"]
+        latest = supporting[0]
+        old_date = evidence_reconciliation.source_time(row.get("updated_from_email"))
+        if proposed == "DONE":
+            row["completion_previous_status"] = before["status"]
+            row["completion_previous_reason"] = before["reason"]
+            row["completion_request_time"] = old_date
+            row["completion_evidence"] = [{"step": latest["scope"]["action"], "source_message_id": fact["source_id"],
+                "source_matter_id": fact["matter_ids"][0], "source_date": fact["source_date"],
+                "relationship": fact["relationship"], "observation_id": fact["id"], "method": "accepted_observation"}
+                for fact in supporting]
+        elif row.get("completion_evidence"):
+            archived = completion_metadata(row, proposed)
+            for key in ("completion_evidence", "completion_previous_status", "completion_previous_reason", "completion_request_time"):
+                row.pop(key, None)
+            row.update(archived)
+        row["state_reconciliation_backing"] = before
+        row["status"] = row["machine_status"] = proposed
+        row["status_source"] = "accepted_observation"
+        row["observed_at"] = latest["timestamp"]
+        row["updated_from_email"] = latest["source_date"]
+        row["email_message_id"] = latest["source_id"]
+        row["reason"] = latest["state_reason"] or decision["explanation"]
+        row.pop("confirmation_required", None)
+        for fact in supporting:
+            record_source_event(row, sources[fact["source_id"]], {"title": row["title"], "status": proposed,
+                "topic": row.get("topic"), "counterparty": row.get("counterparty"), "reason": row["reason"]}, fact["timestamp"])
+        refresh_source_context(row, sources, [0])
+        changed += 1
+    report["counts"]["applied_changes"] = changed
+    return report
+
+
 def load_previous():
     try:
         data=json.loads(STATE.read_text())
@@ -910,6 +964,8 @@ def load_previous():
         for x in rows:
             if not isinstance(x,dict) or not x.get("id"): continue
             item=dict(x)
+            # This is a derived explanation, never an input fact or user state.
+            item.pop("evidence_reconciliation", None)
             # Treat saved IDs as candidates, then re-check their full text
             # before publishing. This lets already-processed emails retain
             # valid links without restoring legacy broad-search false matches.
@@ -2347,6 +2403,7 @@ def _run_reconciler():
         evidence=paperless_linked_documents(source_message_ids,matter_ids)
         tasks[task_id]={
             "id":task_id,"identity_semantic":key(d),"thread_root_id":thread_root(msg),
+            **({"obligation_key": old["obligation_key"]} if old.get("obligation_key") else {}),
             "title":str(d.get("title") or old.get("title") or "Untitled task")[:160],
             "status":status,"due_date":d.get("due_date") or old.get("due_date"),
             "date_confirmation_required":old.get("date_confirmation_required"),
@@ -2383,6 +2440,7 @@ def _run_reconciler():
         if hold_quote_only_obligation(task,fetched_by_message_id):quote_holds+=1
     print("TASK_QUOTE_ONLY_OBLIGATIONS_HELD="+str(quote_holds),flush=True)
     user_state=read_user_state()
+    general_reconciliation = reconcile_accepted_observations(tasks, fetched_by_message_id, user_state)
     lifecycle_diagnostics = reconcile_completion_evidence(tasks, fetched_by_message_id, user_state)
     lifecycle_diagnostics["named_supplier_order_links"] = named_order_links
     lifecycle_diagnostics.update(order_link_diagnostics)
@@ -2390,7 +2448,7 @@ def _run_reconciler():
     lifecycle_diagnostics["retained_sources"] = len(retained_ids)
     lifecycle_diagnostics["fetched_sources"] = sum(fetched_by_message_id.get(mid, {}).get("message_id") == mid for mid in retained_ids)
     lifecycle_diagnostics["unavailable_sources"] = lifecycle_diagnostics["retained_sources"] - lifecycle_diagnostics["fetched_sources"]
-    if lifecycle_diagnostics["completed"]:
+    if lifecycle_diagnostics["completed"] or general_reconciliation["counts"]["applied_changes"]:
         preserve_completion_backup()
     for task in tasks.values():
         if task.get("status") in {"OPEN","WAITING"} or task.get("obligation_suppressed"):
@@ -2411,6 +2469,7 @@ def _run_reconciler():
     payload={"schema":"lifeos_tasks_v3","generated_time":int(time.time()),"lookback_days":LOOKBACK_DAYS,"messages_considered":len(ids),"messages_classified":classification_attempts,"messages_reused":messages_reused,"errors":errors,"tasks":open_tasks,"resolved":resolved,"informational":informational,"source_lookup_diagnostics":lookup_diagnostics,"authority":{"email":"obligation/progress evidence","paperless":"document evidence","lifeos":"derived persistent task state"}}
     payload=apply_user_state(payload,read_user_state())
     payload["lifecycle_diagnostics"] = lifecycle_diagnostics
+    payload["evidence_reconciliation"] = {"schema": general_reconciliation["schema"], "counts": general_reconciliation["counts"]}
     set_failure_stage("persist_publish")
     STATE.parent.mkdir(parents=True,exist_ok=True);OUT.parent.mkdir(parents=True,exist_ok=True)
     tmp=STATE.with_suffix(".tmp");tmp.write_text(json.dumps(payload,indent=2)+"\n");tmp.replace(STATE)

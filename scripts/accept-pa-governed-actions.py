@@ -399,6 +399,38 @@ def main():
     assert final_view.get("questions")==len(questions)
     assert final_view.get("information")==len(information)
     source_by_id={item["id"]:item for key in ("tasks","resolved","informational") for item in final_payload.get(key,[])}
+    general = final_payload.get("evidence_reconciliation") or {}
+    assert general.get("schema") == "lifeos_obligation_reconciliation_v1", "general_reconciliation_schema_missing"
+    for key in ("matters", "observations", "proposed_changes", "applied_changes", "uncertain", "unscoped_events", "undated_observations"):
+        assert type(general["counts"].get(key)) is int and general["counts"][key] >= 0, "general_reconciliation_counts_invalid"
+        print("PA_GENERAL_RECONCILIATION_" + key.upper() + "=" + str(general["counts"][key]))
+    for row in source_by_id.values():
+        report = row.get("evidence_reconciliation") or {}
+        assert report.get("schema") == general["schema"] and report.get("matter_id") == row["id"], "general_reconciliation_source_coverage"
+        for fact in report["support"]:
+            assert fact["basis"] in {"accepted_snapshot", "accepted_observation"}, "shadow_fact_promoted"
+            assert fact["source_matter_ids"], "general_reconciliation_provenance_missing"
+            assert any(fact["source_id"] in set(source_by_id[mid].get("source_message_ids") or []) | {source_by_id[mid].get("email_message_id")} for mid in fact["source_matter_ids"] if mid in source_by_id), "general_reconciliation_source_unbound"
+    print("PA_GENERAL_RECONCILIATION_PROVENANCE=PASS")
+    # Exercise the installed producer and applier, using invented in-memory
+    # sources only. This never publishes or mutates the private task store.
+    sys.path.insert(0, "/home/joshan/automation")
+    import lifeos_task_reconciler as installed_reconciler
+    for index, action in enumerate(("Receive bookshelf", "Repair boiler", "Confirm wedding booking", "Renew insurance", "Submit tenancy documents")):
+        ref = "DEMO" + str(1000 + index)
+        request_id, proof_id = "<request@example.test>", "<proof@example.test>"
+        request = {"id":"request", "title":action, "topic":action, "counterparty":"Example Actor", "status":"OPEN", "email_message_id":request_id,
+                   "source_message_ids":[request_id], "case_reference_ids":[ref], "updated_from_email":"20 Oct 2026 12:00:00 +0000"}
+        context = {"id":"context", "title":"Informational resolution", "topic":action, "counterparty":"Example Actor", "status":"NONE", "email_message_id":proof_id,
+                   "source_message_ids":[proof_id], "case_reference_ids":[ref], "updated_from_email":"21 Oct 2026 12:00:00 +0000"}
+        message = {"message_id":proof_id,"from":"Example Actor <updates@example.test>","subject":"Synthetic resolution", "body":"Case: " + ref, "date":"21 Oct 2026 12:00:00 +0000"}
+        installed_reconciler.record_source_event(request, message, {"title":"Synthetic resolution", "topic":action, "counterparty":"Example Actor", "status":"DONE"}, 1792584000, actionable=False)
+        fixture = {"request":request, "context":context}
+        sources = {proof_id:message, request_id:{**message,"message_id":request_id,"date":request["updated_from_email"]}}
+        result = installed_reconciler.reconcile_accepted_observations(fixture, sources, {"obligations":{}})
+        assert result["counts"]["applied_changes"] == 1 and request["status"] == "DONE" and context["status"] == "NONE", "general_installed_resolution_failed"
+        assert installed_reconciler.reconcile_accepted_observations(fixture, sources, {})["counts"]["applied_changes"] == 0, "general_installed_replay_not_idempotent"
+    print("PA_GENERAL_RECONCILIATION_SYNTHETIC_INSTALLED_REPLAY=PASS")
     lifecycle_diagnostics = final_payload.get("lifecycle_diagnostics") or {}
     assert lifecycle_diagnostics and all(type(value) is int and value >= 0 for value in lifecycle_diagnostics.values()), "lifecycle_diagnostics_missing"
     for key in ("completed", "proofs", "eligible", "partial", "missing_sources", "missing_dates", "identity_sources", "signing_sources", "approval_sources", "delivery_sources", "named_supplier_order_links", "retailer_sources", "retailer_multi_order_sources", "retailer_subject_scopes", "retailer_named_links", "retailer_candidates", "retained_sources", "fetched_sources", "unavailable_sources"):
@@ -431,6 +463,13 @@ def main():
     for key in ("items","reference_items","questions","information","total_matters"):
         assert live_entity.get(key)==final_view.get(key), "overview_ha_entity_projection_mismatch"
     print("PA_OVERVIEW_ACTUAL_HA_ENTITY=PASS")
+    for item in (live_entity.get("items") or []) + (live_entity.get("reference_items") or []):
+        report = item.get("evidence_reconciliation") or {}
+        assert report.get("schema") == general["schema"] and report.get("effective_state") == item.get("status"), "general_actual_ha_evidence_missing"
+        assert report.get("effective_explanation"), "general_actual_ha_explanation_missing"
+        if str(item.get("status_source") or "").startswith("user"):
+            assert report["effective_reason"] == "user_override", "general_actual_ha_override_lost"
+    print("PA_GENERAL_RECONCILIATION_ACTUAL_HA=PASS")
     projects_view = final_view.get("projects_view") or {}
     assert projects_view.get("schema") == "lifeos_projects_projection_v1", "projects_schema_missing"
     assert live_entity.get("projects_view") == projects_view, "projects_actual_entity_mismatch"
@@ -606,6 +645,8 @@ for(const project of attrs.projects_view.projects){
  card._selectedProjectId=project.id;
  const html=card._projectsMarkup(attrs.projects_view,card._items(attrs));
  if(!html.includes('Why this project?') || html.includes('<h3>Waiting</h3><p>None recorded.</p>') || html.includes('Finite intended outcome not confirmed')) throw Error('project_render_contract_failed');
+ if(!html.includes('Evidence reconciliation'))throw Error('general_reconciliation_project_summary_missing');
+ if(project.evidence_reconciliation.represented_matters!==project.matter_ids.length)throw Error('general_project_obligation_coverage_missing');
  const timeline=card._projectTimelineMarkup(project);
  if(project.timeline.length && !timeline.includes('timeline-event'))throw Error('outcome_timeline_not_rendered');
  if(project.timeline.some(event=>event.source_message_ids.some(id=>/^<[^<>\s]+@[^<>\s]+>$/.test(id))) && !timeline.includes('Supporting sources'))throw Error('outcome_timeline_navigation_missing');
@@ -613,6 +654,10 @@ for(const project of attrs.projects_view.projects){
 
 card._productView='attention';card._selectedProjectId=null;
 const attention=card._projectsMarkup(attrs.projects_view,card._items(attrs));
+for(const item of card._items(attrs)){
+ const html=card._sourceContextMarkup(item);
+ if(!html.includes('State evidence'))throw Error('general_state_explanation_not_rendered');
+}
 const ids=[...attention.matchAll(/data-attention-project="([^"]+)"/g)].map(match=>match[1]);
 if(ids.length!==new Set(ids).size)throw Error('duplicate_attention_project_cards');
 for(const project of attrs.projects_view.projects){

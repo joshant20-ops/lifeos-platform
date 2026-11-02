@@ -61,6 +61,7 @@ jobs:
             tests.test_emailops_review_views \
             tests.test_pa_projects \
             tests.test_pa_completion_evidence \
+            tests.test_pa_evidence_reconciliation \
             tests.test_pa_legacy_project_evidence \
             tests.test_pa_owner_project_confirmation \
             tests.test_pa_related_finance_membership \
