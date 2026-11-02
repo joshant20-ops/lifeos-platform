@@ -8,6 +8,13 @@ const context = {HTMLElement:class {}, customElements:{define:(_name, value)=>{C
 vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../homeassistant/www/lifeos-pa-task-card.js'),'utf8'),context);
 const event={id:'a'.repeat(64),source_message_id:'<alert@example.test>',email_received_at:1793187720};
 const alert={id:'alert',title:'Review account security',status:'OPEN',source_message_ids:[event.source_message_id],sign_in_events:[event]};
+test('general state evidence exposes provenance without treating a snapshot as a quote',()=>{
+ const card=new Card();card._config={};
+ const html=card._sourceContextMarkup({status:'WAITING',evidence_reconciliation:{effective_explanation:'Your decision controls the displayed state.',support:[{basis:'accepted_snapshot',state:'OPEN',source_id:'<source@example.test>',source_date:'28 Oct 2026 12:00:00 +0000'}]}});
+ assert.match(html,/Your decision controls/);assert.match(html,/Why this recorded state/);
+ assert.match(html,/Accepted PA snapshot/);assert.match(html,/ACTION/);assert.match(html,/GMT/);
+ assert.match(html,/rfc822msgid%3Asource%40example.test/);
+});
 test('completed items label earlier source context and retain completion explanation',()=>{
  const card=new Card();card._config={};
  const html=card._sourceContextMarkup({status:'DONE',source_context:{summary:'Previously waiting on identity checks',next_step:'Complete the check'},completion_evidence:[{step:'identity'}]});
