@@ -941,6 +941,23 @@ def message_time(date_value):
 
 _SOURCE_LOOKUP_DIAGNOSTICS={}
 
+
+def retained_source_lookup_rows(tasks):
+    """Offer every retained evidence ID to the existing exact-ID lookup.
+
+    A later informational/completed matter may contain the proof needed by a
+    different open matter. Request labels cannot decide which history to read.
+    This never discovers/searches for new source identities.
+    """
+    tasks = list(tasks)
+    rows = list(tasks)
+    for task in tasks:
+        for mid in task_source_message_ids(task):
+            source_date = next((event.get("date") for event in task.get("timeline_events") or [] if isinstance(event, dict) and event.get("message_id") == mid), None)
+            rows.append({"source_message_ids": [mid], "email_message_id": mid,
+                         "updated_from_email": source_date or (task.get("updated_from_email") if mid == task.get("email_message_id") else "")})
+    return rows
+
 def fetch_existing_task_source_emails(tasks, already_fetched=(), client=None):
     """Fetch exact saved source emails and keep lookup diagnostics aggregate."""
     global _SOURCE_LOOKUP_DIAGNOSTICS
@@ -2265,16 +2282,11 @@ def _run_reconciler():
         str(message.get("message_id") or ""):message
         for message in fetched if message.get("message_id")
     }
-    # Saved single-source tasks can outlive the bounded mailbox scan. Fetch only
-    # their exact Message-IDs so stale no-action tasks can be corrected promptly.
+    # Saved source history can outlive the bounded mailbox scan. Recheck only
+    # retained exact identities, including later informational/completed sources.
     extra_sources={}
     try:
-        source_tasks=list(tasks.values())
-        for task in tasks.values():
-            if obligation_steps(task) or insurance_matter(task) or "openai" in str(task.get("title") or "").lower() or task.get("sign_in_events") or task_quality_category(task) or task.get("obligation_suppressed") in KINDS or not task.get("timeline_events"):
-                for source_id in task_source_message_ids(task):
-                    source_date=next((event.get("date") for event in task.get("timeline_events") or [] if isinstance(event,dict) and event.get("message_id")==source_id), None)
-                    source_tasks.append({"source_message_ids":[source_id],"email_message_id":source_id,"updated_from_email":source_date or (task.get("updated_from_email") if source_id==task.get("email_message_id") else "")})
+        source_tasks=retained_source_lookup_rows(list(tasks.values()))
         extra_sources=fetch_existing_task_source_emails(source_tasks,fetched_by_message_id)
         fetched_by_message_id.update(extra_sources)
     except Exception as exc:
@@ -2374,6 +2386,10 @@ def _run_reconciler():
     lifecycle_diagnostics = reconcile_completion_evidence(tasks, fetched_by_message_id, user_state)
     lifecycle_diagnostics["named_supplier_order_links"] = named_order_links
     lifecycle_diagnostics.update(order_link_diagnostics)
+    retained_ids = {mid for task in tasks.values() for mid in task_source_message_ids(task)}
+    lifecycle_diagnostics["retained_sources"] = len(retained_ids)
+    lifecycle_diagnostics["fetched_sources"] = sum(fetched_by_message_id.get(mid, {}).get("message_id") == mid for mid in retained_ids)
+    lifecycle_diagnostics["unavailable_sources"] = lifecycle_diagnostics["retained_sources"] - lifecycle_diagnostics["fetched_sources"]
     if lifecycle_diagnostics["completed"]:
         preserve_completion_backup()
     for task in tasks.values():

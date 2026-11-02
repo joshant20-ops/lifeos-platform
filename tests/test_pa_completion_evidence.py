@@ -18,6 +18,18 @@ def row(mid, title, day=28, **kw):
 
 
 class CompletionEvidenceTests(unittest.TestCase):
+    def test_lookup_includes_informational_and_completed_secondary_history(self):
+        for status in ('NONE','DONE'):
+            task=row('primary','Useful context',status=status)
+            task['source_message_ids'].append('<later@example.test>')
+            task['timeline_events']=[{'message_id':'<later@example.test>','date':'29 Oct 2026 12:00:00 +0000','event_kind':'information'}]
+            before=copy.deepcopy(task)
+            offered=reconciler.retained_source_lookup_rows([task])
+            exact=[r for r in offered if r.get('email_message_id')=='<later@example.test>']
+            self.assertEqual(len(exact),1)
+            self.assertEqual(exact[0]['updated_from_email'],'29 Oct 2026 12:00:00 +0000')
+            self.assertEqual({mid for r in offered for mid in r.get('source_message_ids',[])},set(task['source_message_ids']))
+            self.assertEqual(task,before)
     def test_primary_subject_order_survives_partner_ids_and_cross_sender_references(self):
         tasks={};sources={}
         for mid, provider, body in (
