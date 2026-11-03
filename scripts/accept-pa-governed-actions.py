@@ -618,6 +618,15 @@ def main():
     assert json.dumps(invented, sort_keys=True) == invented_before, "job_projection_mutated_tasks"
     for index, row in enumerate(invented): row["case_reference_ids"] = ["DEMOCASE" + str(index)]
     assert len(sensor_module.derive_projects(invented)["projects"]) == 2, "job_conflicting_cases_merged"
+    parcels = []
+    for index, tracks in enumerate((["DEMO1234567890", "SECOND1234567890"], ["DEMO1234567890"], ["SECOND1234567890"])):
+        mid = "<parcel" + str(index) + "@example.test>"
+        parcels.append({"id": "parcel" + str(index), "topic": "Parcel " + str(index), "counterparty": "Example Shop" if index == 0 else "Example Carrier",
+                        "status": "WAITING", "source_message_ids": [mid], "case_reference_ids": tracks,
+                        "verified_order_refs": ["DEMOORDER42"] if index == 0 else [],
+                        "timeline_events": [{"message_id": mid, "observed_at": 1, "correlation_refs": {"tracking": tracks}}]})
+    assert len(sensor_module.derive_projects(parcels)["projects"]) == 1, "job_split_parcel_legacy_scope"
+    print("PA_AUTO_JOB_SPLIT_PARCELS=PASS")
     for project in projects:
         for proof in project["provenance"]:
             for edge in proof.get("conversation_evidence") or []:

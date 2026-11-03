@@ -250,10 +250,18 @@ def derive_projects(rows, source_attention=None):
                     orders.setdefault(suppliers[row["id"]], set()).update(row.get("verified_order_refs") or [])
         # A reply chain can discuss two jobs. Conflicting accepted cases or
         # orders veto the WHOLE component, including indirect bridges.
-        cases = {tuple(sorted(set(str(v).upper() for v in row.get("case_reference_ids") or [])))
-                 for key in component for row in groups[key][1]
-                 if row.get("case_reference_ids") and not row.get("verified_order_refs")
-                 and accepted_rules[row["id"]] != "named_supplier_exact_order"}
+        typed_tracking = {value for key in component for row in groups[key][1]
+                          for proof in correlation[row["id"]] for value in proof["tracking"]}
+        cases = set()
+        for key in component:
+            for row in groups[key][1]:
+                if row.get("verified_order_refs") or accepted_rules[row["id"]] == "named_supplier_exact_order":
+                    continue
+                # Legacy case IDs flatten tracking and cases into one field.
+                # Typed parcel evidence is not a conflicting job identifier.
+                case_values = {re.sub(r"[^A-Z0-9]", "", str(value).upper())
+                               for value in row.get("case_reference_ids") or []} - typed_tracking
+                if case_values: cases.add(tuple(sorted(case_values)))
         conflict = (any(len(values) > 1 for values in orders.values()) or len(cases) > 1
                     or any(key in ambiguous for key in component))
         if len(component) > 1 and not conflict:

@@ -73,6 +73,9 @@ class ProjectsTests(unittest.TestCase):
         b = self.shipping('parcel1', 'Carrier')
         c = self.shipping('parcel2', 'Carrier', tracking='SECOND1234567890')
         rows = [a, b, c]
+        # Legacy flattened references also contain each parcel's tracking ID.
+        for row in rows:
+            row['case_reference_ids'] = list(row['timeline_events'][0]['correlation_refs']['tracking'])
         self.assertEqual(len(sensor.derive_projects(rows)['projects']), 1)
         other = self.shipping('other', 'Shop', tracking='SECOND1234567890', order='ORDER43')
         self.assertEqual(len(sensor.derive_projects(rows + [other])['projects']), 4)
