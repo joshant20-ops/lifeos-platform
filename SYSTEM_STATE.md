@@ -24,6 +24,7 @@
 ## Active Docker Services
 
 - `adguardhome` — `aba9e3bf0613`
+- `homeassistant` — `372d991e5888`
 - `lifeos-agent-canvas` — `ghcr.io/openhands/agent-canvas:1.23.0`
 - `lifeos-agent-canvas-tls` — `nginx:1.29-alpine`
 - `lifeos-audiobooks-audiobookshelf-1` — `b897c33f0597`
