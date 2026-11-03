@@ -57,12 +57,21 @@ def writes_task_projection(path):
                 return True
     return False
 
-def main():
-    head=run(['git','-C',str(REPO),'rev-parse','HEAD'])
-    origin=run(['git','-C',str(REPO),'rev-parse','origin/main'])
-    dirty=run(['git','-C',str(REPO),'status','--porcelain','--untracked-files=all'])
-    require('CANONICAL_CLEAN_CHECKOUT',head.returncode==0 and origin.returncode==0 and head.stdout.strip()==origin.stdout.strip() and not dirty.stdout.strip())
+def verify_canonical_checkout():
+    # Root audits must inspect Git as the canonical checkout owner, as the
+    # deployment precondition does. Never relax Git ownership or hide dirt.
+    git = ['runuser', '-u', 'joshan', '--', 'env', '-i', 'HOME=/home/joshan',
+           'PATH=/usr/bin:/bin', 'LANG=C.UTF-8', 'git', '-C', str(REPO)]
+    head=run(git+['rev-parse','HEAD'])
+    origin=run(git+['rev-parse','origin/main'])
+    dirty=run(git+['status','--porcelain','--untracked-files=all'])
+    print('CANONICAL_GIT_READ_ERRORS='+str(sum(result.returncode != 0 for result in (head, origin, dirty))))
+    print('CANONICAL_HEAD_MATCH='+('PASS' if head.returncode==0 and origin.returncode==0 and head.stdout.strip()==origin.stdout.strip() else 'FAIL'))
+    print('CANONICAL_DIRTY_ENTRIES='+str(len(dirty.stdout.splitlines()) if dirty.returncode==0 else -1))
+    require('CANONICAL_CLEAN_CHECKOUT',head.returncode==0 and origin.returncode==0 and dirty.returncode==0 and head.stdout.strip()==origin.stdout.strip() and not dirty.stdout.strip())
 
+def main():
+    verify_canonical_checkout()
     unit_files=run(['systemctl','list-unit-files','--no-legend','--no-pager'])
     loaded_services=run(['systemctl','list-units','--all','--type=service','--no-legend','--no-pager'])
     loaded_timers=run(['systemctl','list-units','--all','--type=timer','--no-legend','--no-pager'])
