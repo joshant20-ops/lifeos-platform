@@ -50,6 +50,9 @@ def test_only_one_active_owner_deploys_each_lifeos_dashboard_role():
     assert "deploy-homelab-default-view.py" not in active
     assert sum("deploy-homelab-dashboard-v2.py" in p.read_text(errors="ignore") for p in workflows.glob("*.yml"))==1
     pa=(workflows/"lifeos-pa-deploy.yml").read_text()
+    # Deployment order applies to executable jobs, not path filters.
+    assert "scripts/accept-pa-gate-i-runtime.py" in pa.split("jobs:", 1)[0]
+    pa=pa.split("jobs:", 1)[1]
     assert pa.index("accept-pa-governed-actions.py") < pa.index("deploy-ha-control-bridge")
     assert pa.index("deploy-ha-control-bridge") < pa.index("accept-pa-gate-i-runtime.py")
     assert (ROOT/"archive"/"superseded-dashboard-owners"/"three-dashboard-role-deploy.yml").is_file()
