@@ -20,6 +20,7 @@ on:
       - 'homeassistant/www/lifeos-pa-task-card.js'
       - 'governor/scripts/deploy-pa-task-reconciler.sh'
       - 'scripts/accept-pa-governed-actions.py'
+      - 'scripts/accept-pa-gate-i-runtime.py'
       - 'tests/personal_admin/test_pa_user_state.py'
       - 'tests/personal_admin/test_pa_task_review.py'
       - 'tests/personal_admin/test_assistant_pa_actions.py'

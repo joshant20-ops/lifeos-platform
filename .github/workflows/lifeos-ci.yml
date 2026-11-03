@@ -60,6 +60,7 @@ jobs:
             tests.test_emailops_review_audit \
             tests.test_emailops_review_views \
             tests.test_pa_projects \
+            tests.test_pa_runtime_checkout \
             tests.test_pa_completion_evidence \
             tests.test_pa_evidence_reconciliation \
             tests.test_pa_legacy_project_evidence \
