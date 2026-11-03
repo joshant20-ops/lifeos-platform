@@ -234,7 +234,7 @@ class LifeOSPATaskCard extends HTMLElement {
         return '<section><h3>' + label + '</h3>' + (collapsed ? '<p>' + esc(selected.waiting_on.join("; ")) + '</p><details><summary>Related waiting items and sources · ' + selected.buckets[kind].length + '</summary>' + cards + '</details>' : cards) + updates + '</section>';
       }).join("") +
       (empty.length ? '<p class="freshness">No items in: ' + esc(empty.join(", ")) + '.</p>' : '') +
-      '<details><summary>Why this project? Evidence and grouping</summary><p>Derived from accepted PA matters using deterministic relationships. Source links are on each matter above.</p>' + selected.provenance.map(p => '<p>' + esc(p.matter_id) + ' · ' + esc(p.rule) + ' · ' + p.source_message_ids.length + ' source messages</p>').join("") + '</details>';
+      '<details><summary>Why this project? Evidence and grouping</summary><p>Derived from accepted PA matters using deterministic relationships. Source links are on each matter above.</p>' + selected.provenance.map(p => '<p>' + esc(p.matter_id) + ' · ' + esc(({accepted_conversation_outcome: 'Related actions in the same recorded conversation', verified_cross_company_tracking: 'Related parcels with matching tracking evidence', verified_supplier_order: 'Same verified supplier and order', named_supplier_exact_order: 'Source explicitly names the supplier and order', owner_confirmed_membership: 'Relationship confirmed by you'})[p.rule] || p.rule) + ' · ' + p.source_message_ids.length + ' source messages</p>').join("") + '</details>';
   }
 
   _overviewMarkup(items) {
