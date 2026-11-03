@@ -148,6 +148,9 @@ def derive_projects(rows, source_attention=None):
     suppliers = {}
     correlation = {}
     accepted_rules = {}
+    conversations = {}
+    retained_sources = {mid for row in rows if isinstance(row, dict) for mid in
+                        ((row.get("source_message_ids") or []) + ([row["email_message_id"]] if row.get("email_message_id") else []))}
     for row in rows:
         if not isinstance(row, dict) or not row.get("id") or row["id"] in seen:
             continue
@@ -171,6 +174,13 @@ def derive_projects(rows, source_attention=None):
             and isinstance(evidence_refs.get("tracking"), list)
             and all(isinstance(v, str) and re.fullmatch(r"[A-Z0-9]{10,40}", v) and any(c.isdigit() for c in v) for v in evidence_refs["tracking"])
         ]
+        # The sole PA publisher already records RFC reply ancestry. Require
+        # the root itself to remain in accepted sources, not a guessed subject.
+        thread = row.get("thread_root_id")
+        conversations[row["id"]] = [{"rule": "accepted_reply_ancestry", "root_source_message_id": thread,
+                                      "source_message_ids": sorted(source_ids)}] if (
+            isinstance(thread, str) and re.fullmatch(r"<[^<>\s]{1,298}>", thread)
+            and thread in retained_sources and source_ids) else []
         owner_anchor = (row.get("user_project") or {}).get("anchor_id")
         named_orders = {(proof.get("supplier"), proof.get("order_ref")) for proof in row.get("verified_order_links") or []
                         if isinstance(proof, dict) and proof.get("rule") == "named_supplier_exact_order"
@@ -193,7 +203,7 @@ def derive_projects(rows, source_attention=None):
         groups.setdefault(key, (rule, []))[1].append(row)
         if rule == "named_supplier_exact_order": groups[key] = (rule, groups[key][1])
         accepted_rules[row["id"]] = rule
-    # Cross-company outcome edges require the same explicit tracking evidence.
+    # Cross-company outcome edges use explicit tracking or retained reply ancestry.
     # Validate whole connected components before merging: an ambiguous bridge
     # must not cause an arbitrary partial merge dependent on input order.
     keys = sorted(groups, key=str)
@@ -204,16 +214,24 @@ def derive_projects(rows, source_attention=None):
         return key
     tokens = {}
     ambiguous = set()
+    token_rules = {}
     for key, (_, members) in groups.items():
         if key[0] == "owner":
             continue  # Explicit owner membership remains pinned, never widened.
         for row in members:
             values = {v for proof in correlation[row["id"]] for v in proof["tracking"]}
-            if len(values) > 1 or (len(set(row.get("verified_order_refs") or [])) > 1 and accepted_rules[row["id"]] != "named_supplier_exact_order"):
+            # Multiple parcels are defensible only with one explicit order.
+            single_order = key[0] == "order" and len(key[2]) == 1
+            if (len(values) > 1 and not single_order) or (len(set(row.get("verified_order_refs") or [])) > 1 and accepted_rules[row["id"]] != "named_supplier_exact_order"):
                 ambiguous.add(key)
-                continue
             for value in values:
-                tokens.setdefault(value, set()).add(key)
+                token = ("tracking", value)
+                tokens.setdefault(token, set()).add(key)
+                token_rules[token] = "verified_cross_company_tracking"
+            for proof in conversations[row["id"]]:
+                token = ("conversation", proof["root_source_message_id"])
+                tokens.setdefault(token, set()).add(key)
+                token_rules[token] = "accepted_conversation_outcome"
     for linked in tokens.values():
         ordered = sorted(linked, key=str)
         for key in ordered[1:]:
@@ -230,10 +248,21 @@ def derive_projects(rows, source_attention=None):
                     orders.setdefault(key[1], set()).update(key[2])
                 elif suppliers[row["id"]]:
                     orders.setdefault(suppliers[row["id"]], set()).update(row.get("verified_order_refs") or [])
-        conflict = any(len(values) > 1 for values in orders.values()) or any(key in ambiguous for key in component)
+        # A reply chain can discuss two jobs. Conflicting accepted cases or
+        # orders veto the WHOLE component, including indirect bridges.
+        cases = {tuple(sorted(set(str(v).upper() for v in row.get("case_reference_ids") or [])))
+                 for key in component for row in groups[key][1]
+                 if row.get("case_reference_ids") and not row.get("verified_order_refs")
+                 and accepted_rules[row["id"]] != "named_supplier_exact_order"}
+        conflict = (any(len(values) > 1 for values in orders.values()) or len(cases) > 1
+                    or any(key in ambiguous for key in component))
         if len(component) > 1 and not conflict:
             evidence = tuple(sorted(value for value, linked in tokens.items() if len(linked.intersection(component)) > 1))
-            derived[("tracking", evidence)] = ("verified_cross_company_tracking", [row for key in component for row in groups[key][1]])
+            rule = ("accepted_conversation_outcome" if any(token_rules[token] == "accepted_conversation_outcome" for token in evidence)
+                    else "verified_cross_company_tracking")
+            identity = (("tracking", tuple(token[1] for token in evidence)) if rule == "verified_cross_company_tracking"
+                        else ("conversation", evidence))
+            derived[identity] = (rule, [row for key in component for row in groups[key][1]])
         else:
             for key in component:
                 derived[key] = groups[key]
@@ -277,6 +306,7 @@ def derive_projects(rows, source_attention=None):
                                "completion_evidence": row.get("completion_evidence") or [],
                                "evidence_reconciliation": project_reconciliation(row),
                                "correlation_evidence": correlation[row["id"]],
+                               "conversation_evidence": conversations[row["id"]],
                                "confirmation_ref": (row.get("user_project") or {}).get("confirmation_ref")})
             history = [accepted_history[mid] for mid in ids if mid in accepted_history]
             context = row.get("source_context") or {}

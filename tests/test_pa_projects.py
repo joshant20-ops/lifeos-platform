@@ -30,6 +30,59 @@ class ProjectsTests(unittest.TestCase):
                    verified_order_refs=[order] if order else [])
         return row
 
+    def test_reply_ancestry_groups_different_actions_and_companies(self):
+        a = matter('booking', timeline_events=[event('booking')])
+        b = matter('payment', timeline_events=[event('payment')])
+        a.update(case_reference_ids=[], counterparty='Example Venue', topic='Reserve room',
+                 thread_root_id='<booking@example.test>')
+        b.update(case_reference_ids=[], counterparty='Example Agent', topic='Pay deposit',
+                 thread_root_id='<booking@example.test>')
+        original = copy.deepcopy([a, b])
+        result = sensor.derive_projects([a, b])
+        self.assertEqual(len(result['projects']), 1)
+        project = result['projects'][0]
+        self.assertEqual(project['provenance'][0]['rule'], 'accepted_conversation_outcome')
+        self.assertEqual(project['provenance'][1]['conversation_evidence'][0]['root_source_message_id'], '<booking@example.test>')
+        self.assertEqual(sensor.derive_projects([b, a]), result)
+        self.assertEqual([a, b], original)
+
+    def test_reply_ancestry_requires_retained_root_and_respects_owner(self):
+        a, b = matter('a'), matter('b')
+        for row in (a, b):
+            row.update(case_reference_ids=[], topic=row['id'], thread_root_id='<gone@example.test>')
+        self.assertEqual(len(sensor.derive_projects([a, b])['projects']), 2)
+        for row in (a, b): row['thread_root_id'] = '<a@example.test>'
+        a['user_project'] = {'anchor_id': 'a', 'source': 'user', 'outcome': 'Finish booking'}
+        self.assertEqual(len(sensor.derive_projects([a, b])['projects']), 2)
+
+    def test_reply_chain_conflicting_jobs_vetoes_transitive_component(self):
+        rows = [self.shipping('shop1', 'Shop', order='ORDER42'),
+                self.shipping('agent', 'Agent'), self.shipping('shop2', 'Shop', order='ORDER43')]
+        for row in rows: row['thread_root_id'] = '<shop1@example.test>'
+        self.assertEqual(len(sensor.derive_projects(rows)['projects']), 3)
+        a, b = matter('a'), matter('b')
+        a['case_reference_ids'], b['case_reference_ids'] = ['CASE42'], ['CASE43']
+        for row in (a, b): row['thread_root_id'] = '<a@example.test>'
+        result = sensor.derive_projects([a, b])['projects']
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all('Ambiguous correlation evidence; kept separate' in p['uncertainties'] for p in result))
+
+    def test_split_parcels_join_one_order_but_cannot_bridge_two_orders(self):
+        a = self.shipping('shop', 'Shop', order='ORDER42')
+        a['timeline_events'][0]['correlation_refs']['tracking'].append('SECOND1234567890')
+        b = self.shipping('parcel1', 'Carrier')
+        c = self.shipping('parcel2', 'Carrier', tracking='SECOND1234567890')
+        rows = [a, b, c]
+        self.assertEqual(len(sensor.derive_projects(rows)['projects']), 1)
+        other = self.shipping('other', 'Shop', tracking='SECOND1234567890', order='ORDER43')
+        self.assertEqual(len(sensor.derive_projects(rows + [other])['projects']), 4)
+
+    def test_same_subject_or_source_alone_does_not_invent_a_job(self):
+        a, b = matter('a'), matter('b')
+        a.update(case_reference_ids=[], topic='Repair oven')
+        b.update(case_reference_ids=[], topic='Renew insurance', source_message_ids=a['source_message_ids'])
+        self.assertEqual(len(sensor.derive_projects([a, b])['projects']), 2)
+
     def test_retailer_carrier_outcome_crosses_company_boundary(self):
         retailer = self.shipping('dispatch', 'Example Shop', order='DEMOORDER42')
         carrier = self.shipping('carrier', 'Example Courier')

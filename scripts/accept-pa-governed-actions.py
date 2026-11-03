@@ -604,6 +604,29 @@ def main():
     sensor_spec=importlib.util.spec_from_file_location("runtime_pa_source_projection",sensor_path)
     sensor_module=importlib.util.module_from_spec(sensor_spec)
     sensor_spec.loader.exec_module(sensor_module)
+    # Exercise the actual installed projection without production writes.
+    invented = [
+        {"id": "demo-book", "topic": "Book workshop", "counterparty": "Example Venue", "status": "WAITING",
+         "source_message_ids": ["<demo-book@example.test>"], "thread_root_id": "<demo-book@example.test>"},
+        {"id": "demo-pay", "topic": "Pay deposit", "counterparty": "Example Agent", "status": "OPEN",
+         "source_message_ids": ["<demo-pay@example.test>"], "thread_root_id": "<demo-book@example.test>"},
+    ]
+    invented_before = json.dumps(invented, sort_keys=True)
+    replay = sensor_module.derive_projects(invented)
+    assert len(replay["projects"]) == 1, "job_reply_ancestry_not_grouped"
+    assert replay == sensor_module.derive_projects(list(reversed(invented))), "job_order_dependent"
+    assert json.dumps(invented, sort_keys=True) == invented_before, "job_projection_mutated_tasks"
+    for index, row in enumerate(invented): row["case_reference_ids"] = ["DEMOCASE" + str(index)]
+    assert len(sensor_module.derive_projects(invented)["projects"]) == 2, "job_conflicting_cases_merged"
+    for project in projects:
+        for proof in project["provenance"]:
+            for edge in proof.get("conversation_evidence") or []:
+                assert any(edge["root_source_message_id"] in (row.get("source_message_ids") or []) or edge["root_source_message_id"] == row.get("email_message_id") for row in source_by_id.values()), "job_root_without_retained_source"
+                assert set(edge["source_message_ids"]).issubset(proof["source_message_ids"]), "job_unverified_reply_edge"
+    print("PA_AUTO_JOB_INSTALLED_REPLAY=PASS")
+    print("PA_AUTO_JOB_CONVERSATION_GROUPS=" + str(sum(any(p["rule"] == "accepted_conversation_outcome" for p in project["provenance"]) for project in projects)))
+    print("PA_AUTO_JOB_TOTAL_GROUPS=" + str(len(projects)))
+    print("PA_AUTO_JOB_PROVENANCE=PASS")
     waiting_rows=[item for item in items if item.get("status")=="WAITING" and not item.get("obligation_suppressed")]
     for item in waiting_rows:
         context=item.get("source_context") or {}

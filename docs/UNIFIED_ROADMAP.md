@@ -34,6 +34,8 @@ A Project is the user-facing representation of a persistent LifeOS matter. Exist
 
 Use **outcome-first organisation throughout Projects & Attention**, including small and single-source matters. A retailer, lender, payment provider and courier can contribute to one outcome; sender/company is not the organising boundary. Expose a source-backed consolidated timeline wherever accepted evidence allows it. Unconfirmed outcomes and uncertain links remain explicit; do not fabricate goals, historical events or completion to fill gaps. This does not require new Areas/Routines/Reference infrastructure during #1498.
 
+Automatic grouping improvements should reuse accepted reply ancestry and explicit split-parcel/order evidence, with whole-component case/order conflict checks and relationship provenance. Conversation grouping remains a candidate outcome; it does not prove completion. Verify actual consumed group counts and corpus quality, not only synthetic replay or successful deployment.
+
 Reconcile obligation state through one shared source-backed policy across outcomes. Preserve the specific action/issuer/reference scope of each accepted observation, so a later fact can resolve that obligation without closing other steps in the same project. Reuse the existing PA publisher and owner overlay; unresolved evidence remains explicit. Tesla, retailer/courier, household and other cases are acceptance examples, not separate hard-coded programmes.
 
 Every Project should have a clear outcome and close when that outcome is reached. Permanent responsibilities belong under Areas rather than becoming never-ending projects.
