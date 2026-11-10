@@ -1,6 +1,5 @@
 """Disposable pinned ARM64 broker acceptance; never connects to a live broker."""
 import json
-import os
 from pathlib import Path
 import select
 import shutil

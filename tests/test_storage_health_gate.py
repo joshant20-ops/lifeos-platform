@@ -56,3 +56,25 @@ class HealthGateTests(unittest.TestCase):
             gate.guard()
         with self.assertRaises(HealthUnavailable):
             gate.start()
+
+    def test_background_monitor_latches_failure(self):
+        import threading
+        failed_sample = threading.Event()
+        calls = [0]
+        def probe():
+            calls[0] += 1
+            if calls[0] > 1:
+                failed_sample.set()
+                return {'dns': False}
+            return {'dns': True}
+        gate = HealthGate(probe, interval=0.01, max_age=1).start()
+        try:
+            self.assertTrue(failed_sample.wait(timeout=1))
+            # Taking one more failed sample removes scheduling ambiguity between
+            # the callback event and publication of the latched result.
+            gate.sample()
+            with self.assertRaises(HealthUnavailable):
+                gate.guard()
+        finally:
+            gate.close()
+        self.assertFalse(gate.thread.is_alive())
