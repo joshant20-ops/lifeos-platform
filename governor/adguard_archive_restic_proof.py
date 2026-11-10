@@ -66,14 +66,27 @@ def backup_archive(source, env):
     staging = subprocess.run(["/usr/bin/findmnt", "-rn", "--target", "/dev/shm", "-o", "FSTYPE"],
                              capture_output=True, text=True, timeout=5, check=False)
     space = os.statvfs("/dev/shm")
+    memory = re.search(r"(?m)^MemAvailable:\s+(\d+) kB$", Path("/proc/meminfo").read_text())
     if (staging.returncode or staging.stdout.strip() != "tmpfs"
-            or space.f_bavail * space.f_frsize < LIMIT):
+            or space.f_bavail * space.f_frsize < 2 * LIMIT or not memory
+            or int(memory.group(1)) * 1024 < 2 * LIMIT + 1024**3):
         return "ram_staging_unverified"
     fd = os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-    with os.fdopen(fd, "rb") as archive:
+    with os.fdopen(fd, "rb") as original, tempfile.TemporaryFile(dir="/dev/shm") as archive:
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= LIMIT:
             return "archive_size_or_type_rejected"
+        remaining = info.st_size
+        while remaining:
+            block = original.read(min(1024**2, remaining))
+            if not block:
+                return "archive_changed"
+            archive.write(block)
+            remaining -= len(block)
+        current = os.fstat(fd)
+        if (current.st_size, current.st_ctime_ns) != (info.st_size, info.st_ctime_ns):
+            return "archive_changed"
+        archive.seek(0)
         if not archive_has_recovery_files(archive):
             return "archive_recovery_coverage_unverified"
         archive.seek(0)
@@ -81,9 +94,6 @@ def backup_archive(source, env):
         tag = "adguard-recovery-" + digest
         if verify_snapshot(env, tag, digest):
             return "encrypted_archive_already_verified"
-        current = os.fstat(fd)
-        if (current.st_size, current.st_ctime_ns) != (info.st_size, info.st_ctime_ns):
-            return "archive_changed"
         archive.seek(0)
         result = subprocess.run(
             ["/usr/bin/restic", "--no-cache", "backup", "--stdin",
