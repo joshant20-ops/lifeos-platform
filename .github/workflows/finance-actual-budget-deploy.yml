@@ -1,0 +1,29 @@
+name: Finance Actual Budget Deploy
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'ansible/desired/compose/actual-budget/docker-compose.yml'
+      - 'scripts/deploy-actual-budget.sh'
+      - 'tests/test_actual_budget_deployment.py'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: finance-actual-budget-deploy
+  cancel-in-progress: false
+jobs:
+  deploy-and-accept:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy Actual Budget
+        run: sudo -n bash scripts/deploy-actual-budget.sh
+      - name: Runtime acceptance
+        run: |
+          set -Eeuo pipefail
+          docker inspect actual-budget --format '{{.State.Status}}' | grep -qx running
+          curl -fsS http://127.0.0.1:5006/ >/dev/null
+          test -d /opt/stacks/actual-budget/data
+          echo ACTUAL_BUDGET_RUNTIME=PASS
