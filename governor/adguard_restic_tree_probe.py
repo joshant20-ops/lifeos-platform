@@ -56,7 +56,7 @@ def recover_tree(env, tree=TREE, limit=LIMIT):
         result = subprocess.run(
             ["/usr/bin/prlimit", f"--fsize={limit}:{limit}", "--",
              "/usr/bin/restic", "--no-lock", "--no-cache", "dump", "--tag", "lifeos-pi5",
-             "latest", tree],
+             "latest:" + tree, "/"],
             env=env, stdin=subprocess.DEVNULL, stdout=recovered, stderr=subprocess.DEVNULL,
             timeout=120, check=False,
         )
