@@ -46,10 +46,10 @@ original=$(docker inspect -f '{{.State.Pid}}:{{.State.StartedAt}}:{{.RestartCoun
 timeout 30s docker exec "$broker" mosquitto_sub -h 127.0.0.1 -t proof/log -C 2 -W 25 > "$work/received" &
 subscriber=$!
 for attempt in {1..10}; do
-    if grep -q 'Received SUBSCRIBE' "$work/broker.log"; then break; fi
+    if docker exec "$broker" grep -q 'Received SUBSCRIBE' /proof/broker.log; then break; fi
     sleep 1
 done
-grep -q 'Received SUBSCRIBE' "$work/broker.log"
+docker exec "$broker" grep -q 'Received SUBSCRIBE' /proof/broker.log
 publish pre-rotation
 mv -- "$work/broker.log" "$work/retained.log"
 timeout 5s docker exec "$broker" mosquitto_signal -p 1 "$signal"
@@ -62,7 +62,7 @@ retained_size=$(stat -c %s "$work/retained.log")
 publish post-rotation
 wait "$subscriber"
 printf 'pre-rotation\npost-rotation\n' | cmp - "$work/received"
-grep -q 'Received PUBLISH' "$work/broker.log"
+docker exec "$broker" grep -q 'Received PUBLISH' /proof/broker.log
 test "$retained_size" = "$(stat -c %s "$work/retained.log")"
 test "$original" = "$(docker inspect -f '{{.State.Pid}}:{{.State.StartedAt}}:{{.RestartCount}}' "$broker")"
 echo 'MQTT_LOG_REOPEN_AND_SUBSCRIPTION_CONTINUITY=PASS'
