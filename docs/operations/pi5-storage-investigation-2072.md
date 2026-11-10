@@ -36,3 +36,7 @@ Status: **PROPOSED / NOT DEPLOYED**. This is not a permission to execute arbitra
 - Directory stat may fail when the unprivileged runner cannot access a root-owned bind mount; this must not trigger privilege escalation.
 - Immediate MQTT file metadata is not a complete recursive inventory.
 - GitHub does not directly access the Pi's live filesystem. A reviewed local execution path is required.
+
+## Gateway finding (10 November 2026 GMT)
+
+The fixed OPS map in `homelab/live/usr/local/sbin/lifeos-deploy-gateway` has no storage-footprint diagnostic. Existing storage migration or verification operations must not be repurposed. A separately reviewed, named, no-argument, read-only operation and authorised update to the installed root-owned gateway are required before Pi execution. Do not introduce arbitrary sudo, command execution, or generic runner privilege. Current state: runtime not verified; no Pi diagnostic execution.
