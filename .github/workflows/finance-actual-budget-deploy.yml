@@ -18,12 +18,16 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy Actual Budget
-        run: sudo -n bash scripts/deploy-actual-budget.sh
+      - name: Deploy Actual Budget to HDD-backed storage
+        run: sudo -n --preserve-env=GITHUB_WORKSPACE bash scripts/deploy-actual-budget.sh
       - name: Runtime acceptance
         run: |
           set -Eeuo pipefail
           docker inspect actual-budget --format '{{.State.Status}}' | grep -qx running
           curl -fsS http://127.0.0.1:5006/ >/dev/null
-          test -d /opt/stacks/actual-budget/data
+          test -d /mnt/docker-data/actual-budget
+          mountpoint -q /mnt/docker-data
+          findmnt -T /mnt/docker-data/actual-budget -n -o TARGET,SOURCE,FSTYPE
+          docker inspect actual-budget --format '{{range .Mounts}}{{if eq .Destination "/data"}}{{.Source}}{{end}}{{end}}' | grep -qx /mnt/docker-data/actual-budget
+          echo ACTUAL_BUDGET_HDD_STORAGE=PASS
           echo ACTUAL_BUDGET_RUNTIME=PASS
