@@ -23,6 +23,7 @@
 
 ## Active Docker Services
 
+- `actual-budget` — `actualbudget/actual-server:latest-alpine`
 - `adguardhome` — `aba9e3bf0613`
 - `homeassistant` — `372d991e5888`
 - `lifeos-agent-canvas` — `ghcr.io/openhands/agent-canvas:1.23.0`
@@ -84,5 +85,5 @@
 - Personal Privacy Guardian profiles/data
 
 ## Snapshot Coverage
-- Managed files: 283
+- Managed files: 284
 
