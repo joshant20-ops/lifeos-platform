@@ -1,4 +1,5 @@
 import io
+import os
 from pathlib import Path
 import tarfile
 import tempfile
@@ -48,3 +49,10 @@ class NasRestoreDrillTests(unittest.TestCase):
         self.assertFalse(drill.mount_matches(share, "31", mounts))
         self.assertFalse(drill.mount_matches(share, "1", mounts))
         self.assertFalse(drill.mount_matches(share, None, mounts))
+
+    def test_privacy_result_reports_mode_without_disclosing_uid(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp)
+            path.chmod(0o750)
+            self.assertEqual(drill.private_stage_status(path.stat(), os.geteuid()),
+                             {"mode": "0750", "owner_matches_runner": True})

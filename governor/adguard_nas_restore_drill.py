@@ -1,4 +1,5 @@
 """Verify recovery of AdGuard files from a private NAS copy without running AdGuard."""
+import argparse
 import hashlib
 import json
 import os
@@ -105,7 +106,15 @@ def restore_files(archive_path, restored):
     return {"status": "file_restore_verified", "entries": len(members), "logical_bytes": total}
 
 
+def private_stage_status(info, uid):
+    return {"mode": format(stat.S_IMODE(info.st_mode), "04o"),
+            "owner_matches_runner": info.st_uid == uid}
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check-access", action="store_true")
+    args = parser.parse_args()
     os.umask(0o077)
     try:
         resource.setrlimit(resource.RLIMIT_AS, (256 * 1024**2, 256 * 1024**2))
@@ -117,7 +126,17 @@ def main():
             require(SHARE.samefile(root), "nas_mount_changed")
             require(shutil.disk_usage(root).free >= 4 * GIB, "nas_free_space_below_4_gib")
             stage = Path(tempfile.mkdtemp(prefix="adguard-restore-drill-", dir=root))
-            require(stat.S_IMODE(stage.stat().st_mode) == 0o700, "nas_private_directory_check_failed")
+            access = private_stage_status(stage.stat(), os.geteuid())
+            if args.check_access:
+                stage.rmdir()
+            if access["mode"] != "0700" or not access["owner_matches_runner"]:
+                print(json.dumps({"status": "nas_private_directory_check_failed", **access},
+                                 sort_keys=True))
+                return 2
+            if args.check_access:
+                print(json.dumps({"status": "nas_private_directory_verified", **access},
+                                 sort_keys=True))
+                return 0
             copied = stage / "adguard.tar.gz"
             copy_archive(SOURCE, copied)
             # gzip is a subprocess and needs the mount reference to be usable
