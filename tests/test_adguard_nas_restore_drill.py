@@ -36,3 +36,15 @@ class NasRestoreDrillTests(unittest.TestCase):
                 with self.assertRaises(drill.DrillFailure):
                     drill.restore_files(archive_path, root / f"restored-{index}")
                 self.assertFalse((root / "escape").exists())
+
+    def test_mount_id_must_select_nfs_above_automount(self):
+        share = Path("/mnt/synology-backups")
+        mounts = (
+            "1 0 8:1 / / rw - ext4 /dev/example rw\n"
+            "31 1 0:2 / /mnt/synology-backups rw - autofs systemd-1 rw\n"
+            "32 31 0:3 / /mnt/synology-backups rw - nfs4 example:/backups rw\n"
+        )
+        self.assertTrue(drill.mount_matches(share, "32", mounts))
+        self.assertFalse(drill.mount_matches(share, "31", mounts))
+        self.assertFalse(drill.mount_matches(share, "1", mounts))
+        self.assertFalse(drill.mount_matches(share, None, mounts))

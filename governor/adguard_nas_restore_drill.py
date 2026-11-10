@@ -27,13 +27,25 @@ def require(condition, reason):
         raise DrillFailure(reason)
 
 
-def verified_mount(share):
-    mount = subprocess.run(
-        ["findmnt", "-rn", "--target", str(share), "-o", "TARGET,FSTYPE"],
-        text=True, capture_output=True, timeout=5, check=True,
-    ).stdout.strip()
-    require(mount == f"{share} nfs4", "nas_mount_not_verified")
-    require(share.is_dir() and share.resolve(strict=True) == share, "nas_path_not_verified")
+def mount_matches(share, mount_id, mountinfo):
+    for line in mountinfo.splitlines():
+        before, separator, after = line.partition(" - ")
+        fields = before.split()
+        filesystem = after.split()
+        if separator and len(fields) >= 5 and filesystem and fields[0] == mount_id:
+            return fields[4] == str(share) and filesystem[0] == "nfs4"
+    return False
+
+
+def verified_mount(share, fd):
+    # An automount can expose two entries for the same path. Verify the
+    # kernel mount ID of the opened directory, not the textual path alone.
+    fdinfo = Path(f"/proc/self/fdinfo/{fd}").read_text()
+    mount_id = next((line.split()[1] for line in fdinfo.splitlines()
+                     if line.startswith("mnt_id:") and len(line.split()) == 2), None)
+    mountinfo = Path("/proc/self/mountinfo").read_text()
+    require(mount_matches(share, mount_id, mountinfo), "nas_mount_not_verified")
+    require(share.resolve(strict=True) == share, "nas_path_not_verified")
 
 
 def copy_archive(source, destination):
@@ -97,12 +109,11 @@ def main():
     os.umask(0o077)
     try:
         resource.setrlimit(resource.RLIMIT_AS, (256 * 1024**2, 256 * 1024**2))
-        verified_mount(SHARE)
         fd = os.open(SHARE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
             # Keep the opened NAS mount referenced throughout the drill.
             root = Path("/proc/self/fd") / str(fd)
-            verified_mount(SHARE)
+            verified_mount(SHARE, fd)
             require(SHARE.samefile(root), "nas_mount_changed")
             require(shutil.disk_usage(root).free >= 4 * GIB, "nas_free_space_below_4_gib")
             stage = Path(tempfile.mkdtemp(prefix="adguard-restore-drill-", dir=root))
