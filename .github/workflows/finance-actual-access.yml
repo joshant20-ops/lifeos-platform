@@ -1,0 +1,24 @@
+name: Finance Actual Local Access
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/actual-budget/configure_access.py'
+      - '.github/workflows/finance-actual-access.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: finance-actual-access
+  cancel-in-progress: false
+jobs:
+  configure-and-accept:
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure finance.lan
+        run: |
+          sudo -n install -d -o joshan -g joshan /home/joshan/lifeos-platform/services/actual-budget
+          sudo -n install -o joshan -g joshan -m 0644 services/actual-budget/configure_access.py /home/joshan/lifeos-platform/services/actual-budget/configure_access.py
+          sudo -n python3 /home/joshan/lifeos-platform/services/actual-budget/configure_access.py
