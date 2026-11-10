@@ -10,6 +10,8 @@ on:
       - tests/test_adguard_nas_restore_drill.py
       - governor/adguard_restic_probe.py
       - tests/test_adguard_restic_probe.py
+      - governor/adguard_restic_tree_probe.py
+      - tests/test_adguard_restic_tree_probe.py
       - ansible/desired/compose/mosquitto/docker-compose.yml
 
 permissions:
@@ -32,4 +34,4 @@ jobs:
             sudo apt-get install -y --no-install-recommends restic
           fi
           test -x /usr/bin/restic
-          python3 -B -m unittest -v tests.test_adguard_restic_probe
+          python3 -B -m unittest -v tests.test_adguard_restic_probe tests.test_adguard_restic_tree_probe
