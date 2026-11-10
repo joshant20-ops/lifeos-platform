@@ -16,6 +16,10 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
+    'audit-storage-footprint': {
+        'script': 'scripts/lifeos-audit-storage-footprint.sh',
+        'privileged': True,
+    },
     'backup-audiobooks': {
         'script': 'scripts/lifeos-backup-audiobooks.sh',
         'privileged': True,
