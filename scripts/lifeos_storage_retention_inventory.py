@@ -7,15 +7,38 @@ Output contains only predefined aggregate categories; no filenames or paths.
 """
 import argparse
 import collections
+from contextlib import contextmanager
 import datetime as dt
 import json
-from pathlib import Path
+import os
+import stat
 
 ROOT = "/mnt/docker-data/automation/"
 CATEGORIES = ("backups", "repair_lifecycle", "queues", "logs", "lifeos_state", "engineer_packets")
 MAX_LINES = 3_000_000
 MAX_INPUT_BYTES = 600 * 1024 * 1024
 MAX_LINE_BYTES = 4096
+
+
+@contextmanager
+def open_inventory(path):
+    fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as stream:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_INPUT_BYTES:
+            raise ValueError("inventory_not_bounded_regular_file")
+        yield stream
+        after = os.stat(path, follow_symlinks=False)
+        if (before.st_dev, before.st_ino, before.st_size, before.st_ctime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_ctime_ns):
+            raise ValueError("inventory_changed_during_read")
+
+
+def inventory_rows(stream):
+    while raw := stream.readline(MAX_LINE_BYTES + 1):
+        if len(raw) > MAX_LINE_BYTES:
+            raise ValueError("inventory_line_limit_exceeded")
+        yield raw
 
 
 def classify(relative):
@@ -38,7 +61,7 @@ def summarise(stream, today, max_lines=MAX_LINES):
     errors = 0
     read_bytes = 0
     lines = 0
-    for raw in stream:
+    for raw in inventory_rows(stream):
         lines += 1
         read_bytes += len(raw)
         if lines > max_lines or read_bytes > MAX_INPUT_BYTES:
@@ -47,10 +70,10 @@ def summarise(stream, today, max_lines=MAX_LINES):
             errors += 1
             continue
         try:
-            size_str, date_str, path = raw.decode("utf-8", "replace").rstrip("\n").split("\t", 2)
+            size_str, date_str, path = raw.decode("utf-8").rstrip("\n").split("\t", 2)
             size = int(size_str)
             date = dt.date.fromisoformat(date_str)
-            if size < 0 or not path.startswith(ROOT) or ".." in Path(path).parts or date > today:
+            if size < 0 or not path.startswith(ROOT) or any(part in ("", ".", "..") for part in path[len(ROOT):].split("/")) or date > today:
                 raise ValueError()
             category = classify(path[len(ROOT):])
         except (ValueError, TypeError):
@@ -73,8 +96,12 @@ def main():
     parser.add_argument("inventory", help="Local inventory TSV; never upload to GitHub")
     parser.add_argument("--today", type=dt.date.fromisoformat, default=dt.datetime.now(dt.timezone.utc).date())
     args = parser.parse_args()
-    with open(args.inventory, "rb") as f:
-        report = summarise(f, args.today)
+    try:
+        with open_inventory(args.inventory) as f:
+            report = summarise(f, args.today)
+    except (OSError, ValueError):
+        print(json.dumps({"status": "inventory_unavailable_or_out_of_bounds"}))
+        raise SystemExit(2)
     print(json.dumps(report, sort_keys=True))
 
 

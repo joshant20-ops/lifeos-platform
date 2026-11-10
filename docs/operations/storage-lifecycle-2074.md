@@ -37,3 +37,62 @@ general cleanup authority. Any new gateway operation requires its own review.
 The May–August file modification spike is a historical clue, not proof that
 backup creation is still healthy. Verify current backup schedules and restore
 testing independently.
+
+## Pi execution and Tier 0 gate
+
+Use a reviewed immutable revision and the existing Watchman policy gate.
+The fixed historical backup probe cannot run these new scripts. A canonical
+command or an existing authorised local execution capability must be verified
+before dispatch. Keep the inventory, command inputs and recovery records local.
+
+Run `python3 -m governor.storage_tier0` with the configured household resolver,
+a known local A record and its expected address, and an independently verified
+public IP and TLS hostname. Pass these with `--resolver`, `--local-name`,
+`--local-address`, `--internet-ip` and `--internet-name`. The probe checks AdGuard's
+runtime state, DNS over UDP and TCP, a public DNS answer, direct IP TLS with
+certificate validation, GitHub HTTPS and capacity on the AdGuard data mounts
+and shared Docker filesystem. Reserve at least 10 GiB or 10% of capacity,
+whichever is greater, and 10% of inodes as a provisional floor. Tune the floor
+upward based on measured growth and recovery requirements. The baseline does
+not grant maintenance permission. Independently prove a LAN client can resolve
+through the household resolver, a local management session is usable, and the
+offline recovery material is available. Record the results and GMT time locally.
+
+Use the existing inventory with the commands above and run the targeted
+Mosquitto probe via `python3 -m governor.read_only_storage_diagnostic --json`.
+Run one diagnostic at a time at idle I/O priority and low CPU priority with
+a supervised time and memory limit. Stop on pressure or connectivity loss.
+A partial probe leaves the corresponding classification unknown. Compare
+allocated blocks separately from logical bytes and never add Docker image and
+containerd directory estimates as independent usage.
+
+## Recovery and execution gates still to prove
+
+The reported AdGuard archive passed a gzip check and resides on the same disk.
+Record the archive's checksum, creation source, expected contents and recovery
+dependencies locally. Verify a separate copy by restoring into an isolated
+directory on independent storage, checking expected configuration and data
+without starting a resolver on the household network. Keep a local runbook and
+known working local console or LAN credentials available without internet.
+Exercise the runbook with simulated WAN probe failure and an isolated restore
+target. Any real network interruption or live resolver change requires separate
+impact review and explicit approval.
+
+Repository evidence identifies dashboard adapters and pinned Compose sync as
+backup producers for their named families. A directory name does not identify
+every historical producer or consumer. Resolve backup, repair snapshot, queue,
+cron log, Mosquitto and containerd ownership locally through installed unit
+definitions, writer metadata and authoritative job records. Correlate current
+successful backup records with verified recovery copies before interpreting
+the post-August drop. Keep unknown artifacts and all restore dependencies
+protected.
+
+Before implementing execution, resolve producer ownership, terminal state and
+retention holds against authoritative records. Verify the current independent
+recovery point. Bind approval to an immutable local manifest with file identity,
+scope, capacity estimate and rollback evidence. An execution gate must reject
+protected paths and dependencies, recheck file identity and holds at execution,
+and stop on failed connectivity or capacity checks. Test loss of connectivity,
+concurrent writes, interruptions and restore on isolated fixtures first.
+Historical inventory reports deliberately return zero eligible bytes. There is
+currently no production manifest to approve.

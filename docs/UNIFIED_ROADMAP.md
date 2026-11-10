@@ -60,6 +60,8 @@ Prefer installed functionality, native configuration/integrations, mature open-s
 | Engineering MVP | #935 remains NOT PASS; unchanged fixture/model/hardware boundary applies. |
 | Energy | #1071 native-input audit, economic comparison and shadow evaluation remain outstanding. |
 
+Storage lifecycle (#2072, #2074) starts with bounded local diagnostics and retention dry runs under the existing records retention policy. AdGuard and household connectivity are Tier 0. The live approval and recovery gates for storage maintenance are specified in [the storage lifecycle runbook](operations/storage-lifecycle-2074.md).
+
 Storage terminology correction: the external drive is a WD1600BEVT SATA **HDD**, not an SSD. Historical paths/checkpoint labels may say SSD. Data remains distributed across external HDD, SD and NAS; no claim that all databases moved. Recovery copies are on-device, not proof of an off-device restore. SMART reporting is not a surface scan or future-failure guarantee.
 
 Evidence: [storage acceptance](https://github.com/joshant20-ops/lifeos-platform/actions/runs/40425357225), [monitoring acceptance](https://github.com/joshant20-ops/lifeos-platform/actions/runs/40427278190), [SMART repair](https://github.com/joshant20-ops/lifeos-platform/actions/runs/40591258267), [latest audit](https://github.com/joshant20-ops/lifeos-platform/actions/runs/40386695471), [PA served review](https://github.com/joshant20-ops/lifeos-platform/actions/runs/39991994962).

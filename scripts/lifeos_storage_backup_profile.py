@@ -9,7 +9,7 @@ import collections
 import datetime as dt
 import json
 
-from scripts.lifeos_storage_retention_inventory import ROOT, MAX_INPUT_BYTES, MAX_LINE_BYTES, MAX_LINES
+from scripts.lifeos_storage_retention_inventory import ROOT, MAX_INPUT_BYTES, MAX_LINE_BYTES, MAX_LINES, inventory_rows, open_inventory
 
 
 def profile(stream, today, max_lines=MAX_LINES):
@@ -17,7 +17,7 @@ def profile(stream, today, max_lines=MAX_LINES):
     invalid = 0
     input_bytes = 0
     count = 0
-    for raw in stream:
+    for raw in inventory_rows(stream):
         count += 1
         input_bytes += len(raw)
         if count > max_lines or input_bytes > MAX_INPUT_BYTES:
@@ -26,7 +26,7 @@ def profile(stream, today, max_lines=MAX_LINES):
             invalid += 1
             continue
         try:
-            size_s, date_s, path = raw.decode("utf-8", "replace").rstrip("\n").split("\t", 2)
+            size_s, date_s, path = raw.decode("utf-8").rstrip("\n").split("\t", 2)
             size, modified = int(size_s), dt.date.fromisoformat(date_s)
             if size < 0 or modified > today or not path.startswith(ROOT + "backups/"):
                 if path.startswith(ROOT + "backups/"):
@@ -37,9 +37,13 @@ def profile(stream, today, max_lines=MAX_LINES):
             if len(parts) < 2 or not parts[0] or any(part in ("", ".", "..") for part in parts):
                 raise ValueError()
             key = parts[0]
+            if len(key.encode("utf-8")) > 255:
+                raise ValueError()
         except (ValueError, TypeError):
             invalid += 1
             continue
+        if key not in groups and len(groups) >= 100_000:
+            raise ValueError("backup_group_limit_exceeded")
         group = groups.setdefault(key, {"files": 0, "bytes": 0, "latest_modified": modified})
         group["files"] += 1
         group["bytes"] += size
@@ -68,8 +72,13 @@ def main():
     parser.add_argument("inventory", help="Local inventory TSV; do not publish")
     parser.add_argument("--today", type=dt.date.fromisoformat, default=dt.datetime.now(dt.timezone.utc).date())
     args = parser.parse_args()
-    with open(args.inventory, "rb") as stream:
-        print(json.dumps(profile(stream, args.today), sort_keys=True))
+    try:
+        with open_inventory(args.inventory) as stream:
+            report = profile(stream, args.today)
+        print(json.dumps(report, sort_keys=True))
+    except (OSError, ValueError):
+        print(json.dumps({"status": "inventory_unavailable_or_out_of_bounds"}))
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":
