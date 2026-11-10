@@ -33,8 +33,9 @@ class PreflightTests(unittest.TestCase):
             image = {"Architecture": "arm64", "RepoDigests": [probe.IMAGE]}
             with patch.object(probe, "LOG", path), \
                  patch.object(probe, "inspect", side_effect=[broker, image, broker]), \
-                 patch.object(probe, "writer_matches", side_effect=PermissionError):
+                 patch.object(probe, "writer_matches", side_effect=PermissionError), \
+                 patch.object(probe, "container_writer_status", return_value="unconfirmed"):
                 checks, _, status = probe.preflight()
             self.assertTrue(checks["stable_identity"])
             self.assertFalse(checks["confirmed_writer"])
-            self.assertEqual(status, "permission_denied")
+            self.assertEqual(status, "permission_denied:unconfirmed")

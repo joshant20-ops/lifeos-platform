@@ -42,6 +42,24 @@ done
 test -s "$work/broker.log"
 original=$(docker inspect -f '{{.State.Pid}}:{{.State.StartedAt}}:{{.RestartCount}}' "$broker")
 
+prove_writer() {
+    python3 -B - "$broker" "$work" <<'PYTHON'
+import sys
+from pathlib import Path
+from governor.mqtt_rotation_preflight import container_writer_status
+
+broker, work = sys.argv[1:]
+path = Path(work)
+if container_writer_status(broker, (path / "broker.log").stat()) != "confirmed":
+    raise SystemExit("CONTAINER_WRITER_PROOF=FAIL")
+retained = path / "retained.log"
+if retained.exists() and container_writer_status(broker, retained.stat()) != "unconfirmed":
+    raise SystemExit("RETAINED_WRITER_CHECK=FAIL")
+print("CONTAINER_WRITER_PROOF=PASS")
+PYTHON
+}
+prove_writer
+
 # Keep a client connected across the rename and signal.
 timeout 30s docker exec "$broker" mosquitto_sub -h 127.0.0.1 -t proof/log -C 2 -W 25 > "$work/received" &
 subscriber=$!
@@ -65,4 +83,5 @@ printf 'pre-rotation\npost-rotation\n' | cmp - "$work/received"
 docker exec "$broker" grep -q 'Received PUBLISH' /proof/broker.log
 test "$retained_size" = "$(stat -c %s "$work/retained.log")"
 test "$original" = "$(docker inspect -f '{{.State.Pid}}:{{.State.StartedAt}}:{{.RestartCount}}' "$broker")"
+prove_writer
 echo 'MQTT_LOG_REOPEN_AND_SUBSCRIPTION_CONTINUITY=PASS'

@@ -1,6 +1,7 @@
 """Read-only proof of the identity of the live broker and its log writer."""
 import json
 import os
+import re
 from pathlib import Path
 import stat
 import time
@@ -43,6 +44,36 @@ def writer_matches(pid, info):
     return False
 
 
+CONTAINER_WRITER_PROBE = r"""
+[ "$(cat /proc/1/comm)" = mosquitto ] || exit 2
+for fd in /proc/1/fd/*; do
+    key=$(stat -Lc '%d:%i' "$fd" 2>/dev/null) || continue
+    [ "$key" = "$1" ] || continue
+    flags=$(awk '$1 == "flags:" {print $2}' "/proc/1/fdinfo/${fd##*/}") || continue
+    case "$flags" in
+        *[1256])
+            [ "$(stat -Lc '%d:%i' "$fd" 2>/dev/null)" = "$key" ] || continue
+            printf 'confirmed\n'
+            exit 0
+            ;;
+    esac
+done
+printf 'unconfirmed\n'
+"""
+
+
+def container_writer_status(container_id, info):
+    """Use existing Docker access and the broker's own UID, without extra caps."""
+    identity = command(["docker", "exec", container_id, "awk",
+                        '/^Uid:/ {u=$3} /^Gid:/ {g=$3} END {print u ":" g}',
+                        "/proc/1/status"])
+    if not re.fullmatch(r"[0-9]+:[0-9]+", identity) or identity.split(":")[0] == "0":
+        return "container_identity_unavailable"
+    result = command(["docker", "exec", "--user", identity, container_id, "sh", "-c",
+                      CONTAINER_WRITER_PROBE, "writer-probe", f"{info.st_dev}:{info.st_ino}"])
+    return result if result in {"confirmed", "unconfirmed"} else "container_probe_unavailable"
+
+
 def preflight():
     checks = dict.fromkeys(("broker_healthy", "pinned_arm64_image", "expected_log_mount",
                             "regular_log_file", "confirmed_writer", "stable_identity"), False)
@@ -76,6 +107,10 @@ def preflight():
             writer_status = "permission_denied"
         except (OSError, ValueError, IndexError):
             writer_status = "unavailable"
+        if not checks["confirmed_writer"]:
+            container_status = container_writer_status(broker["Id"], info)
+            checks["confirmed_writer"] = container_status == "confirmed"
+            writer_status = container_status if checks["confirmed_writer"] else writer_status + ":" + container_status
         latest = inspect("container", CONTAINER)
         current = LOG.lstat()
         checks["stable_identity"] = (
