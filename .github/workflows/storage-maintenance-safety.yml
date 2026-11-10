@@ -6,6 +6,7 @@ on:
       - governor/storage_health_gate.py
       - tests/test_mqtt_retained_rotation.py
       - tests/test_storage_health_gate.py
+      - tests/test_mqtt_rotation_broker.py
       - .github/workflows/storage-maintenance-safety.yml
 permissions:
   contents: read
@@ -18,3 +19,7 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -B -m unittest -v tests.test_mqtt_retained_rotation tests.test_storage_health_gate
+      - name: Pull the pinned disposable broker
+        run: docker pull eclipse-mosquitto@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797
+      - name: Prove retained rotation and subscriber continuity
+        run: python3 -B -m unittest -v tests.test_mqtt_rotation_broker
