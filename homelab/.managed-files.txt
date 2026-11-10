@@ -81,6 +81,7 @@ mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_enphase.py
 mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_history.py
 mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_pricing.py
 mnt/docker-data/automation/repos/LifeOS-Energy/tests/test_simulator.py
+opt/stacks/actual-budget/docker-compose.yml
 opt/stacks/adguard/docker-compose.yml
 opt/stacks/audiobookshelf/compose.yaml
 opt/stacks/audiobookshelf/config/migrations/v2.15.0-series-column-unique.js

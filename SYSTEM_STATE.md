@@ -48,6 +48,7 @@
 
 ## Source Stacks Present
 
+- `actual-budget`
 - `adguard`
 - `audiobookshelf`
 - `homeassistant`

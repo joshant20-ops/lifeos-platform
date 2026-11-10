@@ -1,0 +1,14 @@
+services:
+  actual:
+    image: actualbudget/actual-server:latest-alpine
+    container_name: actual-budget
+    volumes:
+      - /mnt/docker-data/actual-budget:/data
+    ports:
+      - "127.0.0.1:5006:5006"
+    restart: unless-stopped
+    networks:
+      - reverse_proxy
+networks:
+  reverse_proxy:
+    external: true
