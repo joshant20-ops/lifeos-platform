@@ -25,3 +25,14 @@ def test_adguard_dns_operation_rejects_arguments(capsys):
     else:
         raise AssertionError("allow-listed DNS operation accepted arbitrary arguments")
     assert "configure-ai-dns" in capsys.readouterr().out
+
+
+def test_restore_rehearsal_accepts_only_the_fixed_config_scope():
+    assert gateway.parse_request(["restore-rehearsal"]) == ("restore-rehearsal", [])
+    assert gateway.parse_request(["restore-rehearsal", "adguard-config"]) == (
+        "restore-rehearsal", ["adguard-config"],
+    )
+    for extra in ("/tmp/other", "adguard-config --path /tmp", "--help"):
+        with pytest.raises(SystemExit) as exc:
+            gateway.parse_request(["restore-rehearsal", extra])
+        assert exc.value.code == 64
