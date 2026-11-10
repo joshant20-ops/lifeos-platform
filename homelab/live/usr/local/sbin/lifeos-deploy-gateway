@@ -244,6 +244,8 @@ def preflight():
 def parse_request(argv: list[str]) -> tuple[str, list[str]]:
     if len(argv) == 1 and argv[0] in OPS and argv[0] != 'capture-tower-wol':
         return argv[0], []
+    if argv == ['restore-rehearsal', 'adguard-config']:
+        return argv[0], argv[1:]
     if (
         len(argv) == 3
         and argv[0] == 'capture-tower-wol'
@@ -265,6 +267,9 @@ def main():
     spec = OPS[operation]
     head = preflight()
     script = REPO / str(spec['script'])
+    if operation == 'restore-rehearsal' and operation_args == ['adguard-config']:
+        script = REPO / 'scripts/lifeos-restic-adguard-config-check.sh'
+        operation_args = []
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
     print('LIFEOS_DEPLOY_GATEWAY_VERSION=13')
