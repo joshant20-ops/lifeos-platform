@@ -63,7 +63,7 @@ jobs:
           git merge --ff-only origin/main
           test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
           test -z "$(git status --porcelain --untracked-files=all)"
-      - name: Install the reviewed gateway and run the fixed work-data check
+      - name: Install the reviewed gateway and record the bounded work-data result
         shell: bash
         run: |
           set -Eeuo pipefail
