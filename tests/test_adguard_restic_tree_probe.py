@@ -27,7 +27,7 @@ class TreeRecoveryTests(unittest.TestCase):
             (tree / "conf/AdGuardHome.yaml").write_text("schema_version: 29\n")
             restic("backup", "--tag", "lifeos-pi5", "--time", "2026-01-01 00:00:00", str(tree))
             self.assertEqual(recover_tree(env, str(tree), 1024**2)["status"],
-                             "adguard_tree_unverified")
+                             "expected_work_data_missing")
             (tree / "work/data").mkdir(parents=True)
             payload = b"synthetic-work"
             (tree / "work/data/stats.db").write_bytes(payload)
