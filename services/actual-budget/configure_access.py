@@ -16,7 +16,7 @@ import urllib.error
 import urllib.request
 
 REPO = Path('/home/joshan/lifeos-platform')
-STATE = Path('/mnt/docker-data/actual-budget/access')
+STATE = Path('/mnt/docker-data/actual-budget-access')
 NPM = Path('/opt/stacks/npm/data')
 CUSTOM = NPM / 'nginx/custom'
 ROUTE = CUSTOM / 'lifeos-finance.conf'
@@ -182,8 +182,8 @@ def main():
     existing = [row for row in rows if row.get('domain') == HOST]
     if existing and existing != [{'domain': HOST, 'answer': address}]:
         raise ValueError('conflicting audiobook rewrite')
-    for path in (STATE.parent, STATE):
-        directory(path, private=True)
+    directory(STATE.parent, private=False)
+    directory(STATE, private=True)
     for path in (NPM, NPM / 'nginx', CUSTOM, NPM / 'custom_ssl', CERTS):
         directory(path)
     for path in (ROUTE, INCLUDE):
