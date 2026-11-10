@@ -168,7 +168,7 @@ def main():
     if os.geteuid() != 0 or len(sys.argv) != 1:
         raise ValueError('root and no arguments required')
     os.umask(0o077)
-    audit = module('access_audit', REPO / 'services/actual-budget/access_audit.py')
+    audit = module('access_audit', REPO / 'services/audiobookshelf/access_audit.py')
     dns = module('dns_helper', REPO / 'scripts/lifeos-configure-ai-dns.py')
     native = None
     address = dns.pi_ipv4()
