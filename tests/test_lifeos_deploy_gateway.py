@@ -32,7 +32,11 @@ def test_restore_scope_rejects_user_controlled_paths():
     assert gateway.parse_request(["restore-rehearsal", "adguard-config"]) == (
         "restore-rehearsal", ["adguard-config"],
     )
-    for args in (["restore-rehearsal", "/tmp/other"],
+    assert gateway.parse_request(["restore-rehearsal", "adguard-tree"]) == (
+        "restore-rehearsal", ["adguard-tree"],
+    )
+    for args in (["restore-rehearsal", "adguard-tree", "/tmp/other"],
+                 ["restore-rehearsal", "/tmp/other"],
                  ["restore-rehearsal", "adguard-config", "/tmp/other"]):
         try:
             gateway.parse_request(args)
