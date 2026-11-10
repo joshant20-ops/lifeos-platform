@@ -96,3 +96,48 @@ and stop on failed connectivity or capacity checks. Test loss of connectivity,
 concurrent writes, interruptions and restore on isolated fixtures first.
 Historical inventory reports deliberately return zero eligible bytes. There is
 currently no production manifest to approve.
+
+## Mosquitto rotation review
+
+The operator measured 10,740,494,442 bytes in the current log and 188,920 bytes
+of growth in 30 seconds. Writer identity remains unverified on Pi.
+The GitHub-hosted ARM64 proof in run 42847652634 pulled the Compose digest,
+identified Mosquitto 2.1.2 and demonstrated that its dedicated log-rotate
+command reopened the log while the same subscriber continued to receive
+messages. The rotated inode stopped growing and the broker process did not
+restart. This used synthetic data and an isolated broker.
+
+The read-only command `python3 -B -m governor.mqtt_rotation_preflight` checks the
+running image, broker health and PID, expected log bind mount, regular file
+identity and a writable descriptor on the same inode. It prints only check
+booleans and bytes. Missing inspect or descriptor access blocks the check.
+Run it only through a reviewed invocation with existing read access.
+
+### Proposed live change for separate approval
+
+- Scope the change to Mosquitto's current log and one uniquely named retained
+  file in the same log directory. Confirm the exact image, inode, writer,
+  ownership, permissions and sufficient disk and inode reserve immediately
+  before acting. Prove household DNS from a LAN client, verify offline
+  management and recovery access and confirm that there is no overlapping
+  maintenance. Maintain local Tier 0 probes for the duration.
+- Preserve the original log by same-filesystem rename, then request the
+  broker's dedicated reopen command. Stop on any change of process identity,
+  unexpected file or connectivity regression. Verify the new file is opened
+  and grows, the old inode is closed and stable, and a representative MQTT
+  client remains connected. Capture only sanitised status outside the Pi.
+- If the rename succeeds but reopen fails, stop. Restore the original name
+  only when it is absent and the broker still writes the retained inode.
+  If both files exist or descriptor state is ambiguous, preserve both and
+  investigate from the local console. Restarting the broker or changing
+  AdGuard/network configuration is outside this proposal.
+- Rotation retains both files and frees zero bytes. Verify archive integrity
+  and restore from independent storage, and check incident, rollback and
+  retention holds before proposing a separate disposal manifest.
+
+The existing local submission socket authenticates the configured Engineer
+UID. Repository access or self-hosted runner access does not prove access to
+that socket. The fixed GitHub storage audit refreshes the root gateway and
+does not run these checks. A reviewed dispatch via the existing Engineer /
+Watchman path and live baseline evidence are required before approval for
+the rotation itself.
