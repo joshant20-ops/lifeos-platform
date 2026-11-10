@@ -3,7 +3,7 @@ services:
     image: actualbudget/actual-server:latest-alpine
     container_name: actual-budget
     volumes:
-      - /opt/stacks/actual-budget/data:/data
+      - /mnt/docker-data/actual-budget:/data
     ports:
       - "127.0.0.1:5006:5006"
     restart: unless-stopped
