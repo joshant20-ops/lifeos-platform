@@ -141,3 +141,27 @@ that socket. The fixed GitHub storage audit refreshes the root gateway and
 does not run these checks. A reviewed dispatch via the existing Engineer /
 Watchman path and live baseline evidence are required before approval for
 the rotation itself.
+
+
+## Independent AdGuard file restore drill
+
+Use the existing private NFS4 backup mount. The drill checks the fixed mount
+and holds its directory open, requires 4 GiB free and creates a unique mode
+0700 staging directory. It copies the fixed historical AdGuard archive,
+checks SHA-256 readback and gzip integrity, and restores files from the NAS
+copy into a separate directory. Archive path, entry types, size and count
+are checked before extraction. The copy and drill output stay private on the
+NAS. Only status and numeric totals are returned. No DNS service is launched
+from the restored files.
+
+Run the reviewed source under the operator's existing NAS permissions using
+`timeout 180s ionice -c3 nice -n 15 python3 -B -m governor.adguard_nas_restore_drill`.
+Verify the share is private before dispatch. A result of file_restore_verified
+proves recoverable files from the NAS copy, not a live resolver failover test.
+Keep incomplete drill directories for local inspection and retention review.
+
+The existing diagnostic queue is read-only. This drill creates backup files
+on the NAS and needs an execution scope explicitly covering those writes.
+The current Pi deployment and Watchman submission paths must not be repurposed
+by labelling it a diagnostic or a control-state change. GitHub-hosted CI uses
+only synthetic archives.
