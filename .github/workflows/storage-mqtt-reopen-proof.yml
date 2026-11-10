@@ -1,0 +1,21 @@
+name: Isolated Mosquitto log reopen proof
+
+on:
+  push:
+    branches: [audit/storage-retention-2074]
+    paths:
+      - .github/workflows/storage-mqtt-reopen-proof.yml
+      - tests/prove-mqtt-log-reopen.sh
+      - ansible/desired/compose/mosquitto/docker-compose.yml
+
+permissions:
+  contents: read
+
+jobs:
+  prove:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 7
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test pinned ARM64 broker with synthetic traffic
+        run: bash tests/prove-mqtt-log-reopen.sh
