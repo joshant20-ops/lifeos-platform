@@ -244,7 +244,8 @@ def preflight():
 def parse_request(argv: list[str]) -> tuple[str, list[str]]:
     if len(argv) == 1 and argv[0] in OPS and argv[0] != 'capture-tower-wol':
         return argv[0], []
-    if argv in (['restore-rehearsal', 'adguard-config'], ['restore-rehearsal', 'adguard-tree']):
+    if argv in (['restore-rehearsal', 'adguard-config'], ['restore-rehearsal', 'adguard-tree'],
+                ['restore-rehearsal', 'adguard-archive']):
         return argv[0], argv[1:]
     if (
         len(argv) == 3
@@ -272,6 +273,9 @@ def main():
         operation_args = []
     elif operation == 'restore-rehearsal' and operation_args == ['adguard-tree']:
         script = REPO / 'scripts/lifeos-restic-adguard-tree-check.sh'
+        operation_args = []
+    elif operation == 'restore-rehearsal' and operation_args == ['adguard-archive']:
+        script = REPO / 'scripts/lifeos-restic-adguard-archive-check.sh'
         operation_args = []
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
