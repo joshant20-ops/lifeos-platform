@@ -47,13 +47,14 @@ def preflight():
     checks = dict.fromkeys(("broker_healthy", "pinned_arm64_image", "expected_log_mount",
                             "regular_log_file", "confirmed_writer", "stable_identity"), False)
     size = None
+    writer_status = "not_checked"
     try:
         broker = inspect("container", CONTAINER)
         state = broker["State"]
         pid = state["Pid"]
         checks["broker_healthy"] = state["Running"] is True and state["Health"]["Status"] == "healthy"
         if not checks["broker_healthy"] or type(pid) is not int or pid <= 0:
-            return checks, size
+            return checks, size, writer_status
         image = inspect("image", broker["Image"])
         checks["pinned_arm64_image"] = image["Architecture"] == "arm64" and IMAGE in image["RepoDigests"]
         mounts = [mount for mount in broker["Mounts"] if mount["Destination"] == "/mosquitto/log"]
@@ -62,13 +63,19 @@ def preflight():
             and Path(mounts[0]["Source"]).samefile(LOG.parent)
         )
         if not checks["expected_log_mount"]:
-            return checks, size
+            return checks, size, writer_status
         info = LOG.lstat()
         checks["regular_log_file"] = stat.S_ISREG(info.st_mode) and info.st_nlink == 1
         if not checks["regular_log_file"]:
-            return checks, size
+            return checks, size, writer_status
         size = info.st_size
-        checks["confirmed_writer"] = writer_matches(pid, info)
+        try:
+            checks["confirmed_writer"] = writer_matches(pid, info)
+            writer_status = "confirmed" if checks["confirmed_writer"] else "unconfirmed"
+        except PermissionError:
+            writer_status = "permission_denied"
+        except (OSError, ValueError, IndexError):
+            writer_status = "unavailable"
         latest = inspect("container", CONTAINER)
         current = LOG.lstat()
         checks["stable_identity"] = (
@@ -80,12 +87,13 @@ def preflight():
         )
     except (OSError, ValueError, KeyError, TypeError, IndexError):
         pass
-    return checks, size
+    return checks, size, writer_status
 
 
 def main():
-    checks, size = preflight()
-    print(json.dumps({"checks": checks, "log_bytes": size, "maintenance_authorised": False},
+    checks, size, writer_status = preflight()
+    print(json.dumps({"checks": checks, "log_bytes": size, "writer_status": writer_status,
+                      "maintenance_authorised": False},
                      sort_keys=True))
     return 0 if all(checks.values()) else 2
 
