@@ -63,6 +63,9 @@ SERVICES = {
     b"lifeos-openhands-local-ai-gateway.service": "openhands_gateway_unit",
     b"lifeos-ha-issue-queue-bridge.service": "issue_queue_bridge_unit",
     b"cron.service": "cron_unit",
+    b"lifeos-autonomous-agent.service": "autonomous_agent_unit",
+    b"lifeos-engineer.service": "engineer_unit",
+    b"lifeos-governor.service": "governor_unit",
 }
 
 
@@ -173,7 +176,7 @@ def classify_packets(raw, gateways, containers):
 
 
 
-def audit(window=24):
+def audit(window=24, sample_interval=0.5):
     broker = inspect("container", CONTAINER)
     identity = (broker["Id"], broker["State"]["Pid"], broker["State"]["StartedAt"])
     gateways = set()
@@ -218,7 +221,7 @@ def audit(window=24):
                     if endpoint:
                         sampled_endpoints[endpoint] = label
             observed += 1
-            time.sleep(0.5)
+            time.sleep(sample_interval)
         capture_status, packets = finish_capture()
         observed_syn = {match.groups()[:2] for match in PACKET.finditer(packets)}
         matched = Counter(label for endpoint, label in sampled_endpoints.items()
@@ -272,7 +275,10 @@ def wait_for_burst(seconds=120):
 def main():
     try:
         burst = wait_for_burst()
-        report = {**audit(), "burst_threshold_reached": burst}
+        # A bounded faster pass can catch short-lived local socket owners
+        # that disappear between half-second snapshots.
+        report = {**(audit(window=10, sample_interval=0.025) if burst else audit()),
+                  "burst_threshold_reached": burst}
     except (OSError, ValueError, KeyError, TypeError, IndexError, subprocess.SubprocessError) as error:
         report = {"status": "mqtt_churn_audit_unavailable", "error_type": type(error).__name__}
     print(json.dumps(report, sort_keys=True))
