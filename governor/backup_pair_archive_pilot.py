@@ -109,6 +109,7 @@ def build_archive(backup_root, stamp, selected, destination):
             member.size, member.mode, member.mtime = len(data), info.st_mode & 0o777, int(info.st_mtime)
             archive.addfile(member, io.BytesIO(data))
             files.append({"archive_path": str(path), "bytes": len(data),
+                          "allocated_bytes": info.st_blocks * 512,
                           "mtime_ns": info.st_mtime_ns, "mode": member.mode, "sha256": hashlib.sha256(data).hexdigest()})
             total_files += 1
             total_bytes += len(data)

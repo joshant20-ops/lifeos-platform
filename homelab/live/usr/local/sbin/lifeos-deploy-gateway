@@ -168,6 +168,10 @@ OPS = {
         'script': 'scripts/lifeos-storage-preserve-sd-source.sh',
         'privileged': True,
     },
+    'storage-backup-duplicate-audit': {
+        'script': 'scripts/lifeos-backup-duplicate-audit.sh',
+        'privileged': True,
+    },
     'storage-backup-pair-archive-pilot': {
         'script': 'scripts/lifeos-backup-pair-archive-pilot.sh',
         'privileged': True,
