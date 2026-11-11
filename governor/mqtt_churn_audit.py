@@ -249,9 +249,30 @@ def audit(window=24):
                 "syns_matched_to_socket_owner": dict(matched)}
 
 
+def wait_for_burst(seconds=120):
+    """Use inode counters until there is enough activity to justify tracing."""
+    deadline = time.monotonic() + seconds
+    initial = LOG.lstat()
+    previous = initial.st_size
+    streak = 0
+    while time.monotonic() < deadline:
+        started = time.monotonic()
+        time.sleep(1)
+        current = LOG.lstat()
+        if (current.st_dev, current.st_ino) != (initial.st_dev, initial.st_ino):
+            raise ValueError("active_log_changed")
+        rate = (current.st_size - previous) / (time.monotonic() - started)
+        previous = current.st_size
+        streak = streak + 1 if rate >= 2048 else 0
+        if streak >= 2:
+            return True
+    return False
+
+
 def main():
     try:
-        report = audit()
+        burst = wait_for_burst()
+        report = {**audit(), "burst_threshold_reached": burst}
     except (OSError, ValueError, KeyError, TypeError, IndexError, subprocess.SubprocessError) as error:
         report = {"status": "mqtt_churn_audit_unavailable", "error_type": type(error).__name__}
     print(json.dumps(report, sort_keys=True))
