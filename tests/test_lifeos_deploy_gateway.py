@@ -59,3 +59,14 @@ def test_mqtt_rotation_scope_rejects_arguments():
         assert exc.code == 64
     else:
         raise AssertionError("rotation accepted a caller-supplied argument")
+
+def test_mqtt_archive_scope_rejects_arguments():
+    assert gateway.parse_request(["storage-mqtt-retained-archive"]) == (
+        "storage-mqtt-retained-archive", [],
+    )
+    try:
+        gateway.parse_request(["storage-mqtt-retained-archive", "arbitrary"])
+    except SystemExit as exc:
+        assert exc.code == 64
+    else:
+        raise AssertionError("archive accepted a caller-supplied argument")
