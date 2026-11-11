@@ -43,7 +43,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - name: Trace the two largest patterns against fixed local producer script roots
+      - name: Group backups by apparent function and profile the two largest patterns
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -56,11 +56,3 @@ jobs:
           ulimit -v 262144
           timeout -k 5s 60s ionice -c3 nice -n 15 python3 -B \
             -m scripts.lifeos_storage_backup_profile "$HOME/lifeos-storage-inventory.tsv" --storage-blocks --installed-source-hints
-
-      - name: Measure visible allocated blocks on the Docker filesystem
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          ulimit -v 262144
-          timeout -k 5s 60s ionice -c3 nice -n 15 python3 -B \
-            -m scripts.lifeos_storage_allocated_audit
