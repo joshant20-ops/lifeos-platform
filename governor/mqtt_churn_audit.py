@@ -50,25 +50,66 @@ def classify_records(raw, gateways):
     return result
 
 
-def known_caller(pid):
-    root = Path("/proc") / str(pid)
-    try:
-        status = (root / "stat").read_text().rsplit(")", 1)[1].split()
-        parent = Path("/proc") / str(int(status[1]))
-        for proc in (root, parent):
-            with (proc / "cmdline").open("rb") as stream:
-                args = stream.read(4096).split(b"\0")
-            for arg in args:
-                label = KNOWN_CALLERS.get(os.path.basename(arg))
-                if label:
-                    return label
-        with (root / "comm").open("rb") as stream:
-            executable = stream.read(64).strip()
-        return {b"mosquitto_pub": "unattributed_mqtt_publisher",
-                b"mosquitto_sub": "unattributed_mqtt_subscriber",
-                b"docker-proxy": "docker_proxy"}.get(executable, "other_process")
-    except (OSError, ValueError, IndexError):
-        return "process_exited_or_unavailable"
+TOPICS = {
+    b"lifeos/tower/state": "tower_state",
+    b"lifeos/tower/power/set": "tower_power_command",
+    b"lifeos/tower/lease/+": "tower_lease",
+    b"lifeos/issue_queue/+/high_priority/set": "issue_queue_command",
+    b"$SYS/broker/version": "broker_health",
+    b"lifeos/tower/metrics": "tower_metrics",
+}
+SERVICES = {
+    b"lifeos-tower-control.service": "tower_control_unit",
+    b"lifeos-openhands-local-ai-gateway.service": "openhands_gateway_unit",
+    b"lifeos-ha-issue-queue-bridge.service": "issue_queue_bridge_unit",
+    b"cron.service": "cron_unit",
+}
+
+
+def process_lineage(pid):
+    proc = Path("/proc") / str(pid)
+    topic = "not_subscriber"
+    launcher = "unknown"
+    with (proc / "comm").open("rb") as stream:
+        executable = stream.read(64).strip()
+    for level in range(8):
+        with (proc / "cmdline").open("rb") as stream:
+            args = stream.read(4096).split(b"\0")
+        if level == 0 and executable == b"mosquitto_sub":
+            topic = "other_subscription"
+            for flag, arg in zip(args, args[1:]):
+                if flag in {b"-t", b"--topic"}:
+                    topic = TOPICS.get(arg, "other_subscription")
+                    break
+        for arg in args:
+            label = KNOWN_CALLERS.get(os.path.basename(arg))
+            if label:
+                return label, topic
+        with (proc / "cgroup").open("rb") as stream:
+            groups = re.split(rb"[/\n]", stream.read(4096))
+        for group in groups:
+            if group in SERVICES:
+                launcher = SERVICES[group]
+        status = (proc / "stat").read_text().rsplit(")", 1)[1].split()
+        parent = int(status[1])
+        if parent <= 1:
+            break
+        proc = Path("/proc") / str(parent)
+    if launcher != "unknown":
+        return launcher, topic
+    return ({b"mosquitto_pub": "unattributed_mqtt_publisher",
+             b"mosquitto_sub": "unattributed_mqtt_subscriber",
+             b"docker-proxy": "docker_proxy"}.get(executable, "other_process"), topic)
+
+
+def socket_endpoint(line):
+    fields = line.split()
+    if len(fields) < 5:
+        return None
+    address, sep, port = fields[3].rpartition(":")
+    if sep and port.isdecimal():
+        return address.strip("[]").encode(), port.encode()
+    return None
 
 
 @contextmanager
@@ -155,6 +196,8 @@ def audit(window=24):
         start = time.monotonic()
         deadline = start + window
         visible = Counter()
+        sampled_pids = {}
+        sampled_endpoints = {}
         observed = failed = 0
         while time.monotonic() < deadline:
             sockets = subprocess.run(
@@ -162,11 +205,24 @@ def audit(window=24):
                 text=True, timeout=3, check=False,
             )
             failed += int(sockets.returncode != 0)
-            for pid in set(PROCESS.findall(sockets.stdout)) if not sockets.returncode else ():
-                visible[known_caller(int(pid))] += 1
+            for line in sockets.stdout.splitlines() if not sockets.returncode else ():
+                endpoint = socket_endpoint(line)
+                for pid in set(PROCESS.findall(line)):
+                    try:
+                        owner, topic = process_lineage(int(pid))
+                    except (OSError, ValueError, IndexError):
+                        owner, topic = "process_exited_or_unavailable", "unknown"
+                    label = f"{owner}:{topic}"
+                    visible[label] += 1
+                    sampled_pids[pid] = label
+                    if endpoint:
+                        sampled_endpoints[endpoint] = label
             observed += 1
             time.sleep(0.5)
         capture_status, packets = finish_capture()
+        observed_syn = {match.groups()[:2] for match in PACKET.finditer(packets)}
+        matched = Counter(label for endpoint, label in sampled_endpoints.items()
+                          if endpoint in observed_syn)
         latest = inspect("container", CONTAINER)
         if identity != (latest["Id"], latest["State"]["Pid"], latest["State"]["StartedAt"]):
             raise ValueError("broker_changed")
@@ -188,7 +244,9 @@ def audit(window=24):
                 "event_lines": dict(classify_records(sample, gateways)),
                 "packet_capture_status": capture_status,
                 "tcp_syn_source_classes": dict(classify_packets(packets, gateways, containers)),
-                "host_socket_samples": observed - failed, "host_socket_sample_failures": failed, "visible_caller_observations": dict(visible)}
+                "host_socket_samples": observed - failed, "host_socket_sample_failures": failed, "visible_caller_observations": dict(visible),
+                "distinct_visible_processes": dict(Counter(sampled_pids.values())),
+                "syns_matched_to_socket_owner": dict(matched)}
 
 
 def main():
