@@ -70,3 +70,16 @@ def test_mqtt_archive_scope_rejects_arguments():
         assert exc.code == 64
     else:
         raise AssertionError("archive accepted a caller-supplied argument")
+
+def test_mqtt_log_review_accepts_only_fixed_modes():
+    for mode in ("retained", "monthly"):
+        assert gateway.parse_request(["storage-mqtt-log-review", mode]) == (
+            "storage-mqtt-log-review", [mode],
+        )
+    for argv in (["storage-mqtt-log-review"], ["storage-mqtt-log-review", "/tmp/input"]):
+        try:
+            gateway.parse_request(argv)
+        except SystemExit as exc:
+            assert exc.code == 64
+        else:
+            raise AssertionError("review accepted unsupported arguments")
