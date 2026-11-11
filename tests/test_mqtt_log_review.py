@@ -29,6 +29,9 @@ class LogReviewTests(unittest.TestCase):
         self.assertEqual(result["findings"], [])
         self.assertEqual(generate.call_args.kwargs["privacy"], "local-only")
         self.assertEqual(generate.call_args.kwargs["force_provider"], "ollama")
+        schema = generate.call_args.kwargs["response_format"]
+        self.assertEqual(schema["required"], ["summary", "findings"])
+        self.assertEqual(schema["properties"]["findings"]["items"]["type"], "string")
 
     def test_batches_finish_records_and_resume_only_unfinished_inference(self):
         source = b"alpha\nbeta\n"

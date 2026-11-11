@@ -17,6 +17,16 @@ MAX_BYTES = 16 * 1024**3
 BATCH_BYTES = 2 * 1024**3
 MAX_LINE = 16 * 1024
 SAMPLES_PER_CLASS = 4
+REVIEW_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["summary", "findings"],
+    "properties": {
+        "summary": {"type": "string", "minLength": 1, "maxLength": 1000},
+        "findings": {"type": "array", "maxItems": 20,
+                     "items": {"type": "string", "minLength": 1, "maxLength": 300}},
+    },
+}
 ROUTINE = frozenset({"connection", "message_activity"})
 CLASSES = (
     ("auth", (b"not authorised", b"not authorized", b"authentication", b"denied")),
@@ -90,7 +100,7 @@ def local_review(evidence):
         "state gaps from unknown or oversized records. Return a JSON object "
         "with summary (string) and findings (array of strings). Do not request or "
         "authorise deletion.\n" + json.dumps(evidence, ensure_ascii=True),
-        privacy="local-only", force_provider="ollama", response_format="json",
+        privacy="local-only", force_provider="ollama", response_format=REVIEW_SCHEMA,
     )
     if result["provider"] != "ollama" or result["privacy"] != "local-only":
         raise ReviewUnverified("local_provider_unverified")
@@ -99,9 +109,11 @@ def local_review(evidence):
         raise ReviewUnverified("review_size_exceeded")
     review = json.loads(text)
     if (not isinstance(review, dict) or not isinstance(review.get("summary"), str)
-            or not review["summary"].strip() or not isinstance(review.get("findings"), list)
+            or not 1 <= len(review["summary"].strip()) <= 1000
+            or not isinstance(review.get("findings"), list)
             or len(review["findings"]) > 20
-            or any(not isinstance(item, str) for item in review["findings"])):
+            or any(not isinstance(item, str) or not 1 <= len(item.strip()) <= 300
+                   for item in review["findings"])):
         raise ReviewUnverified("structured_review_invalid")
     return {"provider": result["provider"], "model": result["model"],
             "summary": review["summary"], "findings": review["findings"]}
