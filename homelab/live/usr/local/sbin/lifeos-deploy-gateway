@@ -172,6 +172,10 @@ OPS = {
         'script': 'scripts/lifeos-mqtt-log-review.sh',
         'privileged': True,
     },
+    'storage-mqtt-verified-reclaim': {
+        'script': 'scripts/lifeos-mqtt-verified-reclaim.sh',
+        'privileged': True,
+    },
     'storage-mqtt-retained-archive': {
         'script': 'scripts/lifeos-mqtt-retained-archive.sh',
         'privileged': True,

@@ -83,3 +83,14 @@ def test_mqtt_log_review_accepts_only_fixed_modes():
             assert exc.code == 64
         else:
             raise AssertionError("review accepted unsupported arguments")
+
+def test_mqtt_reclaim_scope_rejects_arguments():
+    assert gateway.parse_request(["storage-mqtt-verified-reclaim"]) == (
+        "storage-mqtt-verified-reclaim", [],
+    )
+    try:
+        gateway.parse_request(["storage-mqtt-verified-reclaim", "arbitrary"])
+    except SystemExit as exc:
+        assert exc.code == 64
+    else:
+        raise AssertionError("reclaim accepted a caller-supplied argument")
