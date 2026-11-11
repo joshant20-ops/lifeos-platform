@@ -168,6 +168,10 @@ OPS = {
         'script': 'scripts/lifeos-storage-preserve-sd-source.sh',
         'privileged': True,
     },
+    'storage-backup-pair-archive-pilot': {
+        'script': 'scripts/lifeos-backup-pair-archive-pilot.sh',
+        'privileged': True,
+    },
     'storage-mqtt-churn-audit': {
         'script': 'scripts/lifeos-mqtt-churn-audit.sh',
         'privileged': True,

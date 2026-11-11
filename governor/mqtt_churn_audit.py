@@ -12,7 +12,6 @@ import tempfile
 import time
 
 from governor.mqtt_rotation_preflight import CONTAINER, LOG, inspect
-from governor.storage_tier0 import command
 
 LIMIT = 4 * 1024**2
 SESSION = re.compile(rb"^\d+: (New connection from |New client connected from |Client .+ disconnected)")
@@ -156,10 +155,14 @@ def audit(window=24):
         start = time.monotonic()
         deadline = start + window
         visible = Counter()
-        observed = 0
+        observed = failed = 0
         while time.monotonic() < deadline:
-            sockets = command(["/usr/bin/ss", "-Hntp", "( dport = :1883 )"])
-            for pid in set(PROCESS.findall(sockets)):
+            sockets = subprocess.run(
+                ["/usr/bin/ss", "-Hntp", "( dport = :1883 )"], capture_output=True,
+                text=True, timeout=3, check=False,
+            )
+            failed += int(sockets.returncode != 0)
+            for pid in set(PROCESS.findall(sockets.stdout)) if not sockets.returncode else ():
                 visible[known_caller(int(pid))] += 1
             observed += 1
             time.sleep(0.5)
@@ -185,7 +188,7 @@ def audit(window=24):
                 "event_lines": dict(classify_records(sample, gateways)),
                 "packet_capture_status": capture_status,
                 "tcp_syn_source_classes": dict(classify_packets(packets, gateways, containers)),
-                "host_socket_samples": observed, "visible_caller_observations": dict(visible)}
+                "host_socket_samples": observed - failed, "host_socket_sample_failures": failed, "visible_caller_observations": dict(visible)}
 
 
 def main():
