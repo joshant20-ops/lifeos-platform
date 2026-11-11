@@ -20,6 +20,20 @@ class BackupProfileTests(unittest.TestCase):
         self.assertEqual(result["eligible_for_deletion_bytes"], 0)
         self.assertNotIn(private, str(result))
 
+    def test_producer_hints_require_full_format_and_reconcile_totals(self):
+        rows = (f"10\t2026-05-01\t{ROOT}pinned-compose-20260501-120000/a\n"
+                f"20\t2026-05-01\t{ROOT}pinned-compose-20260501-120000/b\n"
+                f"40\t2026-05-01\t{ROOT}pinned-compose-private/c\n"
+                f"50\t2026-05-01\t{ROOT}ha-tower-control-20260501-120000/a\n").encode()
+        result = profile(io.BytesIO(rows), dt.date(2026, 11, 10))
+        self.assertEqual(result["producer_name_hints"], {
+            "pinned-compose": {"groups": 1, "files": 2, "bytes": 30},
+            "ha-tower-control": {"groups": 1, "files": 1, "bytes": 50},
+            "unknown": {"groups": 1, "files": 1, "bytes": 40},
+        })
+        self.assertEqual(result["deletion_candidates"], 0)
+        self.assertNotIn("pinned-compose-private", str(result))
+
     def test_invalid_and_outside_root(self):
         rows = (f"4\t2026-05-01\t{ROOT}../escape/file\n"
                 "2\t2026-05-01\t/etc/passwd\n"
