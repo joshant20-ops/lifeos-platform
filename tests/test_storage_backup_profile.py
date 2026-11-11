@@ -34,6 +34,22 @@ class BackupProfileTests(unittest.TestCase):
         self.assertEqual(result["deletion_candidates"], 0)
         self.assertNotIn("pinned-compose-private", str(result))
 
+    def test_flat_files_and_private_repeated_patterns_reconcile(self):
+        rows = (f"11\t2026-05-01\t{ROOT}private-flat.tar\n"
+                f"20\t2026-05-01\t{ROOT}private-family-20260501-120000/a\n"
+                f"30\t2026-05-01\t{ROOT}private-family-20260502-120000/b\n"
+                f"40\t2026-05-01\t{ROOT}jobs-exporter-20260501-120000/a\n").encode()
+        result = profile(io.BytesIO(rows), dt.date(2026, 11, 10))
+        self.assertEqual(result["invalid_rows"], 0)
+        self.assertEqual(result["ungrouped_backup_files"], {"files": 1, "bytes": 11})
+        self.assertEqual(result["producer_name_hints"]["jobs-exporter"]["bytes"], 40)
+        self.assertEqual(result["repeated_unknown_dated_patterns"], 1)
+        self.assertEqual(result["largest_unknown_dated_patterns"], [
+            {"groups": 2, "files": 2, "bytes": 50},
+        ])
+        self.assertNotIn("private", str(result))
+        self.assertEqual(result["eligible_for_deletion_bytes"], 0)
+
     def test_invalid_and_outside_root(self):
         rows = (f"4\t2026-05-01\t{ROOT}../escape/file\n"
                 "2\t2026-05-01\t/etc/passwd\n"
