@@ -62,11 +62,16 @@ class BrokerRotationTests(unittest.TestCase):
                 self.assertTrue(select.select([subscriber.stdout], [], [], 5)[0])
                 self.assertEqual(subscriber.stdout.readline().strip(), 'before')
                 def writer(info):
-                    # Root inside disposable container only; inspect descriptors,
-                    # not log contents. PID 1 is the fixed image broker process.
-                    descriptors = execute('sh', '-c',
-                        'for f in /proc/1/fd/*; do stat -Lc "%d:%i" "$f" 2>/dev/null || :; done')
-                    return f'{info.st_dev}:{info.st_ino}' in descriptors.splitlines()
+                    # Inspect the host PID from the disposable runner. Container
+                    # root may lack permission to inspect the broker's descriptors.
+                    for descriptor in Path(f"/proc/{before['Pid']}/fd").iterdir():
+                        try:
+                            opened = descriptor.stat()
+                        except FileNotFoundError:
+                            continue
+                        if (opened.st_dev, opened.st_ino) == (info.st_dev, info.st_ino):
+                            return True
+                    return False
                 def reopen():
                     execute('mosquitto_signal', '-p', '1', 'log-rotate')
                 def verify(old, new):
