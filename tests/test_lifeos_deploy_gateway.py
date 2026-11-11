@@ -70,3 +70,14 @@ def test_mqtt_archive_scope_rejects_arguments():
         assert exc.code == 64
     else:
         raise AssertionError("archive accepted a caller-supplied argument")
+
+def test_mqtt_reclaim_scope_rejects_arguments():
+    assert gateway.parse_request(["storage-mqtt-verified-reclaim"]) == (
+        "storage-mqtt-verified-reclaim", [],
+    )
+    try:
+        gateway.parse_request(["storage-mqtt-verified-reclaim", "arbitrary"])
+    except SystemExit as exc:
+        assert exc.code == 64
+    else:
+        raise AssertionError("reclaim accepted a caller-supplied argument")
