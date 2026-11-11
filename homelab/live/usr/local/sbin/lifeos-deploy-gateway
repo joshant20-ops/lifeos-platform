@@ -172,6 +172,10 @@ OPS = {
         'script': 'scripts/lifeos-backup-pair-archive-pilot.sh',
         'privileged': True,
     },
+    'storage-mqtt-churn-audit': {
+        'script': 'scripts/lifeos-mqtt-churn-audit.sh',
+        'privileged': True,
+    },
     'storage-mqtt-log-review': {
         'script': 'scripts/lifeos-mqtt-log-review.sh',
         'privileged': True,
