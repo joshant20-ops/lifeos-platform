@@ -30,7 +30,7 @@ PRODUCER_PATTERN = re.compile(
 DATED_SUFFIX = re.compile(r"(.+?)[-_.]([0-9]{8})[-_T]([0-9]{6})Z?")
 
 
-def profile(stream, today, max_lines=MAX_LINES, source_roots=()):
+def profile(stream, today, max_lines=MAX_LINES, source_roots=(), local_selection=None):
     groups = {}
     invalid = 0
     flat = {"files": 0, "bytes": 0}
@@ -98,6 +98,8 @@ def profile(stream, today, max_lines=MAX_LINES, source_roots=()):
         ),
     )
     paired = compare_dates(groups, repeated[:2])
+    if local_selection is not None:
+        local_selection(groups, repeated[:2])
     result = {
         "schema_version": 1, "mode": "read_only_dry_run",
         "backup_groups": len(groups), "invalid_rows": invalid,
