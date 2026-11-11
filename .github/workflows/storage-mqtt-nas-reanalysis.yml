@@ -1,0 +1,59 @@
+name: Local review of the archived MQTT log
+on:
+  pull_request:
+    paths:
+      - .github/workflows/storage-mqtt-nas-reanalysis.yml
+      - governor/mqtt_nas_reanalysis.py
+      - tests/test_mqtt_nas_reanalysis.py
+      - scripts/lifeos-mqtt-nas-reanalysis.sh
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-mqtt-nas-reanalysis.yml
+permissions:
+  contents: read
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          set -Eeuo pipefail
+          if [[ ! -x /usr/bin/restic ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends restic
+          fi
+          bash -n scripts/lifeos-mqtt-nas-reanalysis.sh
+          python3 -B -m unittest -v tests.test_mqtt_nas_reanalysis tests.test_mqtt_log_review
+          python3 -B -c 'from tests.test_lifeos_deploy_gateway import gateway; assert gateway.parse_request(["storage-mqtt-nas-reanalysis"]) == ("storage-mqtt-nas-reanalysis", [])'
+  review:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' && github.run_attempt <= 3 &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 52
+    steps:
+      - name: Read the verified archive through local inference
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-nas-reanalysis
