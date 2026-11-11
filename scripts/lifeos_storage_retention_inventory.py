@@ -66,9 +66,6 @@ def summarise(stream, today, max_lines=MAX_LINES):
         read_bytes += len(raw)
         if lines > max_lines or read_bytes > MAX_INPUT_BYTES:
             raise ValueError("inventory_limit_exceeded")
-        if len(raw) > MAX_LINE_BYTES:
-            errors += 1
-            continue
         try:
             size_str, date_str, path = raw.decode("utf-8").rstrip("\n").split("\t", 2)
             size = int(size_str)
