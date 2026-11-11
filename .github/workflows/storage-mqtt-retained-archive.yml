@@ -1,0 +1,65 @@
+name: Mosquitto retained log encrypted NAS readback
+on:
+  pull_request:
+    paths:
+      - .github/workflows/storage-mqtt-retained-archive.yml
+      - governor/mqtt_live_archive.py
+      - governor/mqtt_retained_log_archive.py
+      - tests/test_mqtt_retained_log_archive.py
+      - scripts/lifeos-mqtt-retained-archive.sh
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-mqtt-retained-archive.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          set -Eeuo pipefail
+          if [[ ! -x /usr/bin/restic ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends restic
+          fi
+          bash -n scripts/lifeos-mqtt-retained-archive.sh
+          python3 -B -c 'from governor.mqtt_live_archive import run_archive'
+          python3 -B -c 'from tests.test_lifeos_deploy_gateway import test_mqtt_archive_scope_rejects_arguments as check; check()'
+          python3 -B -m unittest -v tests.test_mqtt_retained_log_archive
+
+  archive:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 31
+    steps:
+      - name: Install the reviewed operation and verify the retained log copy
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-retained-archive
