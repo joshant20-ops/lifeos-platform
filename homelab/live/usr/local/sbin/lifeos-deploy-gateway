@@ -168,6 +168,10 @@ OPS = {
         'script': 'scripts/lifeos-storage-preserve-sd-source.sh',
         'privileged': True,
     },
+    'storage-mqtt-retain-rotation': {
+        'script': 'scripts/lifeos-mqtt-retain-rotation.sh',
+        'privileged': True,
+    },
     'storage-audit-pi-state': {
         'script': 'scripts/lifeos-storage-audit-pi-state.sh',
         'privileged': True,

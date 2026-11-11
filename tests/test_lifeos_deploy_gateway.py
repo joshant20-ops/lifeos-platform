@@ -48,3 +48,14 @@ def test_restore_scope_rejects_user_controlled_paths():
             assert error.code == 64
         else:
             raise AssertionError("arbitrary path was accepted")
+
+def test_mqtt_rotation_scope_rejects_arguments():
+    assert gateway.parse_request(["storage-mqtt-retain-rotation"]) == (
+        "storage-mqtt-retain-rotation", [],
+    )
+    try:
+        gateway.parse_request(["storage-mqtt-retain-rotation", "arbitrary"])
+    except SystemExit as exc:
+        assert exc.code == 64
+    else:
+        raise AssertionError("rotation accepted a caller-supplied argument")
