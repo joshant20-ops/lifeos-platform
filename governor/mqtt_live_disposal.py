@@ -11,7 +11,8 @@ import time
 from governor.adguard_archive_restic_proof import PASSWORD_FILE, REPOSITORY, SHARE, verify_nfs_mount
 from governor.mqtt_live_rotation import JOURNAL, RETAINED, broker_identity, connection_inputs, health_checks
 from governor.mqtt_retained_log_archive import ArchiveUnverified, readback
-from governor.mqtt_retained_log_disposal import reclaim_one
+from governor.mqtt_log_review import BrokerError, ReviewUnverified, local_review
+from governor.mqtt_retained_log_disposal import reclaim_batches
 from governor.mqtt_retained_rotation import RotationStopped
 from governor.mqtt_rotation_preflight import LOG
 from governor.storage_health_gate import HealthGate, HealthUnavailable
@@ -44,25 +45,6 @@ def inode_unused(info):
     return True
 
 
-def verify_local_review(proof, review):
-    evidence = review["evidence"]
-    if (review["fingerprint"] != proof["fingerprint"]
-            or review["review"]["provider"] != "ollama"
-            or evidence["start_offset"] != 0
-            or evidence["end_offset"] != proof["fingerprint"][2]
-            or not sum(evidence["counts"].values())):
-        raise ArchiveUnverified("complete_local_ai_review_required")
-
-    offset = 0
-    for batch in review["batches"]:
-        if (batch["provider"] != "ollama" or batch["start_offset"] != offset
-                or not offset < batch["end_offset"] <= evidence["end_offset"]):
-            raise ArchiveUnverified("contiguous_local_ai_batches_required")
-        offset = batch["end_offset"]
-    if offset != evidence["end_offset"]:
-        raise ArchiveUnverified("contiguous_local_ai_batches_required")
-
-
 def reclaim():
     if os.geteuid() != 0:
         raise ArchiveUnverified("fixed_root_gateway_required")
@@ -73,8 +55,6 @@ def reclaim():
                    "rb+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         proof = json.loads((JOURNAL / "archive-verified.json").read_text())
-        review = json.loads((JOURNAL / "retained-batched-local-ai-review.json").read_text())
-        verify_local_review(proof, review)
         tag = proof["archive_tag"]
         if not re.fullmatch(r"mqtt-retained-[0-9a-f]{64}", tag):
             raise ArchiveUnverified("archive_tag_unverified")
@@ -99,14 +79,15 @@ def reclaim():
                     return readback(env, tag, tag.removeprefix("mqtt-retained-"), 600, gate.guard)
 
                 before = os.statvfs(LOG.parent)
-                reclaimed = reclaim_one(LOG.with_name(RETAINED), JOURNAL, proof,
-                                        guard, backup, inode_unused)
+                result = reclaim_batches(LOG.with_name(RETAINED), JOURNAL, proof,
+                                         guard, backup, inode_unused, local_review,
+                                         progress=lambda result: print(json.dumps(result), flush=True))
                 after = os.statvfs(LOG.parent)
                 gate.sample()
                 guard()
                 return {
-                    "status": "verified_local_copy_removed",
-                    "allocated_bytes_removed": reclaimed,
+                    "status": "verified_log_batches_reclaimed",
+                    **result,
                     "available_bytes_before": before.f_bavail * before.f_frsize,
                     "available_bytes_after": after.f_bavail * after.f_frsize,
                 }
@@ -119,10 +100,10 @@ def reclaim():
 def main():
     try:
         result = reclaim()
-    except ArchiveUnverified as error:
+    except (ArchiveUnverified, ReviewUnverified) as error:
         result = {"status": str(error)}
-    except (OSError, ValueError, KeyError, RotationStopped, HealthUnavailable,
+    except (BrokerError, OSError, ValueError, KeyError, RotationStopped, HealthUnavailable,
             subprocess.SubprocessError):
         result = {"status": "disposal_stopped_review_local_journal"}
     print(json.dumps(result, sort_keys=True))
-    return 0 if result["status"] == "verified_local_copy_removed" else 2
+    return 0 if result["status"] == "verified_log_batches_reclaimed" else 2
