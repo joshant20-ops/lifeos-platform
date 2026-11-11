@@ -52,9 +52,15 @@ class RetainedLogDisposalTests(unittest.TestCase):
         _, _, proof = self.fixture()
         report = {"fingerprint": proof["fingerprint"],
                   "review": {"provider": "ollama"},
+                  "batches": [{"provider": "ollama", "start_offset": 0,
+                               "end_offset": proof["fingerprint"][2]}],
                   "evidence": {"start_offset": 0, "end_offset": proof["fingerprint"][2],
                                "counts": {"errors": 1}}}
         verify_local_review(proof, report)
+        report["batches"][0]["start_offset"] = 1
+        with self.assertRaisesRegex(ArchiveUnverified, "contiguous_local_ai_batches_required"):
+            verify_local_review(proof, report)
+        report["batches"][0]["start_offset"] = 0
         report["evidence"]["end_offset"] -= 1
         with self.assertRaisesRegex(ArchiveUnverified, "complete_local_ai_review_required"):
             verify_local_review(proof, report)

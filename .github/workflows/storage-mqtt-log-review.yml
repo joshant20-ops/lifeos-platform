@@ -6,6 +6,8 @@ on:
       - governor/mqtt_log_review.py
       - scripts/lifeos-mqtt-log-review.sh
       - tests/test_mqtt_log_review.py
+      - governor/mqtt_live_disposal.py
+      - tests/test_mqtt_retained_log_disposal.py
   push:
     branches: [main]
     paths:
@@ -29,20 +31,20 @@ jobs:
           set -Eeuo pipefail
           bash -n scripts/lifeos-mqtt-log-review.sh
           python3 -B -c 'from tests.test_lifeos_deploy_gateway import test_mqtt_log_review_accepts_only_fixed_modes as check; check()'
-          python3 -B -m unittest -v tests.test_mqtt_log_review
+          python3 -B -m unittest -v tests.test_mqtt_log_review tests.test_mqtt_retained_log_disposal
 
   review:
     if: >-
       github.repository == 'joshant20-ops/lifeos-platform' &&
-      github.ref == 'refs/heads/main' && github.run_attempt == 1 &&
-      (github.event_name == 'schedule' ||
-       (github.event_name == 'push' && github.actor == github.repository_owner &&
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'schedule' && github.run_attempt == 1) ||
+       (github.event_name == 'push' && github.run_attempt <= 3 && github.actor == github.repository_owner &&
         github.triggering_actor == github.repository_owner))
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     concurrency:
       group: lifeos-pi5-control
       cancel-in-progress: false
-    timeout-minutes: 39
+    timeout-minutes: 52
     steps:
       - name: Run the fixed local review and keep findings on the Pi
         shell: bash
@@ -62,3 +64,7 @@ jobs:
             mode=monthly
           fi
           sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-log-review "$mode"
+
+          if [[ "$mode" == retained ]]; then
+            sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-verified-reclaim
+          fi

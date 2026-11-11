@@ -1,8 +1,11 @@
 import io
+from contextlib import redirect_stdout
+from pathlib import Path
+import tempfile
 import unittest
 from unittest.mock import patch
 
-from governor.mqtt_log_review import local_review, summarize
+from governor.mqtt_log_review import local_review, review_batches, summarize
 
 
 class LogReviewTests(unittest.TestCase):
@@ -26,3 +29,30 @@ class LogReviewTests(unittest.TestCase):
         self.assertEqual(result["findings"], [])
         self.assertEqual(generate.call_args.kwargs["privacy"], "local-only")
         self.assertEqual(generate.call_args.kwargs["force_provider"], "ollama")
+
+    def test_batches_finish_records_and_resume_only_unfinished_inference(self):
+        source = b"alpha\nbeta\n"
+        manifest = {"start_offset": 0, "target_offset": len(source)}
+        expected = {"provider": "ollama", "summary": "fixture", "findings": []}
+        calls = []
+
+        def inference(evidence):
+            calls.append(evidence["start_offset"])
+            if calls == [0, 6]:
+                raise RuntimeError("temporary provider failure")
+            return expected
+
+        with tempfile.TemporaryDirectory() as directory, redirect_stdout(io.StringIO()):
+            path = Path(directory) / "report.json"
+            def run():
+                return review_batches(io.BytesIO(source), path, manifest,
+                                      closed=True, reserve=lambda: None, stable=lambda: None,
+                                      inference=inference, batch_bytes=5)
+            with self.assertRaisesRegex(RuntimeError, "temporary provider failure"):
+                run()
+            with patch("governor.mqtt_log_review.summarize", side_effect=AssertionError("rescanned")):
+                evidence, batches = run()
+        self.assertEqual(calls, [0, 6, 6])
+        self.assertEqual(evidence["end_offset"], len(source))
+        self.assertEqual([(item["start_offset"], item["end_offset"]) for item in batches],
+                         [(0, 6), (6, len(source))])
