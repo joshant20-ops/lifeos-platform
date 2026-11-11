@@ -64,7 +64,9 @@ def readback(env, tag, expected, timeout, guard):
                 restore.kill()
 
 
-def preserve(path, env, verify_closed, *, timeout=900, guard=lambda: None):
+def preserve(path, env, verify_closed, *, timeout=900, guard=lambda: None,
+             checkpoint=lambda _info, _digest: None, resume_digest=None,
+             phase=lambda _name: None):
     fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
     with os.fdopen(fd, "rb", buffering=0) as stream:
         initial = os.fstat(fd)
@@ -80,10 +82,17 @@ def preserve(path, env, verify_closed, *, timeout=900, guard=lambda: None):
                 raise ArchiveUnverified("retained_log_changed_or_open")
 
         verify_source()
-        digest = read_digest(stream, timeout, guard)
+        phase("source_checksum")
+        if resume_digest is None:
+            digest = read_digest(stream, timeout, guard)
+        else:
+            digest = resume_digest(initial)
         verify_source()
+        checkpoint(initial, digest)
         tag = "mqtt-retained-" + digest
+        phase("check_existing_nas_copy")
         if not readback(env, tag, digest, timeout, guard):
+            phase("write_encrypted_nas_copy")
             stream.seek(0)
             verify_source()
             with subprocess.Popen(
@@ -102,6 +111,7 @@ def preserve(path, env, verify_closed, *, timeout=900, guard=lambda: None):
                         except subprocess.TimeoutExpired:
                             backup.kill()
             verify_source()
+            phase("verify_encrypted_nas_readback")
             if not readback(env, tag, digest, timeout, guard):
                 raise ArchiveUnverified("encrypted_log_readback_failed")
         verify_source()
