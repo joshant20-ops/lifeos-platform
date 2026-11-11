@@ -8,6 +8,7 @@ import argparse
 import collections
 import datetime as dt
 import json
+import os
 import re
 
 from scripts.lifeos_storage_retention_inventory import ROOT, MAX_INPUT_BYTES, MAX_LINES, inventory_rows, open_inventory
@@ -25,7 +26,7 @@ PRODUCER_PATTERN = re.compile(
 
 # Keep the private part of a dated group name in memory only. A repeated
 # pattern identifies a group of similarly named records, not their owner.
-DATED_SUFFIX = re.compile(r"(.+?)[-_.][0-9]{8}[-_T][0-9]{6}Z?")
+DATED_SUFFIX = re.compile(r"(.+?)[-_.]([0-9]{8})[-_T]([0-9]{6})Z?")
 
 
 def profile(stream, today, max_lines=MAX_LINES):
@@ -89,17 +90,21 @@ def profile(stream, today, max_lines=MAX_LINES):
             cohort["files"] += record["files"]
             cohort["bytes"] += record["bytes"]
     repeated = sorted(
-        (item for item in dated_unknown.values() if item["groups"] > 1),
-        key=lambda item: (item["bytes"], item["groups"], item["files"]),
-        reverse=True,
+        (name for name, item in dated_unknown.items() if item["groups"] > 1),
+        key=lambda name: (
+            -dated_unknown[name]["bytes"], -dated_unknown[name]["groups"],
+            -dated_unknown[name]["files"], name,
+        ),
     )
+    paired = compare_dates(groups, repeated[:2])
     return {
         "schema_version": 1, "mode": "read_only_dry_run",
         "backup_groups": len(groups), "invalid_rows": invalid,
         "age_bands_by_latest_group_file": dict(sorted(summary.items())),
         "ungrouped_backup_files": flat,
         "repeated_unknown_dated_patterns": len(repeated),
-        "largest_unknown_dated_patterns": repeated[:8],
+        "largest_unknown_dated_patterns": [dated_unknown[name] for name in repeated[:8]],
+        "largest_two_timestamp_overlap": paired,
         "producer_name_hints": dict(sorted(families.items())),
         "deletion_candidates": 0, "eligible_for_deletion_bytes": 0,
         "retention_verdict": "UNDETERMINED_REQUIRES_TERMINAL_AND_HOLD_PROOF",
@@ -107,14 +112,44 @@ def profile(stream, today, max_lines=MAX_LINES):
     }
 
 
+def compare_dates(groups, names):
+    if len(names) < 2:
+        return None
+    timestamps = {name: set() for name in names}
+    for group in groups:
+        match = DATED_SUFFIX.fullmatch(group)
+        if match and match[1] in timestamps:
+            timestamps[match[1]].add(match[2] + match[3])
+    left, right = (timestamps[name] for name in names)
+    return {
+        "distinct_timestamps_by_rank": [len(left), len(right)],
+        "shared_timestamps": len(left & right),
+    }
+
+
+def storage_blocks(path):
+    fs = os.statvfs(path)
+    return {
+        "capacity_bytes": fs.f_blocks * fs.f_frsize,
+        "used_bytes": (fs.f_blocks - fs.f_bfree) * fs.f_frsize,
+        "reserved_free_bytes": (fs.f_bfree - fs.f_bavail) * fs.f_frsize,
+        "available_bytes": fs.f_bavail * fs.f_frsize,
+        "available_inodes": fs.f_favail,
+    }
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("inventory", help="Local inventory TSV; do not publish")
     parser.add_argument("--today", type=dt.date.fromisoformat, default=dt.datetime.now(dt.timezone.utc).date())
+    parser.add_argument("--storage-blocks", action="store_true",
+                        help="Include aggregate block counts for the Docker data filesystem")
     args = parser.parse_args()
     try:
         with open_inventory(args.inventory) as stream:
             report = profile(stream, args.today)
+        if args.storage_blocks:
+            report["docker_data_filesystem"] = storage_blocks("/mnt/docker-data")
         print(json.dumps(report, sort_keys=True))
     except (OSError, ValueError):
         print(json.dumps({"status": "inventory_unavailable_or_out_of_bounds"}))

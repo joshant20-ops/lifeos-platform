@@ -50,6 +50,18 @@ class BackupProfileTests(unittest.TestCase):
         self.assertNotIn("private", str(result))
         self.assertEqual(result["eligible_for_deletion_bytes"], 0)
 
+    def test_top_two_compare_exact_timestamp_values_without_exporting_them(self):
+        rows = (f"20\t2026-05-01\t{ROOT}private-a-20260501-120000/a\n"
+                f"20\t2026-05-01\t{ROOT}private-a-20260502-120000/a\n"
+                f"15\t2026-05-01\t{ROOT}private-b-20260501T120000Z/a\n"
+                f"15\t2026-05-01\t{ROOT}private-b-20260503-120000/a\n").encode()
+        result = profile(io.BytesIO(rows), dt.date(2026, 11, 10))
+        self.assertEqual(result["largest_two_timestamp_overlap"], {
+            "distinct_timestamps_by_rank": [2, 2], "shared_timestamps": 1,
+        })
+        self.assertNotIn("20260501", str(result))
+        self.assertNotIn("private", str(result))
+
     def test_invalid_and_outside_root(self):
         rows = (f"4\t2026-05-01\t{ROOT}../escape/file\n"
                 "2\t2026-05-01\t/etc/passwd\n"

@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           persist-credentials: false
-      - name: Reconcile grouped and ungrouped backup inventory
+      - name: Compare recurring backup timestamps and measure filesystem blocks
         shell: bash
         run: |
           set -Eeuo pipefail
@@ -54,4 +54,4 @@ jobs:
           fi
           ulimit -v 262144
           timeout -k 5s 60s ionice -c3 nice -n 15 python3 -B \
-            -m scripts.lifeos_storage_backup_profile "$HOME/lifeos-storage-inventory.tsv"
+            -m scripts.lifeos_storage_backup_profile "$HOME/lifeos-storage-inventory.tsv" --storage-blocks
