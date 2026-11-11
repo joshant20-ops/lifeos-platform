@@ -1,8 +1,10 @@
 import datetime as dt
 import io
+from pathlib import Path
+import tempfile
 import unittest
 
-from scripts.lifeos_storage_backup_profile import profile
+from scripts.lifeos_storage_backup_profile import profile, source_hints
 
 ROOT = "/mnt/docker-data/automation/backups/"
 
@@ -61,6 +63,18 @@ class BackupProfileTests(unittest.TestCase):
         })
         self.assertNotIn("20260501", str(result))
         self.assertNotIn("private", str(result))
+
+    def test_installed_source_hints_are_aggregate_and_refuse_symlinks(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "private.py").write_text("private-a- private-b-")
+            (root / "ignored.txt").write_text("private-a-")
+            (root / "alias.py").symlink_to(root / "private.py")
+            report = source_hints(["private-a", "private-b"], [root])
+        self.assertEqual(report, {
+            "sources_read": 1, "skipped_or_limited": 1,
+            "sources_matching_by_rank": [1, 1], "sources_matching_both": 1,
+        })
 
     def test_invalid_and_outside_root(self):
         rows = (f"4\t2026-05-01\t{ROOT}../escape/file\n"

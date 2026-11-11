@@ -10,6 +10,7 @@ import datetime as dt
 import json
 import os
 import re
+import stat
 
 from scripts.lifeos_storage_retention_inventory import ROOT, MAX_INPUT_BYTES, MAX_LINES, inventory_rows, open_inventory
 
@@ -29,7 +30,7 @@ PRODUCER_PATTERN = re.compile(
 DATED_SUFFIX = re.compile(r"(.+?)[-_.]([0-9]{8})[-_T]([0-9]{6})Z?")
 
 
-def profile(stream, today, max_lines=MAX_LINES):
+def profile(stream, today, max_lines=MAX_LINES, source_roots=()):
     groups = {}
     invalid = 0
     flat = {"files": 0, "bytes": 0}
@@ -97,7 +98,7 @@ def profile(stream, today, max_lines=MAX_LINES):
         ),
     )
     paired = compare_dates(groups, repeated[:2])
-    return {
+    result = {
         "schema_version": 1, "mode": "read_only_dry_run",
         "backup_groups": len(groups), "invalid_rows": invalid,
         "age_bands_by_latest_group_file": dict(sorted(summary.items())),
@@ -110,6 +111,61 @@ def profile(stream, today, max_lines=MAX_LINES):
         "retention_verdict": "UNDETERMINED_REQUIRES_TERMINAL_AND_HOLD_PROOF",
         "note": "Dates are file modification dates, not verified backup creation or recovery status."
     }
+
+    if source_roots:
+        result["installed_producer_source_hints"] = source_hints(repeated[:2], source_roots)
+    return result
+
+
+def source_hints(names, roots):
+    needles = [re.compile(rb"(?<![a-zA-Z0-9_])" + re.escape(name.encode()) + rb"[-_.]")
+               for name in names]
+    matches = [0] * len(names)
+    shared = scanned = skipped = 0
+    remaining = 12 * 1024 * 1024
+    for root in roots:
+        try:
+            with os.scandir(root) as entries:
+                for index, entry in enumerate(entries):
+                    if index >= 512:
+                        skipped += 1
+                        break
+                    if not entry.name.endswith((".py", ".sh")):
+                        continue
+                    try:
+                        if not entry.is_file(follow_symlinks=False):
+                            skipped += 1
+                            continue
+                        fd = os.open(entry.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+                        with os.fdopen(fd, "rb") as stream:
+                            info = os.fstat(stream.fileno())
+                            if not stat.S_ISREG(info.st_mode) or info.st_size > 262144:
+                                skipped += 1
+                                continue
+                            if remaining <= 0:
+                                skipped += 1
+                                break
+                            data = stream.read(min(remaining, 262145))
+                            remaining -= len(data)
+                            if len(data) < info.st_size:
+                                skipped += 1
+                                continue
+                    except OSError:
+                        skipped += 1
+                        continue
+                    if len(data) > 262144:
+                        skipped += 1
+                        continue
+                    scanned += 1
+                    found = [bool(needle.search(data)) for needle in needles]
+                    for rank, hit in enumerate(found):
+                        matches[rank] += hit
+                    if len(found) == 2 and all(found):
+                        shared += 1
+        except OSError:
+            skipped += 1
+    return {"sources_read": scanned, "skipped_or_limited": skipped,
+            "sources_matching_by_rank": matches, "sources_matching_both": shared}
 
 
 def compare_dates(groups, names):
@@ -144,10 +200,14 @@ def main():
     parser.add_argument("--today", type=dt.date.fromisoformat, default=dt.datetime.now(dt.timezone.utc).date())
     parser.add_argument("--storage-blocks", action="store_true",
                         help="Include aggregate block counts for the Docker data filesystem")
+    parser.add_argument("--installed-source-hints", action="store_true",
+                        help="Count matching literals in fixed local producer script directories")
     args = parser.parse_args()
     try:
         with open_inventory(args.inventory) as stream:
-            report = profile(stream, args.today)
+            roots = ("/mnt/docker-data/automation", "/mnt/docker-data/automation/scripts")
+            report = profile(stream, args.today,
+                             source_roots=roots if args.installed_source_hints else ())
         if args.storage_blocks:
             report["docker_data_filesystem"] = storage_blocks("/mnt/docker-data")
         print(json.dumps(report, sort_keys=True))
