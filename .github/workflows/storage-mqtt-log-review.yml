@@ -46,7 +46,7 @@ jobs:
       cancel-in-progress: false
     timeout-minutes: 52
     steps:
-      - name: Run the fixed local review and keep findings on the Pi
+      - name: Run the fixed local review with schema-validated batches
         shell: bash
         run: |
           set -Eeuo pipefail
