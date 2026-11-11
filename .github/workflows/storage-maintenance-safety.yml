@@ -7,13 +7,15 @@ on:
       - tests/test_mqtt_retained_rotation.py
       - tests/test_storage_health_gate.py
       - tests/test_mqtt_rotation_broker.py
+      - governor/mqtt_retained_log_archive.py
+      - tests/test_mqtt_retained_log_archive.py
       - .github/workflows/storage-maintenance-safety.yml
 permissions:
   contents: read
 jobs:
   synthetic-safety:
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 3
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
@@ -23,3 +25,11 @@ jobs:
         run: docker pull eclipse-mosquitto@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797
       - name: Prove retained rotation and subscriber continuity
         run: sudo -n python3 -B -m unittest -v tests.test_mqtt_rotation_broker
+
+      - name: Verify encrypted streaming readback from an isolated repository
+        run: |
+          if [[ ! -x /usr/bin/restic ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends restic
+          fi
+          python3 -B -m unittest -v tests.test_mqtt_retained_log_archive
