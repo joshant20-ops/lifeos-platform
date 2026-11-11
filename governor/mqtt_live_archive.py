@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import stat
+import re
 import subprocess
 
 from governor.adguard_archive_restic_proof import PASSWORD_FILE, REPOSITORY, SHARE, verify_nfs_mount
@@ -48,11 +49,32 @@ def run_archive():
                             and broker_identity() == initial
                             and not writer_matches(initial[2], candidate))
 
+                prepared = JOURNAL / "archive-prepared.json"
+
+                def resume(candidate):
+                    saved = json.loads(prepared.read_text())
+                    if (tuple(saved["fingerprint"]) != fingerprint(candidate)
+                            or not re.fullmatch(r"[0-9a-f]{64}", saved["digest"])):
+                        raise ArchiveUnverified("archive_checkpoint_mismatch")
+                    return saved["digest"]
+
+                def checkpoint(candidate, digest):
+                    if prepared.exists():
+                        if resume(candidate) != digest:
+                            raise ArchiveUnverified("archive_checkpoint_mismatch")
+                    else:
+                        write_record(prepared, {"fingerprint": fingerprint(candidate),
+                                                "digest": digest})
+
+                def phase(name):
+                    print(json.dumps({"archive_phase": name}), flush=True)
+
                 report = preserve(path, {
                     "PATH": "/usr/bin:/bin", "HOME": "/dev/shm",
                     "RESTIC_REPOSITORY": str(repo), "RESTIC_PASSWORD_FILE": str(PASSWORD_FILE),
                     "GOMAXPROCS": "1", "GOMEMLIMIT": "256MiB",
-                }, closed, timeout=600, guard=gate.guard)
+                }, closed, timeout=900, guard=gate.guard, checkpoint=checkpoint,
+                    resume_digest=resume if prepared.exists() else None, phase=phase)
                 gate.sample()
                 gate.guard()
                 if fingerprint(path.lstat()) != fingerprint(info):
@@ -73,8 +95,9 @@ def main():
         result = run_archive()
     except ArchiveUnverified as error:
         result = {"status": str(error)}
-    except (OSError, ValueError, KeyError, RotationStopped, HealthUnavailable,
-            subprocess.SubprocessError):
-        result = {"status": "archive_stopped_review_local_journal"}
+    except HealthUnavailable:
+        result = {"status": "archive_stopped_health_probe_failed"}
+    except (OSError, ValueError, KeyError, RotationStopped, subprocess.SubprocessError) as error:
+        result = {"status": "archive_stopped_review_local_journal", "error_type": type(error).__name__}
     print(json.dumps(result, sort_keys=True))
     return 0 if result["status"] == "encrypted_log_readback_verified" else 2

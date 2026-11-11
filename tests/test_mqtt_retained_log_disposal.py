@@ -4,6 +4,7 @@ import unittest
 
 from governor.mqtt_retained_log_archive import ArchiveUnverified, fingerprint
 from governor.mqtt_retained_log_disposal import reclaim_one
+from governor.mqtt_live_disposal import verify_local_review
 
 
 class RetainedLogDisposalTests(unittest.TestCase):
@@ -46,3 +47,14 @@ class RetainedLogDisposalTests(unittest.TestCase):
         self.assertEqual(reclaimed, proof["allocated_bytes"])
         self.assertFalse(path.exists())
         self.assertEqual(unrelated.read_bytes(), b"active")
+
+    def test_review_must_cover_the_exact_archived_inode(self):
+        _, _, proof = self.fixture()
+        report = {"fingerprint": proof["fingerprint"],
+                  "review": {"provider": "ollama"},
+                  "evidence": {"start_offset": 0, "end_offset": proof["fingerprint"][2],
+                               "counts": {"errors": 1}}}
+        verify_local_review(proof, report)
+        report["evidence"]["end_offset"] -= 1
+        with self.assertRaisesRegex(ArchiveUnverified, "complete_local_ai_review_required"):
+            verify_local_review(proof, report)

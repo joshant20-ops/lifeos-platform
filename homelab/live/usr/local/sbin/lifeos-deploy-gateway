@@ -168,6 +168,10 @@ OPS = {
         'script': 'scripts/lifeos-storage-preserve-sd-source.sh',
         'privileged': True,
     },
+    'storage-mqtt-log-review': {
+        'script': 'scripts/lifeos-mqtt-log-review.sh',
+        'privileged': True,
+    },
     'storage-mqtt-verified-reclaim': {
         'script': 'scripts/lifeos-mqtt-verified-reclaim.sh',
         'privileged': True,
@@ -254,8 +258,11 @@ def preflight():
 
 
 def parse_request(argv: list[str]) -> tuple[str, list[str]]:
-    if len(argv) == 1 and argv[0] in OPS and argv[0] != 'capture-tower-wol':
+    if len(argv) == 1 and argv[0] in OPS and argv[0] not in {'capture-tower-wol', 'storage-mqtt-log-review'}:
         return argv[0], []
+    if argv in (['storage-mqtt-log-review', 'retained'],
+                ['storage-mqtt-log-review', 'monthly']):
+        return argv[0], argv[1:]
     if argv in (['restore-rehearsal', 'adguard-config'], ['restore-rehearsal', 'adguard-tree'],
                 ['restore-rehearsal', 'adguard-archive']):
         return argv[0], argv[1:]

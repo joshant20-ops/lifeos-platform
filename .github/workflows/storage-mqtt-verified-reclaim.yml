@@ -7,10 +7,15 @@ on:
       - governor/mqtt_retained_log_disposal.py
       - tests/test_mqtt_retained_log_disposal.py
       - scripts/lifeos-mqtt-verified-reclaim.sh
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-mqtt-verified-reclaim.yml
 permissions:
   contents: read
 jobs:
   test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 3
     steps:
@@ -22,3 +27,32 @@ jobs:
           bash -n scripts/lifeos-mqtt-verified-reclaim.sh
           python3 -B -c 'from tests.test_lifeos_deploy_gateway import test_mqtt_reclaim_scope_rejects_arguments as check; check()'
           python3 -B -m unittest -v tests.test_mqtt_retained_log_disposal tests.test_mqtt_retained_rotation tests.test_storage_health_gate
+
+  reclaim:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 13
+    steps:
+      - name: Reclaim the fixed HDD copy after verifying the AI report and NAS bytes
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-verified-reclaim

@@ -44,6 +44,16 @@ def inode_unused(info):
     return True
 
 
+def verify_local_review(proof, review):
+    evidence = review["evidence"]
+    if (review["fingerprint"] != proof["fingerprint"]
+            or review["review"]["provider"] != "ollama"
+            or evidence["start_offset"] != 0
+            or evidence["end_offset"] != proof["fingerprint"][2]
+            or not sum(evidence["counts"].values())):
+        raise ArchiveUnverified("complete_local_ai_review_required")
+
+
 def reclaim():
     if os.geteuid() != 0:
         raise ArchiveUnverified("fixed_root_gateway_required")
@@ -54,6 +64,8 @@ def reclaim():
                    "rb+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         proof = json.loads((JOURNAL / "archive-verified.json").read_text())
+        review = json.loads((JOURNAL / "retained-local-ai-review.json").read_text())
+        verify_local_review(proof, review)
         tag = proof["archive_tag"]
         if not re.fullmatch(r"mqtt-retained-[0-9a-f]{64}", tag):
             raise ArchiveUnverified("archive_tag_unverified")
