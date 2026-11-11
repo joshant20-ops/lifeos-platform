@@ -39,7 +39,7 @@ jobs:
       cancel-in-progress: false
     timeout-minutes: 4
     steps:
-      - name: Wait for a connection burst before tracing local socket owners
+      - name: Sample local MQTT socket owners rapidly during a burst
         shell: bash
         run: |
           set -Eeuo pipefail
