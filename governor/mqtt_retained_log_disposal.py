@@ -1,63 +1,120 @@
-"""Reclaim one journaled retained file after an independently verified readback."""
+"""Review and reclaim the closed log from the tail, one durable batch at a time."""
+import json
 import os
-from pathlib import Path
 import stat
-import tempfile
 
+from governor.mqtt_log_review import BATCH_BYTES, MAX_LINE, summarize
 from governor.mqtt_retained_log_archive import ArchiveUnverified, fingerprint
 from governor.mqtt_retained_rotation import write_record
 
 
-def reclaim_one(path, journal, proof, guard, verify_backup, unused):
-    """The caller holds the rotation lock and supplies the exact approved proof.
+def tail_boundary(stream, end, batch_bytes):
+    start = max(0, end - batch_bytes)
+    if not start:
+        return 0
+    stream.seek(start - 1)
+    if stream.read(1) == b"\n":
+        return start
+    remainder = stream.readline(min(MAX_LINE, end - start))
+    if not remainder.endswith(b"\n") or stream.tell() >= end:
+        raise ArchiveUnverified("tail_batch_boundary_unverified")
+    return stream.tell()
 
-    Move to a private directory on the same filesystem before unlinking.
-    Unexpected state after the move preserves the file for local recovery.
-    """
+
+def current_info(path, expected):
     info = path.lstat()
-    expected = tuple(proof["fingerprint"])
     if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-            or fingerprint(info) != expected
-            or info.st_blocks * 512 != proof["allocated_bytes"]):
+            or fingerprint(info) != tuple(expected)):
         raise ArchiveUnverified("approved_inode_changed")
+    return info
+
+
+def reclaim_batches(path, journal, proof, guard, verify_backup, unused, inference,
+                    progress=lambda _result: None, *, batch_bytes=BATCH_BYTES):
+    if batch_bytes <= 0:
+        raise ArchiveUnverified("invalid_batch_limit")
+    original = proof["fingerprint"]
+    expected = original
+    index = 0
+    total = 0
+    while (done := journal / f"tail-batch-{index:03d}-reclaimed.json").exists():
+        record = json.loads(done.read_text())
+        updated = record["after"]
+        if (record["before"] != expected or updated[:2] != original[:2]
+                or not 0 <= updated[2] < expected[2]):
+            raise ArchiveUnverified("reclaim_ledger_unverified")
+        expected = updated
+        total += record["allocated_bytes_removed"]
+        index += 1
+
+    info = current_info(path, expected)
+    if not index and info.st_blocks * 512 != proof["allocated_bytes"]:
+        raise ArchiveUnverified("approved_allocation_changed")
+    if not info.st_size:
+        return {"batches_reclaimed": index, "allocated_bytes_removed": total, "remaining_bytes": 0}
+
     guard()
-    if not unused(info):
-        raise ArchiveUnverified("retained_inode_in_use")
     if not verify_backup(proof):
         raise ArchiveUnverified("fresh_nas_readback_unverified")
-    guard()
-    if fingerprint(path.lstat()) != expected:
-        raise ArchiveUnverified("approved_inode_changed")
-    quarantine = Path(tempfile.mkdtemp(prefix=".lifeos-mqtt-disposal-", dir=path.parent))
-    quarantine_fd = os.open(quarantine, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        write_record(journal / "disposal-prepared.json", {
-            "source": str(path), "quarantine": str(quarantine),
-            "fingerprint": expected, "archive_tag": proof["archive_tag"],
-        })
+
+    while info.st_size:
         guard()
-        if fingerprint(path.lstat()) != expected:
-            raise ArchiveUnverified("approved_inode_changed")
-        os.rename(path, "retained.log", dst_dir_fd=quarantine_fd)
-        moved = os.stat("retained.log", dir_fd=quarantine_fd, follow_symlinks=False)
-        if (not stat.S_ISREG(moved.st_mode) or moved.st_nlink != 1
-                or fingerprint(moved)[:3] != expected[:3]
-                or moved.st_mtime_ns != expected[-1]
-                or moved.st_blocks * 512 != proof["allocated_bytes"]
-                or not unused(moved)):
-            raise ArchiveUnverified("quarantined_inode_unverified")
+        end = info.st_size
+        review_path = journal / f"tail-batch-{index:03d}-reviewed.json"
+        if review_path.exists():
+            record = json.loads(review_path.read_text())
+            if record["before"] != expected:
+                raise ArchiveUnverified("batch_review_inode_unverified")
+        else:
+            flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+            with os.fdopen(os.open(path, flags), "rb") as stream:
+                if fingerprint(os.fstat(stream.fileno())) != tuple(expected):
+                    raise ArchiveUnverified("approved_inode_changed")
+                start = tail_boundary(stream, end, batch_bytes)
+                stream.seek(start)
+                evidence = summarize(stream, end, closed=True, guard=guard)
+            if evidence["end_offset"] != end or not sum(evidence["counts"].values()):
+                raise ArchiveUnverified("batch_scan_incomplete")
+            review = inference(evidence)
+            if review["provider"] != "ollama":
+                raise ArchiveUnverified("batch_provider_unverified")
+            current_info(path, expected)
+            write_record(review_path, {
+                "before": expected, "evidence": evidence, "review": review,
+            })
+            record = {"evidence": evidence, "review": review}
+        evidence = record["evidence"]
+        start = evidence["start_offset"]
+        if (record["review"]["provider"] != "ollama" or evidence["end_offset"] != end
+                or not 0 <= start < end or end - start > batch_bytes
+                or not sum(evidence["counts"].values())):
+            raise ArchiveUnverified("batch_review_coverage_unverified")
         guard()
-        os.unlink("retained.log", dir_fd=quarantine_fd)
-        os.fsync(quarantine_fd)
-        write_record(journal / "disposal-complete.json", {
-            "status": "verified_local_copy_removed",
-            "allocated_bytes": info.st_blocks * 512,
-        })
-        return info.st_blocks * 512
-    finally:
-        os.close(quarantine_fd)
+        info = current_info(path, expected)
+        if not unused(info):
+            raise ArchiveUnverified("retained_inode_in_use")
+        fd = os.open(path, os.O_WRONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
         try:
-            quarantine.rmdir()
-        except OSError:
-            # A stopped disposal can leave the verified file in quarantine.
-            pass
+            opened = os.fstat(fd)
+            if opened.st_nlink != 1 or fingerprint(opened) != tuple(expected):
+                raise ArchiveUnverified("approved_inode_changed")
+            guard()
+            os.ftruncate(fd, start)
+            os.fsync(fd)
+            after = os.fstat(fd)
+            if after.st_size != start:
+                raise ArchiveUnverified("batch_truncation_unverified")
+        finally:
+            os.close(fd)
+        freed = max(0, (info.st_blocks - after.st_blocks) * 512)
+        write_record(journal / f"tail-batch-{index:03d}-reclaimed.json", {
+            "before": expected, "after": fingerprint(after),
+            "allocated_bytes_removed": freed,
+        })
+        expected = list(fingerprint(after))
+        total += freed
+        index += 1
+        info = current_info(path, expected)
+        progress({"batches_reclaimed": index, "allocated_bytes_removed": total,
+                  "remaining_bytes": info.st_size})
+    return {"batches_reclaimed": index, "allocated_bytes_removed": total, "remaining_bytes": 0}

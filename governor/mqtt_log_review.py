@@ -14,7 +14,7 @@ from governor.mqtt_rotation_preflight import LOG
 from governor.storage_tier0 import enough_space
 
 MAX_BYTES = 16 * 1024**3
-BATCH_BYTES = 2 * 1024**3
+BATCH_BYTES = 256 * 1024**2
 MAX_LINE = 16 * 1024
 SAMPLES_PER_CLASS = 4
 REVIEW_SCHEMA = {
