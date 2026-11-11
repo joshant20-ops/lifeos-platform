@@ -1,0 +1,57 @@
+name: Read-only backup inventory profile
+on:
+  pull_request:
+    paths:
+      - .github/workflows/storage-backup-inventory-profile.yml
+      - 'scripts/lifeos_storage_*.py'
+      - 'tests/test_storage_backup_profile.py'
+      - 'tests/test_storage_retention_inventory.py'
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-backup-inventory-profile.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest -v tests.test_storage_retention_inventory tests.test_storage_backup_profile
+
+  profile:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Read existing inventory at idle I/O priority
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          available=$(df -B1 --output=avail /mnt/docker-data | tail -n 1)
+          if (( available < 10737418240 )); then
+            echo 'STORAGE_PROFILE=SKIPPED_RESERVE'
+            exit 1
+          fi
+          ulimit -v 262144
+          timeout -k 5s 60s ionice -c3 nice -n 15 python3 -B \
+            -m scripts.lifeos_storage_backup_profile "$HOME/lifeos-storage-inventory.tsv"
