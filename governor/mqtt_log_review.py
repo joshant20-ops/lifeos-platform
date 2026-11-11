@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 import fcntl
 import json
 import os
-from pathlib import Path
 import stat
 
 from governor.ai_broker import BrokerError, generate
@@ -15,6 +14,7 @@ from governor.mqtt_rotation_preflight import LOG
 from governor.storage_tier0 import enough_space
 
 MAX_BYTES = 16 * 1024**3
+BATCH_BYTES = 2 * 1024**3
 MAX_LINE = 16 * 1024
 SAMPLES_PER_CLASS = 4
 ROUTINE = frozenset({"connection", "message_activity"})
@@ -32,7 +32,7 @@ class ReviewUnverified(RuntimeError):
     pass
 
 
-def summarize(stream, end, *, closed, guard=lambda: None):
+def summarize(stream, end, *, closed, guard=lambda: None, stop_at=None):
     start = offset = stream.tell()
     if not 0 <= end - start <= MAX_BYTES:
         raise ReviewUnverified("scan_limit_exceeded")
@@ -40,7 +40,9 @@ def summarize(stream, end, *, closed, guard=lambda: None):
     samples = {}
     next_check = offset
     oversized = False
-    while offset < end:
+    record_start = offset
+    stop_at = end if stop_at is None else stop_at
+    while offset < end and (offset < stop_at or oversized):
         if offset >= next_check:
             guard()
             next_check = offset + 64 * 1024**2
@@ -48,15 +50,19 @@ def summarize(stream, end, *, closed, guard=lambda: None):
         if not raw:
             raise ReviewUnverified("source_short_read")
         if not raw.endswith(b"\n"):
-            if offset + len(raw) == end and not closed:
-                break  # Revisit the unfinished live line next month.
             offset += len(raw)
-            if not oversized:
-                counts["oversize_or_unterminated"] += 1
+            if offset == end:
+                if not closed:
+                    offset = record_start  # Revisit the whole unfinished live record.
+                else:
+                    counts["oversize_or_unterminated"] += 1
+                break
             oversized = True
             continue
         offset += len(raw)
+        record_start = offset
         if oversized:
+            counts["oversize_or_unterminated"] += 1
             oversized = False
             continue
         lower = raw.lower()
@@ -101,6 +107,56 @@ def local_review(evidence):
             "summary": review["summary"], "findings": review["findings"]}
 
 
+def review_batches(stream, report_path, manifest, *, closed, reserve, stable, inference,
+                   batch_bytes=BATCH_BYTES):
+    """Persist scan and inference separately so neither repeats after a retry."""
+    start = offset = manifest["start_offset"]
+    end = manifest["target_offset"]
+    if not 0 <= end - start <= MAX_BYTES or batch_bytes <= 0:
+        raise ReviewUnverified("scan_limit_exceeded")
+    counts = Counter()
+    reviews = []
+    while offset < end:
+        index = len(reviews)
+        stem = f"{report_path.stem}-batch-{index:03d}"
+        evidence_path = report_path.with_name(stem + "-evidence.json")
+        result_path = report_path.with_name(stem + "-review.json")
+        reserve()
+        stable()
+        if evidence_path.exists():
+            evidence = json.loads(evidence_path.read_text())
+        else:
+            stream.seek(offset)
+            evidence = summarize(stream, end, closed=closed, guard=reserve,
+                                 stop_at=min(end, offset + batch_bytes))
+            if evidence["end_offset"] == offset:
+                break
+            stable()
+            write_record(evidence_path, evidence)
+        new_offset = evidence["end_offset"]
+        if evidence["start_offset"] != offset or not offset < new_offset <= end:
+            raise ReviewUnverified("batch_coverage_unverified")
+        if result_path.exists():
+            completed = json.loads(result_path.read_text())
+            if completed["end_offset"] != new_offset:
+                raise ReviewUnverified("batch_review_coverage_unverified")
+            review = completed["review"]
+        else:
+            review = inference(evidence)
+            stable()
+            write_record(result_path, {"end_offset": new_offset, "review": review})
+        if review["provider"] != "ollama":
+            raise ReviewUnverified("batch_provider_unverified")
+        counts.update(evidence["counts"])
+        reviews.append({"start_offset": offset, "end_offset": new_offset, **review})
+        offset = new_offset
+        print(json.dumps({"review_batch": index + 1, "reviewed_bytes": offset - start}),
+              flush=True)
+    if closed and (offset != end or not sum(counts.values())):
+        raise ReviewUnverified("retained_scan_incomplete")
+    return {"start_offset": start, "end_offset": offset, "counts": dict(sorted(counts.items()))}, reviews
+
+
 def review_file(path, report_path, *, proof=None, previous=None, inference=local_review):
     with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
         info = os.fstat(stream.fileno())
@@ -108,30 +164,50 @@ def review_file(path, report_path, *, proof=None, previous=None, inference=local
             raise ReviewUnverified("unexpected_log_type")
         if proof and tuple(proof["fingerprint"]) != fingerprint(info):
             raise ReviewUnverified("nas_verified_inode_changed")
-        if previous and previous["identity"] == [info.st_dev, info.st_ino]:
+        identity = [info.st_dev, info.st_ino]
+        offset = 0
+        if previous and previous["identity"] == identity:
             offset = previous["evidence"]["end_offset"]
-            if not 0 <= offset <= info.st_size:
-                raise ReviewUnverified("active_log_shrank")
-            stream.seek(offset)
+
         def reserve():
             if not enough_space():
                 raise ReviewUnverified("critical_storage_reserve")
-        reserve()
-        evidence = summarize(stream, info.st_size, closed=proof is not None, guard=reserve)
-        if proof and (evidence["end_offset"] != info.st_size or not sum(evidence["counts"].values())):
-            raise ReviewUnverified("retained_scan_incomplete")
-        review = inference(evidence)
-        current = path.lstat()
-        if ((current.st_dev, current.st_ino) != (info.st_dev, info.st_ino)
-                or (proof and fingerprint(current) != fingerprint(info))):
-            raise ReviewUnverified("log_changed_during_review")
+
+        def stable():
+            current = path.lstat()
+            if ([current.st_dev, current.st_ino] != identity or current.st_size < info.st_size
+                    or (proof and fingerprint(current) != fingerprint(info))):
+                raise ReviewUnverified("log_changed_during_review")
+
+        manifest_path = report_path.with_name(report_path.stem + "-manifest.json")
+        if manifest_path.exists():
+            manifest = json.loads(manifest_path.read_text())
+            if (manifest["identity"] != identity or manifest["start_offset"] != offset
+                    or not offset <= manifest["target_offset"] <= info.st_size
+                    or (proof and manifest["fingerprint"] != proof["fingerprint"])):
+                raise ReviewUnverified("batch_manifest_mismatch")
+        else:
+            if not 0 <= info.st_size - offset <= MAX_BYTES:
+                raise ReviewUnverified("scan_limit_exceeded")
+            manifest = {"identity": identity, "fingerprint": fingerprint(info),
+                        "start_offset": offset, "target_offset": info.st_size}
+            reserve()
+            stable()
+            write_record(manifest_path, manifest)
+        evidence, reviews = review_batches(
+            stream, report_path, manifest, closed=proof is not None, reserve=reserve,
+            stable=stable, inference=inference,
+        )
+        stable()
         write_record(report_path, {
             "observed_at": datetime.now(timezone.utc).isoformat(),
-            "identity": [info.st_dev, info.st_ino], "fingerprint": fingerprint(info),
-            "evidence": evidence, "review": review,
+            "identity": identity, "fingerprint": fingerprint(info),
+            "evidence": evidence, "review": {"provider": "ollama"},
+            "batches": reviews,
         })
     return {"status": "local_ai_review_completed", "reviewed_bytes": evidence["end_offset"] - evidence["start_offset"],
-            "classified_counts": evidence["counts"], "findings_count": len(review["findings"])}
+            "classified_counts": evidence["counts"], "batches": len(reviews),
+            "findings_count": sum(len(review["findings"]) for review in reviews)}
 
 
 def run(monthly):
@@ -144,7 +220,7 @@ def run(monthly):
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if not monthly:
             proof = json.loads((JOURNAL / "archive-verified.json").read_text())
-            report = JOURNAL / "retained-local-ai-review.json"
+            report = JOURNAL / "retained-batched-local-ai-review.json"
             if report.exists():
                 saved = json.loads(report.read_text())
                 if saved["fingerprint"] != proof["fingerprint"]:

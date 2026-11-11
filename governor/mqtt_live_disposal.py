@@ -53,6 +53,15 @@ def verify_local_review(proof, review):
             or not sum(evidence["counts"].values())):
         raise ArchiveUnverified("complete_local_ai_review_required")
 
+    offset = 0
+    for batch in review["batches"]:
+        if (batch["provider"] != "ollama" or batch["start_offset"] != offset
+                or not offset < batch["end_offset"] <= evidence["end_offset"]):
+            raise ArchiveUnverified("contiguous_local_ai_batches_required")
+        offset = batch["end_offset"]
+    if offset != evidence["end_offset"]:
+        raise ArchiveUnverified("contiguous_local_ai_batches_required")
+
 
 def reclaim():
     if os.geteuid() != 0:
@@ -64,7 +73,7 @@ def reclaim():
                    "rb+") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         proof = json.loads((JOURNAL / "archive-verified.json").read_text())
-        review = json.loads((JOURNAL / "retained-local-ai-review.json").read_text())
+        review = json.loads((JOURNAL / "retained-batched-local-ai-review.json").read_text())
         verify_local_review(proof, review)
         tag = proof["archive_tag"]
         if not re.fullmatch(r"mqtt-retained-[0-9a-f]{64}", tag):
