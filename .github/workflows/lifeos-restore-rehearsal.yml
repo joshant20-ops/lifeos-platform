@@ -5,21 +5,12 @@ on:
     paths:
       - 'scripts/lifeos-restic-restore-rehearsal.sh'
   workflow_dispatch:
-    inputs:
-      scope:
-        description: Restore verification scope
-        type: choice
-        options:
-          - full
-          - adguard-config
-        default: full
 permissions: {contents: read}
 concurrency:
   group: lifeos-pi5-control
   cancel-in-progress: false
 jobs:
   rehearse:
-    if: inputs.scope != 'adguard-config'
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 30
     steps:
@@ -51,22 +42,3 @@ jobs:
           test -z "$(git status --porcelain --untracked-files=all)"
           test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
           echo 'RESTORE_REHEARSAL_REPOSITORY=PASS'
-
-
-  adguard-config:
-    # Review candidate. Keep disabled until the owner approves the
-    # config-only gateway variant and its root-owned installation.
-    if: ${{ false }}
-    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
-    timeout-minutes: 5
-    steps:
-      - name: Verify clean canonical checkout for the approved revision
-        shell: bash
-        run: |
-          set -Eeuo pipefail
-          cd /home/joshan/lifeos-platform
-          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
-          test -z "$(git status --porcelain --untracked-files=all)"
-          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
-      - name: Recover only the AdGuard configuration
-        run: sudo -n /usr/local/sbin/lifeos-deploy-gateway restore-rehearsal adguard-config

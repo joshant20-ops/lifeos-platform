@@ -1,0 +1,66 @@
+name: Local MQTT log review
+on:
+  pull_request:
+    paths:
+      - .github/workflows/storage-mqtt-log-review.yml
+      - governor/mqtt_log_review.py
+      - scripts/lifeos-mqtt-log-review.sh
+      - tests/test_mqtt_log_review.py
+      - governor/mqtt_live_disposal.py
+      - tests/test_mqtt_retained_log_disposal.py
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-mqtt-log-review.yml
+  schedule:
+    - cron: '20 3 1 * *'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          set -Eeuo pipefail
+          bash -n scripts/lifeos-mqtt-log-review.sh
+          python3 -B -c 'from tests.test_lifeos_deploy_gateway import test_mqtt_log_review_accepts_only_fixed_modes as check; check()'
+          python3 -B -m unittest -v tests.test_mqtt_log_review tests.test_mqtt_retained_log_disposal
+
+  review:
+    if: >-
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      ((github.event_name == 'schedule' && github.run_attempt == 1) ||
+       (github.event_name == 'push' && github.run_attempt <= 3 && github.actor == github.repository_owner &&
+        github.triggering_actor == github.repository_owner))
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 52
+    steps:
+      - name: Run the fixed local review with schema-validated batches
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          if [[ "$GITHUB_EVENT_NAME" == schedule ]]; then
+            sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-log-review monthly
+          else
+            sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-verified-reclaim
+          fi

@@ -1,0 +1,73 @@
+name: AdGuard encrypted work-data recovery proof
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/storage-adguard-restic-tree.yml
+      - governor/adguard_restic_tree_probe.py
+      - tests/test_adguard_restic_tree_probe.py
+      - scripts/lifeos-restic-adguard-tree-check.sh
+      - homelab/live/usr/local/sbin/lifeos-deploy-gateway
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-adguard-restic-tree.yml
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Test encrypted recovery and argument restriction
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          if [[ ! -x /usr/bin/restic ]]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends restic
+          fi
+          test -x /usr/bin/restic
+          python3 -B -m unittest -v tests.test_adguard_restic_tree_probe
+          python3 -B -c 'from tests.test_lifeos_deploy_gateway import test_restore_scope_rejects_user_controlled_paths as test; test()'
+          bash -n scripts/lifeos-restic-adguard-tree-check.sh
+
+  tree-proof:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    steps:
+      - name: Verify and fast-forward the canonical checkout
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+      - name: Install the reviewed gateway and record the bounded work-data result
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway restore-rehearsal adguard-tree

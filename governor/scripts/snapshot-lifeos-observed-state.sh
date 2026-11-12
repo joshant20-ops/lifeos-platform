@@ -27,7 +27,7 @@ git merge --ff-only origin/main >/dev/null
 
 mkdir -p "$OUT_DIR"
 
-python3 - "$OUT" "$HOST" "$HOST_ROLE" "$PLATFORM_REPO" <<'PY'
+python3 -B - "$OUT" "$HOST" "$HOST_ROLE" "$PLATFORM_REPO" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -39,6 +39,8 @@ out = pathlib.Path(sys.argv[1])
 host = sys.argv[2]
 role = sys.argv[3]
 repo = pathlib.Path(sys.argv[4])
+sys.path.insert(0, str(repo))
+from governor.storage_tier0 import docker_data_capacity
 
 
 def run(args):
@@ -88,6 +90,7 @@ payload = {
         'origin_main': origin or None,
     },
     'services': services,
+    'storage': {'docker_data': docker_data_capacity()},
     'control_plane_hashes': {
         '/usr/local/libexec/lifeos-autonomous-agent': sha('/usr/local/libexec/lifeos-autonomous-agent'),
         '/usr/local/libexec/lifeos-engineer': sha('/usr/local/libexec/lifeos-engineer'),

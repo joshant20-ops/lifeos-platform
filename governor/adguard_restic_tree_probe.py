@@ -3,15 +3,37 @@ import json
 import os
 from pathlib import Path, PurePosixPath
 import re
+import signal
 import subprocess
 import tarfile
 import tempfile
 
-from governor.adguard_restic_probe import CONFIG, PASSWORD_FILE, REPOSITORY, SHARE, verify_nfs_mount
+SHARE = Path("/mnt/synology-backups")
+
+
+def verify_nfs_mount(fd):
+    info = Path(f"/proc/self/fdinfo/{fd}").read_text()
+    mount_id = next((line.split()[1] for line in info.splitlines()
+                     if line.startswith("mnt_id:") and len(line.split()) == 2), None)
+    for line in Path("/proc/self/mountinfo").read_text().splitlines():
+        before, separator, after = line.partition(" - ")
+        fields = before.split()
+        if separator and len(fields) >= 5 and fields[0] == mount_id:
+            return fields[4] == str(SHARE) and after.split()[:1] == ["nfs4"]
+    return False
+
+
+REPOSITORY = SHARE / "restic/lifeos-pi5"
+PASSWORD_FILE = Path("/etc/lifeos/restic-password")
+CONFIG = "/opt/stacks/adguard/conf/AdGuardHome.yaml"
 
 TREE = str(PurePosixPath(CONFIG).parent.parent)
 LIMIT = 1024**3
 CONFIG_LIMIT = 8 * 1024**2
+
+
+def result(status, **details):
+    return {"status": status, "scope": "adguard_tree", **details}
 
 
 def inspect_recovered_tree(archive_stream):
@@ -24,23 +46,24 @@ def inspect_recovered_tree(archive_stream):
             entries += 1
             if (entries > 100_000 or path in seen or path.is_absolute() or ".." in path.parts
                     or member.issparse() or not (member.isdir() or member.isfile())):
-                return None
+                return result("archive_entry_rejected")
             seen.add(path)
             if member.isdir():
                 continue
             with archive.extractfile(member) as data:
                 if path == PurePosixPath("conf/AdGuardHome.yaml"):
                     if not 0 < member.size <= CONFIG_LIMIT:
-                        return None
+                        return result("config_size_rejected")
                     config_ok = re.search(rb"(?m)^schema_version:[ \t]+[0-9]+[ \t]*\r?$",
                                           data.read(CONFIG_LIMIT + 1)) is not None
-                elif path.parts[:1] == ("work",) and member.size > 0:
+                elif path.parts[:2] == ("work", "data") and member.size > 0:
                     work_files += 1
                     work_bytes += member.size
-    if not config_ok or not work_files:
-        return None
-    return {"status": "adguard_config_and_work_recovered", "scope": "adguard_tree",
-            "work_files": work_files, "work_bytes": work_bytes}
+    if not config_ok:
+        return result("expected_config_missing_or_invalid")
+    if not work_files:
+        return result("expected_work_data_missing")
+    return result("adguard_config_and_work_recovered", work_files=work_files, work_bytes=work_bytes)
 
 
 def recover_tree(env, tree=TREE, limit=LIMIT):
@@ -53,23 +76,23 @@ def recover_tree(env, tree=TREE, limit=LIMIT):
             or space.f_bavail * space.f_frsize < limit):
         return {"status": "ram_reserve_unverified", "scope": "adguard_tree"}
     with tempfile.TemporaryFile(dir="/dev/shm") as recovered:
-        result = subprocess.run(
+        dump = subprocess.run(
             ["/usr/bin/prlimit", f"--fsize={limit}:{limit}", "--",
              "/usr/bin/restic", "--no-lock", "--no-cache", "dump", "--tag", "lifeos-pi5",
              "latest:" + tree, "/"],
             env=env, stdin=subprocess.DEVNULL, stdout=recovered, stderr=subprocess.DEVNULL,
             timeout=120, check=False,
         )
-        if result.returncode == 0:
-            recovered.seek(0)
-            proof = inspect_recovered_tree(recovered)
-            if proof:
-                return proof
-    return {"status": "adguard_tree_unverified", "scope": "adguard_tree"}
+        if dump.returncode == -signal.SIGXFSZ:
+            return result("ram_output_limit_reached")
+        if dump.returncode != 0:
+            return result("restic_dump_failed", exit_code=dump.returncode)
+        recovered.seek(0)
+        return inspect_recovered_tree(recovered)
 
 
 def main():
-    proof = {"status": "adguard_tree_unverified", "scope": "adguard_tree"}
+    proof = result("restic_nas_repository_unverified")
     try:
         fd = os.open(SHARE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
         try:
@@ -81,8 +104,12 @@ def main():
                 })
         finally:
             os.close(fd)
-    except (OSError, ValueError, subprocess.SubprocessError, tarfile.TarError):
-        pass
+    except subprocess.TimeoutExpired:
+        proof = result("restic_read_timeout")
+    except tarfile.TarError:
+        proof = result("archive_stream_invalid")
+    except (OSError, ValueError, subprocess.SubprocessError):
+        proof = result("local_probe_unavailable")
     print(json.dumps(proof, sort_keys=True))
     return 0 if proof["status"] == "adguard_config_and_work_recovered" else 2
 

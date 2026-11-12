@@ -9,8 +9,24 @@ import subprocess
 import tarfile
 import tempfile
 
-from governor.adguard_nas_restore_drill import SOURCE
-from governor.adguard_restic_probe import PASSWORD_FILE, REPOSITORY, SHARE, verify_nfs_mount
+SHARE = Path("/mnt/synology-backups")
+
+
+def verify_nfs_mount(fd):
+    info = Path(f"/proc/self/fdinfo/{fd}").read_text()
+    mount_id = next((line.split()[1] for line in info.splitlines()
+                     if line.startswith("mnt_id:") and len(line.split()) == 2), None)
+    for line in Path("/proc/self/mountinfo").read_text().splitlines():
+        before, separator, after = line.partition(" - ")
+        fields = before.split()
+        if separator and len(fields) >= 5 and fields[0] == mount_id:
+            return fields[4] == str(SHARE) and after.split()[:1] == ["nfs4"]
+    return False
+
+
+REPOSITORY = SHARE / "restic/lifeos-pi5"
+PASSWORD_FILE = Path("/etc/lifeos/restic-password")
+SOURCE = Path("/mnt/docker-data/recovery/adguard-20261110-105901.tar.gz")
 
 LIMIT = 256 * 1024**2
 MAX_UNPACKED = 2 * 1024**3

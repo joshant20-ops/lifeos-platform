@@ -1,0 +1,61 @@
+name: Mosquitto retained rotation adapter tests
+on:
+  pull_request:
+    paths:
+      - .github/workflows/storage-mqtt-live-rotation-checks.yml
+      - governor/mqtt_*.py
+      - governor/storage_health_gate.py
+      - governor/storage_tier0.py
+      - tests/test_mqtt_*.py
+      - tests/test_storage_health_gate.py
+      - tests/test_storage_tier0.py
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-mqtt-live-rotation-checks.yml
+permissions:
+  contents: read
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest -v tests.test_mqtt_retained_rotation tests.test_storage_health_gate tests.test_storage_tier0 tests.test_mqtt_rotation_preflight
+      - run: |
+          bash -n scripts/lifeos-mqtt-retain-rotation.sh
+          python3 -B -c 'from tests.test_lifeos_deploy_gateway import test_mqtt_rotation_scope_rejects_arguments as check; check()'
+      - run: docker pull eclipse-mosquitto@sha256:6f8d8a947c506f8a2290ec65cd4bd2bc7cb4d43fb5f6271f861cb013e2ef9797
+      - run: sudo -n python3 -B -m unittest -v tests.test_mqtt_rotation_broker
+
+  rotate-retaining-old-log:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 5
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    steps:
+      - name: Install the reviewed fixed operation and rotate retaining the old log
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-mqtt-retain-rotation

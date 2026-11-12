@@ -11,6 +11,7 @@ import ssl
 import subprocess
 
 ADGUARD = Path("/opt/stacks/adguard")
+DOCKER_DATA = Path("/mnt/docker-data")
 RESERVE_BYTES = 10 * 1024**3
 
 
@@ -48,12 +49,35 @@ def direct_internet(address, hostname):
         return False
 
 
+def reserves_met(stats):
+    reserve = max(RESERVE_BYTES, stats.f_blocks * stats.f_frsize // 10)
+    return (stats.f_bavail * stats.f_frsize >= reserve
+            and stats.f_files > 0 and stats.f_favail * 10 >= stats.f_files)
+
+
+def docker_data_capacity():
+    """Collect aggregate counters without listing directories or reading files."""
+    try:
+        if not DOCKER_DATA.is_mount():
+            return {"status": "mount_unverified"}
+        stats = os.statvfs(DOCKER_DATA)
+    except OSError:
+        return {"status": "capacity_unavailable"}
+    return {
+        "status": "within_reserve" if reserves_met(stats) else "below_reserve",
+        "capacity_bytes": stats.f_blocks * stats.f_frsize,
+        "used_bytes": (stats.f_blocks - stats.f_bfree) * stats.f_frsize,
+        "available_bytes": stats.f_bavail * stats.f_frsize,
+        "reserved_free_bytes": (stats.f_bfree - stats.f_bavail) * stats.f_frsize,
+        "total_inodes": stats.f_files,
+        "available_inodes": stats.f_favail,
+    }
+
+
 def enough_space():
     try:
-        for path in (ADGUARD / "conf", ADGUARD / "work", Path("/mnt/docker-data")):
-            stat = os.statvfs(path)
-            reserve = max(RESERVE_BYTES, stat.f_blocks * stat.f_frsize // 10)
-            if stat.f_bavail * stat.f_frsize < reserve or not stat.f_files or stat.f_favail * 10 < stat.f_files:
+        for path in (ADGUARD / "conf", ADGUARD / "work", DOCKER_DATA):
+            if not reserves_met(os.statvfs(path)):
                 return False
     except OSError:
         return False

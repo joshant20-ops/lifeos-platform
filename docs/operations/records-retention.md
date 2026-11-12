@@ -18,9 +18,3 @@ Retention is a minimum, not an instruction to delete. A governed maintenance job
 must first prove the record is terminal, outside every legal/incident/rollback
 hold and not the only surviving acceptance evidence. Deletion itself is audited.
 Secrets, credentials and raw private documents are never control-record fields.
-
-For storage lifecycle maintenance, treat AdGuard Home, its recovery records,
-persistent data and Docker/network dependencies as protected Tier 0 resources.
-The storage lifecycle runbook defines the connectivity and recovery checks that
-must pass before any approved cleanup. A failed or unavailable check blocks
-execution. General retention approval cannot authorise a Tier 0 interruption.

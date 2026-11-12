@@ -53,14 +53,13 @@ Prefer installed functionality, native configuration/integrations, mature open-s
 | House Status / Doorbell | #1583 accepted Live v35 on 19 Oct; no longer DEV-only. |
 | Wake-aware AI endpoint | #1588 complete; Tower lifecycle remains controller-owned. |
 | Storage recovery | #1760 complete for selected service set after actual reboot, native application checks and write/readback checks. Fifteen running services, seven legacy services retained stopped. Original SD and recovery copies preserved. |
+| Storage reliability, 12 November 2026 GMT | #2072 and #2074 remain open. Pi rotation verified Mosquitto reopened its log. The encrypted NAS copy passed a full 11,132,338,594-byte readback. The authorised HDD cleanup removed 11,132,416,000 allocated bytes in 42 reviewed batches. AdGuard config recovery and encrypted recovery-archive readback passed, and the backup pilot independently restored seven files. The Pi profiled 69,063 backup groups with zero deletion eligibility. The allocation traversal was blocked by mount-root listing permissions. MQTT caller attribution, complete NAS reanalysis, current Tier 0 acceptance and wider lifecycle acceptance remain open. |
 | Matter server | Original container and HA integration restored; this does not establish curtain device-level acceptance. |
 | Monitoring | Eleven Uptime Kuma monitors accepted, including persisted failure/recovery history. Notifications unconfigured; Predbat's private loopback UI excluded. |
 | SMART | #1995 complete: explicit SAT fixes mistaken NVMe autodetection; health reporting passed with zero reallocated/pending/uncorrectable sectors. |
 | Personal Assistant | #1498 read-only EmailOps sample and authenticated previews pass; overall capability remains unfinished. |
 | Engineering MVP | #935 remains NOT PASS; unchanged fixture/model/hardware boundary applies. |
 | Energy | #1071 native-input audit, economic comparison and shadow evaluation remain outstanding. |
-
-Storage lifecycle (#2072, #2074) starts with bounded local diagnostics and retention dry runs under the existing records retention policy. AdGuard and household connectivity are Tier 0. The live approval and recovery gates for storage maintenance are specified in [the storage lifecycle runbook](operations/storage-lifecycle-2074.md).
 
 Storage terminology correction: the external drive is a WD1600BEVT SATA **HDD**, not an SSD. Historical paths/checkpoint labels may say SSD. Data remains distributed across external HDD, SD and NAS; no claim that all databases moved. Recovery copies are on-device, not proof of an off-device restore. SMART reporting is not a surface scan or future-failure guarantee.
 

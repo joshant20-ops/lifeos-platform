@@ -1,0 +1,111 @@
+name: Read-only backup inventory profile
+on:
+  pull_request:
+    paths:
+      - .github/workflows/storage-backup-inventory-profile.yml
+      - 'scripts/lifeos_storage_*.py'
+      - 'tests/test_storage_backup_profile.py'
+      - 'tests/test_storage_retention_inventory.py'
+      - 'tests/test_storage_allocated_audit.py'
+      - 'tests/test_storage_root_allocation.py'
+      - governor/storage_root_allocation.py
+      - scripts/lifeos-storage-allocation-only.sh
+      - homelab/live/usr/local/sbin/lifeos-deploy-gateway
+  workflow_dispatch:
+    inputs:
+      local_recovery_verified:
+        description: Confirm working LAN SSH and independent local recovery access
+        required: true
+        default: false
+        type: boolean
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/storage-backup-inventory-profile.yml
+      - scripts/lifeos_storage_allocated_audit.py
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest -v tests.test_storage_retention_inventory tests.test_storage_backup_profile tests.test_storage_allocated_audit tests.test_storage_root_allocation
+      - run: |
+          bash -n scripts/lifeos-storage-allocation-only.sh
+          python3 -B -c 'from tests.test_lifeos_deploy_gateway import test_storage_allocation_scope_is_fixed; test_storage_allocation_scope_is_fixed()'
+
+  profile:
+    if: >-
+      github.event_name == 'push' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Trace the two largest patterns against fixed local producer script roots
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          available=$(df -B1 --output=avail /mnt/docker-data | tail -n 1)
+          if (( available < 10737418240 )); then
+            echo 'STORAGE_PROFILE=SKIPPED_RESERVE'
+            exit 1
+          fi
+          ulimit -v 262144
+          timeout -k 5s 60s ionice -c3 nice -n 15 python3 -B \
+            -m scripts.lifeos_storage_backup_profile "$HOME/lifeos-storage-inventory.tsv" --storage-blocks --installed-source-hints
+
+      - name: Measure visible allocated blocks on the Docker filesystem
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ulimit -v 262144
+          timeout -k 5s 60s ionice -c3 nice -n 15 python3 -B \
+            -m scripts.lifeos_storage_allocated_audit
+
+  allocation-only:
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1 &&
+      inputs.local_recovery_verified
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 4
+    steps:
+      - name: Run the fixed allocation scope through the existing gateway
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sudo -n install -o root -g root -m 0755 homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-audit-pi-state allocation-only

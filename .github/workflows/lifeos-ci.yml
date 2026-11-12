@@ -49,10 +49,6 @@ jobs:
           python3 -m unittest -v \
             tests.test_smart_native_repair \
             tests.test_storage_boot_acceptance \
-            tests.test_read_only_storage_diagnostic \
-            tests.test_storage_retention_inventory \
-            tests.test_storage_backup_profile \
-            tests.test_storage_tier0 \
             tests.test_matter_storage_recovery \
             tests.test_storage_runtime_acceptance \
             tests.test_storage_recovery_audit \

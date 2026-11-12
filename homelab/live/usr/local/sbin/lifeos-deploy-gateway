@@ -168,6 +168,38 @@ OPS = {
         'script': 'scripts/lifeos-storage-preserve-sd-source.sh',
         'privileged': True,
     },
+    'storage-backup-duplicate-audit': {
+        'script': 'scripts/lifeos-backup-duplicate-audit.sh',
+        'privileged': True,
+    },
+    'storage-backup-pair-archive-pilot': {
+        'script': 'scripts/lifeos-backup-pair-archive-pilot.sh',
+        'privileged': True,
+    },
+    'storage-mqtt-churn-audit': {
+        'script': 'scripts/lifeos-mqtt-churn-audit.sh',
+        'privileged': True,
+    },
+    'storage-mqtt-nas-reanalysis': {
+        'script': 'scripts/lifeos-mqtt-nas-reanalysis.sh',
+        'privileged': True,
+    },
+    'storage-mqtt-log-review': {
+        'script': 'scripts/lifeos-mqtt-log-review.sh',
+        'privileged': True,
+    },
+    'storage-mqtt-verified-reclaim': {
+        'script': 'scripts/lifeos-mqtt-verified-reclaim.sh',
+        'privileged': True,
+    },
+    'storage-mqtt-retained-archive': {
+        'script': 'scripts/lifeos-mqtt-retained-archive.sh',
+        'privileged': True,
+    },
+    'storage-mqtt-retain-rotation': {
+        'script': 'scripts/lifeos-mqtt-retain-rotation.sh',
+        'privileged': True,
+    },
     'storage-audit-pi-state': {
         'script': 'scripts/lifeos-storage-audit-pi-state.sh',
         'privileged': True,
@@ -242,9 +274,15 @@ def preflight():
 
 
 def parse_request(argv: list[str]) -> tuple[str, list[str]]:
-    if len(argv) == 1 and argv[0] in OPS and argv[0] != 'capture-tower-wol':
+    if len(argv) == 1 and argv[0] in OPS and argv[0] not in {'capture-tower-wol', 'storage-mqtt-log-review'}:
         return argv[0], []
-    if argv == ['restore-rehearsal', 'adguard-config']:
+    if argv in (['storage-mqtt-log-review', 'retained'],
+                ['storage-mqtt-log-review', 'monthly']):
+        return argv[0], argv[1:]
+    if argv in (['restore-rehearsal', 'adguard-config'], ['restore-rehearsal', 'adguard-tree'],
+                ['restore-rehearsal', 'adguard-archive']):
+        return argv[0], argv[1:]
+    if argv == ['storage-audit-pi-state', 'allocation-only']:
         return argv[0], argv[1:]
     if (
         len(argv) == 3
@@ -269,6 +307,15 @@ def main():
     script = REPO / str(spec['script'])
     if operation == 'restore-rehearsal' and operation_args == ['adguard-config']:
         script = REPO / 'scripts/lifeos-restic-adguard-config-check.sh'
+        operation_args = []
+    elif operation == 'restore-rehearsal' and operation_args == ['adguard-tree']:
+        script = REPO / 'scripts/lifeos-restic-adguard-tree-check.sh'
+        operation_args = []
+    elif operation == 'restore-rehearsal' and operation_args == ['adguard-archive']:
+        script = REPO / 'scripts/lifeos-restic-adguard-archive-check.sh'
+        operation_args = []
+    elif operation == 'storage-audit-pi-state' and operation_args == ['allocation-only']:
+        script = REPO / 'scripts/lifeos-storage-allocation-only.sh'
         operation_args = []
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
