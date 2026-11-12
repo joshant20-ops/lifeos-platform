@@ -10,6 +10,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/storage-mqtt-nas-reanalysis.yml
+      - governor/mqtt_nas_reanalysis.py
 permissions:
   contents: read
 jobs:
