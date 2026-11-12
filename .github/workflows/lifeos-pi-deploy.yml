@@ -180,7 +180,7 @@ jobs:
             status="$(git status --porcelain --untracked-files=all)"
             test -z "$status"
             test "$(git symbolic-ref --short HEAD)" = main
-            git merge --ff-only origin/main
+            git merge --ff-only --no-overwrite-ignore origin/main
             status="$(git status --porcelain --untracked-files=all)"
             test -z "$status"
           else
