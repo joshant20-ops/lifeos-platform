@@ -53,6 +53,7 @@ Prefer installed functionality, native configuration/integrations, mature open-s
 | House Status / Doorbell | #1583 accepted Live v35 on 19 Oct; no longer DEV-only. |
 | Wake-aware AI endpoint | #1588 complete; Tower lifecycle remains controller-owned. |
 | Storage recovery | #1760 complete for selected service set after actual reboot, native application checks and write/readback checks. Fifteen running services, seven legacy services retained stopped. Original SD and recovery copies preserved. |
+| Storage reliability, 12 November 2026 GMT | #2072 and #2074 remain open. Pi rotation verified that Mosquitto reopened its log. Encrypted NAS readback verified 11,132,338,594 bytes of the closed log. The backup archive pilot independently restored seven files from one pair of backup groups. The allocation scan remained partial. The 02:23 GMT Docker snapshot recorded AdGuard, Mosquitto and Home Assistant healthy. Full Tier 0 checks, MQTT caller attribution, HDD reclamation, wider recovery, retention eligibility and maintenance acceptance require separate live evidence. |
 | Matter server | Original container and HA integration restored; this does not establish curtain device-level acceptance. |
 | Monitoring | Eleven Uptime Kuma monitors accepted, including persisted failure/recovery history. Notifications unconfigured; Predbat's private loopback UI excluded. |
 | SMART | #1995 complete: explicit SAT fixes mistaken NVMe autodetection; health reporting passed with zero reallocated/pending/uncorrectable sectors. |
