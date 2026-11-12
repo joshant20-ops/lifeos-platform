@@ -177,9 +177,12 @@ jobs:
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
           if [[ "$LIFEOS_OPERATION" == deploy-snapshot-exporter ]]; then
-            test -z "$(git status --porcelain --untracked-files=all)"
+            status="$(git status --porcelain --untracked-files=all)"
+            test -z "$status"
             test "$(git symbolic-ref --short HEAD)" = main
             git merge --ff-only origin/main
+            status="$(git status --porcelain --untracked-files=all)"
+            test -z "$status"
           else
             git reset --hard origin/main
           fi
