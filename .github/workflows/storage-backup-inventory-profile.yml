@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/storage-backup-inventory-profile.yml
+      - scripts/lifeos_storage_allocated_audit.py
 
 permissions:
   contents: read

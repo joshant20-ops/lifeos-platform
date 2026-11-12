@@ -60,6 +60,24 @@ def mount_scope_safe(root):
     return True
 
 
+def scan(root):
+    # stat and statvfs can succeed even when the runner cannot list the mount.
+    try:
+        with os.scandir(root) as entries:
+            next(entries, None)
+    except PermissionError:
+        return b"", "root_listing_denied"
+
+    try:
+        result = subprocess.run(
+            ["/usr/bin/du", "-x", "-B1", "--max-depth=1", "--null", "--", str(root)],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=50, check=False,
+        )
+    except subprocess.TimeoutExpired as error:
+        return error.stdout or b"", "du_timeout"
+    return result.stdout, "du_failed" if result.returncode else None
+
+
 def main():
     try:
         if not mount_scope_safe(ROOT):
@@ -70,18 +88,13 @@ def main():
                 or before["available_inodes"] < os.statvfs(ROOT).f_files // 10):
             print(json.dumps({"status": "reserve_too_low"}))
             return 2
-        try:
-            result = subprocess.run(
-                ["/usr/bin/du", "-x", "-B1", "--max-depth=1", "--null", "--", str(ROOT)],
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=50, check=False,
-            )
-            raw, complete = result.stdout, result.returncode == 0
-        except subprocess.TimeoutExpired as error:
-            raw, complete = error.stdout or b"", False
+        raw, failure = scan(ROOT)
         after = storage_blocks(ROOT)
-        report = summarize(raw, ROOT, complete, before["used_bytes"], after["used_bytes"])
+        report = summarize(raw, ROOT, failure is None, before["used_bytes"], after["used_bytes"])
+        report["scan_status"] = failure or ("complete" if report["scan_complete"] else "incomplete_totals")
+        report["filesystem_blocks_after"] = after
         print(json.dumps(report, sort_keys=True))
-        return 0
+        return 0 if report["scan_complete"] else 2
     except (OSError, ValueError, IndexError):
         print(json.dumps({"status": "allocated_audit_unavailable"}))
         return 2
