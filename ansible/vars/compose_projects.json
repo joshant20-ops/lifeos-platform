@@ -1,4 +1,7 @@
 {
+  "dedicated_compose_projects": {
+    "actual-budget": "finance-actual-budget-deploy.yml"
+  },
   "compose_projects": [
     {
       "project": "adguard",
