@@ -6,6 +6,7 @@ on:
       - governor/mqtt_churn_audit.py
       - tests/test_mqtt_churn_audit.py
       - scripts/lifeos-mqtt-churn-audit.sh
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -28,9 +29,9 @@ jobs:
           python3 -B -c 'from tests.test_lifeos_deploy_gateway import gateway; assert gateway.parse_request(["storage-mqtt-churn-audit"]) == ("storage-mqtt-churn-audit", [])'
   audit:
     if: >-
-      github.event_name == 'push' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       github.repository == 'joshant20-ops/lifeos-platform' &&
-      github.ref == 'refs/heads/main' && github.run_attempt == 1 &&
+      github.ref == 'refs/heads/main' && github.run_attempt <= 3 &&
       github.actor == github.repository_owner &&
       github.triggering_actor == github.repository_owner
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
@@ -39,7 +40,7 @@ jobs:
       cancel-in-progress: false
     timeout-minutes: 4
     steps:
-      - name: Sample local MQTT socket owners rapidly during a burst
+      - name: Run the bounded read-only MQTT burst trace
         shell: bash
         run: |
           set -Eeuo pipefail
