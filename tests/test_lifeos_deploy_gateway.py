@@ -9,6 +9,19 @@ gateway = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(gateway)
 
 
+def test_storage_allocation_scope_is_fixed():
+    op = "storage-audit-pi-state"
+    assert gateway.parse_request([op]) == (op, [])
+    assert gateway.parse_request([op, "allocation-only"]) == (op, ["allocation-only"])
+    for args in ([op, "/mnt"], [op, "allocation-only", "/mnt"], [op, "--help"]):
+        try:
+            gateway.parse_request(args)
+        except SystemExit as error:
+            assert error.code == 64
+        else:
+            raise AssertionError("allocation scope accepted an arbitrary argument")
+
+
 def test_adguard_dns_operation_is_narrowly_allowlisted_and_root_run():
     assert gateway.OPS["configure-ai-dns"] == {
         "script": "scripts/lifeos-configure-ai-dns.sh",

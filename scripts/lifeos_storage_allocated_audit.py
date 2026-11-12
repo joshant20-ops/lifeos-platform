@@ -3,16 +3,22 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import time
 
 from scripts.lifeos_storage_backup_profile import storage_blocks
 
 ROOT = Path("/mnt/docker-data")
 KNOWN = frozenset({"automation", "containerd", "opt-stacks", "volumes",
                    "containers", "docker", "recovery", "rollback"})
+CONTAINERD = {
+    "io.containerd.content.v1.content": "content_store",
+    "io.containerd.snapshotter.v1.overlayfs": "overlay_snapshots",
+}
 
 
 def summarize(raw, root, complete, before, after):
     categories = {}
+    containerd = {}
     visible = None
     for record in raw.split(b"\0")[:-1]:
         number, path = record.split(b"\t", 1)
@@ -22,6 +28,11 @@ def summarize(raw, root, complete, before, after):
         path = Path(os.fsdecode(path))
         if path == root:
             visible = allocated
+            continue
+        if path.parent.parent == root:
+            if path.parent.name == "containerd":
+                family = CONTAINERD.get(path.name, "other_entries")
+                containerd[family] = containerd.get(family, 0) + allocated
             continue
         if path.parent != root:
             raise ValueError("unexpected_depth")
@@ -35,6 +46,7 @@ def summarize(raw, root, complete, before, after):
         complete = False
     return {
         "allocated_bytes_by_category": dict(sorted(categories.items())),
+        "containerd_allocated_bytes_by_family": dict(sorted(containerd.items())),
         "visible_allocated_bytes": visible,
         "scan_complete": complete,
         "filesystem_used_bytes_before": before,
@@ -60,7 +72,7 @@ def mount_scope_safe(root):
     return True
 
 
-def scan(root):
+def scan(root, guard=None):
     # stat and statvfs can succeed even when the runner cannot list the mount.
     try:
         with os.scandir(root) as entries:
@@ -68,17 +80,29 @@ def scan(root):
     except PermissionError:
         return b"", "root_listing_denied"
 
-    try:
-        result = subprocess.run(
-            ["/usr/bin/du", "-x", "-B1", "--max-depth=1", "--null", "--", str(root)],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=50, check=False,
-        )
-    except subprocess.TimeoutExpired as error:
-        return error.stdout or b"", "du_timeout"
-    return result.stdout, "du_failed" if result.returncode else None
+    deadline = time.monotonic() + 50
+    with subprocess.Popen(
+        ["/usr/bin/du", "-x", "-B1", "--max-depth=2", "--null", "--", str(root)],
+        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+    ) as process:
+        try:
+            while True:
+                if guard is not None:
+                    guard(process=process)
+                remaining = deadline - time.monotonic()
+                try:
+                    raw, _ = process.communicate(timeout=max(0, min(2, remaining)))
+                except subprocess.TimeoutExpired as error:
+                    if remaining <= 2:
+                        return error.stdout or b"", "du_timeout"
+                else:
+                    return raw, "du_failed" if process.returncode else None
+        finally:
+            if process.poll() is None:
+                process.kill()
 
 
-def main():
+def main(guard=None):
     try:
         if not mount_scope_safe(ROOT):
             print(json.dumps({"status": "mount_scope_unverified"}))
@@ -88,7 +112,11 @@ def main():
                 or before["available_inodes"] < os.statvfs(ROOT).f_files // 10):
             print(json.dumps({"status": "reserve_too_low"}))
             return 2
-        raw, failure = scan(ROOT)
+        if guard is not None:
+            guard()
+        raw, failure = scan(ROOT, guard)
+        if guard is not None:
+            guard()
         after = storage_blocks(ROOT)
         report = summarize(raw, ROOT, failure is None, before["used_bytes"], after["used_bytes"])
         report["scan_status"] = failure or ("complete" if report["scan_complete"] else "incomplete_totals")
