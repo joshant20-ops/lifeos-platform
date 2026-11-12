@@ -30,10 +30,57 @@ PRODUCER_PATTERN = re.compile(
 DATED_SUFFIX = re.compile(r"(.+?)[-_.]([0-9]{8})[-_T]([0-9]{6})Z?")
 
 
+FUNCTIONS = (
+    "configuration_rollback",
+    "automation_code",
+    "database_or_state",
+    "logs_or_audit_evidence",
+    "archive_contents_uninspected",
+    "unknown",
+)
+
+
+def artifact_function(parts):
+    """Classify the apparent purpose from fixed metadata hints, without opening files."""
+    name = parts[-1].lower()
+    for suffix in (".before", ".backup", ".bak", ".old"):
+        if name.endswith(suffix):
+            name = name[:-len(suffix)]
+            break
+    if name.endswith((".tar", ".tgz", ".tar.gz", ".zip", ".zst", ".gz")):
+        return 4
+    if ".storage" in parts[:-1] or name.endswith((".db", ".sqlite", ".sqlite3", ".sql")):
+        return 2
+    if name.endswith((".log", ".jsonl")) or name in {"run.log", "manifest.json", "evidence.json"}:
+        return 3
+    if name.endswith((".sh", ".py", ".js", ".ps1")):
+        return 1
+    if name.endswith((".yaml", ".yml", ".conf", ".service", ".timer", ".ini", ".toml", ".cfg")):
+        return 0
+    return 5
+
+
+def functional_totals(groups):
+    totals = collections.defaultdict(lambda: {"groups": 0, "files": 0, "bytes": 0})
+    components = collections.Counter()
+    for record in groups:
+        mask = record["function_mask"]
+        roles = [label for bit, label in enumerate(FUNCTIONS) if mask & (1 << bit)]
+        label = roles[0] if len(roles) == 1 else "mixed"
+        bucket = totals[label]
+        bucket["groups"] += 1
+        bucket["files"] += record["files"]
+        bucket["bytes"] += record["bytes"]
+        components.update(roles)
+    return {"groups_by_apparent_function": dict(sorted(totals.items())),
+            "groups_containing_each_component": dict(sorted(components.items()))}
+
+
 def profile(stream, today, max_lines=MAX_LINES, source_roots=(), local_selection=None):
     groups = {}
     invalid = 0
     flat = {"files": 0, "bytes": 0}
+    flat_functions = collections.defaultdict(lambda: {"files": 0, "bytes": 0})
     input_bytes = 0
     count = 0
     for raw in inventory_rows(stream):
@@ -58,13 +105,18 @@ def profile(stream, today, max_lines=MAX_LINES, source_roots=(), local_selection
         except (ValueError, TypeError):
             invalid += 1
             continue
+        role = artifact_function(parts[1:] or parts)
         if len(parts) == 1:
             flat["files"] += 1
             flat["bytes"] += size
+            bucket = flat_functions[FUNCTIONS[role]]
+            bucket["files"] += 1
+            bucket["bytes"] += size
             continue
         if key not in groups and len(groups) >= 100_000:
             raise ValueError("backup_group_limit_exceeded")
-        group = groups.setdefault(key, {"files": 0, "bytes": 0, "latest_modified": modified})
+        group = groups.setdefault(key, {"files": 0, "bytes": 0, "latest_modified": modified, "function_mask": 0})
+        group["function_mask"] |= 1 << role
         group["files"] += 1
         group["bytes"] += size
         if modified > group["latest_modified"]:
@@ -97,14 +149,25 @@ def profile(stream, today, max_lines=MAX_LINES, source_roots=(), local_selection
             -dated_unknown[name]["files"], name,
         ),
     )
-    paired = compare_dates(groups, repeated[:2])
+    largest = repeated[:2]
+    by_rank = {name: [] for name in largest}
+    for name, record in groups.items():
+        match = DATED_SUFFIX.fullmatch(name)
+        if match and match[1] in by_rank:
+            by_rank[match[1]].append(record)
+    paired = compare_dates(groups, largest)
     if local_selection is not None:
-        local_selection(groups, repeated[:2])
+        local_selection(groups, largest)
     result = {
         "schema_version": 1, "mode": "read_only_dry_run",
         "backup_groups": len(groups), "invalid_rows": invalid,
         "age_bands_by_latest_group_file": dict(sorted(summary.items())),
         "ungrouped_backup_files": flat,
+        "ungrouped_files_by_apparent_function": dict(sorted(flat_functions.items())),
+        "backup_functions": functional_totals(groups.values()),
+        "largest_two_patterns_by_apparent_function": [
+            functional_totals(by_rank[name]) for name in largest
+        ],
         "repeated_unknown_dated_patterns": len(repeated),
         "largest_unknown_dated_patterns": [dated_unknown[name] for name in repeated[:8]],
         "largest_two_timestamp_overlap": paired,

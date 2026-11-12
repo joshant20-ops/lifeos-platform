@@ -76,6 +76,27 @@ class BackupProfileTests(unittest.TestCase):
             "sources_matching_by_rank": [1, 1], "sources_matching_both": 1,
         })
 
+    def test_groups_by_function_without_double_counting_mixed_or_exporting_names(self):
+        rows = (f"11\t2026-05-01\t{ROOT}private-a-20260501-120000/config.yml.before\n"
+                f"20\t2026-05-01\t{ROOT}private-a-20260501-120000/data.db\n"
+                f"30\t2026-05-01\t{ROOT}private-a-20260502-120000/config.yml\n"
+                f"40\t2026-05-01\t{ROOT}private-flat.tar.gz\n").encode()
+        selected = []
+        result = profile(
+            io.BytesIO(rows), dt.date(2026, 11, 10),
+            local_selection=lambda groups, ranked: selected.append((len(groups), ranked)),
+        )
+        self.assertEqual(selected, [(2, ["private-a"])])
+        totals = result["backup_functions"]["groups_by_apparent_function"]
+        self.assertEqual(totals["mixed"], {"groups": 1, "files": 2, "bytes": 31})
+        self.assertEqual(totals["configuration_rollback"]["bytes"], 30)
+        self.assertEqual(result["ungrouped_files_by_apparent_function"],
+                         {"archive_contents_uninspected": {"files": 1, "bytes": 40}})
+        self.assertEqual(result["largest_two_patterns_by_apparent_function"][0],
+                         result["backup_functions"])
+        self.assertEqual(result["deletion_candidates"], 0)
+        self.assertNotIn("private", str(result))
+
     def test_invalid_and_outside_root(self):
         rows = (f"4\t2026-05-01\t{ROOT}../escape/file\n"
                 "2\t2026-05-01\t/etc/passwd\n"
