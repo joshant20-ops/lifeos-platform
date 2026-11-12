@@ -81,7 +81,12 @@ class BackupProfileTests(unittest.TestCase):
                 f"20\t2026-05-01\t{ROOT}private-a-20260501-120000/data.db\n"
                 f"30\t2026-05-01\t{ROOT}private-a-20260502-120000/config.yml\n"
                 f"40\t2026-05-01\t{ROOT}private-flat.tar.gz\n").encode()
-        result = profile(io.BytesIO(rows), dt.date(2026, 11, 10))
+        selected = []
+        result = profile(
+            io.BytesIO(rows), dt.date(2026, 11, 10),
+            local_selection=lambda groups, ranked: selected.append((len(groups), ranked)),
+        )
+        self.assertEqual(selected, [(2, ["private-a"])])
         totals = result["backup_functions"]["groups_by_apparent_function"]
         self.assertEqual(totals["mixed"], {"groups": 1, "files": 2, "bytes": 31})
         self.assertEqual(totals["configuration_rollback"]["bytes"], 30)

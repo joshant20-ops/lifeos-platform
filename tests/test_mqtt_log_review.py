@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+from governor.mqtt_event_metadata import event_metadata
 from governor.mqtt_log_review import local_review, review_batches, summarize
 
 
@@ -59,3 +60,30 @@ class LogReviewTests(unittest.TestCase):
         self.assertEqual(evidence["end_offset"], len(source))
         self.assertEqual([(item["start_offset"], item["end_offset"]) for item in batches],
                          [(0, 6), (6, len(source))])
+
+    def test_records_observed_peer_destination_and_gmt_time(self):
+        raw = b"0: New connection from 172.21.0.1:1234 on port 1883.\n"
+        report = summarize(io.BytesIO(raw), len(raw), closed=True)
+        self.assertEqual(report["first_record_time_gmt"], "1970-01-01 00:00:00 GMT")
+        self.assertEqual(report["samples"]["connection"], [{
+            "id": "0", "time_gmt": "1970-01-01 00:00:00 GMT",
+            "event": "socket_connection", "source": {"observed_peer": "172.21.0.1:1234"},
+            "destination": {"broker_listener_port": 1883}, "topic": None,
+        }])
+
+    def test_publish_direction_does_not_invent_original_publisher_or_export_payload(self):
+        raw = b"1: Sending PUBLISH to test-client (d0, q0, r0, m0, 'test/topic', ... (3 bytes)) secret"
+        event = event_metadata(raw)
+        self.assertEqual(event["source"], {"role": "broker"})
+        self.assertEqual(event["destination"], {"client_id": "test-client"})
+        self.assertEqual(event["topic"], "test/topic")
+        self.assertNotIn("secret", str(event))
+        incoming = event_metadata(raw.replace(b"Sending PUBLISH to", b"Received PUBLISH from"))
+        self.assertEqual(incoming["source"], {"client_id": "test-client"})
+        self.assertEqual(incoming["destination"], {"role": "broker"})
+
+    def test_unknown_route_is_explicit(self):
+        event = event_metadata(b"1: Some unexpected event")
+        self.assertIsNone(event["source"])
+        self.assertIsNone(event["destination"])
+        self.assertIsNone(event["topic"])

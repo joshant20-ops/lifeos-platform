@@ -76,7 +76,7 @@ def functional_totals(groups):
             "groups_containing_each_component": dict(sorted(components.items()))}
 
 
-def profile(stream, today, max_lines=MAX_LINES, source_roots=()):
+def profile(stream, today, max_lines=MAX_LINES, source_roots=(), local_selection=None):
     groups = {}
     invalid = 0
     flat = {"files": 0, "bytes": 0}
@@ -156,6 +156,8 @@ def profile(stream, today, max_lines=MAX_LINES, source_roots=()):
         if match and match[1] in by_rank:
             by_rank[match[1]].append(record)
     paired = compare_dates(groups, largest)
+    if local_selection is not None:
+        local_selection(groups, largest)
     result = {
         "schema_version": 1, "mode": "read_only_dry_run",
         "backup_groups": len(groups), "invalid_rows": invalid,
