@@ -10,10 +10,15 @@ from scripts.lifeos_storage_backup_profile import storage_blocks
 ROOT = Path("/mnt/docker-data")
 KNOWN = frozenset({"automation", "containerd", "opt-stacks", "volumes",
                    "containers", "docker", "recovery", "rollback"})
+CONTAINERD = {
+    "io.containerd.content.v1.content": "content_store",
+    "io.containerd.snapshotter.v1.overlayfs": "overlay_snapshots",
+}
 
 
 def summarize(raw, root, complete, before, after):
     categories = {}
+    containerd = {}
     visible = None
     for record in raw.split(b"\0")[:-1]:
         number, path = record.split(b"\t", 1)
@@ -23,6 +28,11 @@ def summarize(raw, root, complete, before, after):
         path = Path(os.fsdecode(path))
         if path == root:
             visible = allocated
+            continue
+        if path.parent.parent == root:
+            if path.parent.name == "containerd":
+                family = CONTAINERD.get(path.name, "other_entries")
+                containerd[family] = containerd.get(family, 0) + allocated
             continue
         if path.parent != root:
             raise ValueError("unexpected_depth")
@@ -36,6 +46,7 @@ def summarize(raw, root, complete, before, after):
         complete = False
     return {
         "allocated_bytes_by_category": dict(sorted(categories.items())),
+        "containerd_allocated_bytes_by_family": dict(sorted(containerd.items())),
         "visible_allocated_bytes": visible,
         "scan_complete": complete,
         "filesystem_used_bytes_before": before,
@@ -71,7 +82,7 @@ def scan(root, guard=None):
 
     deadline = time.monotonic() + 50
     with subprocess.Popen(
-        ["/usr/bin/du", "-x", "-B1", "--max-depth=1", "--null", "--", str(root)],
+        ["/usr/bin/du", "-x", "-B1", "--max-depth=2", "--null", "--", str(root)],
         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
     ) as process:
         try:

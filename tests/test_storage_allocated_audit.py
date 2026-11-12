@@ -30,6 +30,23 @@ class AllocatedAuditTests(unittest.TestCase):
         self.assertFalse(result["scan_complete"])
         self.assertEqual(result["visible_allocated_bytes"], 4096)
 
+    def test_containerd_breakdown_reuses_the_traversal_without_double_counting(self):
+        result = summarize(
+            b"4096\t/mount/containerd/io.containerd.content.v1.content\0"
+            b"8192\t/mount/containerd/io.containerd.snapshotter.v1.overlayfs\0"
+            b"4096\t/mount/containerd/private-child\0"
+            b"20480\t/mount/containerd\0"
+            b"24576\t/mount\0",
+            Path("/mount"), True, 24576, 24576,
+        )
+        self.assertTrue(result["scan_complete"])
+        self.assertEqual(result["visible_allocated_bytes"], 24576)
+        self.assertEqual(result["allocated_bytes_by_category"]["containerd"], 20480)
+        self.assertEqual(result["containerd_allocated_bytes_by_family"], {
+            "content_store": 4096, "overlay_snapshots": 8192, "other_entries": 4096,
+        })
+        self.assertNotIn("private-child", str(result))
+
     def test_unreadable_mount_is_reported_without_attempting_du(self):
         with patch.object(audit.os, "scandir", side_effect=PermissionError("private name")), \
              patch.object(audit.subprocess, "Popen") as run:
