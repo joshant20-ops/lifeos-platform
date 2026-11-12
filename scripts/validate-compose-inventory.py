@@ -71,6 +71,21 @@ def main() -> int:
         for name in sorted(file_names - project_names):
             errors.append(f"compose_files entry missing project: {name}")
 
+    # Dedicated workflows own their deployment; the generic Ansible lists
+    # only contain projects and files that Ansible is authorised to manage.
+    dedicated = data.get("dedicated_compose_projects", {})
+    if not isinstance(dedicated, dict):
+        errors.append("dedicated_compose_projects must be an object")
+        dedicated = {}
+    for name, workflow in dedicated.items():
+        if name in project_names or name in file_names:
+            errors.append(f"dedicated Compose project also managed by Ansible: {name}")
+        if (not isinstance(workflow, str) or pathlib.Path(workflow).name != workflow
+                or pathlib.Path(workflow).suffix not in {".yml", ".yaml"}
+                or not (ROOT / ".github/workflows" / workflow).is_file()):
+            errors.append(f"{name}: dedicated deployment workflow is missing or invalid")
+    inventory_names = project_names | dedicated.keys()
+
     actual: dict[str, list[pathlib.Path]] = {}
     if not DESIRED_ROOT.is_dir():
         errors.append(f"missing desired Compose root: {DESIRED_ROOT.relative_to(ROOT)}")
@@ -83,9 +98,9 @@ def main() -> int:
                 actual[directory.name] = yamls
 
     actual_names = set(actual)
-    for name in sorted(actual_names - project_names):
+    for name in sorted(actual_names - inventory_names):
         errors.append(f"desired Compose project missing from manifest: {name}")
-    for name in sorted(project_names - actual_names):
+    for name in sorted(inventory_names - actual_names):
         errors.append(f"manifest project has no desired Compose YAML directory: {name}")
 
     for name, item in project_by_name.items():
@@ -120,7 +135,7 @@ def main() -> int:
         fail(errors)
 
     print("COMPOSE_INVENTORY=PASS")
-    print(f"PROJECTS={len(project_names)}")
+    print(f"PROJECTS={len(inventory_names)}")
     print(f"DESIRED_PROJECTS={len(actual_names)}")
     return 0
 
