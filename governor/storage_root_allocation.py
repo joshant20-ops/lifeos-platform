@@ -25,8 +25,10 @@ def main():
             if process is not None:
                 process.send_signal(signal.SIGSTOP)
             checks = health_checks(resolver, public)
+            # Leave headroom for the next two-second traversal poll within
+            # the 16-second Tier 0 freshness window.
             if (not checks or not all(value is True for value in checks.values())
-                    or time.monotonic() - started >= 16):
+                    or time.monotonic() - started >= 12):
                 raise HealthUnavailable("maintenance_health_unavailable")
             next_probe = started + 8
             if process is not None:
