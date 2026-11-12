@@ -6,13 +6,36 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import call, patch
 
-from governor.mqtt_log_review import ReviewUnverified
-from governor.mqtt_nas_reanalysis import ForwardStream, reanalyse
+from governor.mqtt_log_review import ReviewOutputInvalid, ReviewUnverified
+from governor.mqtt_nas_reanalysis import ForwardStream, reanalyse, review_archive_batch
 from governor.mqtt_retained_log_archive import ARCHIVE_NAME
 
 
 class NASReanalysisTests(unittest.TestCase):
+    @patch("governor.mqtt_nas_reanalysis.local_review")
+    def test_invalid_output_retries_once_with_shorter_target(self, review):
+        evidence = {"counts": {"connection": 10}}
+        validated = {"provider": "ollama", "summary": "Connection burst.", "findings": []}
+        review.side_effect = [ReviewOutputInvalid("structured_review_invalid"), validated]
+        self.assertEqual(review_archive_batch(evidence), validated)
+        self.assertEqual(review.call_args_list, [call(evidence), call(evidence, concise=True)])
+
+    @patch("governor.mqtt_nas_reanalysis.local_review")
+    def test_persistent_invalid_output_fails_after_two_attempts(self, review):
+        review.side_effect = ReviewOutputInvalid("structured_review_invalid")
+        with self.assertRaises(ReviewOutputInvalid):
+            review_archive_batch({})
+        self.assertEqual(review.call_count, 2)
+
+    @patch("governor.mqtt_nas_reanalysis.local_review")
+    def test_provider_verification_failure_never_retries(self, review):
+        review.side_effect = ReviewUnverified("local_provider_unverified")
+        with self.assertRaises(ReviewUnverified):
+            review_archive_batch({})
+        review.assert_called_once_with({})
+
     def test_skipped_bytes_still_contribute_to_the_archive_digest(self):
         data = b"one\ntwo\nthree\n"
         stream = ForwardStream(io.BytesIO(data), len(data))

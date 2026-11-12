@@ -10,7 +10,9 @@ import subprocess
 
 from governor.adguard_archive_restic_proof import PASSWORD_FILE, REPOSITORY, SHARE, verify_nfs_mount
 from governor.mqtt_live_rotation import JOURNAL
-from governor.mqtt_log_review import BrokerError, ReviewUnverified, local_review, review_batches
+from governor.mqtt_log_review import (
+    BrokerError, ReviewOutputInvalid, ReviewUnverified, local_review, review_batches,
+)
 from governor.mqtt_retained_log_archive import ARCHIVE_NAME, LIMIT, RESTIC
 from governor.mqtt_retained_rotation import write_record
 from governor.storage_tier0 import enough_space
@@ -69,7 +71,14 @@ def snapshot_id(env, tag):
     return ids.pop()
 
 
-def reanalyse(env, proof, journal, *, inference=local_review, reserve=lambda: None):
+def review_archive_batch(evidence):
+    try:
+        return local_review(evidence)
+    except ReviewOutputInvalid:
+        return local_review(evidence, concise=True)
+
+
+def reanalyse(env, proof, journal, *, inference=review_archive_batch, reserve=lambda: None):
     tag = proof["archive_tag"]
     size = proof["fingerprint"][2]
     if not re.fullmatch(r"mqtt-retained-[0-9a-f]{64}", tag) or not 0 < size <= LIMIT:
