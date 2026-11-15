@@ -282,6 +282,8 @@ def parse_request(argv: list[str]) -> tuple[str, list[str]]:
     if argv in (['restore-rehearsal', 'adguard-config'], ['restore-rehearsal', 'adguard-tree'],
                 ['restore-rehearsal', 'adguard-archive']):
         return argv[0], argv[1:]
+    if argv == ['storage-audit-pi-state', 'allocation-only']:
+        return argv[0], argv[1:]
     if (
         len(argv) == 3
         and argv[0] == 'capture-tower-wol'
@@ -311,6 +313,9 @@ def main():
         operation_args = []
     elif operation == 'restore-rehearsal' and operation_args == ['adguard-archive']:
         script = REPO / 'scripts/lifeos-restic-adguard-archive-check.sh'
+        operation_args = []
+    elif operation == 'storage-audit-pi-state' and operation_args == ['allocation-only']:
+        script = REPO / 'scripts/lifeos-storage-allocation-only.sh'
         operation_args = []
     if not script.is_file() or script.is_symlink():
         fail('allowlisted_script_missing_or_symlink')
