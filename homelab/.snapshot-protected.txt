@@ -15,3 +15,6 @@ opt/stacks/homeassistant/config/scripts/lifeos_pa_task_attention_sensor.py
 opt/stacks/lifeos-energy/predbat-sanity-export/latest.json
 opt/stacks/lifeos-energy/predbat-sanity-export/daily.json
 opt/stacks/homeassistant/config/scripts/lifeos_pa_user_state.py
+
+# Reviewed deployment authority must not regress to the installed copy.
+usr/local/sbin/lifeos-deploy-gateway

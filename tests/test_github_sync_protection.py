@@ -16,6 +16,7 @@ class SnapshotProtectionTests(unittest.TestCase):
         }
         required = {
             "usr/local/sbin/lifeos-github-sync",
+            "usr/local/sbin/lifeos-deploy-gateway",
             "usr/local/sbin/lifeos-job-publisher",
             "usr/local/sbin/lifeos-pi-control-runner",
             "usr/local/sbin/lifeos-root-broker",
