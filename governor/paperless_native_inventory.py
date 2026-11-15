@@ -30,8 +30,11 @@ def nas_inventory():
     if exports in mounts:
         try:
             info = (pathlib.Path(exports) / 'manifest.json').lstat()
-            if stat.S_ISREG(info.st_mode) and info.st_size > 0:
-                out['EXPORT_MANIFEST_AGE_HOURS'] = max(0, int((time.time() - info.st_mtime) / 3600))
+            age = time.time() - info.st_mtime
+            if stat.S_ISREG(info.st_mode) and info.st_size > 0 and age >= 0:
+                out['EXPORT_MANIFEST_AGE_HOURS'] = int(age / 3600)
+        except TimeoutError:
+            raise
         except OSError:
             pass
     if intake in mounts:
@@ -115,6 +118,8 @@ def inspect():
             out[name] = str(value).upper() if type(value) is bool else 'UNKNOWN'
     try:
         out.update(nas_inventory())
+    except TimeoutError:
+        raise
     except OSError:
         pass
     out['RESULT'] = 'READ_ONLY_COMPLETE'
