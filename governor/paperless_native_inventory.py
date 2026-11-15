@@ -4,8 +4,52 @@ No document identifiers, taxonomy labels, paths, endpoint URLs or OCR are emitte
 All database queries run in a read-only PostgreSQL transaction with timeouts.
 """
 import json
+import os
+import pathlib
 import re
 import signal
+import stat
+import time
+
+
+def nas_inventory():
+    """Inspect only exact NFS bind targets inside the running app."""
+    exports = '/usr/src/paperless/export'
+    intake = '/usr/src/paperless/consume'
+    mounts = set()
+    with open('/proc/self/mountinfo', encoding='utf-8') as source:
+        for row in source:
+            mount, _, filesystem = row.partition(' - ')
+            fields = mount.split()
+            if len(fields) >= 5 and filesystem.split(maxsplit=1)[0:1] in (['nfs'], ['nfs4']):
+                mounts.add(fields[4])
+    out = {
+        'EXPORT_NFS': str(exports in mounts).upper(),
+        'INTAKE_NFS': str(intake in mounts).upper(),
+    }
+    if exports in mounts:
+        try:
+            info = (pathlib.Path(exports) / 'manifest.json').lstat()
+            age = time.time() - info.st_mtime
+            if stat.S_ISREG(info.st_mode) and info.st_size > 0 and age >= 0:
+                out['EXPORT_MANIFEST_AGE_HOURS'] = int(age / 3600)
+        except TimeoutError:
+            raise
+        except OSError:
+            pass
+    if intake in mounts:
+        regular = directories = examined = 0
+        with os.scandir(intake) as entries:
+            for entry in entries:
+                examined += 1
+                if examined > 500:
+                    break
+                regular += entry.is_file(follow_symlinks=False)
+                directories += entry.is_dir(follow_symlinks=False)
+        out['INTAKE_ROOT_COUNT_CAPPED'] = str(examined > 500).upper()
+        out['INTAKE_ROOT_FILES'] = regular
+        out['INTAKE_ROOT_DIRECTORIES'] = directories
+    return out
 
 
 def inspect():
@@ -48,6 +92,14 @@ def inspect():
             else:
                 out[name.upper() + '_ENABLED'] = 'UNKNOWN'
         Task = apps.get_model('documents', 'PaperlessTask')
+        day = timezone.now() - timedelta(days=1)
+        thirty_days = timezone.now() - timedelta(days=30)
+        out['TASKS_INCOMPLETE_OLDER_THAN_DAY'] = Task.objects.filter(status__in=('pending', 'started'), date_created__lt=day).count()
+        for kind in ('consume_file', 'mail_fetch'):
+            tasks = Task.objects.filter(task_type=kind, date_created__gte=thirty_days)
+            counts = {status: tasks.filter(status=status).count() for status in ('success', 'failure')}
+            for status, count in counts.items():
+                out[f'{kind.upper()}_{status.upper()}_LAST_30_DAYS'] = count
         out['TASKS_FAILED_UNACKNOWLEDGED'] = Task.objects.filter(status='failure', acknowledged=False).count()
         out['TASKS_PENDING'] = Task.objects.filter(status='pending').count()
         out['TASKS_STARTED'] = Task.objects.filter(status='started').count()
@@ -61,9 +113,15 @@ def inspect():
             if type(value) is float and value.is_integer():
                 value = int(value)
             out[name] = value if type(value) is int and 0 <= value <= 10000 else 'UNKNOWN'
-        for name in ('AUDIT_LOG_ENABLED', 'TIKA_ENABLED', 'CONSUMER_DELETE_DUPLICATES'):
+        for name in ('AUDIT_LOG_ENABLED', 'TIKA_ENABLED', 'CONSUMER_DELETE_DUPLICATES', 'CONSUMER_RECURSIVE'):
             value = getattr(settings, name, None)
             out[name] = str(value).upper() if type(value) is bool else 'UNKNOWN'
+    try:
+        out.update(nas_inventory())
+    except TimeoutError:
+        raise
+    except OSError:
+        pass
     out['RESULT'] = 'READ_ONLY_COMPLETE'
     return out
 
