@@ -34,6 +34,7 @@
 - `mosquitto` — `6f8d8a947c50`
 - `nginx-proxy-manager` — `52b2c59994f3`
 - `paperless-db-1` — `postgres:15`
+- `paperless-iq` — `ghcr.io/knows-cloud/paperless-iq:latest`
 - `paperless-paperless-1` — `ghcr.io/paperless-ngx/paperless-ngx:latest`
 - `paperless-redis-1` — `redis:7`
 - `predbat` — `31413752bb3e`
