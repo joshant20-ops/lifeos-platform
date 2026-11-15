@@ -8,6 +8,24 @@ spec.loader.exec_module(audit)
 
 
 class CapabilityAuditTests(unittest.TestCase):
+    def test_native_stdout_cannot_leak_values_or_inject_markers(self):
+        import json
+        self.assertEqual(audit.native_result('PRIVATE'), {'RESULT': 'OUTPUT_REJECTED'})
+        data = {'DOCUMENTS': 942, 'VERSION': '3.1.2', 'RESULT': 'READ_ONLY_COMPLETE'}
+        output = audit.native_result('private banner\nPAPERLESS_NATIVE_JSON=' + json.dumps(data))
+        self.assertEqual(output['DOCUMENTS'], 942)
+        self.assertNotIn('private', repr(output))
+        data['secret'] = 'PRIVATE'
+        self.assertEqual(audit.native_result('PAPERLESS_NATIVE_JSON=' + json.dumps(data)), {'RESULT': 'OUTPUT_REJECTED'})
+        self.assertEqual(audit.native_result('x' * 32769), {'RESULT': 'OUTPUT_REJECTED'})
+
+    def test_native_wrong_types_are_unknown(self):
+        import json
+        output = audit.native_result('PAPERLESS_NATIVE_JSON=' + json.dumps({'DOCUMENTS': True, 'VERSION': 'private\nX=PASS', 'RESULT': 'PRIVATE'}))
+        self.assertEqual(output['DOCUMENTS'], 'UNKNOWN')
+        self.assertEqual(output['VERSION'], 'UNKNOWN')
+        self.assertEqual(output['RESULT'], 'OUTPUT_REJECTED')
+
     def test_only_selected_aggregates_leave_host(self):
         seen = []
         def get(path):
