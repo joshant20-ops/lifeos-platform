@@ -32,10 +32,6 @@ OPS = {
         'script': 'scripts/lifeos-install-audiobooks.sh',
         'privileged': True,
     },
-    'deploy-emailops-shadow': {
-        'script': 'scripts/lifeos-deploy-emailops-shadow.sh',
-        'privileged': True,
-    },
     'discover-house-status': {
         'script': 'scripts/lifeos-discover-house-status.sh',
         'privileged': True,

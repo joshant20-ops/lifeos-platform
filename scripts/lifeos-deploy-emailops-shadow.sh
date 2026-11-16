@@ -1,4 +1,9 @@
 #!/usr/bin/env bash
+
+# Retired from active deployment.
+echo "EMAILOPS_INSTALL=RETIRED"
+exit 20
+
 set -Eeuo pipefail
 REPO=/home/joshan/lifeos-platform
 BUILD=/home/joshan/emailops-shadow-build
