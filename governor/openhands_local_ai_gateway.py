@@ -9,12 +9,12 @@ ROOT=pathlib.Path(__file__).resolve().parents[1]
 SPEC=importlib.util.spec_from_file_location("lifeos_ai_broker",ROOT/"governor"/"ai_broker.py")
 BROKER=importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(BROKER)
 MODEL="gpt-oss:20b"
-ALLOWED_MODELS={MODEL,"qwen2.5-coder:7b-instruct"}
+ALLOWED_MODELS={MODEL,"qwen2.5-coder:7b-instruct","nomic-embed-text","nomic-embed-text:latest"}
 UPSTREAM="http://192.168.0.201:11434"
 PORT=18114
 WAKE_TIMEOUT=max(30,int(getattr(BROKER,"WAKE_TIMEOUT",180)))
 REQUEST_LOCK=threading.Lock()
-INFERENCE_PATHS={"/api/generate","/api/chat","/v1/chat/completions"}
+INFERENCE_PATHS={"/api/generate","/api/chat","/v1/chat/completions","/api/embed","/api/embeddings","/v1/embeddings"}
 def tower_accessible():
     """Read the retained Tower Accessible state; never wake as a health side effect."""
     try:
