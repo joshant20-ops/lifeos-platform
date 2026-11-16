@@ -367,3 +367,23 @@ def test_structured_output_is_restricted_to_local_only(monkeypatch):
     assert called == [{"response_format": "json"}]
     with pytest.raises(BROKER.BrokerError, match="restricted to local JSON mode"):
         BROKER.generate("public task", privacy="normal", response_format="json")
+
+
+@pytest.mark.parametrize("state,expiry", [
+    ("active", BROKER.LEASE_TTL),
+    ("released", 60),
+])
+def test_native_mqtt_lease_expiry(monkeypatch, state, expiry):
+    published = []
+    monkeypatch.setattr(
+        BROKER.subprocess, "run",
+        lambda args, **kwargs: published.append(args),
+    )
+    BROKER._publish_lease(state, lease_id="expiry-test")
+    args = published[0]
+    assert args[args.index("-V") + 1] == "mqttv5"
+    assert "-r" in args
+    assert args[-4:] == [
+        "-D", "publish",
+        "message-expiry-interval", str(expiry),
+    ]

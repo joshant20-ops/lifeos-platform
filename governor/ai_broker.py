@@ -54,7 +54,14 @@ def _publish_lease(
     payload = json.dumps(lease, separators=(",", ":"))
     try:
         subprocess.run(
-            ["mosquitto_pub", "-h", MQTT_HOST, "-t", _lease_topic(lease_id), "-m", payload, "-r"],
+            [
+                "mosquitto_pub", "-h", MQTT_HOST,
+                "-V", "mqttv5",
+                "-t", _lease_topic(lease_id),
+                "-m", payload, "-r",
+                "-D", "publish", "message-expiry-interval",
+                str(LEASE_TTL if state == "active" else 60),
+            ],
             check=True, capture_output=True, text=True, timeout=5,
         )
     except Exception as exc:
