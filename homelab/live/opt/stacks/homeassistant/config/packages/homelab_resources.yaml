@@ -1,0 +1,81 @@
+rest:
+- resource: http://127.0.0.1:9090/api/v1/query?query=100+%2A+%281+-+avg%28rate%28node_cpu_seconds_total%7Bjob%3D%22raspberry-pi%22%2Cmode%3D%22idle%22%7D%5B2m%5D%29%29%29
+  scan_interval: 60
+  timeout: 10
+  sensor:
+  - name: Homelab CPU Utilisation
+    unique_id: homelab_cpu_utilisation
+    unit_of_measurement: '%'
+    value_template: '{{ value_json.data.result[0].value[1] | float | round(2) if value_json.status
+      == ''success'' and value_json.data.result | length == 1 else none }}'
+- resource: http://127.0.0.1:9090/api/v1/query?query=node_memory_MemAvailable_bytes%7Bjob%3D%22raspberry-pi%22%7D+%2F+1073741824
+  scan_interval: 60
+  timeout: 10
+  sensor:
+  - name: Homelab Available RAM
+    unique_id: homelab_available_ram
+    unit_of_measurement: GiB
+    value_template: '{{ value_json.data.result[0].value[1] | float | round(2) if value_json.status
+      == ''success'' and value_json.data.result | length == 1 else none }}'
+- resource: http://127.0.0.1:9090/api/v1/query?query=node_thermal_zone_temp%7Bjob%3D%22raspberry-pi%22%2Ctype%3D%22cpu-thermal%22%7D
+  scan_interval: 60
+  timeout: 10
+  sensor:
+  - name: Homelab CPU Temperature
+    unique_id: homelab_cpu_temperature
+    unit_of_measurement: "\xB0C"
+    value_template: '{{ value_json.data.result[0].value[1] | float | round(2) if value_json.status
+      == ''success'' and value_json.data.result | length == 1 else none }}'
+- resource: http://127.0.0.1:9090/api/v1/query?query=node_filesystem_avail_bytes%7Bjob%3D%22raspberry-pi%22%2Cmountpoint%3D%22%2F%22%7D+%2F+1073741824
+  scan_interval: 60
+  timeout: 10
+  sensor:
+  - name: Homelab SD Free
+    unique_id: homelab_sd_free
+    unit_of_measurement: GiB
+    value_template: '{{ value_json.data.result[0].value[1] | float | round(2) if value_json.status
+      == ''success'' and value_json.data.result | length == 1 else none }}'
+- resource: http://127.0.0.1:9090/api/v1/query?query=node_filesystem_avail_bytes%7Bjob%3D%22raspberry-pi%22%2Cmountpoint%3D%22%2Fmnt%2Fdocker-data%22%7D+%2F+1073741824
+  scan_interval: 60
+  timeout: 10
+  sensor:
+  - name: Homelab HDD Free
+    unique_id: homelab_hdd_free
+    unit_of_measurement: GiB
+    value_template: '{{ value_json.data.result[0].value[1] | float | round(2) if value_json.status
+      == ''success'' and value_json.data.result | length == 1 else none }}'
+- resource: http://127.0.0.1:9090/api/v1/query?query=node_filesystem_avail_bytes%7Bjob%3D%22raspberry-pi%22%2Cmountpoint%3D%22%2Fmnt%2Fsynology%22%7D+%2F+1073741824
+  scan_interval: 60
+  timeout: 10
+  sensor:
+  - name: Homelab NAS Free
+    unique_id: homelab_nas_free
+    unit_of_measurement: GiB
+    value_template: '{{ value_json.data.result[0].value[1] | float | round(2) if value_json.status
+      == ''success'' and value_json.data.result | length == 1 else none }}'
+template:
+- binary_sensor:
+  - name: Homelab Background Capacity
+    unique_id: homelab_background_capacity
+    availability: '{{ is_number(states(''sensor.homelab_cpu_utilisation'')) and is_number(states(''sensor.homelab_available_ram''))
+      and is_number(states(''sensor.homelab_cpu_temperature'')) and is_number(states(''sensor.homelab_sd_free''))
+      and is_number(states(''sensor.homelab_hdd_free'')) and is_number(states(''sensor.homelab_nas_free''))
+      }}'
+    state: '{% set running = this.state == ''on'' %}
+
+      {{ states(''sensor.homelab_cpu_utilisation'') | float(100) < (85 if running
+      else 70)
+
+      and states(''sensor.homelab_available_ram'') | float(0) > (2 if running else
+      4)
+
+      and states(''sensor.homelab_cpu_temperature'') | float(100) < (80 if running
+      else 70)
+
+      and states(''sensor.homelab_sd_free'') | float(0) > (4 if running else 8)
+
+      and states(''sensor.homelab_hdd_free'') | float(0) > (10 if running else 15)
+
+      and states(''sensor.homelab_nas_free'') | float(0) > (15 if running else 30)
+      }}'
+    delay_on: 00:05:00
