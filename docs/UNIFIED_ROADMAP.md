@@ -1,6 +1,6 @@
 # Unified LifeOS Roadmap
 
-**Active programme authority — reconciled 1 November 2026.**
+**Active programme authority — reconciled 16 November 2026.**
 
 This file sets programme priorities. Issue #24 is the execution index; individual issues retain acceptance evidence. Former stage/wave/P/M plans are historical, not independent instructions to start work. Current runtime evidence and explicit owner decisions outrank stale plans.
 
@@ -91,6 +91,14 @@ Owner-reported CLI checkpoint (not independently reproduced by GitHub): 1,490 Gm
 | M14 | Autonomous operation / production sign-off — outstanding | #2122; #2074 for storage |
 
 Functional milestones above are not production sign-off. Baseline: 4 functional, 7 partial, 3 outstanding. Do not count overlapping historical ledger or deploy tickets as additional requirements.
+
+### Latest M08 evidence — owner-reported 16 November 2026
+
+- All 1,534 archived EML files parsed successfully; zero read errors in this audit.
+- Both failed image filenames occur in three archived emails each; original payloads are present, but exact failed-task identity and inline disposition still require verification.
+- Flight attachment filenames occur inside the known recovered email; exact byte comparison against separately archived originals remains pending.
+- Neither outstanding older Word filename was found in archived EML; source recovery remains unresolved. Do not claim recovery or delete failure evidence.
+- Next: compare attachment hashes locally, then reconcile legacy wrappers. No private filenames, message contents or hashes exported.
 
 ### Milestone acceptance checklist
 
