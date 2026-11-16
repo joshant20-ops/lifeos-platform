@@ -73,3 +73,39 @@ def test_warm_inference_keeps_controller_lease_without_wake_delegation(monkeypat
     monkeypatch.setattr(GATEWAY.BROKER, "_publish_lease", lambda *a, **k: leases.append((a, k)))
     GATEWAY.ensure_tower("warm-test")
     assert leases == [(("active",), {"lease_id": "warm-test"})]
+
+
+def test_lease_renewal_stops_cleanly(monkeypatch):
+    calls = []
+    stop = threading.Event()
+
+    def publish(state, **kwargs):
+        calls.append((state, kwargs))
+        stop.set()
+
+    monkeypatch.setattr(GATEWAY.BROKER, "LEASE_TTL", 4)
+    monkeypatch.setattr(GATEWAY.BROKER, "_publish_lease", publish)
+
+    GATEWAY.renew_lease("renewal-test", stop)
+
+    assert calls == [
+        ("active", {"lease_id": "renewal-test"})
+    ]
+
+
+def test_lease_renewal_retries_failure(monkeypatch):
+    calls = []
+    stop = threading.Event()
+
+    def publish(state, **kwargs):
+        calls.append(state)
+        if len(calls) == 1:
+            raise RuntimeError("Temporary MQTT failure")
+        stop.set()
+
+    monkeypatch.setattr(GATEWAY.BROKER, "LEASE_TTL", 4)
+    monkeypatch.setattr(GATEWAY.BROKER, "_publish_lease", publish)
+
+    GATEWAY.renew_lease("retry-test", stop)
+
+    assert calls == ["active", "active"]

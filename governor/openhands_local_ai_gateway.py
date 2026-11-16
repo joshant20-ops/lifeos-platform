@@ -45,6 +45,14 @@ def ensure_tower(lease_id):
         if tower_accessible() is True and ollama_ready(): return
         time.sleep(min(2,max(0.05,WAKE_TIMEOUT/60)))
     raise RuntimeError("Tower/Ollama did not become ready before the bounded wake timeout")
+def renew_lease(lease_id, stop):
+    interval = max(1, min(60, BROKER.LEASE_TTL / 4))
+    while not stop.wait(interval):
+        try:
+            BROKER._publish_lease("active", lease_id=lease_id)
+        except Exception:
+            print("TOWER_LEASE_RENEWAL_FAILED", flush=True)
+
 class H(BaseHTTPRequestHandler):
     protocol_version="HTTP/1.1"
     def log_message(self,fmt,*args): print(fmt%args,flush=True)
@@ -75,6 +83,13 @@ class H(BaseHTTPRequestHandler):
             if not REQUEST_LOCK.acquire(timeout=WAKE_TIMEOUT): raise RuntimeError("Tower wake request queued beyond the bounded wait")
             try: ensure_tower(lease_id)
             finally: REQUEST_LOCK.release()
+            lease_stop = threading.Event()
+            lease_worker = threading.Thread(
+                target=renew_lease,
+                args=(lease_id, lease_stop),
+                daemon=True,
+            )
+            lease_worker.start()
             request=Request(UPSTREAM+path,data=data,headers={"Content-Type":"application/json"},method="POST")
             with urlopen(request,timeout=max(600,WAKE_TIMEOUT+600)) as r:
                     body=r.read(); self.send_response(r.status)
@@ -83,5 +98,8 @@ class H(BaseHTTPRequestHandler):
         except (HTTPError,URLError,ValueError,RuntimeError) as exc: self.sendj(503,{"error":{"message":str(exc)}})
         except Exception as exc: self.sendj(502,{"error":{"message":"upstream request failed: "+type(exc).__name__}})
         finally:
+            if "lease_worker" in locals():
+                lease_stop.set()
+                lease_worker.join()
             if locals().get("lease_acquired",False): BROKER._publish_lease("released",required=False,lease_id=lease_id)
 if __name__=="__main__": ThreadingHTTPServer(("0.0.0.0",PORT),H).serve_forever()

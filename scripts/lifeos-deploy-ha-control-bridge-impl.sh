@@ -54,9 +54,9 @@ done
 
 # Do not restart the single wake owner while a valid inference lease is active.
 LEASES="$(timeout 5s mosquitto_sub -h 127.0.0.1 -v -t 'lifeos/tower/lease/+' 2>/dev/null || true)"
-python3 - "$LEASES" <<'PY'
+python3 - 3<<<"$LEASES" <<'PY'
 import json, sys, time
-for line in sys.argv[1].splitlines():
+for line in open(3).read().splitlines():
     _, _, raw = line.partition(' ')
     try:
         lease = json.loads(raw)

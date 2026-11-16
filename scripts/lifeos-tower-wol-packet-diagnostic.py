@@ -237,7 +237,13 @@ def parse_pcap(path: str, target_mac: bytes, port: int, destination: str) -> lis
 
 def publish_lease(lease_id: str, state: str, expires_at: int) -> None:
     payload = json.dumps({"owner": "github-1588-wol-packet-diagnostic", "state": state, "expires_at": expires_at}, separators=(",", ":"))
-    cp = command(["mosquitto_pub", "-h", "127.0.0.1", "-t", LEASE_PREFIX + lease_id, "-r", "-m", payload])
+    expiry = max(1, expires_at - int(time.time())) if state == "active" else 60
+    cp = command([
+        "mosquitto_pub", "-h", "127.0.0.1",
+        "-V", "mqttv5", "-t", LEASE_PREFIX + lease_id,
+        "-r", "-m", payload,
+        "-D", "publish", "message-expiry-interval", str(expiry),
+    ])
     if cp.returncode:
         fail("LEASE_PUBLISH_FAILED")
 

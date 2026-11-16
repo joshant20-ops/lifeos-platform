@@ -34,11 +34,11 @@ PY
 assert_no_active_leases() {
   local retained
   retained=$(timeout 5 mosquitto_sub -h 127.0.0.1 -v -W 3 -t 'lifeos/tower/lease/+' 2>/dev/null || true)
-  python3 - "$retained" <<'PY'
+  python3 - 3<<<"$retained" <<'PY'
 import json,sys,time
 now=int(time.time())
 active=[]
-for line in sys.argv[1].splitlines():
+for line in open(3).read().splitlines():
     topic,sep,raw=line.partition(" ")
     if not sep: continue
     try: value=json.loads(raw)
