@@ -67,6 +67,59 @@ Evidence: [storage acceptance](https://github.com/joshant20-ops/lifeos-platform/
 
 The November storage evidence is recorded in the [Pi inventory run](https://github.com/joshant20-ops/lifeos-platform/actions/runs/43193896401), [authorised MQTT release](https://github.com/joshant20-ops/lifeos-platform/actions/runs/43060646029), [full local archive review](https://github.com/joshant20-ops/lifeos-platform/actions/runs/43194508746) and [snapshot deployment](https://github.com/joshant20-ops/lifeos-platform/actions/runs/43199132248).
 
+## Active standalone Paperless delivery — master milestones (16 November 2026)
+
+This is the sole active detailed Paperless checklist within the programme roadmap; M identifiers are tracking identifiers, not separate projects. #2122 owns processing/intelligence acceptance, #652 owns historical backlog evidence, #2072/#2074 own shared storage reliability. Supersedes earlier chat checklists; preserve historical issues and evidence. The later owner-selected intake work supersedes the earlier intake deferral, but not quality/security acceptance. #2123 engineering recovery is a separate deferred lane unless a demonstrated Paperless dependency blocks delivery; do not require OpenHands acceptance to use independently proven local inference.
+
+Owner-reported CLI checkpoint (not independently reproduced by GitHub): 1,490 Gmail All Mail records labelled Imported, zero unlabelled; 2,772 accessible original paths; 876 legacy extracts confirmed; 11 historical failed tasks investigated. Label coverage is not proof of message/attachment completeness. Filename matches plus prior pilot evidence account for five failures; two synthetic failures, two likely inline icons and two older Word files remain to reconcile. No private identities, text or filenames belong in repository evidence. Counts are point-in-time.
+
+| ID | Function / immediate state | Acceptance owner |
+|---|---|---|
+| M01 | Resource monitoring — functional | #2072 / #2074 |
+| M02 | Adaptive worker governor — partial | #2122, shared reliability |
+| M03 | Local AI gateway — partial, new changes pending live acceptance | #2122; historical #1588 |
+| M04 | Format conversion — functional | #2122 |
+| M05 | Historical Gmail label coverage — functional | #652 / #2122 |
+| M06 | Independent adaptive loader — partial | #2122 |
+| M07 | Original path availability audit — functional | #652 |
+| M08 | Failure recovery — partial | #2122 / #652 |
+| M09 | Legacy retirement — partial | #2122; preserve #1498 dependencies |
+| M10 | Deduplication — outstanding | #652 |
+| M11 | IQ semantic search — partial | #2122 |
+| M12 | Intelligent classification — partial | #2122 |
+| M13 | Persistent source-backed knowledge — outstanding | #2122 |
+| M14 | Autonomous operation / production sign-off — outstanding | #2122; #2074 for storage |
+
+Functional milestones above are not production sign-off. Baseline: 4 functional, 7 partial, 3 outstanding. Do not count overlapping historical ledger or deploy tickets as additional requirements.
+
+### Milestone acceptance checklist
+
+- [x] M01: Prometheus/Node Exporter and HA CPU, RAM, temperature, SD/HDD/NAS sensors; Grafana removed; live samples observed.
+- [x] M02: separate PI worker control and loader; target CPU 75%; grow/shrink and zero/recovery exercised; protect critical services.
+- [ ] M02: resolve busy-worker shrink/recycling limitations; failure/restart safeguards; persist resource priorities and validate sustained load.
+- [x] M03: existing wake-aware Ollama gateway; embedding endpoint/model; MQTT5 expiry and renewal implemented in source; regression tests reported passing.
+- [ ] M03: safely deploy pending gateway fixes; reconcile obsolete retained leases without broker restart; prove long inference protection, expiry and live acceptance.
+- [x] M04: Tika/Gotenberg, EML and Office conversion enabled; searchable email test and original attachment retention demonstrated in pilot.
+- [x] M05: native mail rule, original EML and true attachments, no historical age limit, Imported label coverage; tested read-state preservation.
+- [x] M06: independent loader, actual worker count, measured average, ceil(180/average seconds × workers), nominal 30-second schedule, singleton lock and CLI start/stop.
+- [ ] M06: independent 30-second active queue observation, five-minute idle Gmail polling with automatic active resumption, new-mail acceptance; native rule remains disabled while loader owns ingestion.
+- [x] M07: original path availability audit at baseline; corpus inventory and legacy wrapper count.
+- [x] M08: investigate all eleven failure causes, correct pilot permission issue and identify five recovered candidates.
+- [ ] M08: verify recovered bytes, inline image retention and older Word source availability; safe retry/quarantine, failure notification and escalation; verify message/attachment completeness independently of label.
+- [x] M09: old archive timer disabled; legacy EmailOps deployment retired in source; conflicting native assignment/matching disabled.
+- [ ] M09: live retirement and trigger/reference audit; retain legacy important-information pipeline until proven replacement; prevent redeployment and preserve rollback/evidence.
+- [ ] M10: match all 876 wrappers to EML using identity/content evidence; report ambiguous/unmatched; preserve metadata/links; prove backup/restore; owner approval before destructive removal; reconcile IQ.
+- [x] M11: IQ connected with local reasoning and embeddings, semantic index and live reindex webhook, progressing index.
+- [ ] M11: complete retained corpus index, stale/missing entries audit, representative semantic search/discovery, restart/index recovery and access controls.
+- [x] M12: naming/type/correspondent/tag policies and review prompts; pilot proposals; autoapply disabled.
+- [ ] M12: stale pilot reconciliation; independent stratified reference sample (~100), OCR/text quality, type/correspondent/date/amount/reference accuracy, search recall and duplicate precision; report denominators/abstentions; set safe autoapproval gates, classify backlog and newly arriving documents, avoid metadata proliferation. Preserve #2122 proposed thresholds (processing ≥99%, type/correspondent ≥95%, financial ≥99%, date ≥98%, originals 100%, cloud disclosure zero); do not claim population accuracy from sample.
+- [ ] M13: evaluate native IQ Memories/Discovery first; persistent source-linked facts, confidence, conflicts/supersession, expiry, deduplication, review/correction, incremental updates and restart proof; retire legacy only after equivalent outcome accepted.
+- [ ] M14: NAS/manual intake and export freshness, mobile usability, archive/original integrity, backup/isolated off-device restore, capacity safeguards, converter isolation positive/negative tests, monitoring/alerts, restart/recovery and end-to-end standalone acceptance; canonical runtime/config and controlled boot persistence; safe synthetic cleanup; operational documentation and acceptance evidence.
+
+Execution: M08 → M10 → M06 → M02 → M03 → M11 → M12 → M13 → M09 → M14; prioritize actual safety incidents and prerequisites, allow already-running safe background processing. AdGuard Tier 0 and Predbat untouched; no uncontrolled reboot, prune or destructive changes. Local-only private processing, native/OTS first, sole owner per capability, detached long jobs, serialized production changes. GitHub code/aggregate evidence only. Production completion requires consumed runtime, relevant regression/failure tests, rollback, durable config and evidence, retirement where applicable.
+
+Historical deployment tickets and ledger entries remain evidence/demand-led until individually proven obsolete or duplicate. Wider active/deferred portfolio remains below; standalone Paperless is the selected delivery focus, not a new parallel roadmap.
+
 ## Current focus — Now / Next / Later
 
 ### NOW
