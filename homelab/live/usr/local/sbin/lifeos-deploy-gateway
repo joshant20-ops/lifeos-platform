@@ -112,6 +112,10 @@ OPS = {
         'script': 'scripts/lifeos-managed-update-apply-predbat.sh',
         'privileged': True,
     },
+    'rehearse-paperless-checkpoint': {
+        'script': 'scripts/lifeos-paperless-recovery-rehearsal.sh',
+        'privileged': True,
+    },
     'restore-rehearsal': {
         'script': 'scripts/lifeos-restic-restore-rehearsal.sh',
         'privileged': True,
