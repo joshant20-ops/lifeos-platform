@@ -1,0 +1,51 @@
+name: Paperless Recovery Rehearsal
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/paperless-recovery-rehearsal.yml'
+      - 'governor/paperless_recovery_rehearsal.py'
+      - 'scripts/lifeos-paperless-recovery-rehearsal.sh'
+      - 'tests/test_paperless_recovery_rehearsal.py'
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/paperless-recovery-rehearsal.yml'
+      - 'governor/paperless_recovery_rehearsal.py'
+      - 'scripts/lifeos-paperless-recovery-rehearsal.sh'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: |
+          bash -n scripts/lifeos-paperless-recovery-rehearsal.sh
+          python3 -m unittest -v tests.test_paperless_recovery_rehearsal
+  rehearse:
+    if: github.repository == 'joshant20-ops/lifeos-platform' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: validate
+    concurrency:
+      group: lifeos-pi5-deploy
+      cancel-in-progress: false
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 28
+    steps:
+      - name: Run reviewed fixed rehearsal on the Pi
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          cd /home/joshan/lifeos-platform
+          test "$(git symbolic-ref --short HEAD)" = main
+          test -z "$(git status --porcelain --untracked-files=all)"
+          git fetch --prune origin main
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          git merge --ff-only --no-overwrite-ignore origin/main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test -z "$(git status --porcelain --untracked-files=all)"
+          sudo -n bash /home/joshan/lifeos-platform/scripts/lifeos-install-github-runner-gateway.sh
+          cmp -s homelab/live/usr/local/sbin/lifeos-deploy-gateway /usr/local/sbin/lifeos-deploy-gateway
+          sudo -n /usr/local/sbin/lifeos-deploy-gateway rehearse-paperless-checkpoint
