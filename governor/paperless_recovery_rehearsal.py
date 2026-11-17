@@ -29,9 +29,18 @@ CHUNK = 1024**2
 DOCKER = "/usr/bin/docker"
 
 
+class RehearsalError(ValueError):
+    pass
+
+
 def require(condition, code):
     if not condition:
-        raise ValueError(code)
+        raise RehearsalError(code)
+
+
+def failure_code(exc):
+    code = str(exc)
+    return code if isinstance(exc, RehearsalError) and re.fullmatch(r"[A-Z_]{3,48}", code) else "LOCAL_OPERATION_FAILED"
 
 
 @contextmanager
@@ -96,6 +105,7 @@ def extract(source, destination, guard, remaining):
 
 
 def command(args, guard, seconds=30, stdin=None, output=None, capture=True):
+    guard()
     with tempfile.TemporaryFile() as buffer:
         with subprocess.Popen(args, stdin=stdin if stdin is not None else subprocess.DEVNULL,
                               stdout=output if output is not None else buffer if capture else subprocess.DEVNULL,
@@ -150,11 +160,12 @@ def postgres_image(guard):
     return image
 
 
-def resource_ready():
+def resource_ready(*, initial=False):
     memory = Path('/proc/meminfo').read_text()
     available = re.search(r'^MemAvailable:\s+([0-9]+) kB$', memory, re.MULTILINE)
     temperature = int(Path('/sys/class/thermal/thermal_zone0/temp').read_text())
-    return bool(available and int(available[1]) >= 2 * 1024**2
+    minimum = (2 if initial else 1) * 1024**2
+    return bool(available and int(available[1]) >= minimum
                 and 0 < temperature < 75000 and os.getloadavg()[0] < 4)
 
 
@@ -162,12 +173,13 @@ def database_proof(stage, container, guard, evidence):
     image = postgres_image(guard)
     data = stage / "db"
     data.mkdir(mode=0o700)
+    evidence["postgres_start_attempted"] = True
     require(command([DOCKER, "run", "-d", "--pull=never", "--name", container,
                      "--label=lifeos.paperless-rehearsal=true", "--network=none",
                      "--restart=no", "--cpus=0.50", "--memory=768m", "--memory-swap=768m",
                      "--pids-limit=64", "--log-driver=none", "--security-opt=no-new-privileges",
                      "--mount", f"type=bind,src={data},dst=/rehearsal",
-                     "-e", "PGDATA=/rehearsal/data", "-e", "POSTGRES_USER=rehearsal",
+                     "-e", "PGDATA=/rehearsal", "-e", "POSTGRES_USER=rehearsal",
                      "-e", "POSTGRES_DB=rehearsal", "-e", "POSTGRES_HOST_AUTH_METHOD=trust",
                      image, "postgres", "-c", "listen_addresses=", "-c", "max_connections=10"],
                     guard, seconds=70) is not None, "POSTGRES_START")
@@ -181,7 +193,7 @@ def database_proof(stage, container, guard, evidence):
             break
         time.sleep(1)
     else:
-        raise ValueError("POSTGRES_NOT_READY")
+        raise RehearsalError("POSTGRES_NOT_READY")
     with (stage / "paperless.dump").open("rb") as dump:
         require(command([DOCKER, "exec", "-i", container, "pg_restore", "--host=/var/run/postgresql",
                          "--username=rehearsal", "--dbname=rehearsal", "--no-owner", "--no-privileges",
@@ -215,7 +227,7 @@ def database_proof(stage, container, guard, evidence):
         guard()
         identifier, filename, checksum = json.loads(row)
         require(type(identifier) is int and identifier > 0 and isinstance(checksum, str)
-                and re.fullmatch(r"[a-fA-F0-9]{32}", checksum), "MEDIA_ROW_FORMAT")
+                and re.fullmatch(r"(?:[a-fA-F0-9]{32}|[a-fA-F0-9]{64})", checksum), "MEDIA_ROW_FORMAT")
         if not filename:
             candidates = list(base.glob(f"{identifier:07}.*"))
             path = candidates[0] if len(candidates) == 1 else None
@@ -227,7 +239,8 @@ def database_proof(stage, container, guard, evidence):
             missing += 1
         else:
             with path.open("rb") as source:
-                mismatch += file_digest(source, "md5", guard) != checksum.lower()
+                algorithm = "md5" if len(checksum) == 32 else "sha256"
+                mismatch += file_digest(source, algorithm, guard) != checksum.lower()
             checked += 1
     evidence.update(originals_checked=checked, originals_missing=missing, originals_checksum_mismatch=mismatch)
     require(not missing and not mismatch, "DOCUMENT_MEDIA_INCONSISTENT")
@@ -235,6 +248,7 @@ def database_proof(stage, container, guard, evidence):
 
 def main():
     os.umask(0o077)
+    started = time.monotonic()
     REPORT_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
     require(REPORT_DIR.is_dir() and not REPORT_DIR.is_symlink() and REPORT_DIR.stat().st_uid == 0
             and not REPORT_DIR.stat().st_mode & 0o077, "REPORT_DIRECTORY")
@@ -244,7 +258,7 @@ def main():
     stage = None
     container = f"lifeos-paperless-rehearsal-{suffix}"
     def interrupted(*_):
-        raise ValueError("INTERRUPTED")
+        raise RehearsalError("INTERRUPTED")
     for sig in (signal.SIGINT, signal.SIGTERM):
         signal.signal(sig, interrupted)
     with (REPORT_DIR / "lock").open("a") as lock:
@@ -255,21 +269,30 @@ def main():
             blocks = os.statvfs(HDD)
             require(blocks.f_bavail * blocks.f_frsize >= RESERVE + LIMIT and blocks.f_favail >= 100000,
                     "STAGING_CAPACITY")
-            require(resource_ready(), "PI_RESOURCE_PRECHECK")
+            require(resource_ready(initial=True), "PI_RESOURCE_PRECHECK")
             resolver, public = connection_inputs()
             gate = HealthGate(lambda: health_checks(resolver, public), interval=3, max_age=16).start()
+            next_resource_check = 0
             def guard():
+                nonlocal next_resource_check
                 gate.guard()
-                usage = os.statvfs(HDD)
-                require(usage.f_bavail * usage.f_frsize >= RESERVE and usage.f_favail >= 50000, "STAGING_RESERVE")
+                now = time.monotonic()
+                if now >= next_resource_check:
+                    usage = os.statvfs(HDD)
+                    require(usage.f_bavail * usage.f_frsize >= RESERVE and usage.f_favail >= 50000, "STAGING_RESERVE")
+                    require(resource_ready(), "PI_RESOURCE_LIMIT")
+                    next_resource_check = now + 3
             hashes = read_manifest(CHECKPOINT)
+            for name in ARCHIVES:
+                with regular_source(CHECKPOINT, name) as source:
+                    require(0 < os.fstat(source.fileno()).st_size <= LIMIT, "ARCHIVE_SIZE")
+                    require(file_digest(source, "sha256", guard) == hashes[name], "ARCHIVE_CHECKSUM")
+            evidence["archives_verified"] = len(hashes)
             stage = Path(tempfile.mkdtemp(prefix=".paperless-restore-", dir=HDD))
             remaining = LIMIT
             for name in ARCHIVES:
                 with regular_source(CHECKPOINT, name) as source:
                     require(0 < os.fstat(source.fileno()).st_size <= LIMIT, "ARCHIVE_SIZE")
-                    require(file_digest(source, "sha256", guard) == hashes[name], "ARCHIVE_CHECKSUM")
-                    source.seek(0)
                     if name == "paperless.dump":
                         with (stage / name).open("xb") as output:
                             while data := source.read(CHUNK):
@@ -287,34 +310,40 @@ def main():
                     source.seek(0)
                     require(file_digest(source, "sha256", guard) == hashes[name], "ARCHIVE_CHANGED")
             require(hashes == read_manifest(CHECKPOINT), "MANIFEST_CHANGED")
-            evidence["archives_verified"] = len(hashes)
             config = stage / "configuration"
             require(any(p.is_file() and p.stat().st_size > 0 for basename in ("compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml")
                         for p in config.rglob(basename)), "COMPOSE_MISSING")
             require(any(p.is_file() and p.stat().st_size > 0 for p in config.rglob(".env")), "ENV_MISSING")
             evidence["historical_eml_files"] = sum(p.is_file() for p in (stage / "historical-email").rglob("*.eml"))
             require(evidence["historical_eml_files"] > 0, "HISTORICAL_EMAIL_MISSING")
-            evidence.update(iq_verify(stage / "paperless-iq", guard))
+            try:
+                evidence.update(iq_verify(stage / "paperless-iq", guard))
+                evidence["iq_files"] = "PASS"
+            except Exception as exc:
+                # Preserve IQ failure evidence and still test the independent database.
+                evidence["iq_files"] = failure_code(exc)
             database_proof(stage, container, guard, evidence)
             gate.sample()
             gate.guard()
             evidence["tier0"] = "PASS"
-            evidence["result"] = "DATA_RESTORE_PASS"
+            evidence["result"] = "DATA_RESTORE_PASS" if evidence["iq_files"] == "PASS" else "PARTIAL"
         except Exception as exc:
-            code = str(exc)
-            evidence["failure"] = code if isinstance(exc, ValueError) and re.fullmatch(r"[A-Z_]{3,48}", code) else "LOCAL_OPERATION_FAILED"
+            evidence["failure"] = failure_code(exc)
         finally:
             if gate is not None:
                 gate.close()
             # Stop only this run's random container, even when health gates abort.
-            if stage is not None:
+            if evidence.get("postgres_start_attempted"):
                 try:
                     stopped = command([DOCKER, "stop", "--time=5", container], lambda: None, seconds=15, capture=False)
-                    if stopped is None and "postgres_restore" in evidence:
+                    if stopped is None:
                         evidence["temporary_stop"] = "UNVERIFIED"
+                    else:
+                        evidence["temporary_stop"] = "PASS"
                 except Exception:
                     evidence["temporary_stop"] = "UNVERIFIED"
             report = REPORT_DIR / (suffix + ".json")
+            evidence["elapsed_seconds"] = round(time.monotonic() - started)
             with report.open("x") as output:
                 json.dump(evidence, output, sort_keys=True)
                 output.flush()

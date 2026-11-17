@@ -29,7 +29,7 @@ jobs:
     if: github.repository == 'joshant20-ops/lifeos-platform' && github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: validate
     concurrency:
-      group: lifeos-pi5-control
+      group: lifeos-pi5-deploy
       cancel-in-progress: false
     runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
     timeout-minutes: 28
