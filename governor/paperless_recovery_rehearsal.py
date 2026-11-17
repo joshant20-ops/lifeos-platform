@@ -319,9 +319,11 @@ def main():
             try:
                 evidence.update(iq_verify(stage / "paperless-iq", guard))
                 evidence["iq_files"] = "PASS"
-            except Exception as exc:
-                # Preserve IQ failure evidence and still test the independent database.
-                evidence["iq_files"] = failure_code(exc)
+            except RehearsalError as exc:
+                code = failure_code(exc)
+                if code not in {"IQ_DATABASE_LAYOUT", "IQ_SQLITE_INTEGRITY", "CHROMA_SEGMENT_LAYOUT", "CHROMA_INDEX_FILES"}:
+                    raise
+                evidence["iq_files"] = code
             database_proof(stage, container, guard, evidence)
             gate.sample()
             gate.guard()
@@ -330,8 +332,6 @@ def main():
         except Exception as exc:
             evidence["failure"] = failure_code(exc)
         finally:
-            if gate is not None:
-                gate.close()
             # Stop only this run's random container, even when health gates abort.
             if evidence.get("postgres_start_attempted"):
                 try:
@@ -348,6 +348,8 @@ def main():
                 json.dump(evidence, output, sort_keys=True)
                 output.flush()
                 os.fsync(output.fileno())
+            if gate is not None:
+                gate.close()
             if evidence["result"] == "DATA_RESTORE_PASS":
                 try:
                     require(command([DOCKER, "rm", "-v", container], lambda: None, capture=False) is not None, "CLEANUP_CONTAINER")
