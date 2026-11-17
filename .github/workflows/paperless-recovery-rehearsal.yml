@@ -39,8 +39,18 @@ jobs:
         run: |
           set -Eeuo pipefail
           cd /home/joshan/lifeos-platform
-          test "$(git symbolic-ref --short HEAD)" = main
-          test -z "$(git status --porcelain --untracked-files=all)"
+          branch_state=MAIN
+          if [[ "$(git symbolic-ref --quiet --short HEAD || true)" != main ]]; then
+            branch_state=OTHER_OR_DETACHED
+          fi
+          checkout_status="$(git status --porcelain --untracked-files=all)"
+          checkout_state=CLEAN
+          if [[ -n "$checkout_status" ]]; then
+            checkout_state=DIRTY
+          fi
+          echo "PAPERLESS_PI_CHECKOUT_BRANCH=$branch_state"
+          echo "PAPERLESS_PI_CHECKOUT_STATE=$checkout_state"
+          test "$branch_state" = MAIN && test "$checkout_state" = CLEAN || exit 2
           git fetch --prune origin main
           test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
           git merge --ff-only --no-overwrite-ignore origin/main
