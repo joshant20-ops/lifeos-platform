@@ -92,6 +92,19 @@ Owner-reported CLI checkpoint (not independently reproduced by GitHub): 1,490 Gm
 
 Functional milestones above are not production sign-off. Baseline: 4 functional, 7 partial, 3 outstanding. Do not count overlapping historical ledger or deploy tickets as additional requirements.
 
+### Engineering simplification and acceptance gate — 17 November 2026
+
+Owner-directed implementation policy following the viability audit:
+
+- **Stop expanding the LifeOS architecture** until the existing standalone services are proven recoverable, reliable and useful. This does not cancel previously approved independent Finance work; it prevents speculative cross-service frameworks and new runtime dependencies.
+- **Paperless first:** preserve the current working stack and complete isolated recovery, backup encryption/off-device failure separation, capacity safeguards, Gmail integrity, loader/governor reliability, IQ acceptance and production sign-off. Keep the 14 existing milestones and issue ownership authoritative; do not create a second roadmap.
+- **Simplify with evidence:** inventory each custom Paperless helper, its native/OTS alternative, measured benefit, dependencies, failure modes, and retirement/rollback plan. Retain only components with a demonstrated need; do not remove a live helper merely because it is custom.
+- **Autonomy boundary:** allow unattended observation, isolated tests and explicitly bounded/reversible operations with durable logs. Require risk-appropriate authorization, rollback and runtime verification for production mutations. Never let an agent self-authorize destructive cleanup, privilege expansion, unbounded deployment or protected-service disruption.
+- **Acceptance over activity:** passing source tests or creating a GitHub commit is not deployed production acceptance. Measure document integrity, search/classification quality, restoration, resource impact, alerts and sustained unattended processing with explicit denominators and evidence.
+- **Safety:** AdGuard Tier 0, Predbat and Home Assistant are protected. No uncontrolled reboot, Docker prune, destructive deduplication, or exposure of private data. Keep rollback evidence and prevent retired deployments from reappearing.
+- **Recovery checkpoint (owner CLI, 16 Nov):** `/mnt/docker-data/paperless-recovery/20261116-164147-XuCaRz` contains `paperless.dump`, `media.tar`, `configuration.tar`, `historical-email.tar`, `paperless-iq.tar` and `SHA256SUMS`; five checksum checks passed, total 825 MB. Live IQ SQLite integrity checks passed and IQ restarted; protected services remained running. **No isolated restore yet; unencrypted and co-located with Pi; database/media snapshots not simultaneous.** Never report this as production recovery proof or delete it before a separate verified copy.
+- **Next executable gate:** inspect storage/mounts, stage the existing recovery set read-only, validate extracted IQ SQLite and media references, restore PostgreSQL into an isolated instance, record findings; then harden Restic with encryption and separate failure boundary. Do not modify live data during rehearsal.
+
 ### Latest M08 evidence — owner-reported 16 November 2026
 
 - All 1,534 archived EML files parsed successfully; zero read errors in this audit.
