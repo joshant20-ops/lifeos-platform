@@ -216,7 +216,7 @@ print('CHROMA_NATIVE_RESULT=' + json.dumps([len(collections), total, tested]))
     finally:
         # Only this random test container is addressed, including on abort.
         command([DOCKER, 'stop', '--time=3', name], lambda: None, seconds=8, capture=False)
-        removed = command([DOCKER, 'rm', name], lambda: None, seconds=8, capture=False)
+        removed = command([DOCKER, 'rm', '-v', name], lambda: None, seconds=8, capture=False)
         evidence['iq_temporary_cleanup'] = 'PASS' if removed is not None else 'UNVERIFIED'
         require(removed is not None, 'IQ_TEMPORARY_CLEANUP')
 
