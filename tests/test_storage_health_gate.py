@@ -3,6 +3,50 @@ from governor.storage_health_gate import HealthGate, HealthUnavailable
 
 
 class HealthGateTests(unittest.TestCase):
+    def test_guard_rejection_diagnostic_survives_background_recovery(self):
+        checks = {'dns': True}
+        gate, now = self.gate(lambda: checks)
+        gate.sample()
+        now[0] = 3
+        with self.assertRaises(HealthUnavailable):
+            gate.guard()
+        gate.sample()
+        self.assertEqual(gate.diagnostics({'dns'})['reason'], 'STALE_SAMPLE')
+        checks['dns'] = False
+        gate.sample()
+        self.assertEqual(gate.diagnostics({'dns'})['reason'], 'STALE_SAMPLE')
+
+    def test_diagnostic_preserves_first_failure_and_filters_unknown_names(self):
+        checks = {'dns': False, 'PRIVATE_NAME': False}
+        gate, _ = self.gate(lambda: checks)
+        gate.sample()
+        checks['dns'] = True
+        checks['PRIVATE_NAME'] = True
+        gate.sample()
+        report = gate.diagnostics({'dns'})
+        self.assertEqual(report['reason'], 'FAILED_CHECKS')
+        self.assertEqual(report['failed_checks'], ['dns'])
+        self.assertNotIn('PRIVATE_NAME', str(report))
+        with self.assertRaises(HealthUnavailable):
+            gate.guard()
+
+    def test_diagnostic_distinguishes_slow_and_stale_without_relaxing_guard(self):
+        gate, now = self.gate(lambda: {'dns': True})
+        gate.sample()
+        now[0] = 3
+        self.assertEqual(gate.diagnostics({'dns'})['reason'], 'STALE_SAMPLE')
+        def slow():
+            now[0] += 4
+            return {'dns': True}
+        gate.probe = slow
+        gate.sample()
+        report = gate.diagnostics({'dns'})
+        self.assertEqual(report['reason'], 'SLOW_PROBE')
+        self.assertEqual(report['failed_checks'], [])
+        self.assertEqual(report['first_failure_duration_ms'], 4000)
+        with self.assertRaises(HealthUnavailable):
+            gate.guard()
+
     def gate(self, probe):
         now = [0.0]
         gate = HealthGate(probe, clock=lambda: now[0])
@@ -78,3 +122,4 @@ class HealthGateTests(unittest.TestCase):
         finally:
             gate.close()
         self.assertFalse(gate.thread.is_alive())
+
