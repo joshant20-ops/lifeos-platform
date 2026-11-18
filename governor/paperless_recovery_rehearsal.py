@@ -326,6 +326,12 @@ def cleanup_verified_staging(guard, evidence):
                 continue
             for mount in json.loads(raw_mounts):
                 source = Path(mount.get('Source', '/'))
+                # Broad read-only host observers do not own this private test tree.
+                # Exact/descendant references and writable/unknown ancestors still block.
+                if (mount.get('Type') == 'bind' and mount.get('RW') is False
+                        and source != stage and stage.is_relative_to(source)):
+                    evidence['cleanup_readonly_ancestor_references'] = evidence.get('cleanup_readonly_ancestor_references', 0) + 1
+                    continue
                 if source.is_relative_to(stage) or stage.is_relative_to(source):
                     evidence['cleanup_reference_relationship'] = ('STAGE_OR_DESCENDANT' if source.is_relative_to(stage) else 'ANCESTOR')
                     evidence['cleanup_reference_access'] = 'READ_ONLY' if mount.get('RW') is False else 'WRITABLE_OR_UNKNOWN'
