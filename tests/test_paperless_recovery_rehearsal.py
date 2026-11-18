@@ -98,6 +98,22 @@ class RecoverySafetyTests(unittest.TestCase):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
 
+    def test_application_failure_evidence_rejects_private_or_unbounded_fields(self):
+        for extra in ({}, {'private_contents': 'must never escape'}, {'application_listing_count': 'private value'}):
+            with self.subTest(extra=list(extra)), tempfile.TemporaryDirectory() as directory:
+                stage = Path(directory)
+                (stage / 'media' / 'originals').mkdir(parents=True)
+                diagnostic = {'application_failure_phase': 'DOCUMENT_LIST', 'application_failure_type': 'ConnectionError', **extra}
+                evidence = {'root_documents': 2772}
+                with patch.object(rehearsal, 'command', side_effect=['a' * 12, 'sha256:' + 'b' * 64, json.dumps(diagnostic), '']):
+                    with self.assertRaises(rehearsal.RehearsalError):
+                        rehearsal.application_proof(stage, 'isolated-test', lambda: None, evidence)
+                self.assertNotIn('private_contents', evidence)
+                if extra:
+                    self.assertNotIn('application_failure_phase', evidence)
+                else:
+                    self.assertEqual(evidence['application_failure_type'], 'ConnectionError')
+
     def test_backup_inventory_never_swallows_guard_abort(self):
         import types, sys
         module = types.ModuleType('governor.adguard_archive_restic_proof')
