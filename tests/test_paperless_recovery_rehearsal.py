@@ -1,4 +1,5 @@
 import hashlib
+import os
 import io
 from pathlib import Path
 import tarfile
@@ -23,6 +24,104 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 
 class RecoverySafetyTests(unittest.TestCase):
+    def setUp(self):
+        original_stat = Path.stat
+        def stage_stat(path, *args, **kwargs):
+            result = original_stat(path, *args, **kwargs)
+            if path.name == '.paperless-restore-abcdefgh':
+                values = list(result)
+                values[4] = 0  # Model the root-owned production staging boundary.
+                return os.stat_result(values)
+            return result
+        mocked = patch.object(Path, 'stat', stage_stat)
+        mocked.start()
+        self.addCleanup(mocked.stop)
+
+    def cleanup_fixture(self, directory):
+        root = Path(directory)
+        reports = root / 'reports'
+        reports.mkdir()
+        stage = root / '.paperless-restore-abcdefgh'
+        stage.mkdir(mode=0o700)
+        (stage / 'db').mkdir()
+        identifier = 'a' * 32
+        record = {'archives_verified': 5, 'postgres_restore': 'PASS', 'originals_checked': 2772,
+                  'originals_missing': 0, 'originals_checksum_mismatch': 0, 'temporary_stop': 'PASS', 'iq_temporary_cleanup': 'PASS'}
+        (reports / (identifier + '.json')).write_text(json.dumps(record))
+        info = {'Id': 'b' * 64, 'State': {'Status': 'exited', 'Running': False},
+                'HostConfig': {'NetworkMode': 'none', 'PortBindings': {}},
+                'Config': {'Labels': {'lifeos.paperless-rehearsal': 'true'}},
+                'Mounts': [{'Type': 'bind', 'Destination': '/rehearsal', 'Source': str(stage / 'db')}]}
+        return root, reports, stage, info
+
+    def test_verified_cleanup_resumes_after_stage_deleted_and_container_remove_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, reports, stage, info = self.cleanup_fixture(directory)
+            def responses(remove):
+                return ['b' * 12, json.dumps(info), 'b' * 12, info['Id'] + '|' + json.dumps(info['Mounts']), remove]
+            with patch.object(rehearsal, 'HDD', root), patch.object(rehearsal, 'REPORT_DIR', reports):
+                with patch.object(rehearsal, 'command', side_effect=responses(None)):
+                    with self.assertRaises(rehearsal.RehearsalError):
+                        rehearsal.cleanup_verified_staging(lambda: None, {})
+                self.assertFalse(stage.exists())
+                self.assertTrue(next(reports.glob('*.json')).exists())
+                evidence = {}
+                with patch.object(rehearsal, 'command', side_effect=responses('')) as run:
+                    rehearsal.cleanup_verified_staging(lambda: None, evidence)
+                self.assertEqual(run.call_args_list[-1].args[0], [rehearsal.DOCKER, 'rm', '-v', info['Id']])
+                self.assertEqual(evidence['verified_test_stages_removed'], 0)
+
+    def test_verified_cleanup_rejects_running_unlabelled_and_unexpected_mounts(self):
+        for mutation in ('running', 'unlabelled', 'extra_bind', 'extra_volume'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as directory:
+                root, reports, stage, info = self.cleanup_fixture(directory)
+                if mutation == 'running':
+                    info['State'] = {'Status': 'running', 'Running': True}
+                elif mutation == 'unlabelled':
+                    info['Config']['Labels'] = {}
+                else:
+                    info['Mounts'].append({'Type': 'bind' if mutation == 'extra_bind' else 'volume',
+                                           'Destination': '/production', 'Source': '/private', 'Name': 'production'})
+                with patch.object(rehearsal, 'HDD', root), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal, 'command', side_effect=['b' * 12, json.dumps(info)]):
+                    with self.assertRaises(rehearsal.RehearsalError):
+                        rehearsal.cleanup_verified_staging(lambda: None, {})
+                self.assertTrue(stage.exists())
+
+    def test_verified_cleanup_rejects_parent_and_child_container_references(self):
+        for reference in ('parent', 'child'):
+            with tempfile.TemporaryDirectory() as directory:
+                root, reports, stage, info = self.cleanup_fixture(directory)
+                other = root if reference == 'parent' else stage / 'media'
+                refs = info['Id'] + '|' + json.dumps(info['Mounts']) + '\n' + 'c' * 64 + '|' + json.dumps([{'Source': str(other)}])
+                with patch.object(rehearsal, 'HDD', root), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal, 'command', side_effect=['b' * 12, json.dumps(info), 'b' * 12 + '\n' + 'c' * 12, refs]):
+                    with self.assertRaises(rehearsal.RehearsalError):
+                        rehearsal.cleanup_verified_staging(lambda: None, {})
+                self.assertTrue(stage.exists())
+
+    def test_stage_validation_rejects_unknown_children_and_nested_mounts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, _, stage, _ = self.cleanup_fixture(directory)
+            (stage / 'unknown').touch()
+            with patch.object(rehearsal, 'HDD', root), self.assertRaises(rehearsal.RehearsalError):
+                rehearsal.validated_test_stage(str(stage / 'db'))
+            (stage / 'unknown').unlink()
+            with patch.object(rehearsal, 'HDD', root), patch.object(Path, 'open', return_value=io.StringIO(f'1 2 0:1 / {stage}/media rw - ext4 disk rw\n')), self.assertRaises(rehearsal.RehearsalError):
+                rehearsal.validated_test_stage(str(stage / 'db'))
+
+    def test_verified_stage_cleanup_requires_successful_original_recovery(self):
+        record = {'archives_verified': 5, 'postgres_restore': 'PASS', 'originals_checked': 2772,
+                  'originals_missing': 0, 'originals_checksum_mismatch': 0, 'temporary_stop': 'PASS'}
+        self.assertTrue(rehearsal.verified_recovery_record(record))
+        for field, value in (('archives_verified', 4), ('postgres_restore', 'FAILED'),
+                             ('originals_checked', 0), ('originals_missing', 1),
+                             ('originals_checksum_mismatch', 1), ('temporary_stop', 'UNVERIFIED')):
+            self.assertFalse(rehearsal.verified_recovery_record({**record, field: value}))
+
+    def test_cleanup_stage_rejects_production_paths(self):
+        for path in ('/mnt/docker-data/paperless-recovery/checkpoint/db', '/home/joshan/paperless/data/db', '/mnt/docker-data/automation/db'):
+            with self.assertRaises(rehearsal.RehearsalError):
+                rehearsal.validated_test_stage(path)
+
     def test_cleanup_uses_only_recorded_exited_isolated_iq_container(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -131,3 +230,4 @@ class RecoverySafetyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

@@ -251,6 +251,122 @@ def recover_completed_iq_cleanup(guard):
         require(command([DOCKER, 'rm', '-v', name], guard, seconds=30, capture=False) is not None, 'IQ_PREVIOUS_CLEANUP')
 
 
+def verified_recovery_record(record):
+    return (isinstance(record, dict) and record.get('archives_verified') == 5
+            and record.get('postgres_restore') == 'PASS'
+            and type(record.get('originals_checked')) is int and record['originals_checked'] > 0
+            and record.get('originals_missing') == 0
+            and record.get('originals_checksum_mismatch') == 0
+            and record.get('temporary_stop') == 'PASS')
+
+
+def validated_test_stage(source):
+    stage = Path(source).parent
+    require(Path(source).name == 'db' and stage.parent == HDD and
+            re.fullmatch(r'\.paperless-restore-[a-z0-9_]{8}', stage.name), 'CLEANUP_STAGE_PATH')
+    require(not stage.is_symlink(), 'CLEANUP_STAGE_IDENTITY')
+    if not stage.exists():
+        return stage
+    require(stage.resolve() == stage and stage.stat().st_uid == 0
+            and not stage.stat().st_mode & 0o077
+            and stage.stat().st_dev == HDD.stat().st_dev, 'CLEANUP_STAGE_IDENTITY')
+    expected = {'db', 'paperless.dump', 'media', 'configuration', 'historical-email', 'paperless-iq'}
+    require({path.name for path in stage.iterdir()} <= expected, 'CLEANUP_STAGE_CONTENTS')
+    with Path('/proc/self/mountinfo').open() as mounts:
+        require(not any(len(fields := row.split()) >= 5 and
+                        (fields[4] == str(stage) or fields[4].startswith(str(stage) + '/'))
+                        for row in mounts), 'CLEANUP_STAGE_MOUNT')
+    return stage
+
+
+def cleanup_verified_staging(guard, evidence):
+    """Reclaim disposable copies only after verified data restoration and stopped DB."""
+    recover_completed_iq_cleanup(guard)
+    removed = 0
+    reports = list(REPORT_DIR.glob('*.json'))
+    require(len(reports) <= 100, 'REPORT_SCAN_LIMIT')
+    for report in reports:
+        if not re.fullmatch(r'[a-f0-9]{32}\.json', report.name):
+            continue
+        with regular_source(REPORT_DIR, report.name) as source:
+            raw = source.read(16385)
+        require(len(raw) <= 16384, 'REPORT_SIZE')
+        if not verified_recovery_record(json.loads(raw)):
+            continue
+        name = 'lifeos-paperless-rehearsal-' + report.stem
+        listing = command([DOCKER, 'ps', '--all', '--quiet', '--filter', f'name=^/{name}$'], guard)
+        require(listing is not None, 'CLEANUP_CONTAINER_LIST')
+        if not listing:
+            continue
+        require(re.fullmatch(r'[a-f0-9]{12,64}', listing) is not None, 'CLEANUP_CONTAINER_ID')
+        raw_info = command([DOCKER, 'inspect', '--format={{json .}}', listing], guard)
+        require(raw_info is not None, 'CLEANUP_INSPECT')
+        info = json.loads(raw_info)
+        require(info['State']['Status'] == 'exited' and not info['State']['Running']
+                and info['HostConfig']['NetworkMode'] == 'none'
+                and not info['HostConfig']['PortBindings']
+                and info['Config']['Labels'].get('lifeos.paperless-rehearsal') == 'true', 'CLEANUP_CONTAINER_IDENTITY')
+        mounts = info['Mounts']
+        binds = [mount for mount in mounts if mount['Type'] == 'bind']
+        require(len(binds) == 1 and binds[0]['Destination'] == '/rehearsal'
+                and all(mount['Type'] == 'bind' or
+                        (mount['Type'] == 'volume' and mount['Destination'] == '/var/lib/postgresql/data'
+                         and re.fullmatch(r'[a-f0-9]{64}', mount.get('Name', '')))
+                        for mount in mounts), 'CLEANUP_CONTAINER_MOUNT')
+        stage = validated_test_stage(binds[0]['Source'])
+        # Reject a staging tree referenced by any other container, including stopped ones.
+        ids = command([DOCKER, 'ps', '--all', '--quiet'], guard)
+        require(ids is not None and len(ids.splitlines()) <= 100
+                and all(re.fullmatch(r'[a-f0-9]{12,64}', value) for value in ids.splitlines()), 'CLEANUP_REFERENCE_LIST')
+        raw_refs = command([DOCKER, 'inspect', '--format={{.Id}}|{{json .Mounts}}', *ids.splitlines()], guard)
+        require(raw_refs is not None, 'CLEANUP_REFERENCE_INSPECT')
+        for row in raw_refs.splitlines():
+            identifier, raw_mounts = row.split('|', 1)
+            if identifier == info['Id']:
+                continue
+            require(not any(Path(mount.get('Source', '/')).is_relative_to(stage)
+                            or stage.is_relative_to(Path(mount.get('Source', '/')))
+                            for mount in json.loads(raw_mounts)), 'CLEANUP_OTHER_REFERENCE')
+        guard()
+        # Keep the stopped container as a reference until its private staging is gone.
+        existed = stage.exists()
+        if existed:
+            shutil.rmtree(stage)
+        require(command([DOCKER, 'rm', '-v', info['Id']], guard, seconds=30, capture=False) is not None,
+                'CLEANUP_CONTAINER_REMOVE')
+        removed += int(existed)
+    evidence['verified_test_stages_removed'] = removed
+
+
+def restore_reserve_from_verified_tests(resolver, public, evidence):
+    """Only reclaim stopped, verified disposable restores while reserve is low.
+
+    Network, AdGuard and resource checks stay mandatory. Storage reserve is
+    rechecked by the full health gate before any new staging or restoration.
+    """
+    def cleanup_probe():
+        checks = health_checks(resolver, public)
+        return {key: value for key, value in checks.items() if key != 'storage_reserve'}
+    gate = HealthGate(cleanup_probe, interval=3, max_age=16)
+    try:
+        gate.start()
+        def guard():
+            gate.guard()
+            stats = os.statvfs(HDD)
+            require(stats.f_bavail * stats.f_frsize >= RESERVE and stats.f_favail >= 50000, 'CLEANUP_RESERVE')
+            require(resource_ready(evidence=evidence), 'PI_RESOURCE_LIMIT')
+        # Prove the original checkpoint is readable and intact before discarding copies.
+        hashes = read_manifest(CHECKPOINT)
+        for name in ARCHIVES:
+            with regular_source(CHECKPOINT, name) as source:
+                require(file_digest(source, 'sha256', guard) == hashes[name], 'ARCHIVE_CHECKSUM')
+        evidence['cleanup_checkpoint_hashes_verified'] = len(hashes)
+        cleanup_verified_staging(guard, evidence)
+    finally:
+        evidence['cleanup_health_diagnostic'] = gate.diagnostics(TIER0_CHECKS)
+        gate.close()
+
+
 def postgres_image(guard):
     raw = command([DOCKER, "ps", "-q", "--filter", "label=com.docker.compose.project=paperless",
                    "--filter", "label=com.docker.compose.service=db"], guard)
@@ -399,6 +515,11 @@ def main():
                     "STAGING_CAPACITY")
             require(resource_ready(initial=True, evidence=evidence), "PI_RESOURCE_PRECHECK")
             resolver, public = connection_inputs()
+            if evidence['hdd_available_bytes'] < evidence['hdd_tier0_reserve_bytes'] + LIMIT:
+                evidence['phase'] = 'VERIFIED_TEST_CLEANUP'
+                restore_reserve_from_verified_tests(resolver, public, evidence)
+                after_cleanup = os.statvfs(HDD)
+                evidence['hdd_available_after_cleanup_bytes'] = after_cleanup.f_bavail * after_cleanup.f_frsize
             gate = HealthGate(lambda: health_checks(resolver, public), interval=3, max_age=16)
             gate.start()
             next_resource_check = 0
