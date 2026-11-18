@@ -23,6 +23,20 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 
 class RecoverySafetyTests(unittest.TestCase):
+    def test_verified_stage_cleanup_requires_successful_original_recovery(self):
+        record = {'archives_verified': 5, 'postgres_restore': 'PASS', 'originals_checked': 2772,
+                  'originals_missing': 0, 'originals_checksum_mismatch': 0, 'temporary_stop': 'PASS'}
+        self.assertTrue(rehearsal.verified_recovery_record(record))
+        for field, value in (('archives_verified', 4), ('postgres_restore', 'FAILED'),
+                             ('originals_checked', 0), ('originals_missing', 1),
+                             ('originals_checksum_mismatch', 1), ('temporary_stop', 'UNVERIFIED')):
+            self.assertFalse(rehearsal.verified_recovery_record({**record, field: value}))
+
+    def test_cleanup_stage_rejects_production_paths(self):
+        for path in ('/mnt/docker-data/paperless-recovery/checkpoint/db', '/home/joshan/paperless/data/db', '/mnt/docker-data/automation/db'):
+            with self.assertRaises(rehearsal.RehearsalError):
+                rehearsal.validated_test_stage(path)
+
     def test_cleanup_uses_only_recorded_exited_isolated_iq_container(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -131,3 +145,4 @@ class RecoverySafetyTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
