@@ -264,6 +264,9 @@ def validated_test_stage(source):
     stage = Path(source).parent
     require(Path(source).name == 'db' and stage.parent == HDD and
             re.fullmatch(r'\.paperless-restore-[a-z0-9_]{8}', stage.name), 'CLEANUP_STAGE_PATH')
+    require(not stage.is_symlink(), 'CLEANUP_STAGE_IDENTITY')
+    if not stage.exists():
+        return stage
     require(stage.resolve() == stage and stage.stat().st_uid == 0
             and not stage.stat().st_mode & 0o077
             and stage.stat().st_dev == HDD.stat().st_dev, 'CLEANUP_STAGE_IDENTITY')
@@ -322,13 +325,16 @@ def cleanup_verified_staging(guard, evidence):
             if identifier == info['Id']:
                 continue
             require(not any(Path(mount.get('Source', '/')).is_relative_to(stage)
+                            or stage.is_relative_to(Path(mount.get('Source', '/')))
                             for mount in json.loads(raw_mounts)), 'CLEANUP_OTHER_REFERENCE')
         guard()
         # Keep the stopped container as a reference until its private staging is gone.
-        shutil.rmtree(stage)
+        existed = stage.exists()
+        if existed:
+            shutil.rmtree(stage)
         require(command([DOCKER, 'rm', '-v', info['Id']], guard, seconds=30, capture=False) is not None,
                 'CLEANUP_CONTAINER_REMOVE')
-        removed += 1
+        removed += int(existed)
     evidence['verified_test_stages_removed'] = removed
 
 
