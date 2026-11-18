@@ -5,6 +5,7 @@ import tarfile
 import tempfile
 import unittest
 import sqlite3
+import json
 from unittest.mock import patch
 
 from governor import paperless_recovery_rehearsal as rehearsal
@@ -22,6 +23,20 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 
 class RecoverySafetyTests(unittest.TestCase):
+    def test_cleanup_uses_only_recorded_exited_isolated_iq_container(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            identifier = 'a' * 32
+            (root / (identifier + '.json')).write_text(json.dumps({'chroma_native_restore': 'PASS'}))
+            with patch.object(rehearsal, 'REPORT_DIR', root), patch.object(rehearsal, 'command', side_effect=['b' * 12, 'running|none|0|["python3"]']) as run:
+                with self.assertRaises(rehearsal.RehearsalError):
+                    rehearsal.recover_completed_iq_cleanup(lambda: None)
+            self.assertEqual(run.call_count, 2)
+            with patch.object(rehearsal, 'REPORT_DIR', root), patch.object(rehearsal, 'command', side_effect=['b' * 12, 'exited|none|0|["python3"]', '']) as run:
+                rehearsal.recover_completed_iq_cleanup(lambda: None)
+            args = run.call_args_list[-1].args[0]
+            self.assertEqual(args, [rehearsal.DOCKER, 'rm', '-v', 'lifeos-paperless-rehearsal-' + identifier + '-iq'])
+
     def test_chroma_preserves_extra_disk_segment_and_requires_all_metadata_segments(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -61,6 +76,7 @@ class RecoverySafetyTests(unittest.TestCase):
             self.assertNotIn('-p', args)
             self.assertEqual(evidence['chroma_native_restore'], 'PASS')
             self.assertEqual(evidence['iq_temporary_cleanup'], 'PASS')
+            self.assertFalse(any(call.args[0][1] == 'stop' for call in run.call_args_list))
 
     def test_failure_categories_suppress_private_exception_text(self):
         self.assertEqual(rehearsal.failure_code(OSError('private path')), 'LOCAL_OS_ERROR')
