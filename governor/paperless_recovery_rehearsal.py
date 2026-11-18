@@ -270,7 +270,7 @@ def validated_test_stage(source):
     require(stage.resolve() == stage and stage.stat().st_uid == 0
             and not stage.stat().st_mode & 0o077
             and stage.stat().st_dev == HDD.stat().st_dev, 'CLEANUP_STAGE_IDENTITY')
-    expected = {'db', 'paperless.dump', 'media', 'configuration', 'historical-email', 'paperless-iq'}
+    expected = {'db', 'paperless.dump', 'media', 'configuration', 'historical-email', 'paperless-iq', 'sockets'}
     require({path.name for path in stage.iterdir()} <= expected, 'CLEANUP_STAGE_CONTENTS')
     with Path('/proc/self/mountinfo').open() as mounts:
         require(not any(len(fields := row.split()) >= 5 and
@@ -308,12 +308,15 @@ def cleanup_verified_staging(guard, evidence):
                 and info['Config']['Labels'].get('lifeos.paperless-rehearsal') == 'true', 'CLEANUP_CONTAINER_IDENTITY')
         mounts = info['Mounts']
         binds = [mount for mount in mounts if mount['Type'] == 'bind']
-        require(len(binds) == 1 and binds[0]['Destination'] == '/rehearsal'
+        require(len(binds) in (1, 2) and sum(mount['Destination'] == '/rehearsal' for mount in binds) == 1
+                and {mount['Destination'] for mount in binds} <= {'/rehearsal', '/rehearsal-sockets'}
                 and all(mount['Type'] == 'bind' or
                         (mount['Type'] == 'volume' and mount['Destination'] == '/var/lib/postgresql/data'
                          and re.fullmatch(r'[a-f0-9]{64}', mount.get('Name', '')))
                         for mount in mounts), 'CLEANUP_CONTAINER_MOUNT')
-        stage = validated_test_stage(binds[0]['Source'])
+        db_bind = next(mount for mount in binds if mount['Destination'] == '/rehearsal')
+        stage = validated_test_stage(db_bind['Source'])
+        require(all(mount['Destination'] == '/rehearsal' or mount['Source'] == str(stage / 'sockets') for mount in binds), 'CLEANUP_SOCKET_MOUNT')
         # Reject a staging tree referenced by any other container, including stopped ones.
         ids = command([DOCKER, 'ps', '--all', '--quiet'], guard)
         require(ids is not None and len(ids.splitlines()) <= 100
@@ -418,6 +421,9 @@ def database_proof(stage, container, guard, evidence):
     image = postgres_image(guard)
     data = stage / "db"
     data.mkdir(mode=0o700)
+    sockets = stage / 'sockets'
+    sockets.mkdir(mode=0o700)
+    sockets.chmod(0o1777)  # Private stage0700; only isolated DB/app bind this socket directory.
     evidence["postgres_start_attempted"] = True
     evidence["phase"] = "POSTGRES_START"
     require(command([DOCKER, "run", "-d", "--pull=never", "--name", container,
@@ -425,10 +431,11 @@ def database_proof(stage, container, guard, evidence):
                      "--restart=no", "--cpus=0.50", "--memory=768m", "--memory-swap=768m",
                      "--pids-limit=64", "--log-driver=none", "--security-opt=no-new-privileges",
                      "--mount", f"type=bind,src={data},dst=/rehearsal",
+                     "--mount", f"type=bind,src={sockets},dst=/rehearsal-sockets",
                      "-e", "PGDATA=/rehearsal", "-e", "POSTGRES_USER=rehearsal",
                      "-e", "POSTGRES_DB=rehearsal", "-e", "POSTGRES_HOST_AUTH_METHOD=trust",
                      image, "postgres", "-c", "listen_addresses=", "-c", "max_connections=10",
-                     "-c", "unix_socket_directories=/var/run/postgresql,/rehearsal"],
+                     "-c", "unix_socket_directories=/var/run/postgresql,/rehearsal-sockets"],
                     guard, seconds=70) is not None, "POSTGRES_START")
     evidence["phase"] = "POSTGRES_ISOLATION"
     proof = command([DOCKER, "inspect", "--format={{.HostConfig.NetworkMode}}|{{len .HostConfig.PortBindings}}|{{.Config.Image}}",
@@ -502,6 +509,11 @@ def database_proof(stage, container, guard, evidence):
 APPLICATION_PROBE = r"""
 import json, os
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'paperless.settings')
+probe_stage = 'SOCKET_ACCESS'
+import stat
+from pathlib import Path
+socket_path = Path('/restore-db/.s.PGSQL.5432')
+assert socket_path.is_socket() and os.access(socket_path.parent, os.X_OK)
 probe_stage = 'DJANGO_SETUP'
 import django
 django.setup()
@@ -563,7 +575,7 @@ def application_proof(stage, container, guard, evidence):
     args = [DOCKER, 'run', '--pull=never', '--name', name, '--network=none', '--restart=no',
             '--read-only', '--user=0:0', '--cap-drop=ALL', '--security-opt=no-new-privileges',
             '--cpus=0.50', '--memory=1024m', '--memory-swap=1024m', '--pids-limit=64', '--log-driver=none',
-            '--mount', f'type=bind,src={stage / "db"},dst=/restore-db,readonly',
+            '--mount', f'type=bind,src={stage / "sockets"},dst=/restore-db,readonly',
             '--mount', f'type=bind,src={originals[0].parent},dst=/usr/src/paperless/media,readonly',
             '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m',
             '--tmpfs', '/usr/src/paperless/data:rw,nosuid,nodev,size=256m',
@@ -586,7 +598,7 @@ def application_proof(stage, container, guard, evidence):
         finished = True
         proof = json.loads(result)
         if set(proof) == {'application_failure_phase'}:
-            require(proof['application_failure_phase'] in {'BOOTSTRAP', 'DJANGO_SETUP', 'DATABASE_MODELS', 'ACCESS_CONTROL', 'DOCUMENT_LIST', 'ORIGINAL_RETRIEVAL', 'INDEX_REBUILD', 'NATIVE_SEARCH'}, 'APPLICATION_PROOF')
+            require(proof['application_failure_phase'] in {'BOOTSTRAP', 'SOCKET_ACCESS', 'DJANGO_SETUP', 'DATABASE_MODELS', 'ACCESS_CONTROL', 'DOCUMENT_LIST', 'ORIGINAL_RETRIEVAL', 'INDEX_REBUILD', 'NATIVE_SEARCH'}, 'APPLICATION_PROOF')
             evidence.update(proof)
             raise RehearsalError('APPLICATION_PROBE')
         expected = {'application_list', 'application_access_control', 'application_original_retrieval',
@@ -596,7 +608,8 @@ def application_proof(stage, container, guard, evidence):
                 and proof['application_documents'] == evidence['root_documents']
                 and proof['application_retrieved_files'] == 1, 'APPLICATION_PROOF')
         evidence.update(proof)
-        evidence['application_restore'] = 'PASS'
+        evidence['application_restore'] = 'DJANGO_API_PASS'
+        evidence['application_server_login'] = 'NOT_TESTED'
     finally:
         if not finished:
             command([DOCKER, 'stop', '--time=3', name], lambda: None, seconds=15, capture=False)

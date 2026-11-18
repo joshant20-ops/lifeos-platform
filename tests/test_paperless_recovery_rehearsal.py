@@ -98,6 +98,22 @@ class RecoverySafetyTests(unittest.TestCase):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
 
+    def test_socket_directory_allows_distinct_uid_without_exposing_private_stage(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage = Path(directory)
+            stage.chmod(0o700)
+            with patch.object(rehearsal, 'postgres_image', return_value='sha256:' + 'a' * 64), patch.object(rehearsal, 'command', return_value=None) as run:
+                with self.assertRaises(rehearsal.RehearsalError):
+                    rehearsal.database_proof(stage, 'isolated-test', lambda: None, {})
+            self.assertEqual((stage / 'sockets').stat().st_mode & 0o7777, 0o1777)
+            self.assertEqual(stage.stat().st_mode & 0o777, 0o700)
+            args = run.call_args.args[0]
+            self.assertIn('unix_socket_directories=/var/run/postgresql,/rehearsal-sockets', args)
+            self.assertIn('type=bind,src=' + str(stage / 'sockets') + ',dst=/rehearsal-sockets', args)
+            # Others have write/search permission on sockets even when PG owns them;
+            # the outer0700 directory and fixed Docker binds remain the authority.
+            self.assertEqual((stage / 'sockets').stat().st_mode & 0o003, 0o003)
+
     def test_application_probe_has_no_network_production_mount_or_ingestion_entrypoint(self):
         with tempfile.TemporaryDirectory() as directory:
             stage = Path(directory)
@@ -117,7 +133,7 @@ class RecoverySafetyTests(unittest.TestCase):
             mounts = [args[i+1] for i, value in enumerate(args) if value == '--mount']
             self.assertEqual(len(mounts), 2)
             self.assertTrue(all(value.startswith('type=bind,src=' + str(stage) + '/') and value.endswith(',readonly') for value in mounts))
-            self.assertEqual(evidence['application_restore'], 'PASS')
+            self.assertEqual(evidence['application_restore'], 'DJANGO_API_PASS')
             self.assertEqual(evidence['application_temporary_cleanup'], 'PASS')
 
     def test_application_probe_failure_stops_and_removes_only_its_random_container(self):
