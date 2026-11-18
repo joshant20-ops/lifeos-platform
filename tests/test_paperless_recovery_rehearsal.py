@@ -92,11 +92,22 @@ class RecoverySafetyTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory:
                 root, reports, stage, info = self.cleanup_fixture(directory)
                 other = root if reference == 'parent' else stage / 'media'
-                refs = info['Id'] + '|' + json.dumps(info['Mounts']) + '\n' + 'c' * 64 + '|' + json.dumps([{'Source': str(other)}])
+                refs = info['Id'] + '|' + json.dumps(info['Mounts']) + '\n' + 'c' * 64 + '|' + json.dumps([{'Type': 'bind', 'RW': reference == 'parent', 'Source': str(other)}])
                 with patch.object(rehearsal, 'HDD', root), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal, 'command', side_effect=['b' * 12, json.dumps(info), 'b' * 12 + '\n' + 'c' * 12, refs]):
                     with self.assertRaises(rehearsal.RehearsalError):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
+
+    def test_readonly_strict_ancestor_observer_allows_verified_private_cleanup(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root, reports, stage, info = self.cleanup_fixture(directory)
+            refs = info['Id'] + '|' + json.dumps(info['Mounts']) + '\n' + 'c' * 64 + '|' + json.dumps([{'Type': 'bind', 'RW': False, 'Source': str(root)}])
+            evidence = {}
+            with patch.object(rehearsal, 'HDD', root), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal, 'command', side_effect=['b' * 12, json.dumps(info), 'b' * 12 + '\n' + 'c' * 12, refs, '']):
+                rehearsal.cleanup_verified_staging(lambda: None, evidence)
+            self.assertFalse(stage.exists())
+            self.assertEqual(evidence['verified_test_stages_removed'], 1)
+            self.assertEqual(evidence['cleanup_readonly_ancestor_references'], 1)
 
     def test_stage_validation_rejects_unknown_children_and_nested_mounts(self):
         with tempfile.TemporaryDirectory() as directory:
