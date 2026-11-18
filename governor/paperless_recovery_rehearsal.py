@@ -27,6 +27,8 @@ LIMIT = 3 * 1024**3
 RESERVE = 8 * 1024**3
 CHUNK = 1024**2
 DOCKER = "/usr/bin/docker"
+TIER0_CHECKS = frozenset(("adguard_running", "household_dns_udp", "household_dns_tcp",
+    "household_dns_public", "direct_internet_tls", "github_https", "storage_reserve"))
 
 
 class RehearsalError(ValueError):
@@ -390,11 +392,15 @@ def main():
             require(os.geteuid() == 0 and HDD.is_mount() and CHECKPOINT.resolve() == CHECKPOINT
                     and CHECKPOINT.stat().st_dev == HDD.stat().st_dev, "CHECKPOINT_MOUNT")
             blocks = os.statvfs(HDD)
+            evidence['hdd_available_bytes'] = blocks.f_bavail * blocks.f_frsize
+            evidence['hdd_tier0_reserve_bytes'] = max(10 * 1024**3, blocks.f_blocks * blocks.f_frsize // 10)
+            evidence['hdd_available_inodes'] = blocks.f_favail
             require(blocks.f_bavail * blocks.f_frsize >= RESERVE + LIMIT and blocks.f_favail >= 100000,
                     "STAGING_CAPACITY")
             require(resource_ready(initial=True, evidence=evidence), "PI_RESOURCE_PRECHECK")
             resolver, public = connection_inputs()
-            gate = HealthGate(lambda: health_checks(resolver, public), interval=3, max_age=16).start()
+            gate = HealthGate(lambda: health_checks(resolver, public), interval=3, max_age=16)
+            gate.start()
             next_resource_check = 0
             def guard():
                 nonlocal next_resource_check
@@ -474,6 +480,8 @@ def main():
                 except Exception:
                     evidence["temporary_stop"] = "UNVERIFIED"
             report = REPORT_DIR / (suffix + ".json")
+            if gate is not None:
+                evidence['tier0_diagnostic'] = gate.diagnostics(TIER0_CHECKS)
             evidence["elapsed_seconds"] = round(time.monotonic() - started)
             with report.open("x") as output:
                 json.dump(evidence, output, sort_keys=True)
@@ -499,3 +507,4 @@ if __name__ == "__main__":
     except Exception:
         print("PAPERLESS_RECOVERY_RESULT=BOOTSTRAP_FAILED", flush=True)
         raise SystemExit(2)
+

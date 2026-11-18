@@ -25,18 +25,53 @@ class HealthGate:
         self.failed = False
         self.observed = None
         self.thread = None
+        self.failure_reason = None
+        self.failure_checks = {}
+        self.failure_duration_ms = None
 
     def sample(self):
         started = self.clock()
+        checks = {}
+        probe_error = False
         try:
             checks = self.probe()
             healthy = bool(checks) and all(value is True for value in checks.values())
         except Exception:
             healthy = False
+            probe_error = True
+        duration = self.clock() - started
         with self.lock:
             # A slow successful response is not fresh evidence.
-            self.failed |= not healthy or self.clock() - started >= self.max_age
+            failed = not healthy or duration >= self.max_age
+            if failed and not self.failed:
+                self.failure_reason = "PROBE_ERROR" if probe_error else (
+                    "SLOW_PROBE" if healthy else "FAILED_CHECKS")
+                self.failure_checks = {
+                    key: value is True for key, value in checks.items()
+                } if isinstance(checks, dict) else {}
+                self.failure_duration_ms = max(0, round(duration * 1000))
+            self.failed |= failed
             self.observed = started
+
+    def diagnostics(self, allowed_checks):
+        """Return fixed failure states and caller-allowlisted booleans only."""
+        with self.lock:
+            reason = self.failure_reason
+            if reason is None:
+                if self.observed is None:
+                    reason = "NOT_SAMPLED"
+                elif self.clock() - self.observed >= self.max_age:
+                    reason = "STALE_SAMPLE"
+                elif self.stopped.is_set():
+                    reason = "CLOSED"
+                else:
+                    reason = "HEALTHY"
+            return {
+                "reason": reason,
+                "failed_checks": sorted(key for key in allowed_checks
+                                        if key in self.failure_checks and not self.failure_checks[key]),
+                "first_failure_duration_ms": self.failure_duration_ms,
+            }
 
     def guard(self):
         with self.lock:
@@ -60,3 +95,4 @@ class HealthGate:
         self.stopped.set()
         if self.thread is not None:
             self.thread.join(timeout=self.max_age)
+
