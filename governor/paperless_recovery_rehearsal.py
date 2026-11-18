@@ -505,15 +505,34 @@ os.execv(sys.argv[1], sys.argv[1:])
 """
 
 
-def checkpoint_restic_command(prefix, args, guard, *, seconds=45, capture=True, output=None, size_limit=None):
+STREAM_HASH = r"""
+import hashlib, json, sys
+limit = int(sys.argv[1])
+count = 0
+digest = hashlib.sha256()
+while block := sys.stdin.buffer.read(1024**2):
+    count += len(block)
+    if count > limit:
+        raise SystemExit(1)
+    digest.update(block)
+print(json.dumps({'size': count, 'sha256': digest.hexdigest()}))
+"""
+
+
+def checkpoint_restic_command(prefix, args, guard, *, seconds=45, capture=True, output=None, digest_size=None):
     """Transient existing-systemd scope; never change a persistent service or slice."""
     unit = 'lifeos-paperless-checkpoint-' + uuid.uuid4().hex + '.scope'
+    native = [*prefix, *args]
+    if digest_size is not None:
+        require(type(digest_size) is int and 0 < digest_size <= LIMIT, 'CHECKPOINT_READBACK_SIZE')
+        # Fixed pipeline, positional argv only: document bytes are never shell input.
+        native = ['/usr/bin/bash', '-o', 'pipefail', '-c',
+                  'limit="$1"; hasher="$2"; shift 2; "$@" | /usr/bin/python3 -I -c "$hasher" "$limit"',
+                  '--', str(digest_size), STREAM_HASH, *native]
     launch = ['/usr/bin/systemd-run', '--scope', '--quiet', '--collect', '--unit=' + unit,
               '--property=CPUQuota=25%', '--property=MemoryMax=768M', '--property=MemorySwapMax=0',
               '--property=TasksMax=64', '--property=IOWeight=10', '--property=TimeoutStopSec=5s',
-              '--', '/usr/bin/python3', '-c', SCOPE_CHECK_EXEC, *prefix, *args]
-    if size_limit is not None:
-        launch = ['/usr/bin/prlimit', f'--fsize={size_limit}:{size_limit}', '--', *launch]
+              '--', '/usr/bin/python3', '-I', '-B', '-c', SCOPE_CHECK_EXEC, *native]
     try:
         return command(launch, guard, seconds=seconds, capture=capture, output=output)
     finally:
@@ -610,19 +629,16 @@ def protect_verified_checkpoint(hashes, guard, evidence):
                 evidence['checkpoint_encrypted_copy'] = 'CACHED_VERIFIED_COPY'
                 evidence['checkpoint_encrypted_files'] = 6
                 return
-        require(command(['/usr/bin/findmnt', '-rn', '--target', '/dev/shm', '-o', 'FSTYPE'], guard) == 'tmpfs', 'CHECKPOINT_READBACK_STAGING')
-        ram = os.statvfs('/dev/shm')
-        memory = re.search(r'^MemAvailable:\s+([0-9]+) kB$', Path('/proc/meminfo').read_text(), re.MULTILINE)
-        require(ram.f_bavail * ram.f_frsize >= max(sizes.values()) + 64 * 1024**2
-                and memory and int(memory[1]) * 1024 >= 2 * 1024**3 + max(sizes.values()), 'CHECKPOINT_READBACK_MEMORY')
+        require(resource_ready(initial=True, evidence=evidence), 'PI_RESOURCE_LIMIT')
         evidence['checkpoint_copy_phase'] = 'READBACK'
         for name in (*ARCHIVES, 'SHA256SUMS'):
-            with tempfile.TemporaryFile(dir='/dev/shm') as restored:
-                require(checkpoint_restic_command(prefix, ['--no-lock', 'dump', snapshot, str(CHECKPOINT / name)],
-                                guard, seconds=180, output=restored, size_limit=sizes[name] + 1) is not None, 'CHECKPOINT_ENCRYPTED_READBACK')
-                require(os.fstat(restored.fileno()).st_size == sizes[name], 'CHECKPOINT_READBACK_SIZE')
-                restored.seek(0)
-                require(file_digest(restored, 'sha256', guard) == expected[name], 'CHECKPOINT_READBACK_CHECKSUM')
+            raw = checkpoint_restic_command(prefix, ['--no-lock', 'dump', snapshot, str(CHECKPOINT / name)],
+                                            guard, seconds=180, digest_size=sizes[name])
+            require(raw is not None, 'CHECKPOINT_ENCRYPTED_READBACK')
+            proof = json.loads(raw)
+            require(set(proof) == {'size', 'sha256'} and type(proof['size']) is int
+                    and proof['size'] == sizes[name], 'CHECKPOINT_READBACK_SIZE')
+            require(proof['sha256'] == expected[name], 'CHECKPOINT_READBACK_CHECKSUM')
         temporary = REPORT_DIR / ('receipt-' + uuid.uuid4().hex)
         try:
             with temporary.open('x') as output:

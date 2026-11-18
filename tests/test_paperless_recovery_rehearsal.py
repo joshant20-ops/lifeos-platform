@@ -99,6 +99,17 @@ class RecoverySafetyTests(unittest.TestCase):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
 
+    def test_streamed_readback_hash_limits_bytes_without_spooling_private_data(self):
+        import subprocess, sys
+        for size, success in ((32, True), (33, False)):
+            result = subprocess.run([sys.executable, '-I', '-c', rehearsal.STREAM_HASH, '32'],
+                                    input=b'x' * size, capture_output=True, timeout=5)
+            self.assertEqual(result.returncode == 0, success)
+            if success:
+                self.assertEqual(json.loads(result.stdout), {'size': size, 'sha256': hashlib.sha256(b'x' * size).hexdigest()})
+            else:
+                self.assertEqual(result.stdout, b'')
+
     def test_native_scope_checks_limits_before_exec_and_cleans_up_on_abort(self):
         import sys
         scope = '/system.slice/lifeos-paperless-checkpoint-' + 'a' * 32 + '.scope'
@@ -128,6 +139,8 @@ class RecoverySafetyTests(unittest.TestCase):
         launch = run.call_args_list[0].args[0]
         self.assertIn('--property=CPUQuota=25%', launch)
         self.assertIn('--property=MemoryMax=768M', launch)
+        checker = launch.index('/usr/bin/python3')
+        self.assertEqual(launch[checker+1:checker+4], ['-I', '-B', '-c'])
         unit = next(value.split('=', 1)[1] for value in launch if value.startswith('--unit='))
         self.assertEqual(run.call_args_list[-2].args[0], ['/usr/bin/systemctl', 'stop', unit])
         self.assertEqual(run.call_args_list[-1].args[0][-1], unit)
@@ -221,11 +234,10 @@ class RecoverySafetyTests(unittest.TestCase):
                     return ''
                 if 'dump' in args:
                     data = files[Path(args[-1]).name]
-                    kwargs['output'].write(b'X' * len(data) if state['corrupt'] else data)
-                    kwargs['output'].flush()
-                    return ''
+                    data = b'X' * len(data) if state['corrupt'] else data
+                    return json.dumps({'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
                 self.fail('Unexpected native command')
-            with patch.dict(sys.modules, {'governor.adguard_archive_restic_proof': module}), patch.object(rehearsal, 'CHECKPOINT', checkpoint), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal.os, 'fstat', side_effect=owned_password), patch.object(rehearsal, 'command', side_effect=native) as run:
+            with patch.object(rehearsal, 'resource_ready', return_value=True), patch.dict(sys.modules, {'governor.adguard_archive_restic_proof': module}), patch.object(rehearsal, 'CHECKPOINT', checkpoint), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal.os, 'fstat', side_effect=owned_password), patch.object(rehearsal, 'command', side_effect=native) as run:
                 evidence = {}
                 rehearsal.protect_verified_checkpoint(hashes, lambda: None, evidence)
                 self.assertEqual(evidence['checkpoint_encrypted_copy'], 'PASS')
