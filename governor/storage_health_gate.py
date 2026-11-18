@@ -43,7 +43,7 @@ class HealthGate:
         with self.lock:
             # A slow successful response is not fresh evidence.
             failed = not healthy or duration >= self.max_age
-            if failed and not self.failed:
+            if failed and self.failure_reason is None:
                 self.failure_reason = "PROBE_ERROR" if probe_error else (
                     "SLOW_PROBE" if healthy else "FAILED_CHECKS")
                 self.failure_checks = {
@@ -77,6 +77,9 @@ class HealthGate:
         with self.lock:
             if (self.failed or self.observed is None or self.stopped.is_set()
                     or self.clock() - self.observed >= self.max_age):
+                if self.failure_reason is None:
+                    self.failure_reason = "NOT_SAMPLED" if self.observed is None else (
+                        "CLOSED" if self.stopped.is_set() else "STALE_SAMPLE")
                 raise HealthUnavailable("maintenance_health_unavailable")
 
     def start(self):

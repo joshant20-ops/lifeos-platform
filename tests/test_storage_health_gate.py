@@ -3,6 +3,19 @@ from governor.storage_health_gate import HealthGate, HealthUnavailable
 
 
 class HealthGateTests(unittest.TestCase):
+    def test_guard_rejection_diagnostic_survives_background_recovery(self):
+        checks = {'dns': True}
+        gate, now = self.gate(lambda: checks)
+        gate.sample()
+        now[0] = 3
+        with self.assertRaises(HealthUnavailable):
+            gate.guard()
+        gate.sample()
+        self.assertEqual(gate.diagnostics({'dns'})['reason'], 'STALE_SAMPLE')
+        checks['dns'] = False
+        gate.sample()
+        self.assertEqual(gate.diagnostics({'dns'})['reason'], 'STALE_SAMPLE')
+
     def test_diagnostic_preserves_first_failure_and_filters_unknown_names(self):
         checks = {'dns': False, 'PRIVATE_NAME': False}
         gate, _ = self.gate(lambda: checks)
