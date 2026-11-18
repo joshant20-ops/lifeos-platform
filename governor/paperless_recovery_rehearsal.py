@@ -324,9 +324,13 @@ def cleanup_verified_staging(guard, evidence):
             identifier, raw_mounts = row.split('|', 1)
             if identifier == info['Id']:
                 continue
-            require(not any(Path(mount.get('Source', '/')).is_relative_to(stage)
-                            or stage.is_relative_to(Path(mount.get('Source', '/')))
-                            for mount in json.loads(raw_mounts)), 'CLEANUP_OTHER_REFERENCE')
+            for mount in json.loads(raw_mounts):
+                source = Path(mount.get('Source', '/'))
+                if source.is_relative_to(stage) or stage.is_relative_to(source):
+                    evidence['cleanup_reference_relationship'] = ('STAGE_OR_DESCENDANT' if source.is_relative_to(stage) else 'ANCESTOR')
+                    evidence['cleanup_reference_access'] = 'READ_ONLY' if mount.get('RW') is False else 'WRITABLE_OR_UNKNOWN'
+                    evidence['cleanup_reference_type'] = mount.get('Type') if mount.get('Type') in ('bind', 'volume') else 'OTHER'
+                    raise RehearsalError('CLEANUP_OTHER_REFERENCE')
         guard()
         # Keep the stopped container as a reference until its private staging is gone.
         existed = stage.exists()
