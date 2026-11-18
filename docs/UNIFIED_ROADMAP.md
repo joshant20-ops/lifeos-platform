@@ -92,6 +92,14 @@ Owner-reported CLI checkpoint (not independently reproduced by GitHub): 1,490 Gm
 
 Functional milestones above are not production sign-off. Baseline: 4 functional, 7 partial, 3 outstanding. Do not count overlapping historical ledger or deploy tickets as additional requirements.
 
+### Owner priority clarification — 18 November 2026
+
+**Full development remains authorised.** The 17 November simplification/architecture freeze means *no speculative new shared frameworks or unnecessary production changes*, not a blanket halt on existing approved product development. Paperless is the immediate delivery priority and should reach correct, reliable everyday operation as soon as practicable. Finance, Projects & Assistant, and other owner-selected capabilities may advance in parallel when isolated from Paperless's critical path and resource budget; serialize changes touching shared Pi resources, credentials, network or storage.
+
+**Paperless evidence window:** after correcting immediate defects and demonstrating isolated recovery, run an observed multi-day acceptance period (duration evidence-driven, not an automatic fixed delay). During observation continue useful engineering: verify incoming mail and attachments, queue/worker behaviour, searchable originals, IQ indexing/classification with measured quality, backup freshness, alerts and restart/failure handling. Investigate failures promptly; do not mark production PASS merely because time elapsed. Do not postpone urgent safe fixes to wait out the window. Avoid unnecessary downtime and preserve AdGuard/Predbat/Home Assistant.
+
+**Current blockers:** owner-verified 825 MB five-archive local recovery set with passing checksums and live IQ SQLite integrity, but isolated restore remains unverified. A manually run *general* LifeOS Restic rehearsal failed on missing repository contract; this is not proof of Paperless recovery failure. Identify and dispatch the distinct Paperless rehearsal workflow on current main and inspect actual Pi results. Keep unencrypted/co-located checkpoint intact until an independently verified encrypted recovery copy exists.
+
 ### Engineering simplification and acceptance gate — 17 November 2026
 
 Owner-directed implementation policy following the viability audit:
