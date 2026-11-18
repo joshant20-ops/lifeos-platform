@@ -197,6 +197,7 @@ assert total > 0 and tested > 0
 print('CHROMA_NATIVE_RESULT=' + json.dumps([len(collections), total, tested]))
 '''
     name = container + '-iq'
+    finished = False
     try:
         raw = command([DOCKER, 'run', '--pull=never', '--name', name, '--network=none',
                        '--restart=no', '--cpus=0.5', '--memory=768m', '--memory-swap=768m',
@@ -206,6 +207,7 @@ print('CHROMA_NATIVE_RESULT=' + json.dumps([len(collections), total, tested]))
                        '-e', 'ANONYMIZED_TELEMETRY=False', '--entrypoint', 'python3',
                        image, '-c', source], guard, seconds=100)
         require(raw is not None, 'CHROMA_NATIVE_LOAD')
+        finished = True
         rows = [line.removeprefix('CHROMA_NATIVE_RESULT=') for line in raw.splitlines() if line.startswith('CHROMA_NATIVE_RESULT=')]
         require(len(rows) == 1, 'CHROMA_NATIVE_OUTPUT')
         counts = json.loads(rows[0])
@@ -215,10 +217,36 @@ print('CHROMA_NATIVE_RESULT=' + json.dumps([len(collections), total, tested]))
         evidence['chroma_native_restore'] = 'PASS'
     finally:
         # Only this random test container is addressed, including on abort.
-        command([DOCKER, 'stop', '--time=3', name], lambda: None, seconds=8, capture=False)
-        removed = command([DOCKER, 'rm', '-v', name], lambda: None, seconds=8, capture=False)
+        if not finished:
+            command([DOCKER, 'stop', '--time=3', name], lambda: None, seconds=15, capture=False)
+        removed = command([DOCKER, 'rm', '-v', name], lambda: None, seconds=30, capture=False)
         evidence['iq_temporary_cleanup'] = 'PASS' if removed is not None else 'UNVERIFIED'
         require(removed is not None, 'IQ_TEMPORARY_CLEANUP')
+
+
+def recover_completed_iq_cleanup(guard):
+    """Finish cleanup only for this implementation's recorded successful IQ tests."""
+    checked = 0
+    for report in REPORT_DIR.glob('*.json'):
+        require(checked < 100, 'REPORT_SCAN_LIMIT')
+        checked += 1
+        if not re.fullmatch(r'[a-f0-9]{32}\.json', report.name):
+            continue
+        with regular_source(REPORT_DIR, report.name) as source:
+            raw = source.read(16385)
+        require(len(raw) <= 16384, 'REPORT_SIZE')
+        record = json.loads(raw)
+        if record.get('chroma_native_restore') != 'PASS' or record.get('iq_temporary_cleanup') == 'PASS':
+            continue
+        name = 'lifeos-paperless-rehearsal-' + report.stem + '-iq'
+        listing = command([DOCKER, 'ps', '--all', '--quiet', '--filter', f'name=^/{name}$'], guard, seconds=30)
+        require(listing is not None, 'IQ_PREVIOUS_STATE')
+        if not listing:
+            continue
+        require(re.fullmatch(r'[a-f0-9]{12,64}', listing) is not None, 'IQ_PREVIOUS_IDENTITY')
+        state = command([DOCKER, 'inspect', '--format={{.State.Status}}|{{.HostConfig.NetworkMode}}|{{len .HostConfig.PortBindings}}|{{json .Config.Entrypoint}}', name], guard)
+        require(state == 'exited|none|0|["python3"]', 'IQ_PREVIOUS_STATE')
+        require(command([DOCKER, 'rm', '-v', name], guard, seconds=30, capture=False) is not None, 'IQ_PREVIOUS_CLEANUP')
 
 
 def postgres_image(guard):
@@ -377,6 +405,7 @@ def main():
                     require(usage.f_bavail * usage.f_frsize >= RESERVE and usage.f_favail >= 50000, "STAGING_RESERVE")
                     require(resource_ready(evidence=evidence), "PI_RESOURCE_LIMIT")
                     next_resource_check = now + 3
+            recover_completed_iq_cleanup(guard)
             hashes = read_manifest(CHECKPOINT)
             for name in ARCHIVES:
                 with regular_source(CHECKPOINT, name) as source:
