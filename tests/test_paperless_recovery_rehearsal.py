@@ -98,6 +98,44 @@ class RecoverySafetyTests(unittest.TestCase):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
 
+    def test_backup_inventory_never_swallows_guard_abort(self):
+        import types, sys
+        module = types.ModuleType('governor.adguard_archive_restic_proof')
+        module.verify_nfs_mount = lambda fd: True
+        module.SHARE = Path('/unavailable-test-share')
+        module.REPOSITORY = module.SHARE / 'repo'
+        module.PASSWORD_FILE = Path('/unavailable-test-password')
+        for error in (rehearsal.RehearsalError('INTERRUPTED'), rehearsal.RehearsalError('PI_RESOURCE_LIMIT'), OSError('guard failed')):
+            with patch.dict(sys.modules, {'governor.adguard_archive_restic_proof': module}):
+                def guard():
+                    raise error
+                with self.assertRaises(type(error)):
+                    rehearsal.backup_coverage_inventory(guard, {})
+        with patch.dict(sys.modules, {'governor.adguard_archive_restic_proof': module}):
+            evidence = {}
+            rehearsal.backup_coverage_inventory(lambda: None, evidence)
+            self.assertEqual(evidence['backup_inventory'], 'LOCAL_OS_ERROR')
+
+    def test_backup_paths_are_metadata_scope_not_payload_recovery_proof(self):
+        self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': ['/opt/stacks']}]), 0)
+        self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': [str(rehearsal.CHECKPOINT)]}, {'paths': ['/mnt/docker-data']}]), 2)
+        self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': [str(rehearsal.CHECKPOINT) + '-other']}]), 0)
+        for malformed in (None, [{}], [{'paths': None}], [{'paths': ['/mnt/docker-data/../private']}], [{'paths': [1]}]):
+            with self.assertRaises(rehearsal.RehearsalError):
+                rehearsal.checkpoint_snapshot_path_count(malformed)
+
+    def test_historical_format_inventory_exposes_only_counts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'private-json').write_bytes(b'{"private": "fixture"}')
+            (root / 'private-binary').write_bytes(b'\xff\x00')
+            (root / 'private-pdf').write_bytes(b'%PDF-fixture')
+            result = rehearsal.historical_email_inventory(root, lambda: None)
+            self.assertEqual(result['historical_signature_json'], 1)
+            self.assertEqual(result['historical_signature_binary'], 1)
+            self.assertEqual(result['historical_signature_pdf'], 1)
+            self.assertTrue(all(type(value) is int for value in result.values()))
+
     def test_socket_directory_allows_distinct_uid_without_exposing_private_stage(self):
         with tempfile.TemporaryDirectory() as directory:
             stage = Path(directory)
