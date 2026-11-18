@@ -389,17 +389,90 @@ def postgres_image(guard):
     return image
 
 
+def checkpoint_snapshot_path_count(snapshots):
+    require(isinstance(snapshots, list) and len(snapshots) <= 10000, 'BACKUP_METADATA_LIMIT')
+    require(all(isinstance(snapshot, dict) and isinstance(snapshot.get('paths'), list)
+                and all(isinstance(path, str) and path.startswith('/') and '..' not in PurePosixPath(path).parts
+                        for path in snapshot['paths']) for snapshot in snapshots), 'BACKUP_METADATA_FORMAT')
+    return sum(any(PurePosixPath(str(CHECKPOINT)).is_relative_to(PurePosixPath(path))
+                   for path in snapshot['paths']) for snapshot in snapshots)
+
+
+def backup_coverage_inventory(guard, evidence):
+    """Read encrypted repository metadata only; never backup, forget or prune here."""
+    from governor.adguard_archive_restic_proof import verify_nfs_mount, SHARE, REPOSITORY, PASSWORD_FILE
+    fd = None
+    guard_failed = False
+    def audit_guard():
+        nonlocal guard_failed
+        try:
+            guard()
+        except BaseException:
+            guard_failed = True
+            raise
+    try:
+        audit_guard()
+        fd = os.open(SHARE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        require(verify_nfs_mount(fd), 'BACKUP_MOUNT')
+        repo = Path(f'/proc/{os.getpid()}/fd/{fd}') / REPOSITORY.relative_to(SHARE)
+        require(repo.resolve(strict=True) == REPOSITORY and repo.is_dir(), 'BACKUP_REPOSITORY')
+        stats = os.statvfs(repo)
+        evidence['backup_destination_available_bytes'] = stats.f_bavail * stats.f_frsize
+        evidence['backup_destination_total_bytes'] = stats.f_blocks * stats.f_frsize
+        with regular_source(PASSWORD_FILE.parent, PASSWORD_FILE.name) as password:
+            info = os.fstat(password.fileno())
+            require(info.st_uid == 0 and not info.st_mode & 0o077, 'BACKUP_CREDENTIAL_MODE')
+        raw = command(['/usr/bin/restic', '--no-lock', '--no-cache', '--repo', str(repo),
+                       '--password-file', str(PASSWORD_FILE), 'snapshots', '--json'], audit_guard, seconds=45)
+        require(raw is not None, 'BACKUP_METADATA_READ')
+        snapshots = json.loads(raw)
+        evidence['backup_checkpoint_path_snapshots'] = checkpoint_snapshot_path_count(snapshots)
+        evidence['backup_snapshot_count'] = len(snapshots)
+        evidence['backup_encrypted_metadata'] = 'PASS'
+        evidence['backup_checkpoint_payload_restore'] = 'NOT_TESTED'
+    except (OSError, ValueError) as exc:
+        optional = {'BACKUP_MOUNT', 'BACKUP_REPOSITORY', 'BACKUP_CREDENTIAL_MODE',
+                    'BACKUP_METADATA_READ', 'BACKUP_METADATA_LIMIT', 'BACKUP_METADATA_FORMAT'}
+        if guard_failed or (isinstance(exc, RehearsalError) and str(exc) not in optional):
+            raise
+        evidence['backup_inventory'] = failure_code(exc)
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
 def historical_email_inventory(directory, guard):
     """Describe extracted recovery files without assuming their format."""
+    formats = {key: 0 for key in ("json", "pdf", "sqlite", "gzip", "zip", "text", "binary")}
     counts = {"eml": 0, "mbox": 0, "zip": 0, "tar": 0, "gzip": 0, "other": 0}
     for path in directory.rglob("*"):
         guard()
         if not path.is_file():
             continue
+        with path.open('rb') as source:
+            header = source.read(65536)
+        if header.startswith(b'%PDF-'):
+            kind = 'pdf'
+        elif header.startswith(b'SQLite format 3\x00'):
+            kind = 'sqlite'
+        elif header.startswith(b'\x1f\x8b'):
+            kind = 'gzip'
+        elif header.startswith(b'PK\x03\x04'):
+            kind = 'zip'
+        elif header.lstrip().startswith((b'{', b'[')):
+            kind = 'json'  # Signature only; does not establish valid JSON or mail completeness.
+        else:
+            try:
+                header.decode('utf-8')
+                kind = 'binary' if b'\x00' in header else 'text'
+            except UnicodeError:
+                kind = 'binary'
+        formats[kind] += 1
         family = {".eml": "eml", ".mbox": "mbox", ".zip": "zip", ".tar": "tar",
                   ".gz": "gzip", ".tgz": "gzip"}.get(path.suffix.lower(), "other")
         counts[family] += 1
-    return {"historical_" + family + "_files": count for family, count in counts.items()}
+    return {**{"historical_" + family + "_files": count for family, count in counts.items()},
+            **{"historical_signature_" + kind: count for kind, count in formats.items()}}
 
 
 def resource_ready(*, initial=False, evidence=None):
@@ -508,6 +581,7 @@ def database_proof(stage, container, guard, evidence):
 
 APPLICATION_PROBE = r"""
 import json, os
+api_evidence = {}
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'paperless.settings')
 probe_stage = 'SOCKET_ACCESS'
 import stat
@@ -533,6 +607,9 @@ assert unauth.status_code in (401, 403)
 client.force_authenticate(user=user)
 probe_stage = 'DOCUMENT_LIST'
 listing = client.get('/api/documents/?page_size=1')
+api_evidence['application_listing_http_status'] = listing.status_code
+if isinstance(getattr(listing, 'data', None), dict) and type(listing.data.get('count')) is int:
+    api_evidence['application_listing_count'] = listing.data['count']
 assert listing.status_code == 200 and listing.data['count'] == count
 first = Document.objects.filter(root_document__isnull=True).order_by('id').first()
 assert first.original_path.is_file()
@@ -559,7 +636,7 @@ print(json.dumps({'application_documents': count, 'application_list': 'PASS',
 """
 
 APPLICATION_PROBE = 'import json\ntry:\n' + ''.join('    ' + line + '\n' for line in APPLICATION_PROBE.splitlines()) + \
-    "except Exception:\n    print(json.dumps({'application_failure_phase': globals().get('probe_stage', 'BOOTSTRAP')}))\n"
+    "except Exception as exc:\n    kind = type(exc).__name__\n    allowed = {'AssertionError', 'ConnectionError', 'OperationalError', 'PermissionError', 'FileNotFoundError', 'ImproperlyConfigured', 'ImportError', 'ModuleNotFoundError', 'DatabaseError', 'ProgrammingError', 'ResponseError', 'AuthenticationError'}\n    print(json.dumps({'application_failure_phase': globals().get('probe_stage', 'BOOTSTRAP'), 'application_failure_type': kind if kind in allowed else 'OTHER', **globals().get('api_evidence', {})}))\n"
 
 
 def application_proof(stage, container, guard, evidence):
@@ -597,7 +674,10 @@ def application_proof(stage, container, guard, evidence):
         require(result is not None, 'APPLICATION_PROBE')
         finished = True
         proof = json.loads(result)
-        if set(proof) == {'application_failure_phase'}:
+        if 'application_failure_phase' in proof:
+            require(set(proof) <= {'application_failure_phase', 'application_failure_type', 'application_listing_http_status', 'application_listing_count'}
+                    and proof.get('application_failure_type') in {'AssertionError', 'ConnectionError', 'OperationalError', 'PermissionError', 'FileNotFoundError', 'ImproperlyConfigured', 'ImportError', 'ModuleNotFoundError', 'DatabaseError', 'ProgrammingError', 'ResponseError', 'AuthenticationError', 'OTHER'}
+                    and all(type(proof[key]) is int and 0 <= proof[key] <= 1000000 for key in ('application_listing_http_status', 'application_listing_count') if key in proof), 'APPLICATION_PROOF')
             require(proof['application_failure_phase'] in {'BOOTSTRAP', 'SOCKET_ACCESS', 'DJANGO_SETUP', 'DATABASE_MODELS', 'ACCESS_CONTROL', 'DOCUMENT_LIST', 'ORIGINAL_RETRIEVAL', 'INDEX_REBUILD', 'NATIVE_SEARCH'}, 'APPLICATION_PROOF')
             evidence.update(proof)
             raise RehearsalError('APPLICATION_PROBE')
@@ -706,6 +786,7 @@ def main():
                 if code not in {"IQ_DATABASE_LAYOUT", "IQ_SQLITE_INTEGRITY", "CHROMA_SEGMENT_LAYOUT", "CHROMA_INDEX_FILES"}:
                     raise
                 evidence["iq_files"] = code
+            backup_coverage_inventory(guard, evidence)
             database_proof(stage, container, guard, evidence)
             if evidence["iq_files"] == "PASS":
                 evidence['phase'] = 'CHROMA_NATIVE_LOAD'
