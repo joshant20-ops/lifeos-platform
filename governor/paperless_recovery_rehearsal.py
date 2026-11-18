@@ -160,6 +160,19 @@ def postgres_image(guard):
     return image
 
 
+def historical_email_inventory(directory, guard):
+    """Describe extracted recovery files without assuming their format."""
+    counts = {"eml": 0, "mbox": 0, "zip": 0, "tar": 0, "gzip": 0, "other": 0}
+    for path in directory.rglob("*"):
+        guard()
+        if not path.is_file():
+            continue
+        family = {".eml": "eml", ".mbox": "mbox", ".zip": "zip", ".tar": "tar",
+                  ".gz": "gzip", ".tgz": "gzip"}.get(path.suffix.lower(), "other")
+        counts[family] += 1
+    return {"historical_" + family + "_files": count for family, count in counts.items()}
+
+
 def resource_ready(*, initial=False):
     memory = Path('/proc/meminfo').read_text()
     available = re.search(r'^MemAvailable:\s+([0-9]+) kB$', memory, re.MULTILINE)
@@ -314,8 +327,8 @@ def main():
             require(any(p.is_file() and p.stat().st_size > 0 for basename in ("compose.yml", "compose.yaml", "docker-compose.yml", "docker-compose.yaml")
                         for p in config.rglob(basename)), "COMPOSE_MISSING")
             require(any(p.is_file() and p.stat().st_size > 0 for p in config.rglob(".env")), "ENV_MISSING")
-            evidence["historical_eml_files"] = sum(p.is_file() for p in (stage / "historical-email").rglob("*.eml"))
-            require(evidence["historical_eml_files"] > 0, "HISTORICAL_EMAIL_MISSING")
+            evidence.update(historical_email_inventory(stage / "historical-email", guard))
+            evidence["historical_email_recovery"] = "UNVERIFIED"
             try:
                 evidence.update(iq_verify(stage / "paperless-iq", guard))
                 evidence["iq_files"] = "PASS"

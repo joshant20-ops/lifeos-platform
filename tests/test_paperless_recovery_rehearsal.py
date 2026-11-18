@@ -20,6 +20,20 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 
 class RecoverySafetyTests(unittest.TestCase):
+    def test_historical_format_inventory_does_not_require_eml_or_emit_names(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ('private.EML', 'private.tar', 'private.gz', 'private.bin'):
+                (root / name).write_bytes(b'private')
+            result = rehearsal.historical_email_inventory(root, lambda: None)
+            self.assertEqual(result['historical_eml_files'], 1)
+            self.assertEqual(result['historical_tar_files'], 1)
+            self.assertEqual(result['historical_gzip_files'], 1)
+            self.assertEqual(result['historical_other_files'], 1)
+            self.assertNotIn('private', repr(result))
+            (root / 'private.EML').unlink()
+            self.assertEqual(rehearsal.historical_email_inventory(root, lambda: None)['historical_eml_files'], 0)
+
     def test_extract_preserves_bytes_under_staging(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
