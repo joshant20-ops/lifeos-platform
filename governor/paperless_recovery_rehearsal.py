@@ -505,8 +505,10 @@ def checkpoint_snapshot_path_count(snapshots):
     require(all(isinstance(snapshot, dict) and isinstance(snapshot.get('paths'), list)
                 and all(isinstance(path, str) and path.startswith('/') and '..' not in PurePosixPath(path).parts
                         for path in snapshot['paths']) for snapshot in snapshots), 'BACKUP_METADATA_FORMAT')
+    selected = {str(CHECKPOINT / name) for name in (*ARCHIVES, 'SHA256SUMS')}
     return sum(any(PurePosixPath(str(CHECKPOINT)).is_relative_to(PurePosixPath(path))
-                   for path in snapshot['paths']) for snapshot in snapshots)
+                   for path in snapshot['paths']) or selected <= set(snapshot['paths'])
+               for snapshot in snapshots)
 
 
 def backup_coverage_inventory(guard, evidence):

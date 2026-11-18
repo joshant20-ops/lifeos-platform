@@ -208,6 +208,9 @@ class RecoverySafetyTests(unittest.TestCase):
 
     def test_backup_paths_are_metadata_scope_not_payload_recovery_proof(self):
         self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': ['/opt/stacks']}]), 0)
+        selected = [str(rehearsal.CHECKPOINT / name) for name in (*rehearsal.ARCHIVES, 'SHA256SUMS')]
+        self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': selected}]), 1)
+        self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': selected[:-1]}]), 0)
         self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': [str(rehearsal.CHECKPOINT)]}, {'paths': ['/mnt/docker-data']}]), 2)
         self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': [str(rehearsal.CHECKPOINT) + '-other']}]), 0)
         for malformed in (None, [{}], [{'paths': None}], [{'paths': ['/mnt/docker-data/../private']}], [{'paths': [1]}]):
