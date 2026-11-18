@@ -427,7 +427,8 @@ def database_proof(stage, container, guard, evidence):
                      "--mount", f"type=bind,src={data},dst=/rehearsal",
                      "-e", "PGDATA=/rehearsal", "-e", "POSTGRES_USER=rehearsal",
                      "-e", "POSTGRES_DB=rehearsal", "-e", "POSTGRES_HOST_AUTH_METHOD=trust",
-                     image, "postgres", "-c", "listen_addresses=", "-c", "max_connections=10"],
+                     image, "postgres", "-c", "listen_addresses=", "-c", "max_connections=10",
+                     "-c", "unix_socket_directories=/var/run/postgresql,/rehearsal"],
                     guard, seconds=70) is not None, "POSTGRES_START")
     evidence["phase"] = "POSTGRES_ISOLATION"
     proof = command([DOCKER, "inspect", "--format={{.HostConfig.NetworkMode}}|{{len .HostConfig.PortBindings}}|{{.Config.Image}}",
@@ -495,6 +496,113 @@ def database_proof(stage, container, guard, evidence):
             checked += 1
     evidence.update(originals_checked=checked, originals_missing=missing, originals_checksum_mismatch=mismatch)
     require(not missing and not mismatch, "DOCUMENT_MEDIA_INCONSISTENT")
+
+
+
+APPLICATION_PROBE = r"""
+import json, os
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'paperless.settings')
+probe_stage = 'DJANGO_SETUP'
+import django
+django.setup()
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from documents.models import Document
+from rest_framework.test import APIClient
+probe_stage = 'DATABASE_MODELS'
+user = get_user_model().objects.filter(is_active=True, is_superuser=True).first()
+assert user is not None
+count = Document.objects.filter(root_document__isnull=True).count()
+assert count > 0
+client = APIClient()
+probe_stage = 'ACCESS_CONTROL'
+unauth = client.get('/api/documents/')
+assert unauth.status_code in (401, 403)
+client.force_authenticate(user=user)
+probe_stage = 'DOCUMENT_LIST'
+listing = client.get('/api/documents/?page_size=1')
+assert listing.status_code == 200 and listing.data['count'] == count
+first = Document.objects.filter(root_document__isnull=True).order_by('id').first()
+assert first.original_path.is_file()
+probe_stage = 'ORIGINAL_RETRIEVAL'
+response = client.get('/api/documents/%d/download/?original=true' % first.pk)
+assert response.status_code == 200
+retrieved = sum(len(chunk) for chunk in response.streaming_content)
+assert retrieved == first.original_path.stat().st_size and retrieved > 0
+# Rebuild a disposable native search index; no live index or ingestion worker runs.
+import contextlib, io
+probe_stage = 'INDEX_REBUILD'
+with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+    call_command('document_index', 'reindex', verbosity=0)
+probe_stage = 'NATIVE_SEARCH'
+import re
+terms = re.findall(r'[A-Za-z]{7,40}', first.content or first.title)
+assert terms
+query = client.get('/api/documents/', {'query': terms[0], 'page_size': 1})
+assert query.status_code == 200 and query.data['count'] > 0
+print(json.dumps({'application_documents': count, 'application_list': 'PASS',
+ 'application_access_control': 'PASS', 'application_original_retrieval': 'PASS',
+ 'application_retrieved_files': 1, 'application_index_rebuild': 'PASS',
+ 'application_search_endpoint': 'PASS'}))
+"""
+
+APPLICATION_PROBE = 'import json\ntry:\n' + ''.join('    ' + line + '\n' for line in APPLICATION_PROBE.splitlines()) + \
+    "except Exception:\n    print(json.dumps({'application_failure_phase': globals().get('probe_stage', 'BOOTSTRAP')}))\n"
+
+
+def application_proof(stage, container, guard, evidence):
+    """Use the installed native app against restored PostgreSQL/media only."""
+    raw = command([DOCKER, 'ps', '-q', '--filter', 'label=com.docker.compose.project=paperless',
+                   '--filter', 'label=com.docker.compose.service=paperless'], guard)
+    require(raw and re.fullmatch(r'[a-f0-9]{12,64}', raw), 'APPLICATION_CONTAINER_IDENTITY')
+    image = command([DOCKER, 'inspect', '--format={{.Image}}', raw], guard)
+    require(image and re.fullmatch(r'sha256:[a-f0-9]{64}', image), 'APPLICATION_IMAGE_IDENTITY')
+    originals = list((stage / 'media').rglob('originals'))
+    require(len(originals) == 1, 'MEDIA_ORIGINALS_LAYOUT')
+    name = container + '-app'
+    args = [DOCKER, 'run', '--pull=never', '--name', name, '--network=none', '--restart=no',
+            '--read-only', '--user=0:0', '--cap-drop=ALL', '--security-opt=no-new-privileges',
+            '--cpus=0.50', '--memory=1024m', '--memory-swap=1024m', '--pids-limit=64', '--log-driver=none',
+            '--mount', f'type=bind,src={stage / "db"},dst=/restore-db,readonly',
+            '--mount', f'type=bind,src={originals[0].parent},dst=/usr/src/paperless/media,readonly',
+            '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m',
+            '--tmpfs', '/usr/src/paperless/data:rw,nosuid,nodev,size=256m',
+            '--entrypoint=python3']
+    environment = {'PAPERLESS_SECRET_KEY': uuid.uuid4().hex + uuid.uuid4().hex,
+                   'PAPERLESS_ALLOWED_HOSTS': 'testserver', 'PYTHONDONTWRITEBYTECODE': '1',
+                   'PAPERLESS_DBHOST': '/restore-db', 'PAPERLESS_DBNAME': 'rehearsal',
+                   'PAPERLESS_DBUSER': 'rehearsal', 'PAPERLESS_DBPASS': '',
+                   'PAPERLESS_URL': 'http://testserver',
+                   'PAPERLESS_REDIS': 'redis://127.0.0.1:1',
+                   'HOME': '/tmp', 'PAPERLESS_TASK_WORKERS': '1', 'PAPERLESS_THREADS_PER_WORKER': '1'}
+    for key, value in environment.items():
+        args.extend(['-e', key + '=' + value])
+    args.insert(2, '--label=lifeos.paperless-rehearsal=true')
+    args.extend([image, '-c', APPLICATION_PROBE])
+    finished = False
+    try:
+        result = command(args, guard, seconds=450)
+        require(result is not None, 'APPLICATION_PROBE')
+        finished = True
+        proof = json.loads(result)
+        if set(proof) == {'application_failure_phase'}:
+            require(proof['application_failure_phase'] in {'BOOTSTRAP', 'DJANGO_SETUP', 'DATABASE_MODELS', 'ACCESS_CONTROL', 'DOCUMENT_LIST', 'ORIGINAL_RETRIEVAL', 'INDEX_REBUILD', 'NATIVE_SEARCH'}, 'APPLICATION_PROOF')
+            evidence.update(proof)
+            raise RehearsalError('APPLICATION_PROBE')
+        expected = {'application_list', 'application_access_control', 'application_original_retrieval',
+                    'application_index_rebuild', 'application_search_endpoint'}
+        require(set(proof) == expected | {'application_documents', 'application_retrieved_files'}
+                and all(proof[key] == 'PASS' for key in expected)
+                and proof['application_documents'] == evidence['root_documents']
+                and proof['application_retrieved_files'] == 1, 'APPLICATION_PROOF')
+        evidence.update(proof)
+        evidence['application_restore'] = 'PASS'
+    finally:
+        if not finished:
+            command([DOCKER, 'stop', '--time=3', name], lambda: None, seconds=15, capture=False)
+        removed = command([DOCKER, 'rm', '-v', name], lambda: None, seconds=30, capture=False)
+        evidence['application_temporary_cleanup'] = 'PASS' if removed is not None else 'UNVERIFIED'
+        require(removed is not None, 'APPLICATION_TEMPORARY_CLEANUP')
 
 
 def main():
@@ -589,6 +697,8 @@ def main():
             if evidence["iq_files"] == "PASS":
                 evidence['phase'] = 'CHROMA_NATIVE_LOAD'
                 chroma_native_proof(stage / 'paperless-iq', container, guard, evidence)
+            evidence['phase'] = 'APPLICATION_RECOVERY'
+            application_proof(stage, container, guard, evidence)
             gate.sample()
             gate.guard()
             evidence["tier0"] = "PASS"
