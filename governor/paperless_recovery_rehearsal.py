@@ -148,6 +148,8 @@ def iq_verify(extracted, guard, evidence=None):
         with sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=2) as db:
             db.set_progress_handler(lambda: guard() or 0, 10000)
             require(db.execute("PRAGMA integrity_check").fetchall() == [("ok",)], "IQ_SQLITE_INTEGRITY")
+            if evidence is not None:
+                evidence["iq_sqlite_integrity" if name == "paperless_iq.db" else "chroma_sqlite_integrity"] = "PASS"
             found[name] = db.execute("SELECT count(*) FROM sqlite_schema WHERE type='table'").fetchone()[0]
             if name == "chroma.sqlite3":
                 segments = {row[0] for row in db.execute("SELECT id FROM segments WHERE scope='VECTOR'")}
@@ -157,7 +159,7 @@ def iq_verify(extracted, guard, evidence=None):
                     evidence["chroma_disk_segments"] = len(disk)
                     evidence["chroma_disk_segments_unmapped"] = len(disk - segments)
                     evidence["chroma_vector_rows_without_disk"] = len(segments - disk)
-                require(bool(segments) and disk <= segments, "CHROMA_SEGMENT_LAYOUT")
+                require(bool(segments) and segments <= disk, "CHROMA_SEGMENT_LAYOUT")
                 require(all(all((path.parent / segment / f).is_file()
                                 for f in ("data_level0.bin", "length.bin", "link_lists.bin"))
                             for segment in disk), "CHROMA_INDEX_FILES")
@@ -165,6 +167,58 @@ def iq_verify(extracted, guard, evidence=None):
                 found["persisted_vector_segments"] = len(disk)
         db.close()
     return found
+
+
+def chroma_native_proof(extracted, container, guard, evidence):
+    """Load only the staged Chroma copy with its already-installed library."""
+    image = command([DOCKER, 'inspect', '--format={{.Image}}', 'paperless-iq'], guard)
+    require(image and re.fullmatch(r'sha256:[a-f0-9]{64}', image), 'IQ_IMAGE_IDENTITY')
+    roots = list(extracted.rglob('chroma.sqlite3'))
+    require(len(roots) == 1, 'IQ_DATABASE_LAYOUT')
+    source = '''import json
+import chromadb
+from chromadb.config import Settings
+client = chromadb.PersistentClient(path='/recovery', settings=Settings(anonymized_telemetry=False))
+collections = client.list_collections()
+assert 0 < len(collections) <= 20
+total = tested = 0
+for item in collections:
+    collection = client.get_collection(item if isinstance(item, str) else item.name, embedding_function=None)
+    count = collection.count()
+    total += count
+    if count:
+        sample = collection.get(limit=1, include=['embeddings'])
+        assert sample['embeddings'] is not None and len(sample['embeddings']) == 1
+        result = collection.query(query_embeddings=sample['embeddings'], n_results=1, include=['distances'])
+        assert len(result['ids']) == 1 and len(result['ids'][0]) == 1
+        assert abs(float(result['distances'][0][0])) < 0.0001
+        tested += 1
+assert total > 0 and tested > 0
+print('CHROMA_NATIVE_RESULT=' + json.dumps([len(collections), total, tested]))
+'''
+    name = container + '-iq'
+    try:
+        raw = command([DOCKER, 'run', '--pull=never', '--name', name, '--network=none',
+                       '--restart=no', '--cpus=0.5', '--memory=768m', '--memory-swap=768m',
+                       '--pids-limit=64', '--read-only', '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m',
+                       '--user=0:0', '--cap-drop=ALL', '--log-driver=none', '--security-opt=no-new-privileges',
+                       '--mount', f'type=bind,src={roots[0].parent},dst=/recovery',
+                       '-e', 'ANONYMIZED_TELEMETRY=False', '--entrypoint', 'python3',
+                       image, '-c', source], guard, seconds=100)
+        require(raw is not None, 'CHROMA_NATIVE_LOAD')
+        rows = [line.removeprefix('CHROMA_NATIVE_RESULT=') for line in raw.splitlines() if line.startswith('CHROMA_NATIVE_RESULT=')]
+        require(len(rows) == 1, 'CHROMA_NATIVE_OUTPUT')
+        counts = json.loads(rows[0])
+        require(isinstance(counts, list) and len(counts) == 3 and
+                all(type(value) is int and 0 < value <= 1000000 for value in counts), 'CHROMA_NATIVE_OUTPUT')
+        evidence['chroma_native_collections'], evidence['chroma_native_embeddings'], evidence['chroma_native_query_tests'] = counts
+        evidence['chroma_native_restore'] = 'PASS'
+    finally:
+        # Only this random test container is addressed, including on abort.
+        command([DOCKER, 'stop', '--time=3', name], lambda: None, seconds=8, capture=False)
+        removed = command([DOCKER, 'rm', '-v', name], lambda: None, seconds=8, capture=False)
+        evidence['iq_temporary_cleanup'] = 'PASS' if removed is not None else 'UNVERIFIED'
+        require(removed is not None, 'IQ_TEMPORARY_CLEANUP')
 
 
 def postgres_image(guard):
@@ -366,6 +420,9 @@ def main():
                     raise
                 evidence["iq_files"] = code
             database_proof(stage, container, guard, evidence)
+            if evidence["iq_files"] == "PASS":
+                evidence['phase'] = 'CHROMA_NATIVE_LOAD'
+                chroma_native_proof(stage / 'paperless-iq', container, guard, evidence)
             gate.sample()
             gate.guard()
             evidence["tier0"] = "PASS"

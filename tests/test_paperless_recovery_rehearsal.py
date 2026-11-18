@@ -4,6 +4,8 @@ from pathlib import Path
 import tarfile
 import tempfile
 import unittest
+import sqlite3
+from unittest.mock import patch
 
 from governor import paperless_recovery_rehearsal as rehearsal
 
@@ -20,6 +22,46 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 
 class RecoverySafetyTests(unittest.TestCase):
+    def test_chroma_preserves_extra_disk_segment_and_requires_all_metadata_segments(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with sqlite3.connect(root / 'paperless_iq.db') as db:
+                db.execute('CREATE TABLE fixture (id INTEGER)')
+            chroma = root / 'chroma'
+            chroma.mkdir()
+            with sqlite3.connect(chroma / 'chroma.sqlite3') as db:
+                db.execute('CREATE TABLE segments (id TEXT, scope TEXT)')
+                db.execute("INSERT INTO segments VALUES ('required', 'VECTOR')")
+            for segment in ('required', 'extra'):
+                path = chroma / segment
+                path.mkdir()
+                for name in ('header.bin', 'data_level0.bin', 'length.bin', 'link_lists.bin'):
+                    (path / name).write_bytes(b'x')
+            evidence = {}
+            rehearsal.iq_verify(root, lambda: None, evidence)
+            self.assertEqual(evidence['chroma_disk_segments_unmapped'], 1)
+            self.assertEqual(evidence['chroma_vector_rows_without_disk'], 0)
+            self.assertTrue((chroma / 'extra/header.bin').exists())
+            (chroma / 'required/header.bin').unlink()
+            with self.assertRaises(rehearsal.RehearsalError):
+                rehearsal.iq_verify(root, lambda: None)
+
+    def test_native_chroma_uses_isolated_image_and_staged_mount(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'chroma.sqlite3').touch()
+            image = 'sha256:' + 'a' * 64
+            evidence = {}
+            with patch.object(rehearsal, 'command', side_effect=[image, 'CHROMA_NATIVE_RESULT=[2,200,2]', '', '']) as run:
+                rehearsal.chroma_native_proof(root, 'random-test', lambda: None, evidence)
+            args = run.call_args_list[1].args[0]
+            self.assertIn('--network=none', args)
+            self.assertIn('--read-only', args)
+            self.assertIn(f'type=bind,src={root},dst=/recovery', args)
+            self.assertNotIn('-p', args)
+            self.assertEqual(evidence['chroma_native_restore'], 'PASS')
+            self.assertEqual(evidence['iq_temporary_cleanup'], 'PASS')
+
     def test_failure_categories_suppress_private_exception_text(self):
         self.assertEqual(rehearsal.failure_code(OSError('private path')), 'LOCAL_OS_ERROR')
         self.assertEqual(rehearsal.failure_code(ValueError('PRIVATE_RECORD')), 'LOCAL_OPERATION_FAILED')
