@@ -201,7 +201,7 @@ print('CHROMA_NATIVE_RESULT=' + json.dumps([len(collections), total, tested]))
         raw = command([DOCKER, 'run', '--pull=never', '--name', name, '--network=none',
                        '--restart=no', '--cpus=0.5', '--memory=768m', '--memory-swap=768m',
                        '--pids-limit=64', '--read-only', '--tmpfs', '/tmp:rw,nosuid,nodev,size=64m',
-                       '--log-driver=none', '--security-opt=no-new-privileges',
+                       '--user=0:0', '--cap-drop=ALL', '--log-driver=none', '--security-opt=no-new-privileges',
                        '--mount', f'type=bind,src={roots[0].parent},dst=/recovery',
                        '-e', 'ANONYMIZED_TELEMETRY=False', '--entrypoint', 'python3',
                        image, '-c', source], guard, seconds=100)
