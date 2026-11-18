@@ -189,13 +189,18 @@ def historical_email_inventory(directory, guard):
     return {"historical_" + family + "_files": count for family, count in counts.items()}
 
 
-def resource_ready(*, initial=False):
+def resource_ready(*, initial=False, evidence=None):
     memory = Path('/proc/meminfo').read_text()
     available = re.search(r'^MemAvailable:\s+([0-9]+) kB$', memory, re.MULTILINE)
     temperature = int(Path('/sys/class/thermal/thermal_zone0/temp').read_text())
     minimum = (2 if initial else 1) * 1024**2
+    load = os.getloadavg()[0]
+    if evidence is not None:
+        evidence['resource_available_mib'] = int(available[1]) // 1024 if available else 0
+        evidence['resource_temperature_millicelsius'] = temperature
+        evidence['resource_load_milli'] = round(load * 1000)
     return bool(available and int(available[1]) >= minimum
-                and 0 < temperature < 75000 and os.getloadavg()[0] < 4)
+                and 0 < temperature < 75000 and load < 4)
 
 
 def database_proof(stage, container, guard, evidence):
@@ -305,7 +310,7 @@ def main():
             blocks = os.statvfs(HDD)
             require(blocks.f_bavail * blocks.f_frsize >= RESERVE + LIMIT and blocks.f_favail >= 100000,
                     "STAGING_CAPACITY")
-            require(resource_ready(initial=True), "PI_RESOURCE_PRECHECK")
+            require(resource_ready(initial=True, evidence=evidence), "PI_RESOURCE_PRECHECK")
             resolver, public = connection_inputs()
             gate = HealthGate(lambda: health_checks(resolver, public), interval=3, max_age=16).start()
             next_resource_check = 0
@@ -316,7 +321,7 @@ def main():
                 if now >= next_resource_check:
                     usage = os.statvfs(HDD)
                     require(usage.f_bavail * usage.f_frsize >= RESERVE and usage.f_favail >= 50000, "STAGING_RESERVE")
-                    require(resource_ready(), "PI_RESOURCE_LIMIT")
+                    require(resource_ready(evidence=evidence), "PI_RESOURCE_LIMIT")
                     next_resource_check = now + 3
             hashes = read_manifest(CHECKPOINT)
             for name in ARCHIVES:
@@ -374,7 +379,10 @@ def main():
                 try:
                     stopped = command([DOCKER, "stop", "--time=5", container], lambda: None, seconds=15, capture=False)
                     if stopped is None:
-                        evidence["temporary_stop"] = "UNVERIFIED"
+                        # A resource guard may abort before docker run executes.
+                        remaining = command([DOCKER, 'ps', '--all', '--quiet', '--filter',
+                                             f'name=^/{container}$'], lambda: None, seconds=10)
+                        evidence["temporary_stop"] = "ABSENT" if remaining == '' else "UNVERIFIED"
                     else:
                         evidence["temporary_stop"] = "PASS"
                 except Exception:
