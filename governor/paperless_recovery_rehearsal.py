@@ -40,7 +40,18 @@ def require(condition, code):
 
 def failure_code(exc):
     code = str(exc)
-    return code if isinstance(exc, RehearsalError) and re.fullmatch(r"[A-Z_]{3,48}", code) else "LOCAL_OPERATION_FAILED"
+    if isinstance(exc, RehearsalError) and re.fullmatch(r"[A-Z_]{3,48}", code):
+        return code
+    # Expose only fixed type families, never exception text from private data.
+    if isinstance(exc, OSError):
+        return "LOCAL_OS_ERROR"
+    if isinstance(exc, sqlite3.Error):
+        return "SQLITE_ERROR"
+    if isinstance(exc, UnicodeError):
+        return "LOCAL_ENCODING_ERROR"
+    if type(exc).__name__ == "HealthUnavailable":
+        return "TIER0_HEALTH_UNAVAILABLE"
+    return "LOCAL_OPERATION_FAILED"
 
 
 @contextmanager
@@ -127,7 +138,7 @@ def command(args, guard, seconds=30, stdin=None, output=None, capture=True):
         return data.decode("utf-8").strip()
 
 
-def iq_verify(extracted, guard):
+def iq_verify(extracted, guard, evidence=None):
     found = {}
     for name in ("paperless_iq.db", "chroma.sqlite3"):
         paths = list(extracted.rglob(name))
@@ -141,6 +152,11 @@ def iq_verify(extracted, guard):
             if name == "chroma.sqlite3":
                 segments = {row[0] for row in db.execute("SELECT id FROM segments WHERE scope='VECTOR'")}
                 disk = {p.parent.name for p in path.parent.glob("*/header.bin") if p.stat().st_size > 0}
+                if evidence is not None:
+                    evidence["chroma_vector_rows"] = len(segments)
+                    evidence["chroma_disk_segments"] = len(disk)
+                    evidence["chroma_disk_segments_unmapped"] = len(disk - segments)
+                    evidence["chroma_vector_rows_without_disk"] = len(segments - disk)
                 require(bool(segments) and disk <= segments, "CHROMA_SEGMENT_LAYOUT")
                 require(all(all((path.parent / segment / f).is_file()
                                 for f in ("data_level0.bin", "length.bin", "link_lists.bin"))
@@ -183,10 +199,12 @@ def resource_ready(*, initial=False):
 
 
 def database_proof(stage, container, guard, evidence):
+    evidence["phase"] = "POSTGRES_IMAGE"
     image = postgres_image(guard)
     data = stage / "db"
     data.mkdir(mode=0o700)
     evidence["postgres_start_attempted"] = True
+    evidence["phase"] = "POSTGRES_START"
     require(command([DOCKER, "run", "-d", "--pull=never", "--name", container,
                      "--label=lifeos.paperless-rehearsal=true", "--network=none",
                      "--restart=no", "--cpus=0.50", "--memory=768m", "--memory-swap=768m",
@@ -196,9 +214,11 @@ def database_proof(stage, container, guard, evidence):
                      "-e", "POSTGRES_DB=rehearsal", "-e", "POSTGRES_HOST_AUTH_METHOD=trust",
                      image, "postgres", "-c", "listen_addresses=", "-c", "max_connections=10"],
                     guard, seconds=70) is not None, "POSTGRES_START")
+    evidence["phase"] = "POSTGRES_ISOLATION"
     proof = command([DOCKER, "inspect", "--format={{.HostConfig.NetworkMode}}|{{len .HostConfig.PortBindings}}|{{.Config.Image}}",
                      container], guard)
     require(proof == f"none|0|{image}", "POSTGRES_ISOLATION")
+    evidence["phase"] = "POSTGRES_READY"
     for _ in range(50):
         # The entrypoint's initialization server may answer pg_isready briefly.
         if command([DOCKER, "exec", container, "cat", "/proc/1/comm"], guard, seconds=5) == "postgres" and command([DOCKER, "exec", container, "pg_isready", "-h", "/var/run/postgresql", "-U", "rehearsal"], guard,
@@ -207,6 +227,7 @@ def database_proof(stage, container, guard, evidence):
         time.sleep(1)
     else:
         raise RehearsalError("POSTGRES_NOT_READY")
+    evidence["phase"] = "POSTGRES_RESTORE"
     with (stage / "paperless.dump").open("rb") as dump:
         require(command([DOCKER, "exec", "-i", container, "pg_restore", "--host=/var/run/postgresql",
                          "--username=rehearsal", "--dbname=rehearsal", "--no-owner", "--no-privileges",
@@ -217,6 +238,7 @@ def database_proof(stage, container, guard, evidence):
                         "--username=rehearsal", "--dbname=rehearsal", "--set=ON_ERROR_STOP=1", "-c", sql], guard)
         require(rows is not None, "POSTGRES_QUERY")
         return rows
+    evidence["phase"] = "POSTGRES_SCHEMA"
     schema = json.loads(query("""SELECT json_build_array(
         (SELECT count(*) FROM pg_tables WHERE schemaname='public'),
         (SELECT count(*) FROM pg_index i JOIN pg_class c ON c.oid=i.indrelid
@@ -229,6 +251,7 @@ def database_proof(stage, container, guard, evidence):
     require(len(schema) == 6 and all(type(n) is int and n > 0 for n in schema), "POSTGRES_SCHEMA")
     evidence["postgres_tables"], evidence["postgres_indexes"], evidence["postgres_constraints"], evidence["root_documents"], evidence["stored_text_rows"], evidence["active_users"] = schema
     evidence["postgres_restore"] = "PASS"
+    evidence["phase"] = "ORIGINAL_MEDIA"
     rows = query("SELECT json_build_array(id, filename, checksum) FROM documents_document ORDER BY id LIMIT 10001")
     originals = list((stage / "media").rglob("originals"))
     require(len(originals) == 1 and originals[0].is_dir(), "MEDIA_ORIGINALS_LAYOUT")
@@ -330,7 +353,7 @@ def main():
             evidence.update(historical_email_inventory(stage / "historical-email", guard))
             evidence["historical_email_recovery"] = "UNVERIFIED"
             try:
-                evidence.update(iq_verify(stage / "paperless-iq", guard))
+                evidence.update(iq_verify(stage / "paperless-iq", guard, evidence))
                 evidence["iq_files"] = "PASS"
             except RehearsalError as exc:
                 code = failure_code(exc)
@@ -342,6 +365,7 @@ def main():
             gate.guard()
             evidence["tier0"] = "PASS"
             evidence["result"] = "DATA_RESTORE_PASS" if evidence["iq_files"] == "PASS" else "PARTIAL"
+            evidence["phase"] = "DATA_CHECKS_COMPLETE"
         except Exception as exc:
             evidence["failure"] = failure_code(exc)
         finally:
