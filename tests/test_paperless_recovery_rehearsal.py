@@ -28,10 +28,11 @@ class RecoverySafetyTests(unittest.TestCase):
         original_stat = Path.stat
         def stage_stat(path, *args, **kwargs):
             result = original_stat(path, *args, **kwargs)
-            if path.name == '.paperless-restore-abcdefgh':
-                values = list(result)
-                values[4] = 0  # Model the root-owned production staging boundary.
-                return os.stat_result(values)
+            if '.paperless-restore-abcdefgh' in path.parts:
+                from types import SimpleNamespace
+                values = {field: getattr(result, field) for field in dir(result) if field.startswith('st_')}
+                values['st_uid'] = 0  # Model the root-owned production staging boundary.
+                return SimpleNamespace(**values)
             return result
         mocked = patch.object(Path, 'stat', stage_stat)
         mocked.start()
@@ -98,6 +99,82 @@ class RecoverySafetyTests(unittest.TestCase):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
 
+    def test_native_scope_checks_limits_before_exec_and_cleans_up_on_abort(self):
+        import sys
+        scope = '/system.slice/lifeos-paperless-checkpoint-' + 'a' * 32 + '.scope'
+        for quota in ('25000 100000', '50000 100000'):
+            def read(path, *args, **kwargs):
+                if str(path) == '/proc/self/cgroup':
+                    return '0::' + scope
+                return {'cpu.max': quota, 'memory.max': str(768 * 1024**2),
+                        'memory.swap.max': '0', 'pids.max': '64'}[path.name]
+            with patch.object(Path, 'read_text', read), patch.object(sys, 'argv', ['scope-check', '/usr/bin/env', 'GOMAXPROCS=1', '/usr/bin/restic']), patch.object(os, 'execv') as execute:
+                if quota.startswith('25000'):
+                    exec(rehearsal.SCOPE_CHECK_EXEC, {})
+                    execute.assert_called_once()
+                else:
+                    with self.assertRaises(AssertionError):
+                        exec(rehearsal.SCOPE_CHECK_EXEC, {})
+                    execute.assert_not_called()
+        def command(args, guard, **kwargs):
+            if args[0] == '/usr/bin/systemd-run':
+                guard()
+            return ''
+        def guard():
+            raise rehearsal.RehearsalError('PI_RESOURCE_LIMIT')
+        with patch.object(rehearsal, 'command', side_effect=command) as run:
+            with self.assertRaisesRegex(rehearsal.RehearsalError, 'PI_RESOURCE_LIMIT'):
+                rehearsal.checkpoint_restic_command(['/usr/bin/restic'], ['snapshots'], guard)
+        launch = run.call_args_list[0].args[0]
+        self.assertIn('--property=CPUQuota=25%', launch)
+        self.assertIn('--property=MemoryMax=768M', launch)
+        unit = next(value.split('=', 1)[1] for value in launch if value.startswith('--unit='))
+        self.assertEqual(run.call_args_list[-2].args[0], ['/usr/bin/systemctl', 'stop', unit])
+        self.assertEqual(run.call_args_list[-1].args[0][-1], unit)
+
+    def test_temporary_copy_inventory_is_readonly_and_preserves_changed_copies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkpoint = root / 'checkpoint'
+            checkpoint.mkdir()
+            disk = root / 'disk'
+            disk.mkdir()
+            stage = disk / '.paperless-restore-abcdefgh'
+            stage.mkdir(mode=0o700)
+            reports = root / 'reports'
+            reports.mkdir()
+            hashes = {}
+            for name in rehearsal.ARCHIVES:
+                data = b'private dump fixture' if name == 'paperless.dump' else archive('document.txt').getvalue()
+                (checkpoint / name).write_bytes(data)
+                hashes[name] = hashlib.sha256(data).hexdigest()
+                if name == 'paperless.dump':
+                    (stage / name).write_bytes(data)
+                else:
+                    target = stage / name.removesuffix('.tar')
+                    target.mkdir(mode=0o700)
+                    rehearsal.extract(io.BytesIO(data), target, lambda: None, rehearsal.LIMIT)
+            (stage / 'db').mkdir()
+            (stage / 'sockets').mkdir()
+            with patch.object(rehearsal, 'HDD', disk), patch.object(rehearsal, 'CHECKPOINT', checkpoint), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal, 'validate_stage_references'):
+                evidence = {'checkpoint_encrypted_copy': 'PASS'}
+                rehearsal.temporary_copy_inventory(hashes, lambda: None, evidence)
+                self.assertEqual(evidence['temporary_duplicate_exact_stages'], 1)
+                self.assertTrue(stage.exists())
+                manifest = json.loads(next(reports.glob('temporary-copy-dry-run-*.json')).read_text())
+                self.assertEqual(manifest['mode'], 'DRY_RUN')
+                self.assertEqual(manifest['exact_copies'][0]['stage'], str(stage))
+                (stage / 'media' / 'document.txt').write_bytes(b'changed')
+                evidence = {'checkpoint_encrypted_copy': 'PASS'}
+                rehearsal.temporary_copy_inventory(hashes, lambda: None, evidence)
+                self.assertEqual(evidence['temporary_duplicate_exact_stages'], 0)
+                self.assertEqual(evidence['temporary_duplicate_protected_stages'], 1)
+                self.assertEqual((stage / 'media' / 'document.txt').read_bytes(), b'changed')
+                def guard():
+                    raise rehearsal.RehearsalError('PI_RESOURCE_LIMIT')
+                with self.assertRaisesRegex(rehearsal.RehearsalError, 'PI_RESOURCE_LIMIT'):
+                    rehearsal.temporary_copy_inventory(hashes, guard, {'checkpoint_encrypted_copy': 'PASS'})
+
     def test_checkpoint_protection_uses_native_encryption_and_verifies_every_byte(self):
         import types, sys
         with tempfile.TemporaryDirectory() as directory:
@@ -140,6 +217,8 @@ class RecoverySafetyTests(unittest.TestCase):
                     return ''
                 if 'findmnt' in args[0]:
                     return 'tmpfs'
+                if args[0] == '/usr/bin/systemctl':
+                    return ''
                 if 'dump' in args:
                     data = files[Path(args[-1]).name]
                     kwargs['output'].write(b'X' * len(data) if state['corrupt'] else data)
