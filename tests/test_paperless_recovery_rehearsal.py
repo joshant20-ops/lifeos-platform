@@ -112,6 +112,7 @@ class RecoverySafetyTests(unittest.TestCase):
             files = {name: ('fixture-' + name).encode() for name in (*rehearsal.ARCHIVES, 'SHA256SUMS')}
             for name, data in files.items():
                 (checkpoint / name).write_bytes(data)
+            (checkpoint / 'additional-owner-evidence').write_bytes(b'preserve without reading or copying')
             hashes = {name: hashlib.sha256(files[name]).hexdigest() for name in rehearsal.ARCHIVES}
             module = types.ModuleType('governor.adguard_archive_restic_proof')
             module.SHARE = root / 'share'
@@ -133,7 +134,7 @@ class RecoverySafetyTests(unittest.TestCase):
             def native(args, guard, **kwargs):
                 guard()
                 if 'snapshots' in args:
-                    return json.dumps([{'id': 'b' * 64, 'time': '2026-11-18T00:00:00Z', 'paths': [str(checkpoint)]}] if state['exists'] else [])
+                    return json.dumps([{'id': 'b' * 64, 'time': '2026-11-18T00:00:00Z', 'paths': [str(checkpoint / name) for name in files]}] if state['exists'] else [])
                 if 'backup' in args:
                     state['exists'] = True
                     return ''
@@ -150,9 +151,14 @@ class RecoverySafetyTests(unittest.TestCase):
                 rehearsal.protect_verified_checkpoint(hashes, lambda: None, evidence)
                 self.assertEqual(evidence['checkpoint_encrypted_copy'], 'PASS')
                 self.assertEqual(evidence['checkpoint_encrypted_files'], 6)
+                self.assertEqual(evidence['checkpoint_additional_entries_preserved'], 1)
+                self.assertTrue((checkpoint / 'additional-owner-evidence').exists())
                 calls = [call.args[0] for call in run.call_args_list]
                 self.assertEqual(sum('dump' in args for args in calls), 6)
                 self.assertEqual(sum('backup' in args for args in calls), 1)
+                backup_args = next(args for args in calls if 'backup' in args)
+                self.assertEqual(set(backup_args[-6:]), {str(checkpoint / name) for name in files})
+                self.assertNotIn(str(checkpoint), backup_args)
                 self.assertFalse(any(token in args for args in calls for token in ('forget', 'prune', 'init', 'unlock')))
                 self.assertTrue(all((checkpoint / name).read_bytes() == data for name, data in files.items()))
                 run.reset_mock()
@@ -202,6 +208,9 @@ class RecoverySafetyTests(unittest.TestCase):
 
     def test_backup_paths_are_metadata_scope_not_payload_recovery_proof(self):
         self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': ['/opt/stacks']}]), 0)
+        selected = [str(rehearsal.CHECKPOINT / name) for name in (*rehearsal.ARCHIVES, 'SHA256SUMS')]
+        self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': selected}]), 1)
+        self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': selected[:-1]}]), 0)
         self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': [str(rehearsal.CHECKPOINT)]}, {'paths': ['/mnt/docker-data']}]), 2)
         self.assertEqual(rehearsal.checkpoint_snapshot_path_count([{'paths': [str(rehearsal.CHECKPOINT) + '-other']}]), 0)
         for malformed in (None, [{}], [{'paths': None}], [{'paths': ['/mnt/docker-data/../private']}], [{'paths': [1]}]):

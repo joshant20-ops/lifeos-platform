@@ -412,7 +412,10 @@ def protect_verified_checkpoint(hashes, guard, evidence):
             proven = True
             break
     require(proven, 'CHECKPOINT_RESTORE_PREREQUISITE')
-    require({path.name for path in CHECKPOINT.iterdir()} == set(ARCHIVES) | {'SHA256SUMS'}, 'CHECKPOINT_CONTENTS')
+    entries = {path.name for path in CHECKPOINT.iterdir()}
+    selected = set(ARCHIVES) | {'SHA256SUMS'}
+    require(selected <= entries, 'CHECKPOINT_CONTENTS')
+    evidence['checkpoint_additional_entries_preserved'] = len(entries - selected)
     expected, sizes = dict(hashes), {}
     for name in (*ARCHIVES, 'SHA256SUMS'):
         with regular_source(CHECKPOINT, name) as source:
@@ -441,11 +444,15 @@ def protect_verified_checkpoint(hashes, guard, evidence):
             require(isinstance(records, list) and len(records) <= 10, 'CHECKPOINT_SNAPSHOT_LIMIT')
             for record in records:
                 require(isinstance(record, dict) and re.fullmatch(r'[a-f0-9]{64}', record.get('id', ''))
-                        and record.get('paths') == [str(CHECKPOINT)] and isinstance(record.get('time'), str), 'CHECKPOINT_SNAPSHOT_SCOPE')
+                        and isinstance(record.get('paths'), list) and len(record['paths']) == 6
+                        and all(isinstance(path, str) for path in record['paths'])
+                        and sorted(record['paths']) == sorted(str(CHECKPOINT / name) for name in (*ARCHIVES, 'SHA256SUMS'))
+                        and isinstance(record.get('time'), str), 'CHECKPOINT_SNAPSHOT_SCOPE')
             return records
         records = snapshots()
         if not records:
-            require(command([*prefix, 'backup', '--one-file-system', '--tag', tag, str(CHECKPOINT)],
+            require(command([*prefix, 'backup', '--one-file-system', '--tag', tag,
+                             *(str(CHECKPOINT / name) for name in (*ARCHIVES, 'SHA256SUMS'))],
                             guard, seconds=360, capture=False) is not None, 'CHECKPOINT_ENCRYPTED_BACKUP')
             records = snapshots()
         require(records, 'CHECKPOINT_SNAPSHOT_MISSING')
@@ -498,8 +505,10 @@ def checkpoint_snapshot_path_count(snapshots):
     require(all(isinstance(snapshot, dict) and isinstance(snapshot.get('paths'), list)
                 and all(isinstance(path, str) and path.startswith('/') and '..' not in PurePosixPath(path).parts
                         for path in snapshot['paths']) for snapshot in snapshots), 'BACKUP_METADATA_FORMAT')
+    selected = {str(CHECKPOINT / name) for name in (*ARCHIVES, 'SHA256SUMS')}
     return sum(any(PurePosixPath(str(CHECKPOINT)).is_relative_to(PurePosixPath(path))
-                   for path in snapshot['paths']) for snapshot in snapshots)
+                   for path in snapshot['paths']) or selected <= set(snapshot['paths'])
+               for snapshot in snapshots)
 
 
 def backup_coverage_inventory(guard, evidence):
