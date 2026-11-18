@@ -98,6 +98,74 @@ class RecoverySafetyTests(unittest.TestCase):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
 
+    def test_checkpoint_protection_uses_native_encryption_and_verifies_every_byte(self):
+        import types, sys
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkpoint = root / 'checkpoint'
+            checkpoint.mkdir()
+            reports = root / 'reports'
+            reports.mkdir()
+            record = {'archives_verified': 5, 'postgres_restore': 'PASS', 'originals_checked': 1,
+                      'originals_missing': 0, 'originals_checksum_mismatch': 0, 'temporary_stop': 'PASS'}
+            (reports / ('a' * 32 + '.json')).write_text(json.dumps(record))
+            files = {name: ('fixture-' + name).encode() for name in (*rehearsal.ARCHIVES, 'SHA256SUMS')}
+            for name, data in files.items():
+                (checkpoint / name).write_bytes(data)
+            hashes = {name: hashlib.sha256(files[name]).hexdigest() for name in rehearsal.ARCHIVES}
+            module = types.ModuleType('governor.adguard_archive_restic_proof')
+            module.SHARE = root / 'share'
+            module.REPOSITORY = module.SHARE / 'restic/repo'
+            module.REPOSITORY.mkdir(parents=True)
+            module.PASSWORD_FILE = root / 'password'
+            module.PASSWORD_FILE.write_bytes(b'fixture-only')
+            module.PASSWORD_FILE.chmod(0o600)
+            module.verify_nfs_mount = lambda fd: True
+            original_fstat = os.fstat
+            def owned_password(fd):
+                value = original_fstat(fd)
+                if Path('/proc/self/fd/' + str(fd)).resolve() == module.PASSWORD_FILE:
+                    values = list(value)
+                    values[4] = 0  # Model the required root-owned credential file.
+                    return os.stat_result(values)
+                return value
+            state = {'exists': False, 'corrupt': False}
+            def native(args, guard, **kwargs):
+                guard()
+                if 'snapshots' in args:
+                    return json.dumps([{'id': 'b' * 64, 'time': '2026-11-18T00:00:00Z', 'paths': [str(checkpoint)]}] if state['exists'] else [])
+                if 'backup' in args:
+                    state['exists'] = True
+                    return ''
+                if 'findmnt' in args[0]:
+                    return 'tmpfs'
+                if 'dump' in args:
+                    data = files[Path(args[-1]).name]
+                    kwargs['output'].write(b'X' * len(data) if state['corrupt'] else data)
+                    kwargs['output'].flush()
+                    return ''
+                self.fail('Unexpected native command')
+            with patch.dict(sys.modules, {'governor.adguard_archive_restic_proof': module}), patch.object(rehearsal, 'CHECKPOINT', checkpoint), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal.os, 'fstat', side_effect=owned_password), patch.object(rehearsal, 'command', side_effect=native) as run:
+                evidence = {}
+                rehearsal.protect_verified_checkpoint(hashes, lambda: None, evidence)
+                self.assertEqual(evidence['checkpoint_encrypted_copy'], 'PASS')
+                self.assertEqual(evidence['checkpoint_encrypted_files'], 6)
+                calls = [call.args[0] for call in run.call_args_list]
+                self.assertEqual(sum('dump' in args for args in calls), 6)
+                self.assertEqual(sum('backup' in args for args in calls), 1)
+                self.assertFalse(any(token in args for args in calls for token in ('forget', 'prune', 'init', 'unlock')))
+                self.assertTrue(all((checkpoint / name).read_bytes() == data for name, data in files.items()))
+                run.reset_mock()
+                cached = {}
+                rehearsal.protect_verified_checkpoint(hashes, lambda: None, cached)
+                self.assertEqual(cached['checkpoint_encrypted_copy'], 'CACHED_VERIFIED_COPY')
+                self.assertFalse(any('dump' in call.args[0] or 'backup' in call.args[0] for call in run.call_args_list))
+                (reports / 'encrypted-checkpoint-receipt.json').unlink()
+                state['corrupt'] = True
+                with self.assertRaisesRegex(rehearsal.RehearsalError, 'CHECKPOINT_READBACK_CHECKSUM'):
+                    rehearsal.protect_verified_checkpoint(hashes, lambda: None, {})
+                self.assertFalse((reports / 'encrypted-checkpoint-receipt.json').exists())
+
     def test_application_failure_evidence_rejects_private_or_unbounded_fields(self):
         for extra in ({}, {'private_contents': 'must never escape'}, {'application_listing_count': 'private value'}):
             with self.subTest(extra=list(extra)), tempfile.TemporaryDirectory() as directory:

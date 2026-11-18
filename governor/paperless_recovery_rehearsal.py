@@ -389,6 +389,110 @@ def postgres_image(guard):
     return image
 
 
+def protect_verified_checkpoint(hashes, guard, evidence):
+    """Bounded native Restic copy/readback; no retention or source modifications."""
+    from governor.adguard_archive_restic_proof import verify_nfs_mount, SHARE, REPOSITORY, PASSWORD_FILE
+    original_guard = guard
+    deadline = time.monotonic() + 360
+    def guard():
+        original_guard()
+        require(time.monotonic() < deadline, 'CHECKPOINT_PROTECTION_BUDGET')
+    # A prior successful data rehearsal is a prerequisite, not just five source hashes.
+    proven = False
+    reports = list(REPORT_DIR.glob('*.json'))
+    require(len(reports) <= 100, 'REPORT_SCAN_LIMIT')
+    for report in reports:
+        guard()
+        if not re.fullmatch(r'[a-f0-9]{32}\.json', report.name):
+            continue
+        with regular_source(REPORT_DIR, report.name) as source:
+            raw = source.read(16385)
+        require(len(raw) <= 16384, 'REPORT_SIZE')
+        if verified_recovery_record(json.loads(raw)):
+            proven = True
+            break
+    require(proven, 'CHECKPOINT_RESTORE_PREREQUISITE')
+    require({path.name for path in CHECKPOINT.iterdir()} == set(ARCHIVES) | {'SHA256SUMS'}, 'CHECKPOINT_CONTENTS')
+    expected, sizes = dict(hashes), {}
+    for name in (*ARCHIVES, 'SHA256SUMS'):
+        with regular_source(CHECKPOINT, name) as source:
+            sizes[name] = os.fstat(source.fileno()).st_size
+            if name == 'SHA256SUMS':
+                expected[name] = file_digest(source, 'sha256', guard)
+    require(0 < sum(sizes.values()) <= LIMIT, 'CHECKPOINT_COPY_LIMIT')
+    fd = os.open(SHARE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        require(verify_nfs_mount(fd), 'BACKUP_MOUNT')
+        repo = Path(f'/proc/{os.getpid()}/fd/{fd}') / REPOSITORY.relative_to(SHARE)
+        require(repo.resolve(strict=True) == REPOSITORY and repo.is_dir(), 'BACKUP_REPOSITORY')
+        space = os.statvfs(repo)
+        require(space.f_bavail * space.f_frsize >= 4 * 1024**3 + sum(sizes.values()), 'BACKUP_DESTINATION_RESERVE')
+        with regular_source(PASSWORD_FILE.parent, PASSWORD_FILE.name) as password:
+            info = os.fstat(password.fileno())
+            require(info.st_uid == 0 and not info.st_mode & 0o077, 'BACKUP_CREDENTIAL_MODE')
+        # Limit native Go parallelism; the existing wrapper and resource guard still apply.
+        prefix = ['/usr/bin/env', 'GOMAXPROCS=1', '/usr/bin/restic', '--no-cache',
+                  '--repo', str(repo), '--password-file', str(PASSWORD_FILE)]
+        tag = 'paperless-recovery-checkpoint-20261116-164147'
+        def snapshots():
+            raw = command([*prefix, '--no-lock', 'snapshots', '--tag', tag, '--json'], guard, seconds=45)
+            require(raw is not None, 'CHECKPOINT_SNAPSHOT_LIST')
+            records = json.loads(raw)
+            require(isinstance(records, list) and len(records) <= 10, 'CHECKPOINT_SNAPSHOT_LIMIT')
+            for record in records:
+                require(isinstance(record, dict) and re.fullmatch(r'[a-f0-9]{64}', record.get('id', ''))
+                        and record.get('paths') == [str(CHECKPOINT)] and isinstance(record.get('time'), str), 'CHECKPOINT_SNAPSHOT_SCOPE')
+            return records
+        records = snapshots()
+        if not records:
+            require(command([*prefix, 'backup', '--one-file-system', '--tag', tag, str(CHECKPOINT)],
+                            guard, seconds=360, capture=False) is not None, 'CHECKPOINT_ENCRYPTED_BACKUP')
+            records = snapshots()
+        require(records, 'CHECKPOINT_SNAPSHOT_MISSING')
+        snapshot = max(records, key=lambda record: record['time'])['id']
+        receipt = REPORT_DIR / 'encrypted-checkpoint-receipt.json'
+        if receipt.exists():
+            with regular_source(REPORT_DIR, receipt.name) as source:
+                raw = source.read(4097)
+            require(len(raw) <= 4096, 'CHECKPOINT_RECEIPT_LIMIT')
+            cached = json.loads(raw)
+            if cached == {'snapshot': snapshot, 'manifest': expected['SHA256SUMS'], 'files': 6}:
+                evidence['checkpoint_encrypted_copy'] = 'CACHED_VERIFIED_COPY'
+                evidence['checkpoint_encrypted_files'] = 6
+                return
+        require(command(['/usr/bin/findmnt', '-rn', '--target', '/dev/shm', '-o', 'FSTYPE'], guard) == 'tmpfs', 'CHECKPOINT_READBACK_STAGING')
+        ram = os.statvfs('/dev/shm')
+        memory = re.search(r'^MemAvailable:\s+([0-9]+) kB$', Path('/proc/meminfo').read_text(), re.MULTILINE)
+        require(ram.f_bavail * ram.f_frsize >= max(sizes.values()) + 64 * 1024**2
+                and memory and int(memory[1]) * 1024 >= 2 * 1024**3 + max(sizes.values()), 'CHECKPOINT_READBACK_MEMORY')
+        for name in (*ARCHIVES, 'SHA256SUMS'):
+            with tempfile.TemporaryFile(dir='/dev/shm') as restored:
+                require(command(['/usr/bin/prlimit', f'--fsize={sizes[name] + 1}:{sizes[name] + 1}', '--',
+                                 *prefix, '--no-lock', 'dump', snapshot, str(CHECKPOINT / name)],
+                                guard, seconds=180, output=restored) is not None, 'CHECKPOINT_ENCRYPTED_READBACK')
+                require(os.fstat(restored.fileno()).st_size == sizes[name], 'CHECKPOINT_READBACK_SIZE')
+                restored.seek(0)
+                require(file_digest(restored, 'sha256', guard) == expected[name], 'CHECKPOINT_READBACK_CHECKSUM')
+        temporary = REPORT_DIR / ('receipt-' + uuid.uuid4().hex)
+        try:
+            with temporary.open('x') as output:
+                json.dump({'snapshot': snapshot, 'manifest': expected['SHA256SUMS'], 'files': 6}, output)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, receipt)
+            parent_fd = os.open(REPORT_DIR, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+            try:
+                os.fsync(parent_fd)
+            finally:
+                os.close(parent_fd)
+        finally:
+            temporary.unlink(missing_ok=True)
+        evidence['checkpoint_encrypted_copy'] = 'PASS'
+        evidence['checkpoint_encrypted_files'] = 6
+    finally:
+        os.close(fd)
+
+
 def checkpoint_snapshot_path_count(snapshots):
     require(isinstance(snapshots, list) and len(snapshots) <= 10000, 'BACKUP_METADATA_LIMIT')
     require(all(isinstance(snapshot, dict) and isinstance(snapshot.get('paths'), list)
@@ -750,6 +854,15 @@ def main():
                     require(0 < os.fstat(source.fileno()).st_size <= LIMIT, "ARCHIVE_SIZE")
                     require(file_digest(source, "sha256", guard) == hashes[name], "ARCHIVE_CHECKSUM")
             evidence["archives_verified"] = len(hashes)
+            evidence['phase'] = 'CHECKPOINT_ENCRYPTED_PROTECTION'
+            protect_verified_checkpoint(hashes, guard, evidence)
+            usage = os.statvfs(HDD)
+            # Conservative preflight estimate; the unchanged live gate remains active.
+            estimate = sum((CHECKPOINT / name).stat().st_size for name in ARCHIVES) + 512 * 1024**2
+            evidence['staging_estimated_headroom_bytes'] = estimate
+            evidence['hdd_available_before_staging_bytes'] = usage.f_bavail * usage.f_frsize
+            require(usage.f_bavail * usage.f_frsize >= evidence['hdd_tier0_reserve_bytes'] + estimate,
+                    'STAGING_TIER0_HEADROOM')
             stage = Path(tempfile.mkdtemp(prefix=".paperless-restore-", dir=HDD))
             remaining = LIMIT
             for name in ARCHIVES:
