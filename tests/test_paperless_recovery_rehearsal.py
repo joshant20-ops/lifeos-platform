@@ -20,6 +20,11 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 
 class RecoverySafetyTests(unittest.TestCase):
+    def test_failure_categories_suppress_private_exception_text(self):
+        self.assertEqual(rehearsal.failure_code(OSError('private path')), 'LOCAL_OS_ERROR')
+        self.assertEqual(rehearsal.failure_code(ValueError('PRIVATE_RECORD')), 'LOCAL_OPERATION_FAILED')
+        self.assertEqual(rehearsal.failure_code(rehearsal.RehearsalError('POSTGRES_START')), 'POSTGRES_START')
+
     def test_historical_format_inventory_does_not_require_eml_or_emit_names(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
