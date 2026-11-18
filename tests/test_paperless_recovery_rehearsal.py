@@ -25,18 +25,22 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 class RecoverySafetyTests(unittest.TestCase):
     def setUp(self):
-        original_stat = Path.stat
-        def stage_stat(path, *args, **kwargs):
-            result = original_stat(path, *args, **kwargs)
+        original_stat, original_lstat = Path.stat, Path.lstat
+        def owned_fixture(path, result):
             if '.paperless-restore-abcdefgh' in path.parts:
                 from types import SimpleNamespace
                 values = {field: getattr(result, field) for field in dir(result) if field.startswith('st_')}
                 values['st_uid'] = 0  # Model the root-owned production staging boundary.
                 return SimpleNamespace(**values)
             return result
-        mocked = patch.object(Path, 'stat', stage_stat)
-        mocked.start()
-        self.addCleanup(mocked.stop)
+        def stage_stat(path, *args, **kwargs):
+            return owned_fixture(path, original_stat(path, *args, **kwargs))
+        def stage_lstat(path, *args, **kwargs):
+            return owned_fixture(path, original_lstat(path, *args, **kwargs))
+        for name, method in (('stat', stage_stat), ('lstat', stage_lstat)):
+            mocked = patch.object(Path, name, method)
+            mocked.start()
+            self.addCleanup(mocked.stop)
 
     def cleanup_fixture(self, directory):
         root = Path(directory)
