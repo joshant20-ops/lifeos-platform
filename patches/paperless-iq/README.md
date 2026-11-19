@@ -66,3 +66,7 @@ locks, queued resource/configuration changes, persistence failure, cooperative
 inference timeout and SQLite transaction release. Automatic callbacks never call
 approval/application; an unexpected `auto_apply=True` stops automatic inference.
 Hosted CI and live/full-image acceptance are separate evidence.
+
+Stage 2A: the additional full-native-ASGI synthetic rehearsal passed; fresh Pi
+read-only resource/dependency checks passed. Production pilot remains NO-GO
+pending exact-image and deployment/capacity gates. See [STAGE2A.md](STAGE2A.md).
