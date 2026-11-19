@@ -6,10 +6,16 @@ import re
 import subprocess
 
 CHILD = r'''
-import ast, hashlib, ipaddress, json, os, pathlib, signal, socket, sqlite3
+import ast, hashlib, ipaddress, json, os, pathlib, re, signal, socket, sqlite3
+import importlib.metadata
 import urllib.request, urllib.error, urllib.parse
 signal.alarm(35)
 out = {'mutations': 'NONE'}
+try:
+    version = importlib.metadata.version('paperless-iq')
+    out['version'] = version if re.fullmatch(r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}', version) else 'UNKNOWN'
+except Exception:
+    out['version'] = 'UNKNOWN'
 def number(value):
     return value if type(value) is int and 0 <= value <= 10000000 else 'UNKNOWN'
 def boolean(value):
@@ -74,19 +80,27 @@ try:
     for key, relative in {'main': 'backend/main.py', 'settings': 'backend/settings_service.py', 'monitor': 'backend/inbox_monitor.py', 'ollama': 'backend/providers/ollama_provider.py'}.items():
         if base is None:
             continue
-        path = base / relative
-        if path.is_symlink() or path.stat().st_size > 2097152:
+        try:
+            path = base / relative
+            if path.is_symlink() or path.stat().st_size > 2097152:
+                continue
+            raw = path.read_bytes()
+            code = raw.decode()
+            ast.parse(code)
+        except (OSError, UnicodeError, SyntaxError):
             continue
-        raw = path.read_bytes()
-        sources[key] = raw.decode()
-        ast.parse(sources[key])
+        sources[key] = code
         out['source_' + key + '_sha256'] = hashlib.sha256(raw).hexdigest()
-    out['feature_settings_cached'] = 'self._config' in sources.get('settings', '')
-    out['feature_put_rewires'] = 'new_automation and not old_automation' in sources.get('main', '')
-    out['feature_seen_exclusion'] = 'did not in seen_ids' in sources.get('monitor', '')
-    out['feature_all_batches_loop'] = 'for i in range(num_batches)' in sources.get('monitor', '')
-    out['feature_explicit_temperature'] = 'temperature' in sources.get('ollama', '')
-    out['feature_explicit_seed'] = 'seed' in sources.get('ollama', '')
+    features = {
+        'feature_settings_cached': ('settings', 'self._config'),
+        'feature_put_rewires': ('main', 'new_automation and not old_automation'),
+        'feature_seen_exclusion': ('monitor', 'did not in seen_ids'),
+        'feature_all_batches_loop': ('monitor', 'for i in range(num_batches)'),
+        'feature_explicit_temperature': ('ollama', 'temperature'),
+        'feature_explicit_seed': ('ollama', 'seed'),
+    }
+    for key, (source, needle) in features.items():
+        out[key] = needle in sources[source] if source in sources else 'UNKNOWN'
     status, payload = get('http://127.0.0.1:8080/health')
     out['iq_health_http'] = number(status)
     out['iq_health_ok'] = isinstance(payload, dict) and payload.get('status') == 'ok'
@@ -105,7 +119,7 @@ try:
 except Exception:
     out['result'] = 'PARTIAL_OR_UNAVAILABLE'
 else:
-    out['result'] = 'READ_ONLY_COMPLETE'
+    out['result'] = 'READ_ONLY_COMPLETE' if len(sources) == 4 else 'PARTIAL_OR_UNAVAILABLE'
 print(json.dumps(out, sort_keys=True))
 '''
 
@@ -125,8 +139,10 @@ def sanitise(raw):
     if len(raw) > 16384:
         raise ValueError('output_limit')
     data = json.loads(raw)
-    if not isinstance(data, dict) or set(data) - (COUNTS | BOOLS | HASHES | {'result', 'mutations'}):
+    if not isinstance(data, dict) or set(data) - (COUNTS | BOOLS | HASHES | {'result', 'mutations', 'version'}):
         raise ValueError('output_schema')
+    if data.get('version', 'UNKNOWN') != 'UNKNOWN' and (not isinstance(data['version'], str) or not re.fullmatch(r'[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}', data['version'])):
+        raise ValueError('version')
     for key, value in data.items():
         if key in COUNTS and value != 'UNKNOWN' and not (type(value) is int and 0 <= value <= 10000000):
             raise ValueError('count')
