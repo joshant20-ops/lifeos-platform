@@ -1,0 +1,65 @@
+name: Paperless IQ Stage 2A read-only preflight
+on:
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+    paths: ['.github/workflows/paperless-iq-stage2a-preflight.yml']
+permissions:
+  contents: read
+concurrency:
+  group: lifeos-pi5-deploy
+  cancel-in-progress: false
+jobs:
+  readonly:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor == 'joshant20-ops' &&
+      github.triggering_actor == 'joshant20-ops' &&
+      github.run_attempt == 1 &&
+      github.head_ref == 'fix/paperless-iq-bounded-classification-stage1'
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    timeout-minutes: 8
+    steps:
+      - name: Collect host resource counters without Docker access
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -I -B - <<'PY'
+          import json, os
+          from pathlib import Path
+          result = {'load_milli': round(os.getloadavg()[0] * 1000)}
+          for key, path in [('temperature_millicelsius', '/sys/class/thermal/thermal_zone0/temp')]:
+              try:
+                  result[key] = int(Path(path).read_text())
+              except (OSError, ValueError):
+                  result[key] = 'UNKNOWN'
+          try:
+              memory = dict(line.split(':', 1) for line in Path('/proc/meminfo').read_text().splitlines())
+              result['memory_available_mib'] = int(memory['MemAvailable'].split()[0]) // 1024
+          except (OSError, ValueError, KeyError, IndexError):
+              result['memory_available_mib'] = 'UNKNOWN'
+          try:
+              assert Path('/mnt/docker-data').is_mount()
+              disk = os.statvfs('/mnt/docker-data')
+              result.update(free_data_bytes=disk.f_bavail * disk.f_frsize,
+                            free_data_inodes=disk.f_favail,
+                            required_data_bytes=max(10 * 1024**3, disk.f_blocks * disk.f_frsize // 10),
+                            required_data_inodes=max(50000, disk.f_files // 10))
+          except (OSError, AssertionError):
+              result['storage'] = 'UNKNOWN'
+          print('IQ_STAGE2A_HOST_RESOURCES=' + json.dumps(result, sort_keys=True))
+          PY
+      - name: Run installed fixed read-only gateway operation
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$RUNNER_ARCH" = ARM64
+          test -x /usr/local/sbin/lifeos-deploy-gateway
+          expected=4baebd7d954a87e8e9eb1707f80ca4e7e454baad
+          test "$(git -C /home/joshan/lifeos-platform rev-parse HEAD)" = "$expected"
+          sha256sum /usr/local/sbin/lifeos-deploy-gateway
+          echo "IQ_STAGE2A_AUDIT_HEAD=$expected"
+          # Deliberately no checkout, gateway installation, source edits,
+          # Compose operation, image build, settings mutation or restarts.
+          timeout --kill-after=5s 360s sudo -n /usr/local/sbin/lifeos-deploy-gateway audit-paperless-runtime
+          test "$(git -C /home/joshan/lifeos-platform rev-parse HEAD)" = "$expected"
