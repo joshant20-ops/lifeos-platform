@@ -176,7 +176,7 @@ jobs:
           test "$RUNNER_ARCH" = ARM64
           cd /home/joshan/lifeos-platform
           git fetch --prune origin main
-          if [[ "$LIFEOS_OPERATION" == deploy-snapshot-exporter ]]; then
+          if [[ "$LIFEOS_OPERATION" == deploy-snapshot-exporter || "$LIFEOS_OPERATION" == audit-paperless-runtime ]]; then
             status="$(git status --porcelain --untracked-files=all)"
             test -z "$status"
             test "$(git symbolic-ref --short HEAD)" = main
@@ -367,3 +367,4 @@ jobs:
                 state_reason: 'completed'
               });
             }
+

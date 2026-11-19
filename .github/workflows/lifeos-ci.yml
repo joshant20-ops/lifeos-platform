@@ -86,6 +86,8 @@ jobs:
             tests.test_paperless_readonly_audit_trigger \
             tests.test_paperless_governed_restore
 
+      - name: Paperless IQ audit privacy contracts
+        run: python3 -m unittest -v tests.test_paperless_iq_audit
       - name: Validate native monitoring setup syntax
         run: |
           node --check scripts/lifeos-kuma-native-setup.cjs
@@ -297,3 +299,4 @@ jobs:
 
           python3 -m json.tool \
             renovate.json >/dev/null
+
