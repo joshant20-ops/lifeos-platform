@@ -14,6 +14,7 @@ from contextlib import AsyncExitStack
 import json
 from pathlib import Path
 import socket
+import secrets
 import sys
 import tempfile
 from unittest.mock import patch
@@ -21,7 +22,7 @@ from unittest.mock import patch
 DATA = tempfile.TemporaryDirectory(prefix='iq-stage2a-synthetic-')
 atexit.register(DATA.cleanup)
 os.environ.update(DATABASE_URL='sqlite+aiosqlite:///' + DATA.name + '/fixture.db',
-    SECRET_KEY='stage2a-synthetic-key', PAPERLESS_URL='http://paperless.synthetic',
+    SECRET_KEY=secrets.token_hex(32), PAPERLESS_URL='http://paperless.synthetic',
     PAPERLESS_TOKEN='fixture-token', PIQ_OLLAMA_URL='http://ollama.synthetic',
     PIQ_LLM_MODEL='fixture-model', PIQ_AUTOMATION_ENABLED='false',
     PIQ_AUTO_APPLY='false', PIQ_SMART_ENTITY_SELECTION='false',

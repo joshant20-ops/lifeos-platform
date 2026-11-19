@@ -1,0 +1,4 @@
+# Historical synthetic-only key literal in the isolated Stage 2A test fixture.
+# Current tests generate an ephemeral key at runtime. This ignores only this
+# exact old commit/file/rule/line finding, not a rule, path or real credential.
+aea3282f07443fc979b137eef36238a91723d659:tests/test_paperless_iq_application.py:generic-api-key:24

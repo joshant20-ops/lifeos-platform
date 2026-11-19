@@ -39,6 +39,11 @@ these are build-source facts, not independently verified live process metadata.
   was discovered. Initial protected-endpoint preflights failed on an incorrect
   HTTP 200 expectation at Predbat root; see below.
 
+Gitleaks also detected the initial literal synthetic test key. Tests now generate
+an ephemeral key at runtime; `.gitleaksignore` excludes only the exact historical
+commit/file/rule/line fingerprint for that known non-credential fixture. No rule,
+path, production secret or authentication protection is exempted.
+
 The new test imports the complete patched native application, runs its lifespan
 and Alembic migrations, and exercises auth, settings API, poller, analyzer,
 provider, native Ollama queue, SQLite persistence and shutdown. It uses 2,654
