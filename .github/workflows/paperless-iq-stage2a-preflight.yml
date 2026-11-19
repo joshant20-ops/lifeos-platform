@@ -77,8 +77,10 @@ jobs:
               def redirect_request(self, *args, **kwargs):
                   return None
           opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+          # Predbat root intentionally redirects; its native dashboard route
+          # is /dash. Probe that fixed route directly without following redirects.
           for name, url in [('homeassistant_http', 'http://127.0.0.1:8123/'),
-                            ('predbat_http', 'http://127.0.0.1:5052/'),
+                            ('predbat_http', 'http://127.0.0.1:5052/dash'),
                             ('github_https', 'https://github.com/')]:
               try:
                   with opener.open(url, timeout=4) as response:

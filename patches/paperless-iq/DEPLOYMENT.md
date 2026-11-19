@@ -109,7 +109,7 @@ actual generated callback definitions, not a full FastAPI/image startup.
    inference queue/governor. Verify no concurrent recovery/storage mutation.
 7. Through the authenticated native `PUT /api/settings`, or the approved native
    maintenance operation followed by an IQ-only recreation, enable **only**
-   `automation_enabled=True`. Keep batch 2, queue cap P+5, auto-apply false and
+   `automation_enabled=True`. Keep batch 5, queue cap P+5, auto-apply false and
    cron unset. Do not edit live SQLite behind the running cache. Settings PUT
    rewires providers; verify they remain healthy. Poll interval changes require
    disabling/re-enabling the poller or IQ recreation because its interval is
