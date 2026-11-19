@@ -102,6 +102,9 @@ Functional milestones above are not production sign-off. Baseline: 4 functional,
 
 **Recovery acceptance — 18 November19:24GMT:** [Actual Pi run44379752567](https://github.com/joshant20-ops/lifeos-platform/actions/runs/44379752567) passed DATA_RESTORE_PASS and full Tier0 health. Reverified all five checkpoint archives; removed2verified disposable rehearsal stages, increasing available space15,240,806,400→17,229,164,544bytes before new testing. Restored PostgreSQL, matched all2772original checksums, passed both extracted SQLite integrity checks and nativeChroma2collections/10671embeddings/2queries. IQtemporarycleanup and PostgreSQLstop PASS; successful run staging/container cleanup PASS. Original checkpoint and root reports preserved. Full application restoration, historical408file recovery, IQapplication compatibility and encrypted automated off-device backup coverage remain outstanding. Normal ingestion untouched; classification accuracy remains a separate gate. Next use the same governed rehearsal for native app startup, access-control, listing, original retrieval and disposable native-index/search tests; never connect it to live ingestion or integrations.
 
+
+**IQ scheduler Stage 1 — 19 November 2026:** Owner requested source finalisation only; no deployment or automation activation. Candidate branch `fix/paperless-iq-bounded-classification-stage1` adds finite runs, pending review backpressure, atomic automatic deduplication, failure backoff, resource gates and suggestion-only callbacks. Tests and review evidence accompany the branch; [deployment/rollback procedure](../patches/paperless-iq/DEPLOYMENT.md) records remaining runtime preflights. M12 stays partial: no live automatic classification or tagging accuracy acceptance is claimed. Preserve the existing pending suggestions and `auto_apply=False`. Stop after Stage 1 pending a separate owner instruction.
+
 ### Engineering simplification and acceptance gate — 17 November 2026
 
 Owner-directed implementation policy following the viability audit:
@@ -198,3 +201,4 @@ Measure success by **administration and attention removed from the owner**, not 
 CI/merge/deployment alone is not completion. Require actual consumed-runtime acceptance, relevant regression checks, preserved recovery/rollback and durable evidence. Prefer read-only/shadow proofs first. Preserve private data locally. Do not reboot, remove recovery data, alter energy control, change approved AI models/hardware or introduce a new authority merely to make an acceptance gate pass.
 
 Success is useful behaviour delivered per component maintained, with less household administration and attention.
+

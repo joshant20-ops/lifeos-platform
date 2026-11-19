@@ -88,6 +88,14 @@ jobs:
 
       - name: Paperless IQ audit privacy contracts
         run: python3 -m unittest -v tests.test_paperless_iq_audit
+      - name: Paperless IQ isolated scheduler contracts
+        run: |
+          python3 -m pip install --target "$RUNNER_TEMP/iq-test-deps" \
+            'SQLAlchemy==2.1.9' 'aiosqlite==0.22.1' \
+            'ollama==0.6.3' 'pydantic==2.14.3' 'httpx==0.28.1'
+          PYTHONPATH="$RUNNER_TEMP/iq-test-deps:$PWD" \
+            python3 -m unittest discover -s tests -p test_paperless_iq_automation.py -v
+
       - name: Validate native monitoring setup syntax
         run: |
           node --check scripts/lifeos-kuma-native-setup.cjs
