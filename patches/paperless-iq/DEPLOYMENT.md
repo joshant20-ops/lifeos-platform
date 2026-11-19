@@ -50,7 +50,7 @@ IQ_UPSTREAM_SOURCE=/absolute/path/to/pinned-upstream \
 
 The target must not exist. The builder emits the six postimage hashes and
 compiles every generated Python file. Preserve these hashes with the candidate
-commit. Tests need SQLAlchemy 2.1.9, aiosqlite 0.22.1, ollama 0.6.3,
+commit. Tests need SQLAlchemy[asyncio] 2.1.9 (including greenlet), aiosqlite 0.22.1, ollama 0.6.3,
 pydantic 2.14.3 and httpx 0.28.1 in an isolated dependency environment. Hosted CI
 fetches eight hash-pinned public fixture files; it never connects to the homelab.
 
