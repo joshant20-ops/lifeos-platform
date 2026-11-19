@@ -1,7 +1,8 @@
 # IQ scheduler candidate: deployment and rollback
 
-Stage 1 source candidate / Stage 2A preflight, 19 November 2026 GMT. Nothing in this change dispatches Pi work,
-changes a live database, enables automation or rebuilds a running container.
+Stage 1 source candidate / Stage 2A preflight, 19 November 2026 GMT. Stage 1 added no production mutation. Stage 2A dispatched only authorised
+read-only Pi preflights; it did not install the gateway, change a live database,
+enable automation or rebuild a running container.
 Do not interpret this runbook as deployment authorisation.
 
 ## Authority and prerequisites
