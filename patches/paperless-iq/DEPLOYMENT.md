@@ -1,6 +1,6 @@
 # IQ scheduler candidate: deployment and rollback
 
-Stage 1 only, 19 November 2026 GMT. Nothing in this change dispatches Pi work,
+Stage 1 source candidate / Stage 2A preflight, 19 November 2026 GMT. Nothing in this change dispatches Pi work,
 changes a live database, enables automation or rebuilds a running container.
 Do not interpret this runbook as deployment authorisation.
 
@@ -90,9 +90,9 @@ actual generated callback definitions, not a full FastAPI/image startup.
 4. While IQ is stopped, use the derived image's native `SettingsService` against
    the same validated IQ data volume/key/user, without starting FastAPI or any
    worker. Call `update_and_persist` with **only**:
-   `automation_enabled=False`, `auto_apply=False`, `batch_size=2`,
-   `automation_pending_limit=P+2`, `schedule_cron=None`.
-   Here P is the fresh pending-row count; require P <= 18 or defer for human
+   `automation_enabled=False`, `auto_apply=False`, `batch_size=5`,
+   `automation_pending_limit=P+5`, `schedule_cron=None`.
+   Here P is the fresh pending-row count; require P <= 15 or defer for human
    review. Initial audit P=10 is historical, not a deployment constant. Preserve
    all other settings and assert a decoded before/after comparison. This internal
    Python API is not an upstream admin CLI; it requires a separately reviewed,
@@ -109,20 +109,20 @@ actual generated callback definitions, not a full FastAPI/image startup.
    inference queue/governor. Verify no concurrent recovery/storage mutation.
 7. Through the authenticated native `PUT /api/settings`, or the approved native
    maintenance operation followed by an IQ-only recreation, enable **only**
-   `automation_enabled=True`. Keep batch 2, queue cap P+2, auto-apply false and
+   `automation_enabled=True`. Keep batch 2, queue cap P+5, auto-apply false and
    cron unset. Do not edit live SQLite behind the running cache. Settings PUT
    rewires providers; verify they remain healthy. Poll interval changes require
    disabling/re-enabling the poller or IQ recreation because its interval is
    captured at task creation; do not assume the saved value changed the task.
-8. Wait for an automatic poll: require two previously eligible documents to gain
+8. Wait for an automatic poll: require five previously eligible documents to gain
    pending suggestions and successful analysis timestamps, with no duplicate
    pending rows, no metadata PATCH/application, no loss of embeddings and no
    intake interruption. Do not manually trigger analysis as proof of automation.
    During this canary, require no approvals, rejections or other suggestion
    dispositions by users or other producers; otherwise abort the canary and
-   disable automation. P+2 caps current pending rows, not lifetime analyses.
+   disable automation. P+5 caps current pending rows, not lifetime analyses.
    With that precondition, the cap stops subsequent automatic work. Disable
-   automation through authenticated native settings after the two successes;
+   automation through authenticated native settings after the five successes;
    require terminal disabled-state verification before ending the observation. Preserve all ten
    original suggestions. Check resource/queue deferral logs and the three-failure
    global/per-document retry budgets; use isolated provider-failure injection,
@@ -175,3 +175,8 @@ gateway mutation coverage, hosted CI result and production canary are not proven
 by local tests. Model seed/temperature reduce sampling variance but do not prove
 repeatability or tagging accuracy. Newest-first scheduling may defer old records;
 a separate measured backlog/classification-quality task owns that policy.
+
+Stage 2A: a synthetic full-native-ASGI rehearsal now supplements the source
+contracts; see [STAGE2A.md](STAGE2A.md). It does not substitute for exact-image
+validation, actual Compose/worker/key checks, or measured peak staging capacity.
+The five-document pilot is not authorised or ready merely because tests pass.

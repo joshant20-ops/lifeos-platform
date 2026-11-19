@@ -49,6 +49,50 @@ jobs:
               result['storage'] = 'UNKNOWN'
           print('IQ_STAGE2A_HOST_RESOURCES=' + json.dumps(result, sort_keys=True))
           PY
+      - name: Verify DNS and protected HTTP endpoints without credentials
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python3 -I -B - <<'PY'
+          import ipaddress, json, socket, ssl, subprocess, urllib.request
+          result = {}
+          for transport in ('udp', 'tcp'):
+              try:
+                  command = ['dig', '-r', '@127.0.0.1', 'github.com', 'A', '+time=2', '+tries=1', '+noall', '+answer']
+                  if transport == 'tcp':
+                      command.append('+tcp')
+                  reply = subprocess.run(command, capture_output=True, text=True, timeout=4)
+                  result['local_dns_' + transport] = reply.returncode == 0 and any(
+                      len(line.split()) == 5 and line.split()[3] == 'A'
+                      and ipaddress.IPv4Address(line.split()[4]).is_global for line in reply.stdout.splitlines())
+              except (OSError, ValueError, subprocess.TimeoutExpired):
+                  result['local_dns_' + transport] = False
+          try:
+              with socket.create_connection(('1.1.1.1', 443), timeout=3) as connection:
+                  with ssl.create_default_context().wrap_socket(connection, server_hostname='one.one.one.one'):
+                      result['independent_ip_tls'] = True
+          except (OSError, ValueError):
+              result['independent_ip_tls'] = False
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+          opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+          for name, url in [('homeassistant_http', 'http://127.0.0.1:8123/'),
+                            ('predbat_http', 'http://127.0.0.1:5052/'),
+                            ('github_https', 'https://github.com/')]:
+              try:
+                  with opener.open(url, timeout=4) as response:
+                      result[name] = response.status == 200
+              except Exception:
+                  result[name] = False
+          try:
+              result['ssh_active'] = subprocess.run(['systemctl', 'is-active', '--quiet', 'ssh.service'], timeout=4).returncode == 0
+          except (OSError, subprocess.TimeoutExpired):
+              result['ssh_active'] = False
+          print('IQ_STAGE2A_CONNECTIVITY=' + json.dumps(result, sort_keys=True))
+          if not all(result.values()):
+              raise SystemExit('IQ_STAGE2A_PREFLIGHT=NO_GO_CONNECTIVITY_OR_SERVICE_HEALTH')
+          PY
       - name: Run installed fixed read-only gateway operation
         shell: bash
         run: |

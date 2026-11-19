@@ -49,7 +49,7 @@ the existing Compose service, quiesce only IQ, and preserve unrelated decoded
 settings. A governed native `SettingsService` maintenance integration can persist
 validated settings without a browser password; it is an internal Python API,
 not a documented upstream admin CLI. Recreate only IQ through existing Compose,
-retain rollback, and verify an automatic two-document canary before promotion.
+retain rollback, and verify an automatic five-document canary before promotion.
 Do not enable an unrestricted cron, reset tracking, reindex, apply suggestions,
 modify intake, or restart AdGuard/HA/Predbat.
 
