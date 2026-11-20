@@ -2,6 +2,7 @@ import unittest
 from governor.paperless_iq_audit import CHILD, sanitise, runtime_metadata, host_resources, docker_capacity_summary, build_cache_manifest
 import json
 import ast
+import subprocess
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from contextlib import redirect_stdout
@@ -60,24 +61,30 @@ class IQAuditTests(unittest.TestCase):
         exec(compile(ast.Module(body=[block], type_ignores=[]), 'allocated-db-probe', 'exec'), scope)
         self.assertEqual(scope['out']['db_allocated_kib'], 40 * 1024)
 
-    def test_docker_capacity_does_not_publish_inventory_or_run_cleanup(self):
-        rows = [{'Type': 'Build Cache', 'TotalCount': '3', 'Active': '0',
-                 'Size': '222MB', 'Reclaimable': '222MB (100%)', 'Private': 'secret'},
-                {'Type': 'Images', 'TotalCount': '12', 'Active': '10',
-                 'Size': '4GB', 'Reclaimable': 'private-data'}]
-        with patch('subprocess.run', side_effect=[SimpleNamespace(stdout='\n'.join(map(json.dumps, rows))),
-                SimpleNamespace(stdout='/mnt/docker-data/docker'), SimpleNamespace(stdout='Driver: docker\nEndpoint: default'), SimpleNamespace(stdout='unix:///var/run/docker.sock'), SimpleNamespace(stdout='')]) as run, \
+    def test_docker_capacity_does_not_scan_or_run_cleanup(self):
+        with patch('subprocess.run', side_effect=[
+                SimpleNamespace(stdout='/mnt/docker-data/docker'),
+                SimpleNamespace(stdout='Driver: docker\nEndpoint: default'),
+                SimpleNamespace(stdout='unix:///var/run/docker.sock'),
+                SimpleNamespace(stdout='')]) as run, \
                 patch.object(Path, 'is_mount', return_value=True), \
                 patch.object(Path, 'stat', return_value=SimpleNamespace(st_dev=8)):
             result = docker_capacity_summary()
-        self.assertEqual(result['Build Cache']['Reclaimable'], '222MB (100%)')
         self.assertTrue(result['docker_root_on_hdd'])
         self.assertTrue(result['default_builder_local_docker'])
-        self.assertEqual(result['Images']['Reclaimable'], 'UNKNOWN')
-        self.assertNotIn('secret', json.dumps(result))
+        self.assertEqual(result['build_cache_manifest']['records'], [])
         commands = [call.args[0] for call in run.call_args_list]
-        self.assertEqual(commands[0][1:3], ['system', 'df'])
+        self.assertNotIn('system', str(commands))
         self.assertNotIn('prune', str(commands))
+        self.assertNotIn('--bootstrap', str(commands))
+
+    def test_capacity_failure_reports_only_fixed_stage_and_reason(self):
+        with patch('subprocess.run', side_effect=subprocess.CalledProcessError(
+                1, ['docker'], stderr='unknown flag: --format private-content')):
+            result = docker_capacity_summary()
+        self.assertEqual(result, {'status': 'UNAVAILABLE', 'failed_stage': 'DOCKER_ROOT',
+                                 'reason': 'CLI_UNSUPPORTED'})
+        self.assertNotIn('private', json.dumps(result))
 
     def test_cache_manifest_uses_lifecycle_state_not_age_or_description(self):
         base = {'ID': 'a' * 25, 'Size': str(600 * 1024**2), 'Reclaimable': True,
