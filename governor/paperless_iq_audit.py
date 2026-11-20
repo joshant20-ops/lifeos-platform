@@ -35,6 +35,25 @@ def number(value):
     return value if type(value) is int and 0 <= value <= 10000000 else 'UNKNOWN'
 def boolean(value):
     return value if type(value) is bool else 'UNKNOWN'
+try:
+    db = pathlib.Path('/data/paperless_iq.db')
+    allocated_bytes = sum(path.stat().st_blocks * 512 for path in
+        (db, pathlib.Path(str(db) + '-wal')) if path.exists())
+    out['db_allocated_kib'] = number(allocated_bytes // 1024)
+except OSError:
+    out['db_allocated_kib'] = 'UNKNOWN'
+try:
+    mem = dict(line.split(':', 1) for line in pathlib.Path('/proc/meminfo').read_text().splitlines())
+    available = int(mem['MemAvailable'].split()[0]) * 1024
+    temp = int(pathlib.Path('/sys/class/thermal/thermal_zone0/temp').read_text())
+    stats = os.statvfs('/data')
+    out['inside_resource_budget_ok'] = (os.getloadavg()[0] < 3 and available >= 2 * 1024**3
+        and 0 < temp < 75000
+        and stats.f_bavail * stats.f_frsize >= max(10 * 1024**3, stats.f_blocks * stats.f_frsize // 10)
+        and stats.f_favail >= max(50000, stats.f_files // 10))
+except (OSError, KeyError, ValueError, IndexError):
+    out['inside_resource_budget_ok'] = 'UNKNOWN'
+
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, *args, **kwargs):
         return None
@@ -92,7 +111,7 @@ try:
     connection.close()
     base = next((root for root in (pathlib.Path.cwd(), pathlib.Path('/app'), pathlib.Path('/app/src')) if (root / 'backend/main.py').is_file()), None)
     sources = {}
-    for key, relative in {'main': 'backend/main.py', 'settings': 'backend/settings_service.py', 'monitor': 'backend/inbox_monitor.py', 'ollama': 'backend/providers/ollama_provider.py'}.items():
+    for key, relative in {'main': 'backend/main.py', 'settings': 'backend/settings_service.py', 'monitor': 'backend/inbox_monitor.py', 'ollama': 'backend/providers/ollama_provider.py', 'models': 'backend/models.py', 'queue': 'backend/approval_queue.py'}.items():
         if base is None:
             continue
         try:
@@ -134,22 +153,22 @@ try:
 except Exception:
     out['result'] = 'PARTIAL_OR_UNAVAILABLE'
 else:
-    out['result'] = 'READ_ONLY_COMPLETE' if len(sources) == 4 else 'PARTIAL_OR_UNAVAILABLE'
+    out['result'] = 'READ_ONLY_COMPLETE' if len(sources) == 6 else 'PARTIAL_OR_UNAVAILABLE'
 print(json.dumps(out, sort_keys=True))
 '''
 
 COUNTS = frozenset(('db_batch_size', 'db_poll_interval_seconds', 'tracked_documents',
     'tracked_unanalysed', 'suggestions_total', 'suggestion_documents', 'pending_total',
     'pending_documents', 'pending_duplicate_groups', 'config_backup_rows', 'iq_health_http',
-    'iq_settings_unauthenticated_http', 'paperless_http', 'paperless_documents', 'ollama_http'))
+    'iq_settings_unauthenticated_http', 'paperless_http', 'paperless_documents', 'ollama_http', 'db_allocated_kib'))
 BOOLS = frozenset(('db_automation_enabled', 'db_auto_apply', 'db_cron_configured',
     'db_inbox_tag_configured', 'db_model_expected', 'db_provider_local',
     'feature_settings_cached', 'feature_put_rewires', 'feature_seen_exclusion',
     'feature_all_batches_loop', 'feature_explicit_temperature', 'feature_explicit_seed',
     'iq_health_ok', 'ollama_model_available'))
 BOOLS = BOOLS | frozenset(('secret_key_env_present', 'secret_key_env_usable',
-    'secret_key_file_present', 'secret_key_file_private_regular'))
-HASHES = frozenset('source_' + name + '_sha256' for name in ('main', 'settings', 'monitor', 'ollama'))
+    'secret_key_file_present', 'secret_key_file_private_regular', 'inside_resource_budget_ok'))
+HASHES = frozenset('source_' + name + '_sha256' for name in ('main', 'settings', 'monitor', 'ollama', 'models', 'queue'))
 
 COMPOSE_ROOTS = {
     '/home/joshan/paperless': 'HOME_PAPERLESS',
@@ -191,6 +210,8 @@ def runtime_metadata(data):
         'compose_service': service if service in ('paperless-iq', 'iq') else 'UNKNOWN',
         'compose_layout': layout,
         'data_mount_type': mounts[0] if len(mounts) == 1 and mounts[0] in ('bind', 'volume', 'tmpfs') else 'UNKNOWN',
+        'application_mount_overlay': any(str(item.get('Destination', '')).rstrip('/') in ('/app', '/app/backend', '/app/src', '/app/src/backend') or str(item.get('Destination', '')).startswith(('/app/backend/', '/app/src/backend/')) for item in data.get('Mounts', [])),
+        'single_worker_default_command': command == ['uvicorn', 'backend.main:app', '--host', '0.0.0.0', '--port', '8080', '--log-level', 'info'] and not workers,
         'restart_policy': restart if restart in ('no', 'always', 'unless-stopped', 'on-failure') else 'UNKNOWN',
         'single_worker_declared': all(value == '1' for value in workers) if workers and uvicorn else 'UNKNOWN',
     }

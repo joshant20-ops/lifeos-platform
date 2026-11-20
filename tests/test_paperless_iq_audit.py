@@ -1,6 +1,8 @@
 import unittest
 from governor.paperless_iq_audit import CHILD, sanitise, runtime_metadata, host_resources
 import json
+import ast
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -27,6 +29,36 @@ class IQAuditTests(unittest.TestCase):
         self.assertFalse(runtime_metadata(fixture)['single_worker_declared'])
         fixture['Config']['Cmd'] = ['sh', '-c', 'uvicorn private --workers 1']
         self.assertEqual(runtime_metadata(fixture)['single_worker_declared'], 'UNKNOWN')
+
+    def test_all_six_preimages_and_resource_facts_are_sanitised(self):
+        packet = {'mutations': 'NONE', 'result': 'READ_ONLY_COMPLETE',
+                  'db_allocated_kib': 80000, 'inside_resource_budget_ok': False,
+                  'source_models_sha256': 'a' * 64, 'source_queue_sha256': 'b' * 64}
+        self.assertEqual(sanitise(json.dumps(packet)), packet)
+        self.assertIn("len(sources) == 6", CHILD)
+        self.assertIn("'backend/models.py'", CHILD)
+        self.assertIn("'backend/approval_queue.py'", CHILD)
+
+    def test_image_overlay_and_default_single_worker_are_distinguished(self):
+        data = {'Config': {'Cmd': ['uvicorn', 'backend.main:app', '--host', '0.0.0.0',
+            '--port', '8080', '--log-level', 'info']}, 'Mounts': []}
+        self.assertTrue(runtime_metadata(data)['single_worker_default_command'])
+        self.assertFalse(runtime_metadata(data)['application_mount_overlay'])
+        for destination in ('/app/backend/main.py', '/app/src/backend'):
+            data['Mounts'] = [{'Destination': destination}]
+            self.assertTrue(runtime_metadata(data)['application_mount_overlay'])
+
+    def test_allocated_database_over_ten_megabytes_is_reported_in_kib(self):
+        tree = ast.parse(CHILD)
+        block = next(node for node in tree.body if isinstance(node, ast.Try)
+                     and 'db_allocated_kib' in ast.unparse(node))
+        fake_path = MagicMock()
+        fake_path.exists.return_value = True
+        fake_path.stat.return_value = SimpleNamespace(st_blocks=20 * 1024 * 1024 // 512)
+        scope = {'pathlib': SimpleNamespace(Path=MagicMock(return_value=fake_path)),
+                 'out': {}, 'number': lambda n: n if n <= 10000000 else 'UNKNOWN'}
+        exec(compile(ast.Module(body=[block], type_ignores=[]), 'allocated-db-probe', 'exec'), scope)
+        self.assertEqual(scope['out']['db_allocated_kib'], 40 * 1024)
 
     def test_unrecognised_compose_paths_and_labels_stay_unknown(self):
         report = runtime_metadata({'Config': {'Labels': {
