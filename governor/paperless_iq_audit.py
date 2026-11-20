@@ -217,6 +217,96 @@ def runtime_metadata(data):
     }
 
 
+def build_cache_manifest(raw):
+    """Conservative engineering-cache candidates, never deletion permission."""
+    if len(raw) > 1048576:
+        raise ValueError('build_cache_limit')
+    records, seen = [], set()
+    for line in raw.splitlines():
+        row = json.loads(line)
+        if not isinstance(row, dict):
+            raise ValueError('build_cache_object')
+        identifier = row.get('ID')
+        if not isinstance(identifier, str) or not re.fullmatch(r'[a-z0-9]{12,64}', identifier):
+            raise ValueError('build_cache_id')
+        if identifier in seen:
+            raise ValueError('build_cache_duplicate')
+        seen.add(identifier)
+        size = str(row.get('Size', ''))
+        if (row.get('Reclaimable') is True and row.get('Mutable') is False
+                and row.get('Shared') is False and row.get('Type') == 'regular'
+                and re.fullmatch(r'[0-9]{1,13}', size) and 0 < int(size) <= 10**12):
+            records.append({'id': identifier, 'estimated_bytes': int(size)})
+    records.sort(key=lambda row: (row['estimated_bytes'], row['id']))
+    # A review packet, not an unbounded inventory or permission to clean.
+    selected, total = [], 0
+    for row in records:
+        if len(selected) >= 20 or total >= 512 * 1024**2:
+            break
+        if total + row['estimated_bytes'] <= 1024**3:
+            selected.append(row)
+            total += row['estimated_bytes']
+    import hashlib
+    digest = hashlib.sha256(json.dumps(selected, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+    return {'records': selected, 'estimated_bytes': total, 'manifest_sha256': digest,
+            'basis': 'BUILDKIT_UNUSED_IMMUTABLE_UNSHARED_REGULAR', 'deletion_authorised': False}
+
+
+def docker_capacity_summary():
+    """Bounded daemon accounting only; no prune, scans or private inventory."""
+    result = {}
+    try:
+        raw = subprocess.run(['docker', 'system', 'df', '--format', '{{json .}}'],
+            capture_output=True, text=True, timeout=12, check=True).stdout
+        if len(raw) > 16384:
+            raise ValueError('summary_limit')
+        for line in raw.splitlines():
+            row = json.loads(line)
+            if not isinstance(row, dict):
+                raise ValueError('summary_object')
+            kind = row.get('Type')
+            if kind not in ('Images', 'Containers', 'Local Volumes', 'Build Cache'):
+                continue
+            clean = {}
+            for key in ('TotalCount', 'Active'):
+                value = str(row.get(key, ''))
+                clean[key] = int(value) if re.fullmatch(r'[0-9]{1,7}', value) else 'UNKNOWN'
+            for key in ('Size', 'Reclaimable'):
+                value = str(row.get(key, ''))
+                clean[key] = value if re.fullmatch(r'[0-9]+(?:\.[0-9]+)? ?(?:B|kB|KB|MB|GB|TB)(?: \([0-9]+%\))?', value) else 'UNKNOWN'
+            result[kind] = clean
+        root = subprocess.run(['docker', 'info', '--format', '{{.DockerRootDir}}'],
+            capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+        data_root = Path('/mnt/docker-data')
+        result['docker_root_on_hdd'] = (data_root.is_mount()
+            and Path(root).resolve().is_relative_to(data_root)
+            and Path(root).stat().st_dev == data_root.stat().st_dev)
+        try:
+            builder = subprocess.run(['docker', 'buildx', 'inspect', 'default'],
+                capture_output=True, text=True, timeout=5, check=True).stdout
+            if len(builder) > 16384:
+                raise ValueError('builder_limit')
+            fields = [line.strip().split(':', 1) for line in builder.splitlines() if ':' in line]
+            drivers = [value.strip() for key, value in fields if key == 'Driver']
+            endpoints = [value.strip() for key, value in fields if key == 'Endpoint']
+            context = subprocess.run(['docker', 'context', 'inspect', 'default', '--format', '{{.Endpoints.docker.Host}}'],
+                capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+            result['default_builder_local_docker'] = (drivers == ['docker'] and len(endpoints) == 1
+                and endpoints[0] in ('default', 'unix:///var/run/docker.sock')
+                and context == 'unix:///var/run/docker.sock')
+            if not result['default_builder_local_docker']:
+                raise ValueError('unverified_builder')
+            usage = subprocess.run(['docker', 'buildx', 'du', '--builder', 'default', '--format=json'],
+                capture_output=True, text=True, timeout=8, check=True).stdout
+            result['build_cache_manifest'] = build_cache_manifest(usage)
+        except (OSError, ValueError, subprocess.SubprocessError):
+            result['build_cache_manifest'] = {'status': 'UNAVAILABLE', 'deletion_authorised': False}
+
+    except (OSError, ValueError, subprocess.SubprocessError):
+        result['status'] = 'PARTIAL_OR_UNAVAILABLE'
+    return result
+
+
 def host_resources():
     report = {'cpu_load_milli': 'UNKNOWN', 'memory_available_mib': 'UNKNOWN',
               'temperature_millicelsius': 'UNKNOWN', 'free_data_bytes': 'UNKNOWN',
@@ -279,6 +369,7 @@ def main():
         if os.getloadavg()[0] >= 3:
             print('PAPERLESS_IQ_AUDIT_RESULT=DEFERRED_LOAD')
             return
+        print('PAPERLESS_IQ_DOCKER_CAPACITY=' + json.dumps(docker_capacity_summary(), sort_keys=True))
         inspected = subprocess.run(['docker', 'inspect', '--format', '{{.State.Status}}|{{.Image}}|{{index .Config.Labels "org.opencontainers.image.revision"}}', 'paperless-iq'], capture_output=True, text=True, timeout=5, check=True)
         state, image, revision = inspected.stdout.strip().split('|')
         if state != 'running' or not re.fullmatch(r'sha256:[a-f0-9]{64}', image):

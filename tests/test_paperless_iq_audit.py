@@ -1,5 +1,5 @@
 import unittest
-from governor.paperless_iq_audit import CHILD, sanitise, runtime_metadata, host_resources
+from governor.paperless_iq_audit import CHILD, sanitise, runtime_metadata, host_resources, docker_capacity_summary, build_cache_manifest
 import json
 import ast
 from types import SimpleNamespace
@@ -59,6 +59,42 @@ class IQAuditTests(unittest.TestCase):
                  'out': {}, 'number': lambda n: n if n <= 10000000 else 'UNKNOWN'}
         exec(compile(ast.Module(body=[block], type_ignores=[]), 'allocated-db-probe', 'exec'), scope)
         self.assertEqual(scope['out']['db_allocated_kib'], 40 * 1024)
+
+    def test_docker_capacity_does_not_publish_inventory_or_run_cleanup(self):
+        rows = [{'Type': 'Build Cache', 'TotalCount': '3', 'Active': '0',
+                 'Size': '222MB', 'Reclaimable': '222MB (100%)', 'Private': 'secret'},
+                {'Type': 'Images', 'TotalCount': '12', 'Active': '10',
+                 'Size': '4GB', 'Reclaimable': 'private-data'}]
+        with patch('subprocess.run', side_effect=[SimpleNamespace(stdout='\n'.join(map(json.dumps, rows))),
+                SimpleNamespace(stdout='/mnt/docker-data/docker'), SimpleNamespace(stdout='Driver: docker\nEndpoint: default'), SimpleNamespace(stdout='unix:///var/run/docker.sock'), SimpleNamespace(stdout='')]) as run, \
+                patch.object(Path, 'is_mount', return_value=True), \
+                patch.object(Path, 'stat', return_value=SimpleNamespace(st_dev=8)):
+            result = docker_capacity_summary()
+        self.assertEqual(result['Build Cache']['Reclaimable'], '222MB (100%)')
+        self.assertTrue(result['docker_root_on_hdd'])
+        self.assertTrue(result['default_builder_local_docker'])
+        self.assertEqual(result['Images']['Reclaimable'], 'UNKNOWN')
+        self.assertNotIn('secret', json.dumps(result))
+        commands = [call.args[0] for call in run.call_args_list]
+        self.assertEqual(commands[0][1:3], ['system', 'df'])
+        self.assertNotIn('prune', str(commands))
+
+    def test_cache_manifest_uses_lifecycle_state_not_age_or_description(self):
+        base = {'ID': 'a' * 25, 'Size': str(600 * 1024**2), 'Reclaimable': True,
+                'Mutable': False, 'Shared': False, 'Type': 'regular',
+                'Description': 'private source path', 'CreatedAt': 'unknown'}
+        rows = [base]
+        for index, change in enumerate(({'Reclaimable': False}, {'Mutable': True},
+                {'Shared': True}, {'Type': 'source.local'}, {'Size': 'private'}), 1):
+            rows.append({**base, 'ID': chr(97 + index) * 25, **change})
+        report = build_cache_manifest('\n'.join(map(json.dumps, rows)))
+        self.assertEqual(report['records'], [{'id': 'a' * 25, 'estimated_bytes': 600 * 1024**2}])
+        self.assertFalse(report['deletion_authorised'])
+        self.assertNotIn('private', json.dumps(report))
+        with self.assertRaises(ValueError):
+            build_cache_manifest('\n'.join(map(json.dumps, [base, base])))
+        with self.assertRaises(ValueError):
+            build_cache_manifest('[]')
 
     def test_unrecognised_compose_paths_and_labels_stay_unknown(self):
         report = runtime_metadata({'Config': {'Labels': {
