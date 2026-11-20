@@ -1,6 +1,8 @@
 import unittest
-from governor.paperless_iq_audit import CHILD, sanitise
+from governor.paperless_iq_audit import CHILD, sanitise, runtime_metadata, host_resources
 import json
+import ast
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -8,6 +10,87 @@ import io
 
 
 class IQAuditTests(unittest.TestCase):
+    def test_runtime_metadata_uses_only_fixed_enums_and_worker_declarations(self):
+        fixture = {'Config': {'Labels': {
+            'com.docker.compose.project': 'paperless',
+            'com.docker.compose.service': 'paperless-iq',
+            'com.docker.compose.project.working_dir': '/home/joshan/paperless',
+            'com.docker.compose.project.config_files': '/home/joshan/paperless/docker-compose.yml'},
+            'Env': ['SECRET_KEY=private', 'WEB_CONCURRENCY=1'],
+            'Entrypoint': [], 'Cmd': ['uvicorn', 'private.module:app', '--workers', '1']},
+            'Mounts': [{'Destination': '/data', 'Source': '/private/data', 'Type': 'bind'}],
+            'HostConfig': {'RestartPolicy': {'Name': 'unless-stopped'}}}
+        report = runtime_metadata(fixture)
+        self.assertEqual(report['compose_layout'], 'HOME_PAPERLESS')
+        self.assertTrue(report['single_worker_declared'])
+        self.assertEqual(report['data_mount_type'], 'bind')
+        self.assertNotIn('private', json.dumps(report))
+        fixture['Config']['Env'].append('UVICORN_WORKERS=2')
+        self.assertFalse(runtime_metadata(fixture)['single_worker_declared'])
+        fixture['Config']['Cmd'] = ['sh', '-c', 'uvicorn private --workers 1']
+        self.assertEqual(runtime_metadata(fixture)['single_worker_declared'], 'UNKNOWN')
+
+    def test_all_six_preimages_and_resource_facts_are_sanitised(self):
+        packet = {'mutations': 'NONE', 'result': 'READ_ONLY_COMPLETE',
+                  'db_allocated_kib': 80000, 'inside_resource_budget_ok': False,
+                  'source_models_sha256': 'a' * 64, 'source_queue_sha256': 'b' * 64}
+        self.assertEqual(sanitise(json.dumps(packet)), packet)
+        self.assertIn("len(sources) == 6", CHILD)
+        self.assertIn("'backend/models.py'", CHILD)
+        self.assertIn("'backend/approval_queue.py'", CHILD)
+
+    def test_image_overlay_and_default_single_worker_are_distinguished(self):
+        data = {'Config': {'Cmd': ['uvicorn', 'backend.main:app', '--host', '0.0.0.0',
+            '--port', '8080', '--log-level', 'info']}, 'Mounts': []}
+        self.assertTrue(runtime_metadata(data)['single_worker_default_command'])
+        self.assertFalse(runtime_metadata(data)['application_mount_overlay'])
+        for destination in ('/app/backend/main.py', '/app/src/backend'):
+            data['Mounts'] = [{'Destination': destination}]
+            self.assertTrue(runtime_metadata(data)['application_mount_overlay'])
+
+    def test_allocated_database_over_ten_megabytes_is_reported_in_kib(self):
+        tree = ast.parse(CHILD)
+        block = next(node for node in tree.body if isinstance(node, ast.Try)
+                     and 'db_allocated_kib' in ast.unparse(node))
+        fake_path = MagicMock()
+        fake_path.exists.return_value = True
+        fake_path.stat.return_value = SimpleNamespace(st_blocks=20 * 1024 * 1024 // 512)
+        scope = {'pathlib': SimpleNamespace(Path=MagicMock(return_value=fake_path)),
+                 'out': {}, 'number': lambda n: n if n <= 10000000 else 'UNKNOWN'}
+        exec(compile(ast.Module(body=[block], type_ignores=[]), 'allocated-db-probe', 'exec'), scope)
+        self.assertEqual(scope['out']['db_allocated_kib'], 40 * 1024)
+
+    def test_unrecognised_compose_paths_and_labels_stay_unknown(self):
+        report = runtime_metadata({'Config': {'Labels': {
+            'com.docker.compose.project': 'private',
+            'com.docker.compose.service': 'private',
+            'com.docker.compose.project.working_dir': '/private',
+            'com.docker.compose.project.config_files': '/private/compose.yml'}}})
+        self.assertEqual(report['compose_layout'], 'UNKNOWN')
+        self.assertNotIn('private', json.dumps(report))
+
+    def test_unmounted_data_cannot_claim_a_reserve(self):
+        with patch.object(Path, 'is_mount', return_value=False), \
+             patch.object(Path, 'read_text', side_effect=OSError), \
+             patch('os.getloadavg', return_value=(1.25, 1, 1)):
+            report = host_resources()
+        self.assertEqual(report['cpu_load_milli'], 1250)
+        self.assertEqual(report['free_data_bytes'], 'UNKNOWN')
+        self.assertEqual(report['data_reserve_met'], 'UNKNOWN')
+
+    def test_actual_storage_reserve_checks_bytes_and_inodes(self):
+        stats = MagicMock(f_bavail=20 * 1024**3, f_frsize=1,
+                          f_blocks=100 * 1024**3, f_bfree=25 * 1024**3,
+                          f_files=1000, f_favail=100)
+        with patch.object(Path, 'is_mount', return_value=True), \
+             patch.object(Path, 'read_text', side_effect=OSError), \
+             patch('os.statvfs', return_value=stats):
+            report = host_resources()
+            self.assertTrue(report['data_reserve_met'])
+            self.assertEqual(report['free_data_bytes'], 20 * 1024**3)
+            stats.f_favail = 99
+            self.assertFalse(host_resources()['data_reserve_met'])
+
     def test_safe_aggregate_packet(self):
         value = {'mutations': 'NONE', 'result': 'READ_ONLY_COMPLETE', 'pending_total': 10,
                  'db_auto_apply': False, 'source_main_sha256': 'a' * 64}
