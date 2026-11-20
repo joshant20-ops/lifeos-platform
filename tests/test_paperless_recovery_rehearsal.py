@@ -25,17 +25,22 @@ def archive(name, kind=tarfile.REGTYPE, data=b"private fixture"):
 
 class RecoverySafetyTests(unittest.TestCase):
     def setUp(self):
-        original_stat = Path.stat
-        def stage_stat(path, *args, **kwargs):
-            result = original_stat(path, *args, **kwargs)
-            if path.name == '.paperless-restore-abcdefgh':
-                values = list(result)
-                values[4] = 0  # Model the root-owned production staging boundary.
-                return os.stat_result(values)
+        original_stat, original_lstat = Path.stat, Path.lstat
+        def owned_fixture(path, result):
+            if '.paperless-restore-abcdefgh' in path.parts:
+                from types import SimpleNamespace
+                values = {field: getattr(result, field) for field in dir(result) if field.startswith('st_')}
+                values['st_uid'] = 0  # Model the root-owned production staging boundary.
+                return SimpleNamespace(**values)
             return result
-        mocked = patch.object(Path, 'stat', stage_stat)
-        mocked.start()
-        self.addCleanup(mocked.stop)
+        def stage_stat(path, *args, **kwargs):
+            return owned_fixture(path, original_stat(path, *args, **kwargs))
+        def stage_lstat(path, *args, **kwargs):
+            return owned_fixture(path, original_lstat(path, *args, **kwargs))
+        for name, method in (('stat', stage_stat), ('lstat', stage_lstat)):
+            mocked = patch.object(Path, name, method)
+            mocked.start()
+            self.addCleanup(mocked.stop)
 
     def cleanup_fixture(self, directory):
         root = Path(directory)
@@ -98,6 +103,95 @@ class RecoverySafetyTests(unittest.TestCase):
                         rehearsal.cleanup_verified_staging(lambda: None, {})
                 self.assertTrue(stage.exists())
 
+    def test_streamed_readback_hash_limits_bytes_without_spooling_private_data(self):
+        import subprocess, sys
+        for size, success in ((32, True), (33, False)):
+            result = subprocess.run([sys.executable, '-I', '-c', rehearsal.STREAM_HASH, '32'],
+                                    input=b'x' * size, capture_output=True, timeout=5)
+            self.assertEqual(result.returncode == 0, success)
+            if success:
+                self.assertEqual(json.loads(result.stdout), {'size': size, 'sha256': hashlib.sha256(b'x' * size).hexdigest()})
+            else:
+                self.assertEqual(result.stdout, b'')
+
+    def test_native_scope_checks_limits_before_exec_and_cleans_up_on_abort(self):
+        import sys
+        scope = '/system.slice/lifeos-paperless-checkpoint-' + 'a' * 32 + '.scope'
+        for quota in ('25000 100000', '50000 100000'):
+            def read(path, *args, **kwargs):
+                if str(path) == '/proc/self/cgroup':
+                    return '0::' + scope
+                return {'cpu.max': quota, 'memory.max': str(768 * 1024**2),
+                        'memory.swap.max': '0', 'pids.max': '64'}[path.name]
+            with patch.object(Path, 'read_text', read), patch.object(sys, 'argv', ['scope-check', '/usr/bin/env', 'GOMAXPROCS=1', '/usr/bin/restic']), patch.object(os, 'execv') as execute:
+                if quota.startswith('25000'):
+                    exec(rehearsal.SCOPE_CHECK_EXEC, {})
+                    execute.assert_called_once()
+                else:
+                    with self.assertRaises(AssertionError):
+                        exec(rehearsal.SCOPE_CHECK_EXEC, {})
+                    execute.assert_not_called()
+        def command(args, guard, **kwargs):
+            if args[0] == '/usr/bin/systemd-run':
+                guard()
+            return ''
+        def guard():
+            raise rehearsal.RehearsalError('PI_RESOURCE_LIMIT')
+        with patch.object(rehearsal, 'command', side_effect=command) as run:
+            with self.assertRaisesRegex(rehearsal.RehearsalError, 'PI_RESOURCE_LIMIT'):
+                rehearsal.checkpoint_restic_command(['/usr/bin/restic'], ['snapshots'], guard)
+        launch = run.call_args_list[0].args[0]
+        self.assertIn('--property=CPUQuota=25%', launch)
+        self.assertIn('--property=MemoryMax=768M', launch)
+        checker = launch.index('/usr/bin/python3')
+        self.assertEqual(launch[checker+1:checker+4], ['-I', '-B', '-c'])
+        unit = next(value.split('=', 1)[1] for value in launch if value.startswith('--unit='))
+        self.assertEqual(run.call_args_list[-2].args[0], ['/usr/bin/systemctl', 'stop', unit])
+        self.assertEqual(run.call_args_list[-1].args[0][-1], unit)
+
+    def test_temporary_copy_inventory_is_readonly_and_preserves_changed_copies(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            checkpoint = root / 'checkpoint'
+            checkpoint.mkdir()
+            disk = root / 'disk'
+            disk.mkdir()
+            stage = disk / '.paperless-restore-abcdefgh'
+            stage.mkdir(mode=0o700)
+            reports = root / 'reports'
+            reports.mkdir()
+            hashes = {}
+            for name in rehearsal.ARCHIVES:
+                data = b'private dump fixture' if name == 'paperless.dump' else archive('document.txt').getvalue()
+                (checkpoint / name).write_bytes(data)
+                hashes[name] = hashlib.sha256(data).hexdigest()
+                if name == 'paperless.dump':
+                    (stage / name).write_bytes(data)
+                else:
+                    target = stage / name.removesuffix('.tar')
+                    target.mkdir(mode=0o700)
+                    rehearsal.extract(io.BytesIO(data), target, lambda: None, rehearsal.LIMIT)
+            (stage / 'db').mkdir()
+            (stage / 'sockets').mkdir()
+            with patch.object(rehearsal, 'HDD', disk), patch.object(rehearsal, 'CHECKPOINT', checkpoint), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal, 'validate_stage_references'):
+                evidence = {'checkpoint_encrypted_copy': 'PASS'}
+                rehearsal.temporary_copy_inventory(hashes, lambda: None, evidence)
+                self.assertEqual(evidence['temporary_duplicate_exact_stages'], 1)
+                self.assertTrue(stage.exists())
+                manifest = json.loads(next(reports.glob('temporary-copy-dry-run-*.json')).read_text())
+                self.assertEqual(manifest['mode'], 'DRY_RUN')
+                self.assertEqual(manifest['exact_copies'][0]['stage'], str(stage))
+                (stage / 'media' / 'document.txt').write_bytes(b'changed')
+                evidence = {'checkpoint_encrypted_copy': 'PASS'}
+                rehearsal.temporary_copy_inventory(hashes, lambda: None, evidence)
+                self.assertEqual(evidence['temporary_duplicate_exact_stages'], 0)
+                self.assertEqual(evidence['temporary_duplicate_protected_stages'], 1)
+                self.assertEqual((stage / 'media' / 'document.txt').read_bytes(), b'changed')
+                def guard():
+                    raise rehearsal.RehearsalError('PI_RESOURCE_LIMIT')
+                with self.assertRaisesRegex(rehearsal.RehearsalError, 'PI_RESOURCE_LIMIT'):
+                    rehearsal.temporary_copy_inventory(hashes, guard, {'checkpoint_encrypted_copy': 'PASS'})
+
     def test_checkpoint_protection_uses_native_encryption_and_verifies_every_byte(self):
         import types, sys
         with tempfile.TemporaryDirectory() as directory:
@@ -140,13 +234,14 @@ class RecoverySafetyTests(unittest.TestCase):
                     return ''
                 if 'findmnt' in args[0]:
                     return 'tmpfs'
+                if args[0] == '/usr/bin/systemctl':
+                    return ''
                 if 'dump' in args:
                     data = files[Path(args[-1]).name]
-                    kwargs['output'].write(b'X' * len(data) if state['corrupt'] else data)
-                    kwargs['output'].flush()
-                    return ''
+                    data = b'X' * len(data) if state['corrupt'] else data
+                    return json.dumps({'size': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
                 self.fail('Unexpected native command')
-            with patch.dict(sys.modules, {'governor.adguard_archive_restic_proof': module}), patch.object(rehearsal, 'CHECKPOINT', checkpoint), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal.os, 'fstat', side_effect=owned_password), patch.object(rehearsal, 'command', side_effect=native) as run:
+            with patch.object(rehearsal, 'resource_ready', return_value=True), patch.dict(sys.modules, {'governor.adguard_archive_restic_proof': module}), patch.object(rehearsal, 'CHECKPOINT', checkpoint), patch.object(rehearsal, 'REPORT_DIR', reports), patch.object(rehearsal.os, 'fstat', side_effect=owned_password), patch.object(rehearsal, 'command', side_effect=native) as run:
                 evidence = {}
                 rehearsal.protect_verified_checkpoint(hashes, lambda: None, evidence)
                 self.assertEqual(evidence['checkpoint_encrypted_copy'], 'PASS')

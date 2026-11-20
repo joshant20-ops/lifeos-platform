@@ -279,6 +279,32 @@ def validated_test_stage(source):
     return stage
 
 
+def validate_stage_references(stage, guard, evidence, exclude_id=None):
+    # Reject a staging tree referenced by any other container, including stopped ones.
+    ids = command([DOCKER, 'ps', '--all', '--quiet'], guard)
+    require(ids is not None and len(ids.splitlines()) <= 100
+            and all(re.fullmatch(r'[a-f0-9]{12,64}', value) for value in ids.splitlines()), 'CLEANUP_REFERENCE_LIST')
+    raw_refs = command([DOCKER, 'inspect', '--format={{.Id}}|{{json .Mounts}}', *ids.splitlines()], guard)
+    require(raw_refs is not None, 'CLEANUP_REFERENCE_INSPECT')
+    for row in raw_refs.splitlines():
+        identifier, raw_mounts = row.split('|', 1)
+        if identifier == exclude_id:
+            continue
+        for mount in json.loads(raw_mounts):
+            source = Path(mount.get('Source', '/'))
+            # Broad read-only host observers do not own this private test tree.
+            # Exact/descendant references and writable/unknown ancestors still block.
+            if (mount.get('Type') == 'bind' and mount.get('RW') is False
+                    and source != stage and stage.is_relative_to(source)):
+                evidence['cleanup_readonly_ancestor_references'] = evidence.get('cleanup_readonly_ancestor_references', 0) + 1
+                continue
+            if source.is_relative_to(stage) or stage.is_relative_to(source):
+                evidence['cleanup_reference_relationship'] = ('STAGE_OR_DESCENDANT' if source.is_relative_to(stage) else 'ANCESTOR')
+                evidence['cleanup_reference_access'] = 'READ_ONLY' if mount.get('RW') is False else 'WRITABLE_OR_UNKNOWN'
+                evidence['cleanup_reference_type'] = mount.get('Type') if mount.get('Type') in ('bind', 'volume') else 'OTHER'
+                raise RehearsalError('CLEANUP_OTHER_REFERENCE')
+
+
 def cleanup_verified_staging(guard, evidence):
     """Reclaim disposable copies only after verified data restoration and stopped DB."""
     recover_completed_iq_cleanup(guard)
@@ -317,29 +343,7 @@ def cleanup_verified_staging(guard, evidence):
         db_bind = next(mount for mount in binds if mount['Destination'] == '/rehearsal')
         stage = validated_test_stage(db_bind['Source'])
         require(all(mount['Destination'] == '/rehearsal' or mount['Source'] == str(stage / 'sockets') for mount in binds), 'CLEANUP_SOCKET_MOUNT')
-        # Reject a staging tree referenced by any other container, including stopped ones.
-        ids = command([DOCKER, 'ps', '--all', '--quiet'], guard)
-        require(ids is not None and len(ids.splitlines()) <= 100
-                and all(re.fullmatch(r'[a-f0-9]{12,64}', value) for value in ids.splitlines()), 'CLEANUP_REFERENCE_LIST')
-        raw_refs = command([DOCKER, 'inspect', '--format={{.Id}}|{{json .Mounts}}', *ids.splitlines()], guard)
-        require(raw_refs is not None, 'CLEANUP_REFERENCE_INSPECT')
-        for row in raw_refs.splitlines():
-            identifier, raw_mounts = row.split('|', 1)
-            if identifier == info['Id']:
-                continue
-            for mount in json.loads(raw_mounts):
-                source = Path(mount.get('Source', '/'))
-                # Broad read-only host observers do not own this private test tree.
-                # Exact/descendant references and writable/unknown ancestors still block.
-                if (mount.get('Type') == 'bind' and mount.get('RW') is False
-                        and source != stage and stage.is_relative_to(source)):
-                    evidence['cleanup_readonly_ancestor_references'] = evidence.get('cleanup_readonly_ancestor_references', 0) + 1
-                    continue
-                if source.is_relative_to(stage) or stage.is_relative_to(source):
-                    evidence['cleanup_reference_relationship'] = ('STAGE_OR_DESCENDANT' if source.is_relative_to(stage) else 'ANCESTOR')
-                    evidence['cleanup_reference_access'] = 'READ_ONLY' if mount.get('RW') is False else 'WRITABLE_OR_UNKNOWN'
-                    evidence['cleanup_reference_type'] = mount.get('Type') if mount.get('Type') in ('bind', 'volume') else 'OTHER'
-                    raise RehearsalError('CLEANUP_OTHER_REFERENCE')
+        validate_stage_references(stage, guard, evidence, info['Id'])
         guard()
         # Keep the stopped container as a reference until its private staging is gone.
         existed = stage.exists()
@@ -387,6 +391,160 @@ def postgres_image(guard):
     image = command([DOCKER, "inspect", "--format={{.Image}}", raw], guard)
     require(image and re.fullmatch(r"sha256:[a-f0-9]{64}", image), "POSTGRES_IMAGE_IDENTITY")
     return image
+
+
+def checkpoint_file_template(hashes, guard):
+    """Keep private names/digests local while comparing disposable extracted copies."""
+    expected = {}
+    directories = set()
+    total = members = 0
+    for name in ARCHIVES:
+        guard()
+        with regular_source(CHECKPOINT, name) as source:
+            if name == 'paperless.dump':
+                size = os.fstat(source.fileno()).st_size
+                expected[name] = (size, hashes[name])
+                total += size
+                continue
+            prefix = PurePosixPath(name.removesuffix('.tar'))
+            directories.add(str(prefix))
+            with tarfile.open(fileobj=source, mode='r|') as archive:
+                for member in archive:
+                    guard()
+                    members += 1
+                    path = PurePosixPath(member.name)
+                    require(members <= 30000 and not path.is_absolute() and '..' not in path.parts
+                            and len(path.parts) <= 32 and (member.isdir() or member.isreg()), 'COPY_TEMPLATE_FORMAT')
+                    relative = prefix / path
+                    directories.update(str(parent) for parent in relative.parents if str(parent) != '.')
+                    if member.isdir():
+                        directories.add(str(relative))
+                    else:
+                        total += member.size
+                        require(0 <= member.size and total <= LIMIT and str(relative) not in expected, 'COPY_TEMPLATE_LIMIT')
+                        with archive.extractfile(member) as item:
+                            expected[str(relative)] = (member.size, file_digest(item, 'sha256', guard))
+    require(0 < total <= LIMIT, 'COPY_TEMPLATE_LIMIT')
+    return expected, directories
+
+
+def temporary_copy_inventory(hashes, guard, evidence):
+    """Dry run only. Unknown/changed copies remain protected; no paths go to stdout."""
+    require(evidence.get('checkpoint_encrypted_copy') in {'PASS', 'CACHED_VERIFIED_COPY'}, 'COPY_PROTECTION_PREREQUISITE')
+    expected, expected_dirs = checkpoint_file_template(hashes, guard)
+    candidates = sorted(HDD.glob('.paperless-restore-*'))
+    require(len(candidates) <= 20, 'COPY_CANDIDATE_LIMIT')
+    matched = []
+    protected = 0
+    for stage in candidates:
+        guard()
+        try:
+            require(validated_test_stage(str(stage / 'db')) == stage, 'CLEANUP_STAGE_PATH')
+            # An initialized DB, extra files or references are not classified as disposable.
+            require(all(not path.exists() or (path.is_dir() and not any(path.iterdir()))
+                        for path in (stage / 'db', stage / 'sockets')), 'COPY_NONEMPTY_RUNTIME')
+            validate_stage_references(stage, guard, evidence)
+            files, directories = {}, set()
+            allocated = stage.stat().st_blocks * 512
+            for index, path in enumerate(stage.rglob('*')):
+                guard()
+                require(index < 30000, 'COPY_CANDIDATE_LIMIT')
+                relative = str(path.relative_to(stage))
+                info = path.lstat()
+                require(info.st_uid == 0 and not stat.S_ISLNK(info.st_mode), 'COPY_OWNER_OR_LINK')
+                allocated += info.st_blocks * 512
+                if stat.S_ISDIR(info.st_mode):
+                    directories.add(relative)
+                else:
+                    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'COPY_OWNER_OR_LINK')
+                    files[relative] = info.st_size
+            require(set(files) == set(expected) and directories - {'db', 'sockets'} == expected_dirs,
+                    'COPY_CONTENT_SET')
+            require(all(files[name] == size for name, (size, _) in expected.items()), 'COPY_CONTENT_SIZE')
+            for name, (_, digest) in expected.items():
+                path = stage / name
+                with regular_source(path.parent, path.name) as source:
+                    require(file_digest(source, 'sha256', guard) == digest, 'COPY_CONTENT_CHECKSUM')
+            matched.append({'stage': str(stage), 'files': len(files), 'allocated_bytes': allocated,
+                            'logical_bytes': sum(files.values()), 'inode': stage.stat().st_ino})
+        except RehearsalError as exc:
+            optional = {'CLEANUP_STAGE_PATH', 'CLEANUP_STAGE_IDENTITY', 'CLEANUP_STAGE_CONTENTS',
+                        'CLEANUP_STAGE_MOUNT', 'CLEANUP_OTHER_REFERENCE', 'COPY_NONEMPTY_RUNTIME',
+                        'COPY_CANDIDATE_LIMIT', 'COPY_OWNER_OR_LINK', 'COPY_CONTENT_SET',
+                        'COPY_CONTENT_SIZE', 'COPY_CONTENT_CHECKSUM'}
+            if str(exc) not in optional:
+                raise
+            protected += 1
+    # Private, reproducible dry-run manifest. It does not authorise any deletion.
+    report = REPORT_DIR / ('temporary-copy-dry-run-' + uuid.uuid4().hex + '.json')
+    with os.fdopen(os.open(report, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'w') as output:
+        json.dump({'mode': 'DRY_RUN', 'checkpoint': str(CHECKPOINT),
+                   'template_sha256': hashlib.sha256(json.dumps(expected, sort_keys=True).encode()).hexdigest(),
+                   'exact_copies': matched, 'protected_candidates': protected}, output, sort_keys=True)
+        output.flush()
+        os.fsync(output.fileno())
+    evidence['temporary_duplicate_manifest'] = report.name
+    evidence['temporary_duplicate_exact_stages'] = len(matched)
+    evidence['temporary_duplicate_protected_stages'] = protected
+    evidence['temporary_duplicate_allocated_bytes'] = sum(item['allocated_bytes'] for item in matched)
+
+
+SCOPE_CHECK_EXEC = r"""
+import os, pathlib, re, sys
+row = next(row for row in pathlib.Path('/proc/self/cgroup').read_text().splitlines() if row.startswith('0::'))
+relative = row.split(':', 2)[2]
+assert '..' not in pathlib.PurePosixPath(relative).parts
+assert re.fullmatch(r'lifeos-paperless-checkpoint-[a-f0-9]{32}\.scope', pathlib.PurePosixPath(relative).name)
+base = pathlib.Path('/sys/fs/cgroup') / relative.lstrip('/')
+quota, period = (base / 'cpu.max').read_text().split()
+assert quota != 'max' and 0 < int(quota) * 4 <= int(period)
+assert 0 < int((base / 'memory.max').read_text()) <= 768 * 1024**2
+assert (base / 'memory.swap.max').read_text().strip() == '0'
+assert 0 < int((base / 'pids.max').read_text()) <= 64
+os.execv(sys.argv[1], sys.argv[1:])
+"""
+
+
+STREAM_HASH = r"""
+import hashlib, json, sys
+limit = int(sys.argv[1])
+count = 0
+digest = hashlib.sha256()
+while block := sys.stdin.buffer.read(1024**2):
+    count += len(block)
+    if count > limit:
+        raise SystemExit(1)
+    digest.update(block)
+print(json.dumps({'size': count, 'sha256': digest.hexdigest()}))
+"""
+
+
+def checkpoint_restic_command(prefix, args, guard, *, seconds=45, capture=True, output=None, digest_size=None):
+    """Transient existing-systemd scope; never change a persistent service or slice."""
+    unit = 'lifeos-paperless-checkpoint-' + uuid.uuid4().hex + '.scope'
+    native = [*prefix, *args]
+    if digest_size is not None:
+        require(type(digest_size) is int and 0 < digest_size <= LIMIT, 'CHECKPOINT_READBACK_SIZE')
+        # Fixed pipeline, positional argv only: document bytes are never shell input.
+        native = ['/usr/bin/bash', '-o', 'pipefail', '-c',
+                  'limit="$1"; hasher="$2"; shift 2; "$@" | /usr/bin/python3 -I -c "$hasher" "$limit"',
+                  '--', str(digest_size), STREAM_HASH, *native]
+    launch = ['/usr/bin/systemd-run', '--scope', '--quiet', '--collect', '--unit=' + unit,
+              '--property=CPUQuota=25%', '--property=MemoryMax=768M', '--property=MemorySwapMax=0',
+              '--property=TasksMax=64', '--property=IOWeight=10', '--property=TimeoutStopSec=5s',
+              '--', '/usr/bin/python3', '-I', '-B', '-c', SCOPE_CHECK_EXEC, *native]
+    try:
+        return command(launch, guard, seconds=seconds, capture=capture, output=output)
+    finally:
+        # Stop only this random temporary scope, including when the guarded client aborts.
+        command(['/usr/bin/systemctl', 'stop', unit], lambda: None, seconds=12, capture=False)
+        for _ in range(4):
+            state = command(['/usr/bin/systemctl', 'list-units', '--all', '--no-legend', '--plain', unit],
+                            lambda: None, seconds=5)
+            if state == '':
+                break
+            time.sleep(0.25)
+        require(state == '', 'CHECKPOINT_SCOPE_CLEANUP')
 
 
 def protect_verified_checkpoint(hashes, guard, evidence):
@@ -438,7 +596,7 @@ def protect_verified_checkpoint(hashes, guard, evidence):
                   '--repo', str(repo), '--password-file', str(PASSWORD_FILE)]
         tag = 'paperless-recovery-checkpoint-20261116-164147'
         def snapshots():
-            raw = command([*prefix, '--no-lock', 'snapshots', '--tag', tag, '--json'], guard, seconds=45)
+            raw = checkpoint_restic_command(prefix, ['--no-lock', 'snapshots', '--tag', tag, '--json'], guard, seconds=45)
             require(raw is not None, 'CHECKPOINT_SNAPSHOT_LIST')
             records = json.loads(raw)
             require(isinstance(records, list) and len(records) <= 10, 'CHECKPOINT_SNAPSHOT_LIMIT')
@@ -449,11 +607,14 @@ def protect_verified_checkpoint(hashes, guard, evidence):
                         and sorted(record['paths']) == sorted(str(CHECKPOINT / name) for name in (*ARCHIVES, 'SHA256SUMS'))
                         and isinstance(record.get('time'), str), 'CHECKPOINT_SNAPSHOT_SCOPE')
             return records
+        evidence['checkpoint_copy_phase'] = 'SNAPSHOT_METADATA'
         records = snapshots()
+        evidence['checkpoint_resource_limits'] = 'ENFORCED_CGROUP_V2'
         if not records:
-            require(command([*prefix, 'backup', '--one-file-system', '--tag', tag,
+            evidence['checkpoint_copy_phase'] = 'UPLOAD'
+            require(checkpoint_restic_command(prefix, ['backup', '--one-file-system', '--tag', tag,
                              *(str(CHECKPOINT / name) for name in (*ARCHIVES, 'SHA256SUMS'))],
-                            guard, seconds=360, capture=False) is not None, 'CHECKPOINT_ENCRYPTED_BACKUP')
+                            guard, seconds=330, capture=False) is not None, 'CHECKPOINT_ENCRYPTED_BACKUP')
             records = snapshots()
         require(records, 'CHECKPOINT_SNAPSHOT_MISSING')
         snapshot = max(records, key=lambda record: record['time'])['id']
@@ -464,22 +625,20 @@ def protect_verified_checkpoint(hashes, guard, evidence):
             require(len(raw) <= 4096, 'CHECKPOINT_RECEIPT_LIMIT')
             cached = json.loads(raw)
             if cached == {'snapshot': snapshot, 'manifest': expected['SHA256SUMS'], 'files': 6}:
+                evidence['checkpoint_copy_phase'] = 'CACHED'
                 evidence['checkpoint_encrypted_copy'] = 'CACHED_VERIFIED_COPY'
                 evidence['checkpoint_encrypted_files'] = 6
                 return
-        require(command(['/usr/bin/findmnt', '-rn', '--target', '/dev/shm', '-o', 'FSTYPE'], guard) == 'tmpfs', 'CHECKPOINT_READBACK_STAGING')
-        ram = os.statvfs('/dev/shm')
-        memory = re.search(r'^MemAvailable:\s+([0-9]+) kB$', Path('/proc/meminfo').read_text(), re.MULTILINE)
-        require(ram.f_bavail * ram.f_frsize >= max(sizes.values()) + 64 * 1024**2
-                and memory and int(memory[1]) * 1024 >= 2 * 1024**3 + max(sizes.values()), 'CHECKPOINT_READBACK_MEMORY')
+        require(resource_ready(initial=True, evidence=evidence), 'PI_RESOURCE_LIMIT')
+        evidence['checkpoint_copy_phase'] = 'READBACK'
         for name in (*ARCHIVES, 'SHA256SUMS'):
-            with tempfile.TemporaryFile(dir='/dev/shm') as restored:
-                require(command(['/usr/bin/prlimit', f'--fsize={sizes[name] + 1}:{sizes[name] + 1}', '--',
-                                 *prefix, '--no-lock', 'dump', snapshot, str(CHECKPOINT / name)],
-                                guard, seconds=180, output=restored) is not None, 'CHECKPOINT_ENCRYPTED_READBACK')
-                require(os.fstat(restored.fileno()).st_size == sizes[name], 'CHECKPOINT_READBACK_SIZE')
-                restored.seek(0)
-                require(file_digest(restored, 'sha256', guard) == expected[name], 'CHECKPOINT_READBACK_CHECKSUM')
+            raw = checkpoint_restic_command(prefix, ['--no-lock', 'dump', snapshot, str(CHECKPOINT / name)],
+                                            guard, seconds=180, digest_size=sizes[name])
+            require(raw is not None, 'CHECKPOINT_ENCRYPTED_READBACK')
+            proof = json.loads(raw)
+            require(set(proof) == {'size', 'sha256'} and type(proof['size']) is int
+                    and proof['size'] == sizes[name], 'CHECKPOINT_READBACK_SIZE')
+            require(proof['sha256'] == expected[name], 'CHECKPOINT_READBACK_CHECKSUM')
         temporary = REPORT_DIR / ('receipt-' + uuid.uuid4().hex)
         try:
             with temporary.open('x') as output:
@@ -494,6 +653,7 @@ def protect_verified_checkpoint(hashes, guard, evidence):
                 os.close(parent_fd)
         finally:
             temporary.unlink(missing_ok=True)
+        evidence['checkpoint_copy_phase'] = 'VERIFIED'
         evidence['checkpoint_encrypted_copy'] = 'PASS'
         evidence['checkpoint_encrypted_files'] = 6
     finally:
@@ -870,8 +1030,9 @@ def main():
             estimate = sum((CHECKPOINT / name).stat().st_size for name in ARCHIVES) + 512 * 1024**2
             evidence['staging_estimated_headroom_bytes'] = estimate
             evidence['hdd_available_before_staging_bytes'] = usage.f_bavail * usage.f_frsize
-            require(usage.f_bavail * usage.f_frsize >= evidence['hdd_tier0_reserve_bytes'] + estimate,
-                    'STAGING_TIER0_HEADROOM')
+            if usage.f_bavail * usage.f_frsize < evidence['hdd_tier0_reserve_bytes'] + estimate:
+                temporary_copy_inventory(hashes, guard, evidence)
+                raise RehearsalError('STAGING_TIER0_HEADROOM')
             stage = Path(tempfile.mkdtemp(prefix=".paperless-restore-", dir=HDD))
             remaining = LIMIT
             for name in ARCHIVES:
