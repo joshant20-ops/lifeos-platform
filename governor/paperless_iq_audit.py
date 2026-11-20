@@ -217,6 +217,38 @@ def runtime_metadata(data):
     }
 
 
+def docker_capacity_summary():
+    """Bounded daemon accounting only; no prune, scans or private inventory."""
+    result = {}
+    try:
+        raw = subprocess.run(['docker', 'system', 'df', '--format', '{{json .}}'],
+            capture_output=True, text=True, timeout=12, check=True).stdout
+        if len(raw) > 16384:
+            raise ValueError('summary_limit')
+        for line in raw.splitlines():
+            row = json.loads(line)
+            kind = row.get('Type')
+            if kind not in ('Images', 'Containers', 'Local Volumes', 'Build Cache'):
+                continue
+            clean = {}
+            for key in ('TotalCount', 'Active'):
+                value = str(row.get(key, ''))
+                clean[key] = int(value) if re.fullmatch(r'[0-9]{1,7}', value) else 'UNKNOWN'
+            for key in ('Size', 'Reclaimable'):
+                value = str(row.get(key, ''))
+                clean[key] = value if re.fullmatch(r'[0-9]+(?:\.[0-9]+)? ?(?:B|kB|KB|MB|GB|TB)(?: \([0-9]+%\))?', value) else 'UNKNOWN'
+            result[kind] = clean
+        root = subprocess.run(['docker', 'info', '--format', '{{.DockerRootDir}}'],
+            capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+        data_root = Path('/mnt/docker-data')
+        result['docker_root_on_hdd'] = (data_root.is_mount()
+            and Path(root).resolve().is_relative_to(data_root)
+            and Path(root).stat().st_dev == data_root.stat().st_dev)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        result['status'] = 'PARTIAL_OR_UNAVAILABLE'
+    return result
+
+
 def host_resources():
     report = {'cpu_load_milli': 'UNKNOWN', 'memory_available_mib': 'UNKNOWN',
               'temperature_millicelsius': 'UNKNOWN', 'free_data_bytes': 'UNKNOWN',
@@ -279,6 +311,7 @@ def main():
         if os.getloadavg()[0] >= 3:
             print('PAPERLESS_IQ_AUDIT_RESULT=DEFERRED_LOAD')
             return
+        print('PAPERLESS_IQ_DOCKER_CAPACITY=' + json.dumps(docker_capacity_summary(), sort_keys=True))
         inspected = subprocess.run(['docker', 'inspect', '--format', '{{.State.Status}}|{{.Image}}|{{index .Config.Labels "org.opencontainers.image.revision"}}', 'paperless-iq'], capture_output=True, text=True, timeout=5, check=True)
         state, image, revision = inspected.stdout.strip().split('|')
         if state != 'running' or not re.fullmatch(r'sha256:[a-f0-9]{64}', image):
