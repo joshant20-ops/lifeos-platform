@@ -253,57 +253,43 @@ def build_cache_manifest(raw):
 
 
 def docker_capacity_summary():
-    """Bounded daemon accounting only; no prune, scans or private inventory."""
-    result = {}
+    """Targeted local BuildKit metadata; never scan all Docker disk usage."""
+    result, stage = {}, 'DOCKER_ROOT'
     try:
-        raw = subprocess.run(['docker', 'system', 'df', '--format', '{{json .}}'],
-            capture_output=True, text=True, timeout=12, check=True).stdout
-        if len(raw) > 16384:
-            raise ValueError('summary_limit')
-        for line in raw.splitlines():
-            row = json.loads(line)
-            if not isinstance(row, dict):
-                raise ValueError('summary_object')
-            kind = row.get('Type')
-            if kind not in ('Images', 'Containers', 'Local Volumes', 'Build Cache'):
-                continue
-            clean = {}
-            for key in ('TotalCount', 'Active'):
-                value = str(row.get(key, ''))
-                clean[key] = int(value) if re.fullmatch(r'[0-9]{1,7}', value) else 'UNKNOWN'
-            for key in ('Size', 'Reclaimable'):
-                value = str(row.get(key, ''))
-                clean[key] = value if re.fullmatch(r'[0-9]+(?:\.[0-9]+)? ?(?:B|kB|KB|MB|GB|TB)(?: \([0-9]+%\))?', value) else 'UNKNOWN'
-            result[kind] = clean
         root = subprocess.run(['docker', 'info', '--format', '{{.DockerRootDir}}'],
-            capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+            capture_output=True, text=True, timeout=8, check=True).stdout.strip()
         data_root = Path('/mnt/docker-data')
         result['docker_root_on_hdd'] = (data_root.is_mount()
             and Path(root).resolve().is_relative_to(data_root)
             and Path(root).stat().st_dev == data_root.stat().st_dev)
-        try:
-            builder = subprocess.run(['docker', 'buildx', 'inspect', 'default'],
-                capture_output=True, text=True, timeout=5, check=True).stdout
-            if len(builder) > 16384:
-                raise ValueError('builder_limit')
-            fields = [line.strip().split(':', 1) for line in builder.splitlines() if ':' in line]
-            drivers = [value.strip() for key, value in fields if key == 'Driver']
-            endpoints = [value.strip() for key, value in fields if key == 'Endpoint']
-            context = subprocess.run(['docker', 'context', 'inspect', 'default', '--format', '{{.Endpoints.docker.Host}}'],
-                capture_output=True, text=True, timeout=5, check=True).stdout.strip()
-            result['default_builder_local_docker'] = (drivers == ['docker'] and len(endpoints) == 1
-                and endpoints[0] in ('default', 'unix:///var/run/docker.sock')
-                and context == 'unix:///var/run/docker.sock')
-            if not result['default_builder_local_docker']:
-                raise ValueError('unverified_builder')
-            usage = subprocess.run(['docker', 'buildx', 'du', '--builder', 'default', '--format=json'],
-                capture_output=True, text=True, timeout=8, check=True).stdout
-            result['build_cache_manifest'] = build_cache_manifest(usage)
-        except (OSError, ValueError, subprocess.SubprocessError):
-            result['build_cache_manifest'] = {'status': 'UNAVAILABLE', 'deletion_authorised': False}
-
-    except (OSError, ValueError, subprocess.SubprocessError):
-        result['status'] = 'PARTIAL_OR_UNAVAILABLE'
+        stage = 'BUILDER_IDENTITY'
+        builder = subprocess.run(['docker', 'buildx', 'inspect', 'default'],
+            capture_output=True, text=True, timeout=5, check=True).stdout
+        if len(builder) > 16384:
+            raise ValueError('builder_limit')
+        fields = [line.strip().split(':', 1) for line in builder.splitlines() if ':' in line]
+        drivers = [value.strip() for key, value in fields if key == 'Driver']
+        endpoints = [value.strip() for key, value in fields if key == 'Endpoint']
+        stage = 'DOCKER_CONTEXT'
+        context = subprocess.run(['docker', 'context', 'inspect', 'default', '--format', '{{.Endpoints.docker.Host}}'],
+            capture_output=True, text=True, timeout=5, check=True).stdout.strip()
+        result['default_builder_local_docker'] = (drivers == ['docker'] and len(endpoints) == 1
+            and endpoints[0] in ('default', 'unix:///var/run/docker.sock')
+            and context == 'unix:///var/run/docker.sock')
+        if not result['default_builder_local_docker']:
+            raise ValueError('unverified_builder')
+        stage = 'BUILDKIT_CACHE'
+        usage = subprocess.run(['docker', 'buildx', 'du', '--builder', 'default', '--format=json'],
+            capture_output=True, text=True, timeout=8, check=True).stdout
+        result['build_cache_manifest'] = build_cache_manifest(usage)
+    except subprocess.TimeoutExpired:
+        result.update(status='UNAVAILABLE', failed_stage=stage, reason='CLIENT_TIMEOUT')
+    except subprocess.CalledProcessError as error:
+        message = (error.stderr or '').lower()
+        reason = 'CLI_UNSUPPORTED' if 'unknown flag' in message or 'not a docker command' in message else 'COMMAND_FAILED'
+        result.update(status='UNAVAILABLE', failed_stage=stage, reason=reason)
+    except (OSError, ValueError):
+        result.update(status='UNAVAILABLE', failed_stage=stage, reason='UNKNOWN_OR_UNSAFE_METADATA')
     return result
 
 
