@@ -1,0 +1,56 @@
+name: Fixed read-only storage summary
+on:
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+  pull_request:
+    paths:
+      - '.github/workflows/storage-readonly-summary.yml'
+      - 'scripts/audits/storage/**'
+      - 'tests/test_storage_remote_summary.py'
+      - 'homelab/live/usr/local/sbin/lifeos-deploy-gateway'
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s tests -p test_storage_remote_summary.py -v
+      - run: bash -n scripts/audits/storage/install.sh
+
+  audit:
+    if: >-
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'issue_comment' &&
+        github.event.issue.number == 2072 &&
+        !github.event.issue.pull_request &&
+        github.event.comment.body == '/storage-audit-summary')) &&
+      github.repository == 'joshant20-ops/lifeos-platform' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == github.repository_owner &&
+      github.triggering_actor == github.repository_owner &&
+      github.run_attempt == 1 &&
+      vars.STORAGE_READONLY_AUDIT_ENABLED == 'true'
+    runs-on: [self-hosted, linux, ARM64, lifeos-pi5]
+    concurrency:
+      group: lifeos-pi5-control
+      cancel-in-progress: false
+    timeout-minutes: 3
+    steps:
+      - name: Request fixed installed audit and publish only validated counters
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          umask 077
+          if ! sudo -n /usr/local/sbin/lifeos-deploy-gateway storage-audit-summary > "$RUNNER_TEMP/storage-public.json" 2>/dev/null; then
+            echo 'STORAGE_AUDIT_UNAVAILABLE'
+            exit 1
+          fi
+          python3 -I -B /usr/local/lib/lifeos-storage-audit/worker.py --public "$RUNNER_TEMP/storage-public.json" | tee -a "$GITHUB_STEP_SUMMARY"
