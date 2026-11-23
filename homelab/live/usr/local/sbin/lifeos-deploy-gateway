@@ -16,6 +16,10 @@ ENV = '/usr/bin/env'
 BASH = '/usr/bin/bash'
 PATH_ENV = 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 OPS = {
+    'storage-audit-summary': {
+        'script': 'scripts/audits/storage/worker.py',
+        'privileged': True,
+    },
     'backup-audiobooks': {
         'script': 'scripts/lifeos-backup-audiobooks.sh',
         'privileged': True,
@@ -303,6 +307,23 @@ def main():
         return 64
     operation, operation_args = parse_request(sys.argv[1:])
     spec = OPS[operation]
+    if operation == 'storage-audit-summary':
+        if os.geteuid() != 0:
+            fail('must_run_as_root')
+        installed = pathlib.Path('/usr/local/lib/lifeos-storage-audit/worker.py')
+        for target in (installed.parent.parent, installed.parent, installed):
+            try:
+                info = target.lstat()
+            except OSError:
+                fail('storage_audit_not_installed')
+            if target.is_symlink() or info.st_uid != 0 or info.st_mode & 0o022:
+                fail('storage_audit_unsafe_installation')
+        cp = subprocess.run(
+            ['/usr/bin/python3', '-I', '-B', str(installed), '--request'],
+            env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8'},
+            timeout=125, text=True,
+        )
+        return cp.returncode
     head = preflight()
     script = REPO / str(spec['script'])
     if operation == 'restore-rehearsal' and operation_args == ['adguard-config']:

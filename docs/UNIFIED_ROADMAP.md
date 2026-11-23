@@ -4,6 +4,8 @@
 
 This file sets programme priorities. Issue #24 is the execution index; individual issues retain acceptance evidence. Former stage/wave/P/M plans are historical, not independent instructions to start work. Current runtime evidence and explicit owner decisions outrank stale plans.
 
+**Storage audit remote execution — 23 November 2026, source proposal only:** Historical Actions evidence confirms the Pi runner has executed jobs; current registration and permission isolation remain unverified. The proposed [fixed read-only request route](operations/storage-readonly-remote-audit.md) reuses the gateway and cached backup/repair/Predbat evidence, publishes strict aggregate counters, and stays disabled pending independent review and explicit one-time setup approval. No installation, live audit, retention clearance or deletion is claimed. PR #2147 remains a separate unmerged recovery-review source change.
+
 ## Direction
 
 Deliver useful household capabilities with minimal maintenance. Organise the programme around **user-facing products and outcomes**, while specialist applications retain their own authority.
