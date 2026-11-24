@@ -114,7 +114,7 @@ class ProducerTests(unittest.TestCase):
         self.assertEqual(len(normalized), 1)
         g = normalized[0]
         self.assertFalse(g['timestamp_verified']); self.assertFalse(g['references_verified'])
-        self.assertEqual(g['verification'], 'unverified')
+        self.assertEqual(g['verification'], 'unknown')
         self.assertEqual(g['logical_bytes'], sum(f['identity']['st_size'] for f in g['files']))
         self.assertEqual(g['allocated_bytes'], sum(f['allocated_bytes'] for f in g['files']))
 
@@ -123,7 +123,26 @@ class ProducerTests(unittest.TestCase):
         receipt = m.read_receipt(self.g); receipt.update(verification='passed', references_verified=True, timestamp_verified=True)
         g = m.retention_generation(receipt, self.g.name, [], True)
         self.assertFalse(g['references_verified']); self.assertFalse(g['timestamp_verified'])
-        self.assertEqual(g['verification'], 'unverified')
+        self.assertEqual(g['verification'], 'unknown')
+
+    def test_normalized_record_matches_existing_schema_types(self):
+        m.begin(self.g, self.source); m.finish(self.g, 0)
+        normalized = []; m.discover(self.backups, normalized=normalized)
+        schema = json.loads((ROOT/'governor/contracts/storage-retention-inventory.schema.json').read_text())['properties']['generations']['items']
+        record = normalized[0]
+        for field in schema['required']: self.assertIn(field, record)
+        for field, rule in schema['properties'].items():
+            if field not in record: continue
+            if 'enum' in rule: self.assertIn(record[field], rule['enum'])
+            if 'type' in rule:
+                expected = {'string': str, 'integer': int, 'boolean': bool, 'array': list}[rule['type']]
+                self.assertIs(type(record[field]), expected)
+
+    def test_active_and_unmeasured_receipts_not_normalized(self):
+        m.begin(self.g, self.source)
+        self.assertIsNone(m.retention_generation(m.read_receipt(self.g), self.g.name, [], True))
+        m.finish(self.g, 0)
+        self.assertIsNone(m.retention_generation(m.read_receipt(self.g), self.g.name, [], False))
 
     def test_exit_hook_preserves_failure_after_err_handler(self):
         source = (ROOT/'scripts/lifeos-adapt-ha-tower-control.sh').read_text()

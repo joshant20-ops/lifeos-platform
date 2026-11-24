@@ -9,6 +9,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import stat
 
@@ -87,14 +88,23 @@ def retention_generation(receipt, name, files, measured):
     timestamp provenance, reference closure and retained recovery coverage.
     A self-described receipt can never promote itself to deletion authority.
     """
-    return dict(service=receipt.get('service', 'unknown'), generation_id=name,
+    # Incomplete records stay in the private discovery report, not the strict
+    # retention inventory. Unknowns must not become fabricated schema values.
+    if not measured or receipt.get('state') != 'completed': return None
+    try:
+        for key in ('created_at', 'completed_at'):
+            if dt.datetime.fromisoformat(receipt[key]).tzinfo is None: return None
+        if not re.fullmatch('[0-9a-f]{64}', receipt['producer_sha256']): return None
+        if receipt['service'] != PRODUCERS[receipt['producer']][1]: return None
+    except (KeyError, TypeError, ValueError): return None
+    return dict(service=receipt['service'], generation_id=name,
         root_id='automation_backups', category='automation_backup', relative_path=name,
         created_at=receipt.get('created_at'), completed_at=receipt.get('completed_at'),
         timestamp_verified=False, producer_evidence_id=receipt.get('producer_sha256'),
         state=receipt.get('state'), active=receipt.get('state') != 'completed',
         references_verified=False, dependencies=['rollback_dependency_review_required'],
-        open_references=None, holds=['producer_receipt_attestation_required'],
-        verification='unverified', live_data=False, database_volume=False,
+        open_references=0, holds=['producer_receipt_attestation_required', 'references_not_checked'],
+        verification='unknown', live_data=False, database_volume=False,
         offhost_required=True, record_class='privileged_transaction', files=files,
         logical_bytes=sum(f['identity']['st_size'] for f in files) if measured else None,
         allocated_bytes=sum(f['allocated_bytes'] for f in files) if measured else None)
@@ -160,7 +170,8 @@ def discover(root, limit=100000, private_records=None, normalized=None):
                     receipt=receipt, deletion_disposition='HOLD',
                     reason='active_recovery_and_timestamp_witness_review_required'))
             if normalized is not None and receipt is not None and len(normalized) < 10000:
-                normalized.append(retention_generation(receipt, p.name, files_index, measured))
+                g = retention_generation(receipt, p.name, files_index, measured)
+                if g is not None: normalized.append(g)
     return dict(schema_version=1, observed_at=utc(), counts=dict(counts), producer_families=dict(families),
                 measured_logical_bytes=logical, measured_allocated_file_bytes=allocated,
                 eligible_generations=None, eligible_bytes=None, verified_eligible_generations=0,
