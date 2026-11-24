@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'governor/storage_retention.py'
+      - 'governor/backup_producer_metadata.py'
+      - 'scripts/lifeos-*.sh'
+      - 'tests/test_backup_producer_metadata.py'
       - 'governor/storage-retention-policy.json'
       - 'governor/contracts/storage-retention-inventory.schema.json'
       - 'governor/scripts/snapshot-lifeos-observed-state.sh'
@@ -20,6 +23,8 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -B -m unittest discover -s tests -p test_storage_retention.py -v
+      - run: python3 -B -m unittest discover -s tests -p test_backup_producer_metadata.py -v
       - run: bash -n governor/scripts/snapshot-lifeos-observed-state.sh
+      - run: for script in scripts/lifeos-sync-pinned-compose.sh scripts/lifeos-ha-dashboard-audit-simplify.sh scripts/lifeos-adapt-ha-lifeos-dashboard.sh scripts/lifeos-adapt-ha-tower-control.sh scripts/lifeos-deploy-ha-control-bridge-impl.sh; do bash -n "$script"; done
       - run: python3 -m json.tool governor/storage-retention-policy.json >/dev/null
       - run: python3 -m json.tool governor/contracts/storage-retention-inventory.schema.json >/dev/null

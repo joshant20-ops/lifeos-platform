@@ -29,6 +29,13 @@ trap 'rc=$?; printf "\nFAILED at line %s (exit %s)\n" "${BASH_LINENO[0]:-unknown
 
 if [[ $EUID -ne 0 ]]; then exec sudo -E bash "$0" "$@"; fi
 mkdir -p "$BACKUP"; touch "$LOG"; exec > >(tee -a "$LOG") 2>&1
+# Producer receipt is lifecycle evidence only; recovery/reference holds remain.
+RETENTION_METADATA="$(dirname -- "${BASH_SOURCE[0]}")/../governor/backup_producer_metadata.py"
+if python3 "$RETENTION_METADATA" begin "$BACKUP" "${BASH_SOURCE[0]}"; then
+trap 'retention_rc=$?; python3 "$RETENTION_METADATA" finish "$BACKUP" "$retention_rc" || printf "%s\n" "WARNING=producer_receipt_incomplete" >&2; exit "$retention_rc"' EXIT
+else
+  printf "%s\n" "WARNING=producer_receipt_missing_retention_hold" >&2
+fi
 
 live_path_for(){
   python3 - "$MANIFEST" "$1" <<'PY'
@@ -143,3 +150,4 @@ QBITTORRENT_UNCHANGED=YES
 LIFEOS_ENERGY_UNCHANGED=YES
 BACKUP=$BACKUP
 EOF
+

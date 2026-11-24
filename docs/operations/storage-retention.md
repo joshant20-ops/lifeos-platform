@@ -219,6 +219,12 @@ tests; no production or real native logrotate run is claimed.
 
 ## Recovery, risks and owner approvals
 
+The [automation backup producer integration](automation-backup-producers.md)
+identifies five canonical producers, adds explicit lifecycle receipts and a
+read-only discovery/normalization adapter. Historical producer identity,
+timestamps and recovery dependencies still require Pi-local evidence; receipt
+completion alone cannot authorise deletion.
+
 Code/policy rollback is a reviewed revert before deployment. Deleted local bytes
 cannot be undeleted by this tool; rollback is possible only through preserved
 verified recovery points and the existing restore procedure. There is no automatic

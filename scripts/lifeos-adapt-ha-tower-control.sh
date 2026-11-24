@@ -21,6 +21,13 @@ trap rollback ERR
 [[ $EUID -eq 0 ]] || { echo 'ERROR=must_run_as_root'; exit 1; }
 docker exec "$CONTAINER" test -f "/config/.storage/$TARGET" || { echo 'ERROR=lifeos_control_dashboard_missing'; exit 1; }
 mkdir -p "$BACKUP"
+# Producer receipt is lifecycle evidence only; recovery/reference holds remain.
+RETENTION_METADATA="$(dirname -- "${BASH_SOURCE[0]}")/../governor/backup_producer_metadata.py"
+if python3 "$RETENTION_METADATA" begin "$BACKUP" "${BASH_SOURCE[0]}"; then
+trap 'retention_rc=$?; python3 "$RETENTION_METADATA" finish "$BACKUP" "$retention_rc" || printf "%s\n" "WARNING=producer_receipt_incomplete" >&2; exit "$retention_rc"' EXIT
+else
+  printf "%s\n" "WARNING=producer_receipt_missing_retention_hold" >&2
+fi
 docker cp "$CONTAINER:/config/.storage/$TARGET" "$BACKUP/$TARGET.before"
 
 docker exec -i "$CONTAINER" python3 - <<'PY'
@@ -336,3 +343,4 @@ echo 'TOWER_IDLE_STATE=CPU_GPU_DISK_NETWORK'
 echo 'TOWER_LIGHT=GRAY_OFF_YELLOW_INACCESSIBLE_GREEN_ACCESSIBLE'
 echo 'TOWER_SHUTDOWN_CONFIRMATION=YES'
 echo "BACKUP=$BACKUP"
+

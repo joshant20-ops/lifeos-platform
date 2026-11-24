@@ -31,6 +31,13 @@ docker inspect "$CONTAINER" >/dev/null 2>&1 || { echo 'ERROR=homeassistant_conta
 [[ "$(docker inspect -f '{{.State.Status}}' "$CONTAINER")" == running ]] || { echo 'ERROR=homeassistant_not_running'; exit 1; }
 
 mkdir -p "$BACKUP"
+# Producer receipt is lifecycle evidence only; recovery/reference holds remain.
+RETENTION_METADATA="$(dirname -- "${BASH_SOURCE[0]}")/../governor/backup_producer_metadata.py"
+if python3 "$RETENTION_METADATA" begin "$BACKUP" "${BASH_SOURCE[0]}"; then
+trap 'retention_rc=$?; python3 "$RETENTION_METADATA" finish "$BACKUP" "$retention_rc" || printf "%s\n" "WARNING=producer_receipt_incomplete" >&2; exit "$retention_rc"' EXIT
+else
+  printf "%s\n" "WARNING=producer_receipt_missing_retention_hold" >&2
+fi
 for name in lovelace_dashboards lovelace.lifeos_control; do
   if docker exec "$CONTAINER" test -f "/config/.storage/$name"; then
     docker cp "$CONTAINER:/config/.storage/$name" "$BACKUP/$name.before"
@@ -198,3 +205,4 @@ echo 'HOME_ASSISTANT_RESTART=PASS'
 echo 'DASHBOARD_PATH=/lifeos-control/overview'
 echo "BACKUP=$BACKUP"
 echo 'ROLLBACK=restore lovelace_dashboards and lovelace.lifeos_control backups then restart Home Assistant'
+

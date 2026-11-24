@@ -20,5 +20,10 @@
     "paperless_rehearsal": "HOLD_EXISTING_NATIVE_VERIFIED_CLEANUP_REQUIRED",
     "database_backup": "HOLD_UNVERIFIED_COMPLETION_RESTORE_AND_OFFHOST_COVERAGE"
   },
-  "note": "Zero verified eligibility is not evidence that no expired data exists. Historical aggregate inventories and synthetic tests do not establish reclaimable Pi capacity."
+  "note": "Zero verified eligibility is not evidence that no expired data exists. Historical aggregate inventories and synthetic tests do not establish reclaimable Pi capacity.",
+  "cutoff": "2026-10-24T00:00:00Z",
+  "repository_confirmed_producer_families": 5,
+  "protected_generations": null,
+  "producer_integration": "SOURCE_ONLY_RECEIPTS_DISCOVERY_AND_CONSERVATIVE_NORMALIZATION",
+  "remaining_blocker": "PI_LOCAL_PRODUCER_AND_RECOVERY_EVIDENCE_REQUIRES_AUTHORISED_COLLECTION"
 }
