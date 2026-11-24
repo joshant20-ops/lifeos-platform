@@ -90,7 +90,11 @@ def restore_check(root, record, destination, yaml_validator):
         dest = destination/name
         shutil.copy2(src, dest, follow_symlinks=False)
         original = src.read_bytes()
+        os.chown(dest, expected['st_uid'], expected['st_gid'])
         restored = dest.read_bytes()
+        if (stat.S_IMODE(dest.stat().st_mode) != stat.S_IMODE(expected['st_mode'])
+                or dest.stat().st_uid != expected['st_uid'] or dest.stat().st_gid != expected['st_gid']):
+            raise ValueError('recovery_metadata_mismatch')
         if original != restored or identity(src.lstat()) != expected:
             raise ValueError('recovery_copy_mismatch')
         if name.endswith('.json') or name.startswith('lovelace.'):
@@ -158,16 +162,20 @@ def fleet():
     for c in containers:
         if not c['State']['Running']: continue
         health = c['State'].get('Health',{}).get('Status')
-        if health not in (None,'healthy'): raise ValueError('container_health_hold')
-        running[c['Id']] = (c['Image'],c['State']['StartedAt'])
+        critical = any(role in c['Name'].lower().replace('_','').replace('-','')
+                       for role in ('adguard','homeassistant','predbat','paperless','vaultwarden'))
+        if critical and health not in (None,'healthy'): raise ValueError('protected_container_health_hold')
+        running[c['Id']] = (c['Image'],c['State']['StartedAt'],health)
     names = ' '.join(c['Name'].lower().replace('_','').replace('-','') for c in containers if c['State']['Running'])
-    if not all(s in names for s in ('adguard','homeassistant','predbat','paperless')):
+    if not all(s in names for s in ('adguard','homeassistant','predbat','paperless','vaultwarden')):
         raise ValueError('protected_service_missing')
     return containers, running
 
 def health(baseline=None):
     containers, running = fleet()
-    if baseline and any(running.get(k) != v for k,v in baseline.items()):
+    if baseline and any(k not in running or running[k][:2] != v[:2]
+                        or (len(v)>2 and v[2]=='healthy' and running[k][2]!='healthy')
+                        for k,v in baseline.items()):
         raise ValueError('service_identity_changed')
     for tcp in (False, True):
         args = ['dig','+time=2','+tries=1','+short','@127.0.0.1','github.com','A']

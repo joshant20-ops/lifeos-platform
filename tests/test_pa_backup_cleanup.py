@@ -66,6 +66,7 @@ class CleanupTests(unittest.TestCase):
         seen=[]
         hashes=m.restore_check(self.root,record,self.base/'restored',lambda data:seen.append(data))
         self.assertEqual(len(hashes),3);self.assertEqual(len(seen),1)
+        self.assertEqual((self.base/'restored'/'pa_escalations.json').stat().st_uid,record['files']['pa_escalations.json']['st_uid'])
         self.assertEqual((self.base/'restored'/'pa_escalations.json').read_bytes(),b'[]')
 
     def test_bad_json_restore_rejected(self):
@@ -98,6 +99,15 @@ class CleanupTests(unittest.TestCase):
         r=self.base/'records';r.mkdir()
         (r/'transaction.json').write_text(json.dumps({'backup':self.name}))
         self.assertIn(self.name,m.references([r]))
+
+
+    def test_service_identity_change_stops_before_work(self):
+        with patch.object(m,'fleet',return_value=([],{'id':('image','new-start','healthy')})):
+            with self.assertRaises(ValueError):m.health({'id':('image','old-start','healthy')})
+
+    def test_dns_failure_stops_before_work(self):
+        with patch.object(m,'fleet',return_value=([],{})),patch.object(m,'call',return_value=''):
+            with self.assertRaises(ValueError):m.health()
 
     def test_operational_dry_run_and_execution(self):
         for k in ('pa_escalation_v1','pa_ha_dashboard'):
