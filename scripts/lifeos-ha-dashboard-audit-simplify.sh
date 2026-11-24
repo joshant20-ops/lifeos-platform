@@ -25,6 +25,13 @@ trap rollback ERR
 docker inspect "$CONTAINER" >/dev/null 2>&1 || { echo 'ERROR=homeassistant_container_missing'; exit 1; }
 [[ "$(docker inspect -f '{{.State.Status}}' "$CONTAINER")" == running ]] || { echo 'ERROR=homeassistant_not_running'; exit 1; }
 mkdir -p "$BACKUP"
+# Producer receipt is lifecycle evidence only; recovery/reference holds remain.
+RETENTION_METADATA="$(dirname -- "${BASH_SOURCE[0]}")/../governor/backup_producer_metadata.py"
+if python3 "$RETENTION_METADATA" begin "$BACKUP" "${BASH_SOURCE[0]}"; then
+trap 'retention_rc=$?; python3 "$RETENTION_METADATA" finish "$BACKUP" "$retention_rc" || printf "%s\n" "WARNING=producer_receipt_incomplete" >&2; exit "$retention_rc"' EXIT
+else
+  printf "%s\n" "WARNING=producer_receipt_missing_retention_hold" >&2
+fi
 
 # Discover active storage dashboards and back them up before any simplification.
 mapfile -t ACTIVE < <(docker exec -i "$CONTAINER" python3 - <<'PY'
@@ -199,3 +206,4 @@ echo 'HA_ALL_ACTIVE_DASHBOARDS_AUDITED=YES'
 echo 'HA_SAFE_SIMPLIFICATION_APPLIED=YES'
 echo "BACKUP=$BACKUP"
 echo 'ROLLBACK=restore backed-up active Lovelace storage files then restart Home Assistant'
+

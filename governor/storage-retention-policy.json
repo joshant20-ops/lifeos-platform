@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "executor_enabled": false,
+  "rotation_enabled": false,
+  "compression_max_input_bytes": 67108864,
+  "producer_limits": {
+    "min_interval_seconds": 300,
+    "max_daily_generations": 24,
+    "max_daily_bytes": null
+  },
+  "minimum_free_percent": 10,
+  "manifest_ttl_seconds": 300,
+  "max_batch_generations": 5,
+  "max_batch_operations": 256,
+  "max_batch_bytes": 1073741824,
+  "categories": {
+    "automation_backup": {
+      "days": 30,
+      "recovery_required": true,
+      "offhost_required": false,
+      "minimum_recovery_generations": 2
+    },
+    "repair_snapshot": {
+      "days": 14,
+      "recovery_required": true,
+      "offhost_required": false
+    },
+    "successful_job": {
+      "days": 7,
+      "recovery_required": false,
+      "offhost_required": false
+    },
+    "failed_job": {
+      "days": 30,
+      "recovery_required": false,
+      "offhost_required": false
+    },
+    "diagnostic": {
+      "days": 30,
+      "recovery_required": false,
+      "offhost_required": false
+    },
+    "cron_log": {
+      "days": 14,
+      "recovery_required": false,
+      "offhost_required": false
+    },
+    "predbat_image": {
+      "days": null,
+      "recovery_required": false,
+      "offhost_required": false
+    },
+    "paperless_rehearsal": {
+      "days": 2,
+      "recovery_required": true,
+      "offhost_required": false
+    },
+    "database_backup": {
+      "days": 30,
+      "recovery_required": true,
+      "offhost_required": true,
+      "minimum_recovery_generations": 2
+    }
+  },
+  "record_minimum_days": {
+    "ordinary_payload": 0,
+    "control_record": 90,
+    "privileged_transaction": 365,
+    "root_broker_audit": 365,
+    "production_acceptance": 365
+  },
+  "services": {},
+  "prometheus_proposal": {
+    "retention_days": 14,
+    "size_cap_bytes": null,
+    "state": "ACTIVE_RUNTIME_INSPECTION_REQUIRED"
+  }
+}

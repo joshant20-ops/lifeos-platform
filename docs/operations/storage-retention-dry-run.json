@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "evidence_scope": "repository_analysis_only_no_live_producer_inventory",
+  "status": "BLOCKED_UNVERIFIED_LIFECYCLE",
+  "verified_eligible_generations": 0,
+  "total_eligible_generations": null,
+  "eligible_allocated_bytes": null,
+  "guaranteed_recovered_bytes": 0,
+  "executed_deletions": 0,
+  "filesystem_before": null,
+  "filesystem_after": null,
+  "categories": {
+    "automation_backup": "HOLD_UNVERIFIED_COMPLETION_AND_RECOVERY_REFERENCES",
+    "repair_snapshot": "HOLD_UNVERIFIED_CLOSURE_AND_DEPENDENCIES",
+    "successful_job": "HOLD_UNVERIFIED_TERMINAL_STATE_AND_CONTROL_RECORD_CLASS",
+    "failed_job": "HOLD_UNVERIFIED_INCIDENT_DEPENDENCIES",
+    "diagnostic": "HOLD_UNVERIFIED_EVIDENCE_REQUIREMENTS",
+    "cron_log": "HOLD_UNVERIFIED_WRITER_AND_OPEN_HANDLES",
+    "predbat_image": "HOLD_UNVERIFIED_CURRENT_RECOVERY_REFERENCES",
+    "paperless_rehearsal": "HOLD_EXISTING_NATIVE_VERIFIED_CLEANUP_REQUIRED",
+    "database_backup": "HOLD_UNVERIFIED_COMPLETION_RESTORE_AND_OFFHOST_COVERAGE"
+  },
+  "note": "Zero verified eligibility is not evidence that no expired data exists. Historical aggregate inventories and synthetic tests do not establish reclaimable Pi capacity.",
+  "cutoff": "2026-10-24T00:00:00Z",
+  "repository_confirmed_producer_families": 5,
+  "protected_generations": null,
+  "producer_integration": "SOURCE_ONLY_RECEIPTS_DISCOVERY_AND_CONSERVATIVE_NORMALIZATION",
+  "remaining_blocker": "PI_LOCAL_PRODUCER_AND_RECOVERY_EVIDENCE_REQUIRES_AUTHORISED_COLLECTION"
+}

@@ -68,6 +68,13 @@ print('TOWER_CONTROLLER_RESTART_LEASE_GUARD=PASS')
 PY
 
 mkdir -p "$BACKUP" /etc/lifeos /var/lib/lifeos-tower
+# Producer receipt is lifecycle evidence only; recovery/reference holds remain.
+RETENTION_METADATA="$(dirname -- "${BASH_SOURCE[0]}")/../governor/backup_producer_metadata.py"
+if python3 "$RETENTION_METADATA" begin "$BACKUP" "${BASH_SOURCE[0]}"; then
+trap 'retention_rc=$?; python3 "$RETENTION_METADATA" finish "$BACKUP" "$retention_rc" || printf "%s\n" "WARNING=producer_receipt_incomplete" >&2; exit "$retention_rc"' EXIT
+else
+  printf "%s\n" "WARNING=producer_receipt_missing_retention_hold" >&2
+fi
 cp -a "$DEST" "$BACKUP/lifeos-ha-issue-queue-bridge.before"
 if [[ -f "$TOWER_DEST" ]]; then cp -a "$TOWER_DEST" "$BACKUP/lifeos-tower-control.before"; else : > "$BACKUP/lifeos-tower-control.absent"; fi
 if [[ -f "$TOWER_UNIT" ]]; then cp -a "$TOWER_UNIT" "$BACKUP/lifeos-tower-control.service.before"; else : > "$BACKUP/lifeos-tower-control.service.absent"; fi
@@ -234,3 +241,4 @@ echo 'LIFEOS_CONTROL_DASHBOARD_PATH=/lifeos-control/overview'
 echo 'HA_DASHBOARD_AUDIT_AND_SIMPLIFICATION=PASS'
 echo "BACKUP=$BACKUP"
 echo 'ROLLBACK=restore backup bridge/Tower controller/Tower config/dashboard storage then restart affected services'
+
