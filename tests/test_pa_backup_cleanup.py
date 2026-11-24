@@ -109,6 +109,19 @@ class CleanupTests(unittest.TestCase):
         with patch.object(m,'fleet',return_value=([],{})),patch.object(m,'call',return_value=''):
             with self.assertRaises(ValueError):m.health()
 
+
+    def test_active_file_alias_detected_by_inode(self):
+        record=m.inspect(self.fd,self.name)
+        alias=self.base/'mount_alias'
+        os.link(self.root/self.name/'pa_escalations.json',alias)
+        proc=self.base/'proc';pid=proc/'123';(pid/'fd').mkdir(parents=True)
+        (pid/'fd'/'3').symlink_to(alias)
+        (pid/'cwd').symlink_to(self.base)
+        (pid/'maps').write_text('')
+        real_path=Path
+        with patch.object(m,'Path',side_effect=lambda p:proc if str(p)=='/proc' else real_path(p)):
+            self.assertIn(self.name,m.active_generations(self.root,[record]))
+
     def test_operational_dry_run_and_execution(self):
         for k in ('pa_escalation_v1','pa_ha_dashboard'):
             for i in range(1,5):

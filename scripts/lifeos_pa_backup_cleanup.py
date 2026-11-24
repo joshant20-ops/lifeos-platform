@@ -137,20 +137,29 @@ def references(roots):
                 held.update(m.group() for m in PATTERN.finditer(p.read_text(errors='replace')))
     return held
 
-def active_generations(root):
+def active_generations(root, records=()):
     """Root reads current process references; disappearance is normal, denial is not."""
     held = set()
     prefix = str(root)+'/'
+    by_inode = {(s['st_dev'],s['st_ino']): r['generation'] for r in records
+                for s in [r['directory'],*r['files'].values()]}
     for proc in Path('/proc').iterdir():
         if not proc.name.isdecimal(): continue
         try:
             links = [proc/'cwd', *list((proc/'fd').iterdir())]
             for p in links:
-                try: value = os.readlink(p)
+                try:
+                    value = os.readlink(p)
+                    inode = os.stat(p)
+                    if (inode.st_dev,inode.st_ino) in by_inode:
+                        held.add(by_inode[(inode.st_dev,inode.st_ino)])
                 except FileNotFoundError: continue
                 if value.startswith(prefix): held.add(value[len(prefix):].split('/')[0])
             for line in (proc/'maps').read_text().splitlines():
                 fields = line.split(None, 5)
+                major,minor = (int(v,16) for v in fields[3].split(':'))
+                key = (os.makedev(major,minor),int(fields[4]))
+                if key in by_inode: held.add(by_inode[key])
                 if len(fields) == 6 and fields[5].startswith(prefix):
                     held.add(fields[5][len(prefix):].split('/')[0])
         except (FileNotFoundError, ProcessLookupError): continue
@@ -312,7 +321,7 @@ def main():
                     health(baseline)
                     for r in recovery:
                         if inspect(rootfd,r['generation']) != r: raise ValueError('recovery_point_changed')
-                    active = active_generations(root)
+                    active = active_generations(root, candidates[offset:offset+128])
                     for record in candidates[offset:offset+128]:
                         if record['generation'] in active:
                             held['became_active'] += 1; continue
