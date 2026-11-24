@@ -3,7 +3,7 @@
   "evidence_source": "owner_supplied_terminal_summary",
   "reported_date_utc": "2026-11-24",
   "operator_revision": "43fdb8c31eddb6813c674aade0338667c0909a09",
-  "status": "PARTIAL_CLEANUP_TIME_LIMIT",
+  "status": "VERIFIED_ELIGIBLE_PA_SCOPE_COMPLETE",
   "before": {
     "capacity_bytes": 156391268352,
     "available_bytes": 15473565696,
@@ -11,27 +11,61 @@
   },
   "after": {
     "capacity_bytes": 156391268352,
-    "available_bytes": 29884313600,
-    "available_inodes": 6708720
+    "available_bytes": 44362047488,
+    "available_inodes": 6805826
   },
-  "final_df_available_bytes": 29884301312,
-  "measured_available_delta_bytes": 14410747904,
-  "deletions_executed": 32384,
-  "unlinked_allocated_bytes": 14287572992,
+  "final_df_available_bytes": 44362031104,
+  "measured_available_delta_bytes": 28888481792,
+  "deletions_executed": 53964,
+  "unlinked_allocated_bytes": 28689756160,
   "planned_generations": 53964,
-  "remaining_from_initial_manifest_generations": 21580,
-  "remaining_from_initial_manifest_allocated_bytes": 14402183168,
+  "remaining_from_initial_manifest_generations": 0,
+  "remaining_from_initial_manifest_allocated_bytes": 0,
   "individual_metadata_holds": 52,
   "preserved_recovery_generations": 4,
   "protected_service_health": "PASS",
   "recovery_scope": "isolated_file_restore_not_full_service_DR",
-  "remaining_to_30_percent_bytes": 17033066906,
+  "remaining_to_30_percent_bytes": 2555333018,
   "image_deletions_executed": 0,
   "unattended_retention_enabled": false,
   "notes": [
     "Actual net filesystem availability change, not a CI or du-based reclamation claim.",
     "Fresh inventory and checks are required before continuing; do not blindly replay the old manifest.",
     "Docker inspect totals are not unique or guaranteed recoverable filesystem bytes.",
-    "Private manifests, journals, generation identities and recovery artifacts remain on the Pi."
-  ]
+    "Private manifests, journals, generation identities and recovery artifacts remain on the Pi.",
+    "Overall delta uses the first before and final after; intervening writes explain the difference from the sum of batch deltas.",
+    "Completion applies only to the known eligible PA scope. The 52 held generations and other artifact families remain outside that completion claim."
+  ],
+  "first_batch": {
+    "before": {
+      "capacity_bytes": 156391268352,
+      "available_bytes": 15473565696,
+      "available_inodes": 6562965
+    },
+    "after": {
+      "capacity_bytes": 156391268352,
+      "available_bytes": 29884313600,
+      "available_inodes": 6708720
+    },
+    "measured_available_delta_bytes": 14410747904,
+    "deletions_executed": 32384,
+    "status": "TIME_LIMIT"
+  },
+  "second_batch": {
+    "before": {
+      "capacity_bytes": 156391268352,
+      "available_bytes": 29874429952,
+      "available_inodes": 6708716
+    },
+    "after": {
+      "capacity_bytes": 156391268352,
+      "available_bytes": 44362047488,
+      "available_inodes": 6805826
+    },
+    "measured_available_delta_bytes": 14487617536,
+    "deletions_executed": 21580,
+    "status": "ELIGIBLE_SCOPE_COMPLETE"
+  },
+  "sum_of_individual_batch_deltas_bytes": 28898365440,
+  "between_batch_net_writes_bytes": 9883648
 }
