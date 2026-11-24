@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import os
+import pwd
 from pathlib import Path
 import re
 import shutil
@@ -250,7 +251,7 @@ def main():
                   and 'homeassistant' in c['Name'].lower().replace('-','').replace('_',''))
         def yaml_validator(data):
             call(['docker','exec','-i',ha,'python3','-c',
-                  'import sys,yaml; x=yaml.safe_load(sys.stdin.read()); assert isinstance(x,dict)'], input=data)
+                  'import sys,yaml; x=yaml.safe_load(sys.stdin.read()); sys.exit(0 if isinstance(x,dict) else 1)'], input=data)
         names = [n for n in os.listdir(rootfd) if family(n)]
         born = births(root,names)
         protected = set(args.protect)
@@ -262,7 +263,11 @@ def main():
                 if value.startswith(str(root)+'/'): protected.add(value[len(str(root))+1:].split('/')[0])
         # Root-owned/current records only, not an exhaustive historical search.
         # Permission denial is an execution-access issue: never silently override it.
-        protected.update(references([Path('/etc/lifeos'),Path('/var/lib/lifeos-transactions'),root.parent/'state']))
+        owner = os.environ.get('SUDO_USER')
+        owner_home = Path(pwd.getpwnam(owner).pw_dir) if owner else Path.home()
+        indexes = {Path('/etc/lifeos'), Path('/var/lib/lifeos-transactions'),
+                   (root.parent/'state').resolve(), (owner_home/'automation'/'state').resolve()}
+        protected.update(references(sorted(indexes)))
         for registry in (Path('/proc/self/mountinfo'), Path('/etc/fstab')):
             protected.update(m.group() for m in PATTERN.finditer(registry.read_text()))
         enabled = set(SOURCES)  # Historical ownership is established by fixed family/shape, not current installed revision.
@@ -320,6 +325,7 @@ def main():
                         remove_generation(rootfd,record,journal)
                         deleted += 1; unlinked += record['allocated_bytes']
                 else: summary['status']='ELIGIBLE_SCOPE_COMPLETE'
+            os.fsync(rootfd)
             health(baseline)
             for record in recovery:
                 for name, expected in witnesses[record['generation']].items():
