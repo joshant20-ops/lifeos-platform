@@ -31,6 +31,15 @@ SOURCES = {
 FIELDS = ('st_dev','st_ino','st_size','st_mtime_ns','st_ctime_ns','st_blocks','st_mode','st_uid','st_gid')
 NOFOLLOW = os.O_RDONLY | os.O_NOFOLLOW
 
+
+SAFE_ERROR_CODES = frozenset(["unknown_family","different_device","unknown_or_incomplete_shape","unsafe_file","file_size_hold","recovery_changed","recovery_metadata_mismatch","recovery_copy_mismatch","reference_scope_limit","unreadable_reference_record","protected_container_health_hold","protected_service_missing","service_identity_changed","dns_health_failed","ssh_recovery_missing","thermal_hold","memory_hold","candidate_changed","directory_changed","file_changed","unsafe_cleanup_lock","unregistered_root","existing_owner_privileged_access_required","unsafe_audit_directory","audit_headroom","invalid_designated_protection","recovery_point_changed","retained_recovery_hash_changed"])
+
+def safe_error_code(error):
+    text = str(error)
+    if text in SAFE_ERROR_CODES: return text
+    if isinstance(error, ValueError) and text == 'embedded null byte': return 'embedded_null_argument'
+    return 'private_details_retained_on_pi'
+
 def call(args, **kwargs):
     return subprocess.run(args, check=True, capture_output=True, timeout=20, **kwargs).stdout
 
@@ -108,7 +117,7 @@ def restore_check(root, record, destination, yaml_validator):
 def births(root, names):
     result = {}
     for start in range(0, len(names), 256):
-        output = call(['stat','--printf=%W\t%n\0','--',*[str(root/n) for n in names[start:start+256]]])
+        output = call(['stat',r'--printf=%W\t%n\0','--',*[str(root/n) for n in names[start:start+256]]])
         for row in output.split(b'\0'):
             if row:
                 born, path = row.split(b'\t',1)
@@ -345,6 +354,7 @@ def main():
     except Exception as error:
         summary['status']='STOPPED'
         summary['error_type']=type(error).__name__
+        summary['error_code']=safe_error_code(error)
         (audit/'private-error.txt').write_text(str(error))
     finally:
         os.close(rootfd)
@@ -361,5 +371,5 @@ def main():
 if __name__ == '__main__':
     try: sys.exit(main())
     except Exception as exc:
-        print(json.dumps({'status':'PREFLIGHT_STOPPED','error_type':type(exc).__name__}))
+        print(json.dumps({'status':'PREFLIGHT_STOPPED','error_type':type(exc).__name__,'error_code':safe_error_code(exc)}))
         sys.exit(1)

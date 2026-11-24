@@ -34,6 +34,23 @@ class CleanupTests(unittest.TestCase):
         for leaf,data in payloads.items():(p/leaf).write_text(data)
         return p
 
+
+    def test_births_uses_real_stat_command(self):
+        # Exercise GNU stat and subprocess argv, not a mock of the failed boundary.
+        result=m.births(self.root,[self.name])
+        self.assertIn(self.name,result)
+        self.assertIs(type(result[self.name]),int)
+        self.assertGreaterEqual(result[self.name],0)
+
+    def test_old_embedded_null_argument_reproduces_failure(self):
+        with self.assertRaises(ValueError):
+            m.call(['stat','--printf=%W\t%n\0','--',str(self.root/self.name)])
+
+    def test_safe_error_codes_do_not_expose_private_details(self):
+        self.assertEqual(m.safe_error_code(ValueError('embedded null byte')),'embedded_null_argument')
+        self.assertEqual(m.safe_error_code(ValueError('reference_scope_limit')),'reference_scope_limit')
+        self.assertEqual(m.safe_error_code(ValueError('synthetic private secret')),'private_details_retained_on_pi')
+
     def test_unknown_family_rejected(self):
         self.assertIsNone(m.family('../live-data'))
         with self.assertRaises(ValueError):m.inspect(self.fd,'unknown')
