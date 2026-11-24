@@ -1,0 +1,25 @@
+name: Storage retention policy tests
+on:
+  pull_request:
+    paths:
+      - 'governor/storage_retention.py'
+      - 'governor/storage-retention-policy.json'
+      - 'governor/contracts/storage-retention-inventory.schema.json'
+      - 'governor/scripts/snapshot-lifeos-observed-state.sh'
+      - 'tests/test_storage_retention.py'
+      - 'monitoring/retention-alerts.yml'
+      - '.github/workflows/storage-retention-policy.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s tests -p test_storage_retention.py -v
+      - run: bash -n governor/scripts/snapshot-lifeos-observed-state.sh
+      - run: python3 -m json.tool governor/storage-retention-policy.json >/dev/null
+      - run: python3 -m json.tool governor/contracts/storage-retention-inventory.schema.json >/dev/null

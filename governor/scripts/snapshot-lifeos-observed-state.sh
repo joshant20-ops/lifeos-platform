@@ -41,6 +41,7 @@ role = sys.argv[3]
 repo = pathlib.Path(sys.argv[4])
 sys.path.insert(0, str(repo))
 from governor.storage_tier0 import docker_data_capacity
+from governor.storage_retention import daily as retention_daily
 
 
 def run(args):
@@ -90,7 +91,7 @@ payload = {
         'origin_main': origin or None,
     },
     'services': services,
-    'storage': {'docker_data': docker_data_capacity()},
+    'storage': {'docker_data': docker_data_capacity(), 'retention': retention_daily()},
     'control_plane_hashes': {
         '/usr/local/libexec/lifeos-autonomous-agent': sha('/usr/local/libexec/lifeos-autonomous-agent'),
         '/usr/local/libexec/lifeos-engineer': sha('/usr/local/libexec/lifeos-engineer'),

@@ -1,0 +1,356 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "complete",
+    "observed_at",
+    "generations",
+    "recovery_points"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "complete": {
+      "type": "boolean"
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "generations": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "required": [
+          "service",
+          "generation_id",
+          "root_id",
+          "category",
+          "created_at",
+          "completed_at",
+          "producer_evidence_id",
+          "timestamp_verified",
+          "state",
+          "active",
+          "references_verified",
+          "dependencies",
+          "holds",
+          "open_references",
+          "verification",
+          "live_data",
+          "database_volume",
+          "logical_bytes",
+          "allocated_bytes",
+          "offhost_required"
+        ],
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1
+          },
+          "generation_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "root_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "producer_evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "relative_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "record_class": {
+            "type": "string",
+            "minLength": 1
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "timestamp_verified": {
+            "type": "boolean"
+          },
+          "references_verified": {
+            "type": "boolean"
+          },
+          "live_data": {
+            "type": "boolean"
+          },
+          "database_volume": {
+            "type": "boolean"
+          },
+          "offhost_required": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "logical_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "allocated_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "open_references": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "dependencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "holds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "registry_digests": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "category": {
+            "enum": [
+              "automation_backup",
+              "repair_snapshot",
+              "successful_job",
+              "failed_job",
+              "diagnostic",
+              "cron_log",
+              "predbat_image",
+              "paperless_rehearsal",
+              "database_backup"
+            ]
+          },
+          "state": {
+            "enum": [
+              "active",
+              "running",
+              "completed",
+              "closed",
+              "verified",
+              "failed",
+              "unknown"
+            ]
+          },
+          "verification": {
+            "enum": [
+              "passed",
+              "failed",
+              "unknown"
+            ]
+          },
+          "files": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": {
+              "type": "object",
+              "required": [
+                "relative_path",
+                "identity",
+                "allocated_bytes"
+              ],
+              "properties": {
+                "relative_path": {
+                  "type": "string"
+                },
+                "identity": {
+                  "type": "object",
+                  "required": [
+                    "st_dev",
+                    "st_ino",
+                    "st_size",
+                    "st_mtime_ns",
+                    "st_ctime_ns"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "st_dev": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "st_ino": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "st_size": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "st_mtime_ns": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "st_ctime_ns": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                },
+                "allocated_bytes": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "closure_verified": {
+            "type": "boolean"
+          },
+          "closure_evidence_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "image_id": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "image_references_verified": {
+            "type": "boolean"
+          },
+          "temporary": {
+            "type": "boolean"
+          },
+          "restore_verification_passed": {
+            "type": "boolean"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "category": {
+                  "const": "repair_snapshot"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "closed_at",
+                "closure_verified",
+                "closure_evidence_id"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "category": {
+                  "const": "predbat_image"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "image_id",
+                "image_references_verified",
+                "tags",
+                "registry_digests"
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "category": {
+                  "enum": [
+                    "automation_backup",
+                    "repair_snapshot",
+                    "successful_job",
+                    "failed_job",
+                    "diagnostic",
+                    "cron_log",
+                    "database_backup"
+                  ]
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "relative_path",
+                "record_class",
+                "files"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "recovery_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "service",
+          "generation_id",
+          "verified",
+          "available",
+          "protected",
+          "offhost",
+          "independent_failure_domain"
+        ],
+        "properties": {
+          "service": {
+            "type": "string"
+          },
+          "generation_id": {
+            "type": "string"
+          },
+          "verified": {
+            "type": "boolean"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "protected": {
+            "type": "boolean"
+          },
+          "offhost": {
+            "type": "boolean"
+          },
+          "independent_failure_domain": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "protected_images": {
+      "type": "object"
+    },
+    "container_image_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^sha256:[a-f0-9]{64}$"
+      }
+    }
+  }
+}

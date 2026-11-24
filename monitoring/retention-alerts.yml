@@ -1,0 +1,45 @@
+groups:
+  - name: lifeos-storage-retention
+    rules:
+      - alert: LifeOSStorageReserveLow
+        expr: lifeos_storage_available_bytes < lifeos_storage_reserve_bytes
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Protected storage reserve is breached; pause nonessential staging
+      - alert: LifeOSRetentionBacklog
+        expr: lifeos_retention_eligible_bytes > 1073741824
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: Retention candidates require governed review; no deletion is authorised
+      - alert: LifeOSBackupFailures
+        expr: lifeos_retention_backup_failures > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Backup failure evidence needs recovery review
+      - alert: LifeOSRetentionMetadataUnverified
+        expr: lifeos_retention_unverified_generations > 0
+        for: 24h
+        labels:
+          severity: warning
+        annotations:
+          summary: Retention lifecycle evidence is incomplete or stale
+      - alert: LifeOSBackupFreshness
+        expr: lifeos_retention_backup_freshness_violations > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: A service lacks a recent verified backup; inspect its configured freshness policy
+      - alert: LifeOSRetentionAssessmentMissing
+        expr: absent(lifeos_retention_assessment_timestamp_seconds) or time() - lifeos_retention_assessment_timestamp_seconds > 129600
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Daily retention assessment has not reported successfully
