@@ -193,7 +193,7 @@ def health(baseline=None):
         response = call(args, text=True)
         addresses = [s for s in response.splitlines() if re.fullmatch(r'[0-9]+(?:\.[0-9]+){3}',s)]
         if not addresses: raise ValueError('dns_health_failed')
-    call(['curl','--fail','--silent','--max-time','10','--resolve',
+    call(['curl','--head','--fail','--silent','--max-time','10','--resolve',
           'github.com:443:'+addresses[0],'https://github.com/'])
     if not call(['ss','-H','-ltn','sport = :22'], text=True).strip():
         raise ValueError('ssh_recovery_missing')
