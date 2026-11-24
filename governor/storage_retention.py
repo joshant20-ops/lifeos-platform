@@ -77,6 +77,8 @@ def policy_rules(policy, service, category):
     if set(policy['categories'])!=CATEGORIES:raise ValueError('unknown_category')
     rule = dict(policy['categories'][category])
     rule.update(policy.get('services', {}).get(service, {}).get(category, {}))
+    minimum = rule.get('minimum_recovery_generations', 1)
+    if type(minimum) is not int or not 1 <= minimum <= 10: raise ValueError('invalid_recovery_minimum')
     days = rule['days']
     if days is not None and (type(days) is not int or not 0 <= days <= 3650): raise ValueError('invalid_retention')
     if type(rule['recovery_required']) is not bool or type(rule['offhost_required']) is not bool: raise ValueError('invalid_policy')
@@ -103,7 +105,6 @@ def reasons(g, inventory, policy, now):
         created, completed = stamp(g['created_at']), stamp(g['completed_at'])
         if not created <= completed <= now or g['timestamp_verified'] is not True or not g['producer_evidence_id']:
             why.append('unverified_timestamp')
-        if inventory.get('complete') is not True: why.append('inventory_incomplete')
         observed = stamp(inventory['observed_at'])
         if not 0 <= (now-observed).total_seconds() <= policy['manifest_ttl_seconds']: why.append('stale_inventory')
         terminal={'completed','closed','verified'} | ({'failed'} if g['category'] in {'failed_job','diagnostic'} else set())
@@ -117,7 +118,7 @@ def reasons(g, inventory, policy, now):
         points = [p for p in inventory['recovery_points'] if p.get('service') == g['service'] and point_ok(p)]
         if any(p.get('generation_id') == g['generation_id'] for p in points): why.append('protected_recovery_point')
         others = [p for p in points if p.get('generation_id') != g['generation_id']]
-        if (rule['recovery_required'] or g['category'] in {'automation_backup','database_backup','repair_snapshot'}) and not others: why.append('no_retained_verified_recovery')
+        if (rule['recovery_required'] or g['category'] in {'automation_backup','database_backup','repair_snapshot'}) and len({p.get('generation_id') for p in others if isinstance(p.get('generation_id'),str) and p['generation_id']}) < rule.get('minimum_recovery_generations', 1): why.append('no_retained_verified_recovery')
         if (rule['offhost_required'] or g.get('offhost_required') is True) and not any(p.get('offhost') is True and p.get('independent_failure_domain') is True for p in others):
             why.append('offhost_coverage_unproven')
         category = g['category']

@@ -5,6 +5,14 @@ by this document. This is a reviewable policy/core implementation, not a claim
 that legacy producers already supply the necessary lifecycle evidence. PR #2148
 remains separate and must not be installed or activated as a side effect.
 
+## Operational simplification — 24 November 2026
+
+The owner's [operational policy and bounded PA cleanup](storage-operational-cleanup.md)
+supersede blanket historical-receipt, exhaustive-reference and repeated-owner-
+approval interpretations. The fixed two-family owner operation is separate from
+installing or activating the disabled general executor. Preserve actual recovery,
+active-use and permission boundaries. No runtime success is claimed here.
+
 ## Policy
 
 `governor/storage-retention-policy.json` contains defaults and per-service/category
@@ -13,21 +21,21 @@ remain private local configuration, not GitHub data.
 
 | Category | Default | Mandatory hold/acceptance condition |
 |---|---|---|
-| Automation backup | 30 days after verified completion | Retained verified recovery and independently operating off-host coverage |
+| Automation backup | 30 days after reliably verified creation/completion | Preserve two verified recovery generations and explicit off-host requirements |
 | Database backup | 30 operational days | Same recovery rules; live databases and volumes excluded |
 | Repair snapshot | 14 days after verified incident closure | Explicit closure evidence, no dependencies and retained recovery |
 | Successful job payload | 7 days after verified completion | Terminal, unreferenced and not authoritative control/audit evidence |
 | Failed job/diagnostic payload | 30 days after verified terminal completion | Incident and rollback holds cleared; artifact integrity distinct from job success |
 | Closed cron log | 14 days | Registered writer, no open handles, verified lifecycle |
 | Predbat image | No age rule | Preserve production, rollback and two distinct explicitly approved additional images; all-container and recovery references checked |
-| Paperless rehearsal | Only verified temporary artifacts | Existing native rehearsal cleanup adapter; original checkpoint and live data never generic file targets |
+| Paperless rehearsal | 48 hours after successful verification | Existing native rehearsal cleanup adapter; original checkpoint and live data never generic file targets |
 | Prometheus | Propose 14 days | Verify actual active flags/data mount first; choose a size cap from measured ingestion, WAL/head overhead and protected reserve |
 
 The defaults do not replace Restic's separate daily/weekly/monthly disaster
 recovery tier. A different share on the same appliance is not an independent
 failure domain. Off-host point availability and restore verification must be
 attested by the existing backup owner; local cleanup cannot silently reduce it.
-At least one protected verified recovery point survives every service's cleanup,
+Two protected verified recovery points are required for automation/database cleanup,
 even where an override attempts to disable that prerequisite.
 Verification alone is not a permanent hold on every historical backup. The native
 backup owner maintains a small explicit protected set (current verified baseline,

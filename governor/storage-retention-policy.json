@@ -3,7 +3,11 @@
   "executor_enabled": false,
   "rotation_enabled": false,
   "compression_max_input_bytes": 67108864,
-  "producer_limits": {"min_interval_seconds": 300, "max_daily_generations": 24, "max_daily_bytes": null},
+  "producer_limits": {
+    "min_interval_seconds": 300,
+    "max_daily_generations": 24,
+    "max_daily_bytes": null
+  },
   "minimum_free_percent": 10,
   "manifest_ttl_seconds": 300,
   "max_batch_generations": 5,
@@ -13,7 +17,8 @@
     "automation_backup": {
       "days": 30,
       "recovery_required": true,
-      "offhost_required": true
+      "offhost_required": false,
+      "minimum_recovery_generations": 2
     },
     "repair_snapshot": {
       "days": 14,
@@ -46,14 +51,15 @@
       "offhost_required": false
     },
     "paperless_rehearsal": {
-      "days": 0,
+      "days": 2,
       "recovery_required": true,
       "offhost_required": false
     },
     "database_backup": {
       "days": 30,
       "recovery_required": true,
-      "offhost_required": true
+      "offhost_required": true,
+      "minimum_recovery_generations": 2
     }
   },
   "record_minimum_days": {

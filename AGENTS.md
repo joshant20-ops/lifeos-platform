@@ -115,3 +115,18 @@ These instructions apply throughout this repository.
 Document authority, trust boundaries and rollback expectations. Link to an
 accepted decision record when current architecture differs from an older plan.
 Clearly label unresolved decisions with `TODO`.
+
+
+## Routine storage housekeeping
+
+The owner-approved operational policy in docs/operations/storage-operational-cleanup.md
+distinguishes ordinary expiring payloads from durable control/audit records.
+Use existing reliable lifecycle evidence for legacy artifacts; new receipt
+formats and exhaustive historical searches are not automatic prerequisites.
+Evaluate uncertainty per candidate/family instead of holding independently
+cleared work because unrelated records are unknown. Preserve designated
+recovery/rollback points, active data/jobs, scope and health/resource boundaries.
+A single accepted narrow root-owned policy may authorise routine expiry without
+repeated owner approval; exact manifests, execution records and measured service/
+capacity acceptance remain required. This does not install a broker/gateway
+operation, grant a runner arbitrary shell/sudo, or authorise new deletion roots.

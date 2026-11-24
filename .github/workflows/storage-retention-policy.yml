@@ -3,6 +3,8 @@ on:
   pull_request:
     paths:
       - 'governor/storage_retention.py'
+      - 'scripts/lifeos_pa_backup_cleanup.py'
+      - 'tests/test_pa_backup_cleanup.py'
       - 'governor/backup_producer_metadata.py'
       - 'scripts/lifeos-*.sh'
       - 'tests/test_backup_producer_metadata.py'
@@ -23,6 +25,7 @@ jobs:
         with:
           persist-credentials: false
       - run: python3 -B -m unittest discover -s tests -p test_storage_retention.py -v
+      - run: python3 -B -m unittest discover -s tests -p test_pa_backup_cleanup.py -v
       - run: python3 -B -m unittest discover -s tests -p test_backup_producer_metadata.py -v
       - run: bash -n governor/scripts/snapshot-lifeos-observed-state.sh
       - run: for script in scripts/lifeos-sync-pinned-compose.sh scripts/lifeos-ha-dashboard-audit-simplify.sh scripts/lifeos-adapt-ha-lifeos-dashboard.sh scripts/lifeos-adapt-ha-tower-control.sh scripts/lifeos-deploy-ha-control-bridge-impl.sh; do bash -n "$script"; done

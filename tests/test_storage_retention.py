@@ -28,8 +28,21 @@ def generation(**updates):
 def inventory(g=None):
     return {'schema_version':1,'complete':True,'observed_at':NOW.isoformat(),'generations':[g or generation()],
             'recovery_points':[{'service':'synthetic-service','generation_id':'retained-point','protected':True,'verified':True,
-                                'available':True,'offhost':True,'independent_failure_domain':True}]}
+                                'available':True,'offhost':True,'independent_failure_domain':True},
+                               {'service':'synthetic-service','generation_id':'retained-point-2','protected':True,'verified':True,
+                                'available':True,'offhost':False,'independent_failure_domain':False}]}
 class PolicyTests(unittest.TestCase):
+    def test_individually_cleared_generation_not_blocked_by_other_unknown(self):
+        good=generation()
+        unknown=generation(generation_id='unknown',timestamp_verified=False,references_verified=False)
+        inv=inventory(good);inv.update(complete=False,generations=[good,unknown])
+        manifest,summary=r.assess(inv,POLICY,NOW)
+        self.assertEqual(summary['eligible_generations'],1)
+        self.assertEqual(len(manifest['entries']),1)
+    def test_automation_keeps_two_distinct_recovery_generations(self):
+        inv=inventory();inv['recovery_points']=inv['recovery_points'][:1]
+        self.assertIn('no_retained_verified_recovery',self.why(inv=inv))
+
     def why(self,g=None,inv=None,p=None):return r.reasons(g or generation(),inv or inventory(g),p or POLICY,NOW)
     def test_default_expired_generation(self):self.assertEqual(self.why(),[])
     def test_missing_metadata(self):
@@ -46,10 +59,11 @@ class PolicyTests(unittest.TestCase):
         inv=inventory();inv['recovery_points']=[];self.assertIn('no_retained_verified_recovery',self.why(inv=inv))
     def test_same_failure_domain_not_offsite(self):
         inv=inventory();inv['recovery_points'][0]['independent_failure_domain']=False
-        self.assertIn('offhost_coverage_unproven',self.why(inv=inv))
+        p=copy.deepcopy(POLICY);p['categories']['automation_backup']['offhost_required']=True
+        self.assertIn('offhost_coverage_unproven',self.why(inv=inv,p=p))
     def test_live_database_volume(self):self.assertIn('protected_live_data',self.why(generation(database_volume=True)))
     def test_incomplete_inventory(self):
-        inv=inventory();inv['complete']=False;self.assertIn('inventory_incomplete',self.why(inv=inv))
+        inv=inventory();inv['complete']=False;self.assertNotIn('inventory_incomplete',self.why(inv=inv))
     def test_stale_inventory(self):
         inv=inventory();inv['observed_at']=(NOW-dt.timedelta(minutes=6)).isoformat();self.assertIn('stale_inventory',self.why(inv=inv))
     def test_future_completion(self):self.assertIn('unverified_timestamp',self.why(generation(completed_at=(NOW+dt.timedelta(days=1)).isoformat())))
