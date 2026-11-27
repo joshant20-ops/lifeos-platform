@@ -1,0 +1,85 @@
+#!/usr/bin/python3
+"""Export selected Storage Manager fields for the restricted runner."""
+import datetime
+import json
+import math
+import os
+from pathlib import Path
+import stat
+import tempfile
+
+SOURCE = Path("/mnt/docker-data/modules/storage-manager/state")
+DESTINATION = Path("/var/lib/homelab-reports")
+
+def read_report(name):
+    fd = os.open(SOURCE / name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(fd, "rb") as source:
+        if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+            raise ValueError("expected a regular report file")
+        data = source.read(1024 * 1024 + 1)
+    if len(data) > 1024 * 1024:
+        raise ValueError("report exceeds size limit")
+    result = json.loads(data)
+    if type(result) is not dict:
+        raise ValueError("expected a report object")
+    return result
+
+def summary(report, counters, metrics, flags):
+    timestamp = report["generated_at"]
+    if type(timestamp) is not str or len(timestamp) > 40:
+        raise ValueError("invalid timestamp")
+    result = {"generated_at": datetime.datetime.fromisoformat(timestamp).isoformat()}
+    for name in counters:
+        value = report[name]
+        if type(value) is not int or not 0 <= value <= 10**15:
+            raise ValueError("invalid counter")
+        result[name] = value
+    for name in metrics:
+        value = report[name]
+        if type(value) not in (float, int) or not 0 <= value <= 10**15 or not math.isfinite(value):
+            raise ValueError("invalid metric")
+        result[name] = value
+    for name in flags:
+        value = report[name]
+        if type(value) is not bool:
+            raise ValueError("invalid flag")
+        result[name] = value
+    return result
+
+def export():
+    if os.geteuid() != 0:
+        raise ValueError("administrator required")
+    directory = DESTINATION.lstat()
+    if not stat.S_ISDIR(directory.st_mode) or directory.st_uid != 0 or directory.st_mode & 0o022:
+        raise ValueError("report directory must be root-owned and protected")
+    status = summary(read_report("status.json"), (),
+                     ("total_gib", "used_gib", "available_gib", "available_percent"),
+                     ("retention_enabled",))
+    validation = summary(read_report("validation.json"),
+                         ("archives_verified", "archived_records", "matching_originals",
+                          "mismatched_originals", "missing_originals", "originals_deleted"),
+                         ("archive_mib", "potential_net_recovery_gib"), ("passed",))
+    payload = {
+        "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "status": status,
+        "validation": validation,
+    }
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=DESTINATION,
+                                     delete=False) as output:
+        temporary = Path(output.name)
+        try:
+            json.dump(payload, output, indent=2, allow_nan=False)
+            output.write("\n")
+            output.flush()
+            os.fchmod(output.fileno(), 0o644)
+            os.fsync(output.fileno())
+            temporary.replace(DESTINATION / "storage-manager.json")
+        finally:
+            temporary.unlink(missing_ok=True)
+
+if __name__ == "__main__":
+    try:
+        export()
+    except (OSError, ValueError, KeyError):
+        raise SystemExit("Export failed: check source schema, permissions and report directory.") from None
+    print("Storage Manager summary published.")

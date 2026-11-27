@@ -259,6 +259,7 @@ opt/stacks/vaultwarden/docker-compose.yml
 opt/stacks/zwave/docker-compose.yml
 opt/stacks/zwave-js-ui/docker-compose.yml
 usr/local/sbin/export-lifeos-job-records
+usr/local/sbin/export-storage-summary
 usr/local/sbin/lifeos-ai-ha-wake
 usr/local/sbin/lifeos-ansible-adopt
 usr/local/sbin/lifeos-deploy-gateway
